@@ -145,7 +145,7 @@
 
 ## Q34. `deepseek-chat` vs `deepseek-flash` (resolved: D16)
 - On 4 Nov 2026 DeepSeek's pricing page (https://api-docs.deepseek.com/quick_start/pricing) listed only `deepseek-flash` (DeepSeek-V4.1-Flash-1017; $0.30 / $1.20 per MTok input/output at peak, half off-peak) and `deepseek-v4-pro`, and said older names route to the current Flash model. `deepseek-chat` isn't mentioned, so it may stop resolving.
-- Claude's input: use `deepseek/deepseek-flash` for `gb-cheap`. Switching is one line in `litellm/config.yaml`.
+- Claude's input: use `deepseek/deepseek-flash` for `gb-cheap`. Switching is one constant in `MODEL_IDS` in `src/server/agent/model.ts`. Update (D18): `@ai-sdk/deepseek` 3.0.79 lists `deepseek-flash` as a model ID, so it is used as is.
 
 ## Q35. Is Celo (and Celo Sepolia) Cancun-compatible? (resolved: D17)
 - OpenZeppelin 5.6 uses the MCOPY opcode, so contracts compile for EVM `cancun`. Celo's docs say Celo L2 is "fully EVM-compatible" on the OP Stack but don't name an EVM version (UNVERIFIED, checked 4 Nov 2026).

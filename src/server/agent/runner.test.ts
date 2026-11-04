@@ -224,13 +224,13 @@ describe("runTurn", { timeout: 120_000 }, () => {
     const { ModelUnavailableError } = await import("./model");
     const client = {
       async *stream() {
-        throw new ModelUnavailableError("The AI service isn't reachable at http://localhost:4000. Start it with `pnpm llm`.");
+        throw new ModelUnavailableError("The AI provider has no valid API key. Set ANTHROPIC_API_KEY in .env.local, then restart `pnpm dev`.");
       },
     };
     const { events, emit } = collect();
     const record = await runTurn({ db, model: client }, { projectId, userId, mode: "build", userMessageId: queuedId }, emit);
     expect(record.status).toBe("error");
-    expect(record.error).toMatch(/pnpm llm/);
+    expect(record.error).toMatch(/ANTHROPIC_API_KEY/);
     expect(events.at(-1)).toMatchObject({ type: "error" });
     expect(await claimTurn(db, projectId, userId)).toBe(true);
   });

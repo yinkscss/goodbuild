@@ -8,13 +8,13 @@ Written 4 Nov 2026 at the end of the first build session (claude.ai), for whoeve
 | M1 Scaffold + landing | 37a5941 … 7e85449 | Tailwind v4 tokens (P6), self-hosted fonts (P7), hero uses `hero-b.jpg` with float/glow/tilt |
 | M2 Privy auth + gating | f1122d8 | Own SIWE session (P9), Drizzle + PGlite dev DB (P8), geo-block 451 |
 | M3 Logged-in home | 37f17b1, 36307f4 | Contract-type tiles on cards; credits pill says "Testnet beta · free" until M6 |
-| M4 Workspace + agent | 1d8d9bc | LiteLLM (D14, D16; being replaced by the AI SDK, D18), runner/checks/auto-fix/checkpoints, Sandpack (P12) |
+| M4 Workspace + agent | 1d8d9bc | Vercel AI SDK (D14, D16, D18; LiteLLM removed), runner/checks/auto-fix/checkpoints, Sandpack (P12) |
 | Pre-M5 fixes | 6efeeb9 | G$ = ERC-20 guardrails (D15), custom errors only, deduped summary, auto-fix step rows |
 
 The user approved M1–M4 and the pre-M5 fixes.
 
-## Next, first: D18 (replace LiteLLM with the Vercel AI SDK)
-Decided by the user, not started in code (`main` still uses LiteLLM). Do this **before** the user's real build, so they don't have to set up the proxy at all.
+## D18 (replace LiteLLM with the Vercel AI SDK): DONE
+Implemented on branch `claude/vercel-ai-sdk-migration-46c76e`: `aiSdkClient()` and `withFallback()` in `src/server/agent/model.ts`, `runner.ts` unchanged, LiteLLM files and `pnpm llm` removed. `deepseek-flash` verified as a model ID in `@ai-sdk/deepseek`. The brief below is kept for reference.
 
 Scope:
 1. `pnpm add ai @ai-sdk/anthropic @ai-sdk/deepseek` and `pnpm remove openai`. Versions seen on 4 Nov 2026: ai 7.0.162, @ai-sdk/anthropic 4.0.96, @ai-sdk/deepseek 3.0.79.

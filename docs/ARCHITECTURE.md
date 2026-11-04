@@ -6,7 +6,7 @@ Detail docs: [AI agent](AI_AGENT.md) · [Contracts and deployment](CONTRACTS_AND
 
 ## Components
 1. **Chat panel**: user describes the app; shows plan, diffs and errors.
-2. **LLM file-generation agent** ([AI_AGENT.md](AI_AGENT.md)): plans, then makes diff-based tool edits, runs checks and auto-fixes; turns chat into a file set (Solidity contract(s), React app, tests) and edits files on follow-ups. Calls models via GoodDollar AI credits or LiteLLM (D9).
+2. **LLM file-generation agent** ([AI_AGENT.md](AI_AGENT.md)): plans, then makes diff-based tool edits, runs checks and auto-fixes; turns chat into a file set (Solidity contract(s), React app, tests) and edits files on follow-ups. Calls models via GoodDollar AI credits or the Vercel AI SDK (D9, D18).
 3. **Sandpack preview**: runs the generated React front end in the browser (D5).
 4. **Solidity compile and test**: solc-js in the browser compiles contracts; errors go back to the agent to fix. Tests *(suggestion: run in-browser against a local EVM such as a JS EVM; approach UNVERIFIED)*.
 5. **Wallet connect and deploy** ([CONTRACTS_AND_DEPLOYMENT.md](CONTRACTS_AND_DEPLOYMENT.md)): compile → simulate → human summary → user connects a wallet and signs the deploy transaction to Celo Sepolia testnet (chainId 11142220; Alfajores retired Sep 2025) or Celo mainnet. The address is saved to the project.
@@ -22,7 +22,7 @@ Detail docs: [AI agent](AI_AGENT.md) · [Contracts and deployment](CONTRACTS_AND
 flowchart LR
   U[User] --> C[Chat + preview toolbar]
   C --> A[Agent: plan / build]
-  A -->|model calls| M[GoodDollar AI credits or LiteLLM]
+  A -->|model calls| M[GoodDollar AI credits or Vercel AI SDK]
   A -->|diff edits| F[Project files + checkpoints]
   F --> S[Project store DB]
   F --> P[Sandpack preview]
@@ -51,7 +51,7 @@ flowchart LR
 | Wallet / auth | Privy (email embedded wallet + external wallets) on wagmi/viem, SIWE session cookie; fallback thirdweb. See [AUTH.md](AUTH.md) (P5) |
 | Identity | `@goodsdks/citizen-sdk` |
 | DB | Postgres |
-| Models | LiteLLM proxy with per-user budgets, or GoodDollar AI credits |
+| Models | Vercel AI SDK in the Next.js server (Anthropic + DeepSeek, D18), or GoodDollar AI credits |
 
 ## Credits (D11)
-GoodBuild's own credits: G$ → `GoodBuildCreditsVault` (Celo) → indexer → Postgres ledger → LiteLLM spend with billing callback. Components added: vault contract, indexer worker, billing service, treasury multisig. See [CREDITS.md](CREDITS.md).
+GoodBuild's own credits: G$ → `GoodBuildCreditsVault` (Celo) → indexer → Postgres ledger → provider spend priced in our own code (`model-pricing.ts`). Components added: vault contract, indexer worker, billing service, treasury multisig. See [CREDITS.md](CREDITS.md).

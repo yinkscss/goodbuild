@@ -54,11 +54,10 @@ interface IGoodBuildCreditsVault {
 | `llm_keys` | user_id, litellm_key_id, max_budget, status |
 | `treasury_ops` | id, kind (`swap`/`provider_payment`), gd_wei, usd_micro, tx_hash, notes |
 
-## 4. Spending (LiteLLM)
+## 4. Spending (AI SDK, D18)
 Two options. Proposed: **B, with a preflight reserve**. Q20. Claude's input: _TBD_
 - **A. A LiteLLM virtual key per user with `max_budget`.** After each deposit, top the key up with `/key/update` to the new budget. This is simple, but LiteLLM tracks the budget at provider cost, so a markup needs extra work, and the ledger becomes a second source of truth.
-- **B. A single internal key, with a custom success/failure callback** (LiteLLM `CustomLogger` `async_log_success_event`, using `response_cost`). The callback debits `charged = provider_cost × (1 + markup)`, idempotent on `litellm_call_id`. The ledger stays the only source of truth.
-  - LiteLLM API and callback names should be checked against the current LiteLLM docs (UNVERIFIED).
+- **B. A single internal key, debiting from our own code** (D18: this now lives in `recordUsage`, using token usage from the AI SDK and `src/config/model-pricing.ts`, no LiteLLM callback). It debits `charged = provider_cost × (1 + markup)`, idempotent on `litellm_call_id`. The ledger stays the only source of truth.
 - **Preflight:** before each agent turn, estimate the worst-case cost (`max_tokens` × output price plus the input) and **reserve** it (`reserved_micro`). Refuse with "top up" if `balance − reserved < estimate`. After the call, settle the reservation to the actual cost.
 - **Streaming cutoff:** track output tokens while streaming. If the running cost would exceed the reservation, stop the stream, finish the turn cleanly, and offer a top-up. Always cap `max_tokens` from the available balance.
 - **Markup (proposed):** 20–30% to cover price swings, swap fees and infrastructure. Q21. Claude's input: _TBD_

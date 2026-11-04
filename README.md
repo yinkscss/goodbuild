@@ -20,11 +20,7 @@ node scripts/demo-session.mjs --seed   # throwaway signed-in session with sample
 ```
 Set `NEXT_PUBLIC_PRIVY_APP_ID` to turn sign-in on. Without `DATABASE_URL`, development uses an embedded database in `.data/`.
 
-**AI builds** go through a LiteLLM proxy. Put `ANTHROPIC_API_KEY`, `DEEPSEEK_API_KEY` and `LITELLM_MASTER_KEY` in `.env.local`, then:
-```bash
-pip install 'litellm[proxy]'
-pnpm llm          # proxy on http://localhost:4000, models set in litellm/config.yaml
-```
+**AI builds** use the Vercel AI SDK from the Next.js server (D18). No proxy and no Python: put `ANTHROPIC_API_KEY` and `DEEPSEEK_API_KEY` in `.env.local`, then run `pnpm dev`. Plan and code use Claude Sonnet 5.5; cheap tasks and fallback use DeepSeek Flash.
 To try the workspace without keys, set `GOODBUILD_DEMO_MODEL=1` (development only).
 Stack: Next.js 16 (App Router), TypeScript, Tailwind v4 + shadcn/ui, Vitest. Design tokens live in `src/app/globals.css` (DESIGN_SYSTEM §6).
 

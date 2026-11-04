@@ -1,6 +1,6 @@
 /**
  * GoodBuild's own model price table (D13). Billing uses these numbers with the token
- * usage each call reports, not LiteLLM's cost map, which can lag new models.
+ * usage each call reports, not a provider SDK or proxy cost map, which can lag new models.
  *
  * Prices are USD per million tokens, checked 4 Nov 2026:
  * - Claude Sonnet 5.5: https://platform.claude.com/docs/en/models/overview
@@ -11,7 +11,7 @@
  * Re-check before changing markup or launching on mainnet.
  */
 export interface ModelPrice {
-  /** Matches the model name LiteLLM reports (provider prefix optional). */
+  /** Matches the model name the provider reports back (provider prefix optional). */
   match: RegExp;
   label: string;
   inputPerMTok: number;

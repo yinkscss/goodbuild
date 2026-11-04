@@ -5,7 +5,7 @@
 What powers generation, editing, steering and self-repair, modelled on Lovable, bolt.diy, v0, Open Lovable and Cursor.
 
 ## 1. Models and routing
-Calls go through GoodDollar AI credits if allowed, else LiteLLM (D9; no OpenRouter, no public Claude API without approval).
+Calls go through GoodDollar AI credits if allowed, else the Vercel AI SDK with direct provider keys (D9, D18; no OpenRouter, no public Claude API without approval).
 - GoodDollar AI credits = AntSeed (OpenAI/Anthropic-compatible buyer proxy/gateway). GoodDollar's own hosted proxy/API keys are NOT yet implemented. Proposed: AntSeed gateway as a LiteLLM OpenAI-compatible provider, fallback to direct providers on 402/502. Deferred (P3); GoodBuild uses its own credits (D11, [CREDITS.md](CREDITS.md)): LiteLLM callback debits the ledger at a markup, preflight reserve, streaming cutoff.
 | Task | Tier | Candidates (check current pricing) |
 |---|---|---|
@@ -70,7 +70,7 @@ Small benchmark (~20 prompts) run on every prompt/model change; scored for: comp
 Q13–Q16 in [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md).
 
 ## Implementation (M4)
-- **Models:** the app calls the LiteLLM proxy (`litellm/config.yaml`) with two aliases: `gb-strong` (`anthropic/claude-sonnet-5-5`) and `gb-cheap` (DeepSeek Flash, see Q34). LiteLLM retries once, then falls back from strong to cheap. Run locally with `pnpm llm`.
+- **Models:** the Vercel AI SDK (D18) in `src/server/agent/model.ts`: `claude-sonnet-5-5` (`@ai-sdk/anthropic`) for plan and code, `deepseek-flash` (`@ai-sdk/deepseek`, an alias for the current V4 Flash, see Q34) for cheap tasks and as fallback. The SDK retries once; `withFallback` then retries a strong call on cheap only if nothing has streamed yet. Keys come from `ANTHROPIC_API_KEY` and `DEEPSEEK_API_KEY`. The system prompt is cache-marked for Anthropic.
 - **Loop:** `src/server/agent/runner.ts`. Plan (`set_plan`), tool edits (`src/server/agent/workspace.ts`), checks (`checks.ts`), up to 3 auto-fixes (cheap model first), one checkpoint per prompt (`store.ts`). One turn per project at a time; follow-ups queue in the browser.
 - **Edits:** search/replace with exact match, then a whitespace-tolerant unique match (`edits.ts`).
 - **Platform-owned files:** after each compile GoodBuild writes `src/contracts/<Name>.ts` (ABI; addresses after deploy in M5). The agent can read but not edit them.
