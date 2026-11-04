@@ -13,6 +13,8 @@ export interface ToolOutcome {
   ok: boolean;
   change?: FileChange;
   plan?: { summary: string; steps: string[] };
+  /** Next-step suggestions from suggest_next. */
+  suggestions?: string[];
   /** Guides returned to the model by this call (for the build log). */
   guides?: string[];
 }
@@ -70,6 +72,14 @@ export class Workspace {
         }
         const g = loadGuides(args.guides);
         return { ok: true, result: `Plan noted. Guides for this work:\n\n${g.text}`, plan: { summary, steps }, guides: g.loaded };
+      }
+      case "suggest_next": {
+        const items = (Array.isArray(args.suggestions) ? args.suggestions : [])
+          .map((x) => String(x ?? "").replace(/\s+/g, " ").trim().slice(0, 90))
+          .filter(Boolean)
+          .slice(0, 2);
+        if (!items.length) return { ok: false, result: "Error: give one or two suggestions." };
+        return { ok: true, result: "Suggestions shown. You're done; don't call more tools.", suggestions: items };
       }
       case "read_guide": {
         const g = loadGuides(args.name);

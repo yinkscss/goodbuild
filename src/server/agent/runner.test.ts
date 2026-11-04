@@ -165,6 +165,27 @@ describe("runTurn", { timeout: 120_000 }, () => {
     expect(await listVersions(db, projectId)).toHaveLength(1);
   });
 
+  it("keeps the reply that comes with suggest_next, saves the chips and ends the pass", async () => {
+    const { client, requests } = scriptedModel([
+      { tools: [{ name: "create_file", args: { path: "src/App.tsx", content: APP } }] },
+      { text: "Built a tip page.", tools: [{ name: "suggest_next", args: { suggestions: ["Add a leaderboard of top tippers", "  Let tips carry a note  ", "third"] } }] },
+    ]);
+    const { events, emit } = collect();
+    const record = await runTurn({ db, model: client }, { projectId, userId, mode: "build", userMessageId: queuedId }, emit);
+    expect(requests).toHaveLength(2); // no extra round after suggest_next
+    expect(record.suggestions).toEqual(["Add a leaderboard of top tippers", "Let tips carry a note"]);
+    expect(events).toContainEqual({ type: "suggestions", items: record.suggestions });
+    const [assistant] = (await db.select().from(messages).where(eq(messages.projectId, projectId))).filter((m) => m.role === "assistant");
+    expect(assistant.content).toBe("Built a tip page.");
+    expect((assistant.meta as { suggestions?: string[] }).suggestions).toHaveLength(2);
+
+    // The next turn's history names the chips, so "yes, the first one" has a referent.
+    const next = scriptedModel([{ text: "On it." }]);
+    await runTurn({ db, model: next.client }, { projectId, userId, mode: "build", prompt: "yes, the first one" }, () => {});
+    const history = next.requests[0].messages.filter((m) => m.role === "assistant").map((m) => String(m.content));
+    expect(history.some((c) => c.includes("Suggested next steps: 1. Add a leaderboard of top tippers"))).toBe(true);
+  });
+
   it("reports the auto-fix result clearly in the step rows", async () => {
     const { client } = scriptedModel([
       { tools: [{ name: "create_file", args: { path: "contracts/TipJar.sol", content: BROKEN } }] },

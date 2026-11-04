@@ -26,6 +26,8 @@ export type TurnEvent =
   /** Replace the turn's text (used to drop a reply that repeated an earlier one). */
   | { type: "text_set"; text: string }
   | { type: "plan"; summary: string; steps: string[] }
+  /** Next steps the user can click (Lovable-style chips), from the suggest_next tool. */
+  | { type: "suggestions"; items: string[] }
   | { type: "step"; step: Step }
   | { type: "log"; line: string }
   | { type: "file"; change: FileChange }
@@ -42,6 +44,8 @@ export interface TurnRecord {
   kind: "turn";
   mode: TurnMode;
   plan?: { summary: string; steps: string[] };
+  /** Clickable next steps shown under the reply. */
+  suggestions?: string[];
   steps: Step[];
   log: string[];
   changes: FileChange[];

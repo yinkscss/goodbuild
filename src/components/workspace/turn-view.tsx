@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Check, ChevronRight, Hexagon, RotateCw } from "lucide-react";
+import { ArrowUpRight, Check, ChevronRight, Hexagon, RotateCw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { formatMicroUsd } from "@/lib/pricing";
@@ -181,6 +181,20 @@ export function TurnError({ record, onFix, disabled }: { record: TurnRecord; onF
   );
 }
 
+/** Next steps as chips (DESIGN_SYSTEM: tint pills); a click sends the suggestion as the next prompt. */
+export function SuggestionChips({ items, onPick, disabled }: { items: string[]; onPick: (s: string) => void; disabled: boolean }) {
+  return (
+    <div className="mt-4 flex flex-wrap gap-2" role="group" aria-label="Suggested next steps">
+      {items.map((s) => (
+        <Button key={s} type="button" variant="chip" size="chip" disabled={disabled} onClick={() => onPick(s)} className="h-auto max-w-full text-left whitespace-normal">
+          <span>{s}</span>
+          <ArrowUpRight className="size-3.5 shrink-0" aria-hidden />
+        </Button>
+      ))}
+    </div>
+  );
+}
+
 /** An assistant turn: text, steps, log, diffs, then the deploy card or an error card. */
 export function TurnView({
   text,
@@ -188,12 +202,15 @@ export function TurnView({
   live,
   onFix,
   fixDisabled,
+  onSuggest,
 }: {
   text: string;
   record: TurnRecord;
   live: boolean;
   onFix: () => void;
   fixDisabled: boolean;
+  /** Set on the latest turn only: shows its suggestion chips. */
+  onSuggest?: (prompt: string) => void;
 }) {
   const showError = !live && (record.status === "needs_fix" || record.status === "error");
   return (
@@ -208,6 +225,9 @@ export function TurnView({
       {!live && <DiffChips changes={record.changes} />}
       {!live && record.status === "ready" && <DeployCard record={record} />}
       {showError && <TurnError record={record} onFix={onFix} disabled={fixDisabled} />}
+      {!live && onSuggest && record.status !== "error" && record.suggestions?.length ? (
+        <SuggestionChips items={record.suggestions} onPick={onSuggest} disabled={fixDisabled} />
+      ) : null}
       {!live && (record.version || record.chargedMicro > 0) && (
         <p className="mt-2 text-[11px] text-grey-400">
           {record.version ? `Saved as v${record.version}` : ""}
