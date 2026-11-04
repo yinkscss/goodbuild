@@ -298,6 +298,9 @@ export function selectContext(
   const fitsWhole = ownSize <= budget;
   take(ASSETS, "uploaded assets");
   for (const s of scored) {
+    // Platform ABI modules are large and the contract source is already in: over budget, they
+    // only go in when the whole project fits (E3b: TipJar.ts took the room of small helpers).
+    if (!fitsAll && s.path.startsWith("src/contracts/")) continue;
     if (s.score >= 2 || fitsAll || (fitsWhole && !LOW.test(s.path))) take(s.path, s.reason || (s.score >= 2 ? "text match" : "fits budget"), s.score);
   }
   // Import neighbours of the strongest matches (what they render or call).

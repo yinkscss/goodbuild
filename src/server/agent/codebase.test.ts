@@ -79,6 +79,7 @@ describe("context selection on a 30-file project (HARNESS.md eval 3, offline par
     const paths = picks.map((p) => p.path);
     expect(paths).toEqual(expect.arrayContaining(["src/App.tsx", "public/index.html", "contracts/TipJar.sol", "src/components/sections/Hero.tsx"]));
     expect(paths).not.toContain("src/pages/About.tsx");
+    expect(paths.some((p) => p.startsWith("src/contracts/"))).toBe(false);
     // Leftover budget goes to small starter pieces, after every own file that matched.
     const firstStarter = picks.findIndex((p) => p.reason === "starter helper");
     expect(firstStarter).toBeGreaterThan(paths.indexOf("src/components/sections/Hero.tsx"));

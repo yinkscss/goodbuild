@@ -182,7 +182,10 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - **Selective context.** The context block has a manifest of every file, then the files picked for the request. If the whole project fits the 40k-char budget it is sent whole, because a read round trip re-sends the conversation and costs more than the files. Otherwise the block holds:
   - the entry, the theme, contracts and the assets module;
   - files ranked by request terms matched against path, symbols and text;
-  - files changed last turn, then import neighbours.
+  - files changed last turn, then import neighbours;
+  - small starter helpers, smallest first, with whatever budget is left.
+
+  Platform ABI modules (`src/contracts/*.ts`) are left out, because the contract source is in and the manifest names their exports.
 
   Measured: a realistic 30-file project is about 28k chars, so most projects today are sent whole. This replaces "everything up to 100k".
 - **No vector search.** Lexical search plus the symbol index found the file in every case of the offline 10-request set and the live E3 run, so embeddings would add a provider, a cost and staleness for no measured gain. Revisit if projects outgrow the 80-file cap or a request misses in evals.

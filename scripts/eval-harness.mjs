@@ -128,6 +128,7 @@ for (const [i, prompt] of scenario.turns.entries()) {
   if (error) console.log(`  ERROR: ${error}`);
 }
 
-const out = { scenario: scenario.name, base, projectId, cookie: jar.gb_session, uploads, turns, at: new Date().toISOString() };
+// The session cookie is printed below for opening the workspace, never written to the results.
+const out = { scenario: scenario.name, base, projectId, uploads, turns, at: new Date().toISOString() };
 if (outPath) await writeFile(outPath, JSON.stringify(out, null, 2));
 console.log(`\nproject ${projectId}\nworkspace ${base}/p/${projectId}\ncookie gb_session=${jar.gb_session}`);

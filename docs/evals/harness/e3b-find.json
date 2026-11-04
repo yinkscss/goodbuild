@@ -1,0 +1,13 @@
+{
+  "name": "E3b: more edits on the E3 project after the leftover-budget fix (starter helpers fill unused budget)",
+  "project": "b9e834f8-0622-447d-933d-d704ae841a04",
+  "cookie": "SET_FROM_E5_RUN_OUTPUT",
+  "targets": ["src/components/TipFeed.tsx", "src/components/Layout.tsx", "src/pages/Leaderboard.tsx", "src/pages/NotFound.tsx", "src/pages/Events.tsx (new)"],
+  "turns": [
+    "In the recent tips feed, show each tip's time as 'x minutes ago'.",
+    "Fix the nav: the Home link looks active on every page.",
+    "On the leaderboard, give the top three rows a gold, silver and bronze badge.",
+    "Make the 404 page friendlier with a button back to the tip page.",
+    "Add an Events page listing our next three Saturday meetups (sample dates, clearly marked), with a nav link."
+  ]
+}

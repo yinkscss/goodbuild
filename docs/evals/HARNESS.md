@@ -10,15 +10,18 @@ Setup:
 
 ## Summary
 
-| Eval | Result | First try clean | Fix attempts | Reads + searches | Cost (DeepSeek / Sonnet) | Time |
-|---|---|---|---|---|---|---|
-| E1 logo and brand colours (run 2) | Pass: logo in header and footer, favicon, tokens from the logo palette | yes | 0 | 0 | $0.025 / $0 | 69 s |
-| E2 match a screenshot | Pass: structure, colours and type follow the reference | yes | 0 | 1 read | $0.026 / $0 | 72 s |
-| E3 find the right file, 36-file project, 5 edits | Pass: right file every time, target in context 5 of 5 | 5 of 5 | 0 | 0 reads, 1 search in total (target ≤ 2 per edit) | $0.030 / $0 | 8 to 13 s each |
-| E4 long conversation (10 turns plus a probe) | Pass, one slip: rules followed on new pages at turn 10; the probe recalled all four first-message rules but put one in a later message | 9 of 10 | 1 (turn 1, contract) | 11 reads, 4 searches over 10 turns (before the leftover-budget fix) | $0.165 / $0.134 | 509 s |
-| E5 landing page plus a 3-page dApp | Pass: 4 routes, contract with 6 passing tests, previews without errors | no (test file compile error) | 1 | 0 | $0.058 / $0.201 | 176 s |
+| Eval | Result | First try clean | Fix attempts | Reads + searches | Preview errors | Cost (DeepSeek / Sonnet) | Time |
+|---|---|---|---|---|---|---|---|
+| E1 logo and brand colours (run 2) | Pass: logo in header and footer, favicon, tokens from the logo palette | yes | 0 | 0 | none (run 1: lucide `Instagram`, now a check) | $0.025 / $0 | 69 s |
+| E2 match a screenshot | Pass: structure, colours and type follow the reference | yes | 0 | 1 read | none | $0.026 / $0 | 72 s |
+| E3 find the right file, 36-file project, 5 edits | Pass: right file every time, target in context 5 of 5 | 5 of 5 | 0 | 0 reads, 1 search in total (target ≤ 2 per edit) | none | $0.030 / $0 | 8 to 13 s each |
+| E3b same project, 5 more edits incl. a new page (after the leftover-budget fix) | Pass: right file every time, target in context 4 of 5 (the other found with 1 read) | 5 of 5 | 0 | 7 reads, 2 searches in total; adding a page took 1 read | none: all 5 routes render, nav active state correct | $0.060 / $0 | 18 to 50 s each |
+| E4 long conversation (10 turns plus a probe) | Pass, one slip: rules followed on new pages at turn 10; the probe recalled all four first-message rules but put one in a later message | 9 of 10 | 1 (turn 1, contract) | 11 reads, 4 searches over 10 turns (before the leftover-budget fix) | none: Blessings, Robes Fund and About render | $0.165 / $0.134 | 509 s |
+| E5 landing page plus a 3-page dApp | Pass: 4 routes, contract with 6 passing tests | no (test file compile error) | 1 | 0 | none; Home nav link always active (guide fixed, confirmed in E3b) | $0.058 / $0.201 | 176 s |
 
-Total spent on these runs: about $0.67 of turns, including E1 run 1, plus a few tenths of a cent for describing the uploads. Sonnet's share is all auto-fix, which D19 routes to Sonnet; the cost of those fixes is noted under E5.
+Total spent on these runs: about $0.73 of turns, including E1 run 1, plus a few tenths of a cent for describing the uploads.
+
+Composer upload: driven once in the workspace UI. The attach menu opened ([screen](harness/screens/composer-attach-menu.jpg)); because a native file dialog can't be scripted, a PNG was put into the hidden file input from JS. It uploaded through the real handler and showed as a `choir-robes.png` chip with its thumbnail. Every other upload went through the same API from the driver script. The Logo and Design reference menu items, which open the file dialog, were not clicked through. Sonnet's share is all auto-fix, which D19 routes to Sonnet; the cost of those fixes is noted under E5.
 
 ## E1: upload a logo, "use my logo and brand colours"
 
@@ -55,6 +58,24 @@ Offline, on a hand-written 33-file fixture with 10 requests (`codebase.test.ts`)
 
 **Vector search: not needed.** Lexical ranking over paths, symbols and text, plus the manifest and one search, found every target. A realistic 30-file project is about 28k chars, and the cap is 80 files of 120 KB, so embeddings would add a provider, cost and staleness for no measured gain.
 
+### E3b: five more edits on the same project, after the leftover-budget fix
+
+[Scenario](harness/e3b-find.json). All five were ready and first-try clean, for $0.060 in total.
+
+| Edit | Target | In context | Reads | Searches |
+|---|---|---|---|---|
+| Relative times in the tip feed | TipFeed.tsx | yes | 1 (`format.ts`, a helper) | 0 |
+| Home nav link always active | Layout.tsx | yes | 2 (`utils.ts`, `styles.css`) | 1 (`NavLink`) |
+| Medal badges on the leaderboard | Leaderboard.tsx | yes | 1 (a line range of it) | 1 (`Crown`) |
+| Friendlier 404 page | NotFound.tsx | **no**: "404" doesn't match the file name | 2 (`NotFound.tsx`, `button.tsx`) | 0 |
+| New Events page with a nav link | new `src/pages/Events.tsx`, App.tsx, Layout.tsx | yes | 1 (`App.tsx`) | 0 |
+
+- Adding a page now takes 1 read, against nine starter files in E4 turn 10.
+- The leftover-budget fill showed up in turns 3 and 5 (label, utils, skeleton, input, textarea).
+- Turns 1 and 4 picked the platform ABI module `src/contracts/TipJar.ts` because the request said "tip", and it used up the room the small helpers needed. Fixed after this run: ABI modules leave selection once a project is over budget. The contract source is already in, and the manifest names the ABI exports.
+- The 404 miss suggests a small synonym list (404 ↔ NotFound), which isn't built.
+- In the preview, all five routes render with no errors, including Events with its "Sample schedule" notice; only Events is highlighted on the Events page. ([screen](harness/screens/e3b-events.jpg))
+
 ## E4: a long conversation that remembers an early decision
 
 [Scenario](harness/e4-long.json). Turn 1 sets four rules:
@@ -76,6 +97,7 @@ Turns 2 to 9 make small edits. Turn 10 adds a Robes Fund page and an About page.
 - **Edit turns 2 to 9:** $0.005 to $0.010 each, 11 to 36 s.
 - **Turn 10** read nine starter files (hooks, chain, ui) in one round. Fixed after the run: when a project is over budget, the leftover budget now goes to the small starter files, smallest first.
 - Turn 1 needed one Sonnet fix ($0.13).
+- Preview after turn 10: the Blessings, Robes Fund and About pages render without errors, and About credits Mrs Funke Adebayo. ([about](harness/screens/e4-about.jpg), [robes](harness/screens/e4-robes.jpg))
 
 ## E5: a landing page plus a 3-page dApp
 
@@ -95,4 +117,4 @@ Prompt: "Build a G$ tip jar dApp for the Lagos Coders club: a landing page, plus
 ## Not covered yet
 - L2: a vision self-review of the preview after each build (not built; offered).
 - L3: a nightly runner that scores this battery automatically. `scripts/eval-harness.mjs` is most of it.
-- E1 and E5 after the leftover-budget and NavLink fixes: not re-run.
+- Not re-run live: the last fix (ABI modules out of over-budget selection) is covered by `codebase.test.ts` only. The NavLink guide line was confirmed by E3b turn 2 as an edit, but no new multi-page build was run after it.
