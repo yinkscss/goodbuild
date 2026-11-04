@@ -179,11 +179,11 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       return toolCalls;
     };
 
-    /** Let the model work until it stops calling tools. */
+    /** Let the model work until it stops calling tools. False when it ran out of rounds. */
     const phase = async (tier: ModelTier, quiet = false) => {
       for (let round = 0; round < MAX_TOOL_ROUNDS_PER_PHASE; round++) {
         const toolCalls = await callModel(tier, quiet);
-        if (!toolCalls.length) return;
+        if (!toolCalls.length) return true;
         for (const call of toolCalls) {
           const stepId = `tool:${call.id}`;
           // Plan mode can't edit; a refused edit attempt isn't worth showing as a failed step.
@@ -212,9 +212,22 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
         }
       }
       log("! stopped: too many tool rounds in one pass");
+      return false;
     };
 
-    await phase(input.mode === "plan" ? TIER_FOR.plan : TIER_FOR.build);
+    const finished = await phase(input.mode === "plan" ? TIER_FOR.plan : TIER_FOR.build);
+    if (!finished) {
+      // Out of tool rounds before replying: ask once for the reply, so the user gets a
+      // summary and follow-ups instead of an empty message. Tools stay declared (some
+      // providers require it once the history has tool calls) but any calls are not run.
+      convo.push({ role: "user", content: "Stop editing: you've used all your tool steps for this pass. Don't call tools. Reply to the user now, as instructed." });
+      const extra = await callModel(input.mode === "plan" ? TIER_FOR.plan : TIER_FOR.build);
+      for (const call of extra) convo.push({ role: "tool", tool_call_id: call.id, content: "Not run: no tool steps left in this pass." });
+      if (!text.trim() && record.plan?.summary) {
+        text = record.plan.summary;
+        emit({ type: "text_set", text });
+      }
+    }
 
     if (input.mode === "plan") {
       record.status = "answered";

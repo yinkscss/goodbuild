@@ -126,6 +126,22 @@ describe("runTurn", { timeout: 120_000 }, () => {
     expect(record.status).toBe("ready");
   });
 
+  it("asks for a reply when the build pass runs out of tool rounds, and flags no-op edits", async () => {
+    const noop = { name: "edit_file", args: { path: "src/App.tsx", edits: [{ search: "export default", replace: "export default" }] } };
+    const { client, requests } = scriptedModel([
+      { tools: [{ name: "set_plan", args: { summary: "Add a thank-you banner.", steps: ["Banner"] } }] },
+      ...Array.from({ length: 15 }, () => ({ tools: [noop] })),
+      { text: "Added a thank-you banner.\n\nWant it to show the tip amount?" },
+    ]);
+    const record = await runTurn({ db, model: client }, { projectId, userId, mode: "build", userMessageId: queuedId }, () => {});
+    const [assistant] = (await db.select().from(messages).where(eq(messages.projectId, projectId))).filter((m) => m.role === "assistant");
+    expect(assistant.content).toBe("Added a thank-you banner.\n\nWant it to show the tip amount?");
+    expect(record.log).toContain("! stopped: too many tool rounds in one pass");
+    const toolResults = requests.at(-1)!.messages.filter((m) => m.role === "tool").map((m) => String(m.content));
+    expect(toolResults.some((c) => c.startsWith("No change: src/App.tsx"))).toBe(true);
+    expect(String(requests.at(-1)!.messages.at(-1)!.content)).toMatch(/Reply to the user now/);
+  });
+
   it("reports the auto-fix result clearly in the step rows", async () => {
     const { client } = scriptedModel([
       { tools: [{ name: "create_file", args: { path: "contracts/TipJar.sol", content: BROKEN } }] },
