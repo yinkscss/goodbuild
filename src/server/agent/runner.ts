@@ -123,6 +123,9 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
 
     let calls = 0;
     const replies: string[] = [];
+    // Set by each model call: the response stopped at the output-token limit, so any tool
+    // call it was writing (usually a big create_file) was lost.
+    let cutOff = false;
     // quiet: a fix pass. Its text goes to the model's history but not to the user, so the
     // first pass's reply (and its follow-up questions) stays the last thing they read; the
     // auto-fix steps already show what happened.
@@ -131,6 +134,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       let replyText = "";
       const toolCalls: ToolCall[] = [];
       const textBefore = text;
+      cutOff = false;
       for await (const ev of model.stream({ tier, messages: convo, tools, maxTokens: MAX_TOKENS })) {
         if (ev.type === "text") {
           if (quiet) {
@@ -144,6 +148,10 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
           emit({ type: "text", delta });
         } else if (ev.type === "tool_call") {
           toolCalls.push(ev.call);
+        } else if (ev.type === "done") {
+          // "length": stopped at the output limit. "tool-calls" with no call that reached us:
+          // the call was malformed or dropped on the way. Either way the work isn't done.
+          cutOff = ev.finishReason === "length" || (/^tool[-_]calls$/.test(ev.finishReason ?? "") && toolCalls.length === 0);
         } else if (ev.type === "usage") {
           const cost = await recordUsage(db, {
             userId: input.userId,
@@ -195,7 +203,12 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     const phase = async (tier: ModelTier, quiet = false) => {
       for (let round = 0; round < MAX_TOOL_ROUNDS_PER_PHASE; round++) {
         const toolCalls = await callModel(tier, quiet);
-        if (!toolCalls.length) return true;
+        if (cutOff) {
+          // Not finished: the model was mid-write. Run whatever calls did complete, then
+          // ask it to continue in smaller pieces (below), instead of ending the pass.
+          log(toolCalls.length ? "! a response hit the output limit; asking for smaller files" : "! a response ended without a usable tool call; asking for smaller files");
+        }
+        if (!toolCalls.length && !cutOff) return true;
         // The final reply arrives with suggest_next: that ends the pass, no extra round.
         const final = onlySuggestions(toolCalls);
         for (const call of toolCalls) {
@@ -225,6 +238,14 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
             });
           }
           convo.push({ role: "tool", tool_call_id: call.id, content: outcome.result });
+        }
+        if (cutOff) {
+          convo.push({
+            role: "user",
+            content:
+              "Your last response hit the output limit and was cut off, so the file you were writing was lost. Continue the work in smaller pieces: one file per create_file call, under about 250 lines each (split big contracts and pages into several files or components), and keep going until everything is written.",
+          });
+          continue;
         }
         if (final) return true;
       }

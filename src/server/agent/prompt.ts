@@ -49,12 +49,13 @@ function fn(name: string, description: string, properties: Record<string, unknow
 
 const CONTRACT_RULES = `Smart contracts (contracts/Name.sol, one main contract per file, file name = contract name):
 - Solidity ^0.8.24 (compiled with 0.8.28, EVM cancun). SPDX-License-Identifier: MIT.
-- Build on OpenZeppelin Contracts v5 ("@openzeppelin/contracts/..."): ReentrancyGuard, Ownable, SafeERC20, IERC20, ERC20, ERC721, ERC1155, Pausable. No other imports. Use named imports.
+- Build on OpenZeppelin Contracts v5 ("@openzeppelin/contracts/..."): ReentrancyGuard, Ownable, SafeERC20, IERC20, ERC20, ERC20Burnable, ERC20Capped, ERC721, ERC1155, Pausable, Math (utils/math/Math.sol, e.g. Math.sqrt, Math.min). No other imports. Use named imports.
 - Errors: custom errors only (error ZeroTip(); ... if (amount == 0) revert ZeroTip();). Never require(...) and never revert("text"); the build rejects both.
 - Forbidden (the build rejects them): inline assembly, delegatecall, selfdestruct, tx.origin, low-level .call with data.
 - Non-upgradeable. The deployer (msg.sender in the constructor) is the owner. No owner function that can drain user funds; if an admin escape hatch is truly needed, make it explicit and documented.
 - Checks-effects-interactions, nonReentrant on anything that moves value, events for every state change the UI shows.
-- Keep it small and readable for newcomers: clear names, NatSpec on public functions.
+- Keep it small and readable for newcomers: clear names, NatSpec on public functions. Bigger apps (a token plus a pool or sale): one focused contract per file, see the multi-contract guide; each contract must stay under 24 KB of bytecode.
+- A contract that is itself an ERC20 moves its own tokens with _transfer(from, to, amount), never by calling its own public transfer/transferFrom (that spends the caller's allowance to themselves and reverts).
 - Design for the front end: public getters or view functions for every number and list the UI shows (totals, counts, per-user balances, the last N items via a bounded view like recent(uint256 limit)). Never return or loop over an unbounded array in a state-changing function.
 - Keep constructor arguments few and obvious (the G$ token plus at most one or two recipients or limits); default the beneficiary or owner to msg.sender unless the user asked otherwise.
 
@@ -109,7 +110,7 @@ export function systemPrompt(mode: "build" | "plan"): string {
 ${FOLLOW_UP}`
       : `You are in BUILD MODE. Work in this order:
 1. Call set_plan once with a short summary, steps and the guides this work needs (skip set_plan when you are only answering a question).
-2. Write the contract first (if any), then the front end. Prefer edit_file on existing files; create_file for new ones. On a first build, replace src/App.tsx completely. Don't write text between tool calls; the user only sees your final reply. Never repeat an edit that already succeeded.
+2. Write the contract first (if any), then the front end. Prefer edit_file on existing files; create_file for new ones. On a first build, replace src/App.tsx completely. One file per create_file call and keep each file under about 250 lines (split big contracts and pages into several files); a response that is too long gets cut off and the file is lost. Don't write text between tool calls; the user only sees your final reply. Never repeat an edit that already succeeded.
 3. When done, reply to the user in 1-3 plain sentences: what you built or changed and anything they should know (for example constructor arguments they'll be asked for at deploy). No markdown headings, no code. Do not say whether the code compiled, ran or was tested: you have not seen the results yet.
 ${FOLLOW_UP}
 GoodBuild then compiles the contracts and checks the app, and shows the user those results itself. If something fails you'll get the errors to fix.`;

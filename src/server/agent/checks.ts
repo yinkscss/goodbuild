@@ -12,7 +12,7 @@ export const SOLC_SETTINGS = {
   // UNVERIFIED in Celo's docs (Q35); M5's pre-deploy simulation will surface it.
   evmVersion: "cancun",
   optimizer: { enabled: true, runs: 200 },
-  outputSelection: { "*": { "*": ["abi", "evm.bytecode.object"], "": ["ast"] } },
+  outputSelection: { "*": { "*": ["abi", "evm.bytecode.object", "evm.deployedBytecode.object"], "": ["ast"] } },
 } as const;
 
 export interface CheckIssue {
@@ -38,6 +38,8 @@ export interface CheckReport {
 }
 
 export const MAX_FILE_BYTES = 120_000;
+/** EIP-170 runtime code size limit. */
+export const MAX_CONTRACT_BYTES = 24_576;
 export const MAX_FILES = 80;
 
 /** Where generated files may live. Everything else is refused. */
@@ -60,7 +62,7 @@ type Json = Record<string, unknown>;
 
 interface SolcOutput {
   errors?: Array<{ severity: string; message: string; formattedMessage?: string; sourceLocation?: { file: string; start: number } }>;
-  contracts?: Record<string, Record<string, { abi: unknown[]; evm: { bytecode: { object: string } } }>>;
+  contracts?: Record<string, Record<string, { abi: unknown[]; evm: { bytecode: { object: string }; deployedBytecode?: { object: string } } }>>;
   sources?: Record<string, { ast: Json; id: number }>;
 }
 
@@ -99,10 +101,19 @@ export function guardrailIssues(file: string, ast: Json, content?: string): Chec
   };
   const flag = (node: Json, message: string) => issues.push({ file, line: at(node), message, source: "guardrail" });
 
+  let inErc20 = false; // inside a contract that inherits ERC20 (its own token)
   const walk = (node: unknown) => {
     if (!node || typeof node !== "object") return;
     if (Array.isArray(node)) return node.forEach(walk);
     const n = node as Json;
+    if (n.nodeType === "ContractDefinition") {
+      const bases = ((n.baseContracts as Json[]) ?? []).map((b) => String((b.baseName as Json | undefined)?.name ?? ""));
+      const was = inErc20;
+      inErc20 = bases.some((b) => /^ERC20/.test(b));
+      for (const value of Object.values(n)) if (value && typeof value === "object") walk(value);
+      inErc20 = was;
+      return;
+    }
     switch (n.nodeType) {
       case "InlineAssembly":
         flag(n, "Inline assembly isn't allowed in generated contracts.");
@@ -126,6 +137,12 @@ export function guardrailIssues(file: string, ast: Json, content?: string): Chec
           const reason = args[1];
           const customError = reason?.nodeType === "FunctionCall";
           if (!customError) flag(n, "Use a custom error instead of require: declare `error Name();` and write `if (!condition) revert Name();`.");
+        }
+        // A token contract calling its own public transferFrom/transfer: msg.sender is still
+        // the user, so it spends allowance[user][user] (or moves from the user) and usually
+        // reverts. It must use the internal _transfer.
+        if (inErc20 && callee?.nodeType === "Identifier" && (callee.name === "transferFrom" || callee.name === "transfer")) {
+          flag(n, `Don't call this token's own public ${String(callee.name)}() from inside the contract: msg.sender is still the user, so it spends their allowance to themselves and reverts. Use _transfer(from, to, amount).`);
         }
         if (callee?.nodeType === "Identifier" && callee.name === "revert") {
           flag(n, 'Use a custom error instead of revert("..."): `revert Name();`.');
@@ -276,6 +293,15 @@ export async function checkContracts(files: Record<string, string>, options: Con
       const bytecode = c.evm?.bytecode?.object ?? "";
       if (!bytecode) continue; // interfaces and abstract contracts
       contracts.push({ name, file, abi: c.abi, bytecodeBytes: bytecode.length / 2 });
+      // EIP-170: EVM chains (Celo included) refuse to deploy runtime code over 24,576 bytes.
+      const runtime = (c.evm?.deployedBytecode?.object ?? bytecode).length / 2;
+      if (runtime > MAX_CONTRACT_BYTES) {
+        errors.push({
+          file,
+          message: `${name} is ${(runtime / 1024).toFixed(1)} KB, over the 24 KB contract size limit, so it can't be deployed. Split it into smaller contracts (e.g. move features into a second contract that takes this one's address), drop on-chain history arrays, or shorten error and event lists.`,
+          source: "solc",
+        });
+      }
     }
   }
   return { ok: errors.length === 0, errors, warnings, contracts, compilerVersion: result.version };

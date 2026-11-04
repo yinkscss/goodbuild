@@ -84,6 +84,48 @@ export const GUIDES: Guide[] = [
 - Tables only on wide screens; on mobile, render each row as a stacked card.
 - Never show made-up numbers as real data. Sample values are fine only in the deploy-to-go-live state if clearly labelled as an example.`,
   },
+  {
+    name: "tokens",
+    when: "the user wants their own coin or token (ERC-20), a supply, minting, burning or a token page",
+    body: `Your own ERC-20 token.
+- contracts/<Symbol>Token.sol (e.g. RTXToken.sol): contract RTXToken is ERC20 (plus ERC20Burnable if burning is asked) with constructor() ERC20("RTX", "RTX") { _mint(msg.sender, 50_000_000 * 10 ** decimals()); }. A fixed supply minted once to the deployer is the default: no mint function, no owner, nothing anyone can change later. That is what "supply of N" means.
+- Only add a capped owner mint (ERC20Capped + Ownable) if the user asks for more tokens later; say in your reply who can mint.
+- No transfer taxes, blacklists, pause switches or owner-only transfer hooks unless the user explicitly asks; those are how scam tokens trap holders.
+- The deployer holds the whole supply after deploy. Say so in your reply, and if the app has a pool or sale, explain that the owner must add RTX (and G$) to it before anyone can buy.
+- Front end: a token card with name, symbol, total supply (formatAmount with decimals()), the connected wallet's balance, and a Send form (address + amount, validated with isAddress from viem). Add the token to the wallet with wallet_watchAsset (EIP-747) via a small "Add RTX to wallet" button once deployed.`,
+  },
+  {
+    name: "swaps-and-markets",
+    when: "buy, sell, swap, exchange, trade, liquidity, pool, price, market or DEX features",
+    body: `Buying, selling and swapping tokens on Celo.
+- GoodBuild can't call external DEXes yet (no verified router addresses in the template), so build your own small pool: contracts/<A><B>Pool.sol, a constant-product market (x * y = k) between two ERC-20s, e.g. G$ and RTX. "Buy RTX" = swap G$ for RTX, "Sell RTX" = swap RTX for G$, "Swap" = either direction. One pool covers all three.
+- Constructor(IERC20 tokenA_, IERC20 tokenB_), both immutable, distinct and non-zero. Keep reserves in storage (reserveA, reserveB) and update them from actual balances after each transfer.
+- Liquidity: addLiquidity(amountA, amountB, minShares) mints internal shares (first deposit: Math.sqrt(amountA * amountB) from @openzeppelin/contracts/utils/math/Math.sol; later: min of the proportional amounts) and removeLiquidity(shares, minA, minB). Anyone may add liquidity; nobody, including the owner, can withdraw other people's tokens.
+- swap(address tokenIn, uint256 amountIn, uint256 minAmountOut, uint256 deadline): check deadline, tokenIn is A or B, amountIn > 0; pull with safeTransferFrom; amountOut = (amountInWithFee * reserveOut) / (reserveIn * 1000 + amountInWithFee) with amountInWithFee = amountIn * 997 (0.3% fee to liquidity providers); revert SlippageTooHigh() if amountOut < minAmountOut; send with safeTransfer; nonReentrant; emit Swapped(user, tokenIn, amountIn, amountOut).
+- Views the UI needs: getAmountOut(tokenIn, amountIn), getReserves(), sharesOf(user), totalShares, and spot price.
+- Custom errors, SafeERC20, nonReentrant on every function that moves tokens, checks-effects-interactions. No owner functions that touch reserves.
+- Keep the pool under 24 KB of bytecode: no on-chain charts or history arrays; the UI reads Swapped events with publicClient.getContractEvents for recent trades.
+- Front end: a swap card with a token selector (G$ / RTX) for "You pay" and "You get", a flip button, the quote from getAmountOut (debounced), price impact (amountOut vs spot price), a slippage setting (default 1%, minAmountOut = quote * (1 - slippage)), a deadline of now + 10 minutes, balances under each field, then Approve (only if allowance < amount) and Swap buttons with useTx. Tabs or segmented control for Buy / Sell / Swap if the user names them, sharing the same card. A liquidity panel (add/remove) and an empty-pool state: "No liquidity yet. The owner adds RTX and G$ to open trading."
+- Never promise prices or returns; label price impact and say pool prices move with every trade.`,
+  },
+  {
+    name: "multi-contract",
+    when: "the app needs two or more contracts that work together (a token plus a pool, sale, staking or vault)",
+    body: `Several contracts in one app.
+- One contract per file in contracts/, each small and focused (a token, a pool, a sale). Prefer two simple contracts to one big one; each must stay under 24 KB of bytecode.
+- A contract that needs another one takes its address as a constructor argument (IERC20 rtx_, not a hard-coded address and not created inside with new). Name constructor arguments clearly (rtxToken_, gd_) because the user is asked for them at deploy.
+- Say the deploy order in your reply: e.g. "Deploy RTXToken first, then RTXPool with the G$ address and the RTXToken address." (GoodBuild's deploy flow handles G$ and will fill other contracts' addresses in a later update.)
+- Front end: import each contract's Abi and Address from ./contracts and index each map with chain.id. The app is live only when every contract it uses is deployed: compute const ready = Boolean(tokenAddress && poolAddress) and show the deploy Notice listing what's missing.
+- Share token metadata reads (symbol, decimals) in a small hook (src/lib/useToken.ts) rather than repeating them in every component.`,
+  },
+  {
+    name: "cross-chain",
+    when: "cross-chain, bridge, multichain, other networks, or moving tokens between chains",
+    body: `Cross-chain requests.
+- GoodBuild apps run on Celo (Celo Sepolia for now). Real bridging to other chains needs a bridge protocol and relayers that GoodBuild doesn't integrate, and hand-written bridges are a major source of hacks. Don't write a bridge contract, a "lock and mint" contract, or anything that claims to move tokens to another chain.
+- Usually the user means swapping between Celo tokens (G$ to cUSD, G$ to their own coin). Build that on Celo with the swaps-and-markets guide (an in-app pool), and say in one sentence that true cross-chain transfers aren't supported yet.
+- If they need to reach a coin that has no pool in the app, say that swapping it needs an external DEX or bridge that the app doesn't connect to yet, and leave a clear "Coming later" state in the UI rather than a fake button.`,
+  },
 ];
 
 const BY_NAME = new Map(GUIDES.map((g) => [g.name, g]));

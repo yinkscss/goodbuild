@@ -189,6 +189,27 @@ describe("runTurn", { timeout: 120_000 }, () => {
     expect(msgs.filter((m) => m.role === "assistant").every((m) => !String(m.content).includes("next steps"))).toBe(true);
   });
 
+  it("a response cut off at the output limit doesn't end the pass; the model is asked for smaller files", async () => {
+    const { client, requests } = scriptedModel([
+      { text: "", finish: "length" }, // the create_file it was writing was dropped
+      { tools: [{ name: "create_file", args: { path: "src/App.tsx", content: APP } }] },
+      { text: "Built it." },
+    ]);
+    const record = await runTurn({ db, model: client }, { projectId, userId, mode: "build", userMessageId: queuedId }, () => {});
+    expect(record.log).toContain("! a response hit the output limit; asking for smaller files");
+    expect(String(requests[1].messages.at(-1)!.content)).toMatch(/smaller pieces/);
+    expect((await loadFiles(db, projectId))["src/App.tsx"]).toBe(APP);
+  });
+
+  it("plan steps sent as objects become readable text", async () => {
+    const { client } = scriptedModel([
+      { tools: [{ name: "set_plan", args: { summary: "RTX", steps: [{ title: "Write RTX.sol", detail: "ERC-20" }, "Build the UI", { foo: 1 }] } }] },
+      { text: "Planned." },
+    ]);
+    const record = await runTurn({ db, model: client }, { projectId, userId, mode: "plan", userMessageId: queuedId }, () => {});
+    expect(record.plan?.steps).toEqual(["Write RTX.sol", "Build the UI"]);
+  });
+
   it("reports the auto-fix result clearly in the step rows", async () => {
     const { client } = scriptedModel([
       { tools: [{ name: "create_file", args: { path: "contracts/TipJar.sol", content: BROKEN } }] },

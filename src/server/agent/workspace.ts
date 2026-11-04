@@ -66,7 +66,7 @@ export class Workspace {
     switch (name) {
       case "set_plan": {
         const summary = String(args.summary ?? "").slice(0, 400);
-        const steps = Array.isArray(args.steps) ? args.steps.map((s) => String(s).slice(0, 160)).slice(0, 8) : [];
+        const steps = Array.isArray(args.steps) ? args.steps.map((s) => stepText(s).slice(0, 160)).filter(Boolean).slice(0, 8) : [];
         if (args.guides === undefined || (Array.isArray(args.guides) && !args.guides.length)) {
           return { ok: true, result: "Plan noted.", plan: { summary, steps } };
         }
@@ -188,4 +188,17 @@ export class Workspace {
     if (!(path in this.files) && Object.keys(this.files).length >= MAX_FILES) return `Too many files (max ${MAX_FILES}).`;
     return null;
   }
+}
+
+/** A plan step as text. Models sometimes send objects ({title, detail}) instead of strings. */
+function stepText(step: unknown): string {
+  if (typeof step === "string") return step.trim();
+  if (step && typeof step === "object") {
+    const o = step as Record<string, unknown>;
+    const main = [o.title, o.step, o.name, o.text, o.description, o.summary].find((v) => typeof v === "string" && v.trim());
+    if (typeof main === "string") return main.trim();
+    const firstString = Object.values(o).find((v) => typeof v === "string" && v.trim());
+    return typeof firstString === "string" ? firstString.trim() : "";
+  }
+  return step === undefined || step === null ? "" : String(step);
 }

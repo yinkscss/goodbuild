@@ -137,3 +137,20 @@ describe("withStarterHelpers", () => {
     expect(out["package.json"]).toBeUndefined();
   });
 });
+
+describe("own-token transferFrom guardrail", { timeout: 60_000 }, () => {
+  it("flags run 2's RTX.sol calling its own public transferFrom", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync(new URL("./fixtures/rtx-run2.sol", import.meta.url), "utf8");
+    const r = await checkContracts({ "contracts/RTX.sol": src }, { gdToken: true });
+    expect(r.errors.some((e) => e.source === "guardrail" && /own public transferFrom\(\)/.test(e.message))).toBe(true);
+  });
+  it("allows calling another token's transferFrom and _transfer on its own", async () => {
+    const r = await checkContracts({
+      "contracts/Tok.sol":
+        SPDX +
+        'import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";\nimport {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";\nimport {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";\ncontract Tok is ERC20 {\n  using SafeERC20 for IERC20;\n  IERC20 public immutable gd;\n  constructor(IERC20 gd_) ERC20("T", "T") { gd = gd_; _mint(msg.sender, 1e24); }\n  function sell(uint256 a) external { _transfer(msg.sender, address(this), a); gd.safeTransfer(msg.sender, a); }\n}\n',
+    }, { gdToken: true });
+    expect(r.errors).toEqual([]);
+  });
+});
