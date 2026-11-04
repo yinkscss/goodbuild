@@ -48,3 +48,17 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 ### D10. 18+ only; block US persons
 - Date: 4 Nov 2026 · Recommended by: Ego
 - Rationale: GoodDollar ToS §6.2 (18+) and §8 "NO U.S. PERSONS MAY USE THE SERVICES". Gemini API also requires 18+. Also exclude sanctioned jurisdictions.
+
+## Proposed decisions (not adopted; Claude and the user may change them)
+
+### P1. Testnet is Celo Sepolia, not Alfajores (proposed)
+- Date: 4 Nov 2026 · Proposed by: Grok Bot · Alfajores retired 30 Sep 2025 (https://docs.celo.org/operate/notices/archive/celo-sepolia-launch).
+
+### P2. Audited-template-first contracts, non-upgradeable by default (proposed)
+- Date: 4 Nov 2026 · Proposed by: Grok Bot · See CONTRACTS_AND_DEPLOYMENT.md §4. Open: Q1, Q4, Q15.
+
+### P3. Off-chain deployments table is the source of truth; on-chain factory optional later (proposed)
+- Date: 4 Nov 2026 · Proposed by: Grok Bot · See CONTRACTS_AND_DEPLOYMENT.md §3. Open: Q11.
+
+### P4. Agent uses tool-based diff edits, checks + auto-fix (max 3), checkpoint per prompt, plan/build modes (proposed)
+- Date: 4 Nov 2026 · Proposed by: Grok Bot · See AI_AGENT.md. Open: Q14.

@@ -12,6 +12,8 @@ Documentation only (4 Nov 2026). No app code yet. Stage 1 MVP is dApps only.
 ## Docs
 - [Decisions](docs/DECISIONS.md): what is fixed and what is recommended
 - [Architecture](docs/ARCHITECTURE.md): components, data flow, suggested stack
+- [AI agent](docs/AI_AGENT.md): models, agent loop, context, steering, UI quality, evals
+- [Contracts and deployment](docs/CONTRACTS_AND_DEPLOYMENT.md): wallet, deploy flow, ownership mapping, templates, interaction panel
 - [Research](docs/RESEARCH.md): G$ economics, competitors, terms, payment pain
 - [Roadmap](docs/ROADMAP.md): Stage 1, S5 weeks 1–12, growth plan, metrics
 - [Open questions](docs/OPEN_QUESTIONS.md): not final; input invited

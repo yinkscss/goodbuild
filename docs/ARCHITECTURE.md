@@ -1,35 +1,42 @@
 # Architecture (Stage 1, dApps only)
 
-Draft. Stack choices marked *(suggestion)* are not decided.
+Draft. Stack choices marked *(suggestion)* are not decided. Claude should challenge any choice here with reasons (see [CLAUDE.md](../CLAUDE.md)).
+
+Detail docs: [AI agent](AI_AGENT.md) · [Contracts and deployment](CONTRACTS_AND_DEPLOYMENT.md)
 
 ## Components
 1. **Chat panel**: user describes the app; shows plan, diffs and errors.
-2. **LLM file-generation agent**: turns chat into a file set (Solidity contract(s), React app, tests) and edits files on follow-ups. Calls models via GoodDollar AI credits or LiteLLM (D9).
+2. **LLM file-generation agent** ([AI_AGENT.md](AI_AGENT.md)): plans, then makes diff-based tool edits, runs checks and auto-fixes; turns chat into a file set (Solidity contract(s), React app, tests) and edits files on follow-ups. Calls models via GoodDollar AI credits or LiteLLM (D9).
 3. **Sandpack preview**: runs the generated React front end in the browser (D5).
 4. **Solidity compile and test**: solc-js in the browser compiles contracts; errors go back to the agent to fix. Tests *(suggestion: run in-browser against a local EVM such as a JS EVM; approach UNVERIFIED)*.
-5. **Wallet connect and deploy**: user connects a wallet and signs the deploy transaction to Celo Alfajores (testnet) or Celo mainnet. The address is saved to the project.
+5. **Wallet connect and deploy** ([CONTRACTS_AND_DEPLOYMENT.md](CONTRACTS_AND_DEPLOYMENT.md)): compile → simulate → human summary → user connects a wallet and signs the deploy transaction to Celo Sepolia testnet (chainId 11142220; Alfajores retired Sep 2025) or Celo mainnet. The address is saved to the project.
 6. **GoodDollar identity**: face-verification via `@goodsdks/citizen-sdk` (`getWhitelistedRoot`, `generateFVLink`) to gate free credits and count verified users.
 7. **Credits ledger**: tracks generation credits per user (and per GoodID root for free credits).
-8. **Project store**: DB of projects, files, chat history, deployments (D8).
+8. **Project store**: DB of projects, versions/checkpoints, chat history, deployments, wallet→projects (D8).
+9. **Interaction panel**: auto-generated from the ABI after deploy; generated front end wired to the address.
 
 ## Data flow
 ```mermaid
 flowchart LR
-  U[User] --> C[Chat panel]
-  C --> A[LLM agent]
+  U[User] --> C[Chat + preview toolbar]
+  C --> A[Agent: plan / build]
   A -->|model calls| M[GoodDollar AI credits or LiteLLM]
-  A --> F[Project files]
+  A -->|diff edits| F[Project files + checkpoints]
   F --> S[Project store DB]
   F --> P[Sandpack preview]
-  F --> K[solc-js compile and test]
+  P -->|runtime errors, selected element| A
+  F --> K[solc-js worker: compile, lint, tests]
   K -->|errors| A
-  K --> W[Wallet connect]
-  W -->|user signs| CH[Celo / Alfajores]
-  CH -->|contract address| S
+  K --> SIM[Simulate + human summary]
+  SIM --> W[User wallet signs]
+  W -->|deploy tx| CH[Celo Sepolia / Celo mainnet]
+  CH -->|address, tx hash| S
+  S --> V[Source verification]
+  S --> IP[ABI interaction panel + published app]
+  IP -->|reads/writes, user-signed| CH
   U --> ID[GoodDollar face verification]
   ID --> L[Credits ledger]
   A -->|usage| L
-  P -->|reads/writes| CH
 ```
 
 ## Suggested stack *(all suggestions)*

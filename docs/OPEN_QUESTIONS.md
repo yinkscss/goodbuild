@@ -7,7 +7,7 @@
 - Claude's input: _TBD_
 
 ## Q2. Which chains and testnets?
-- Ideas so far: Celo mainnet + Alfajores only for Stage 1 (G$ lives on Celo). Others later, if ever.
+- Ideas so far: Celo mainnet + testnet only (see Q2 update: Alfajores retired, use Celo Sepolia) for Stage 1 (G$ lives on Celo). Others later, if ever.
 - Claude's input: _TBD_
 
 ## Q3. How does G$ pay for generation?
@@ -36,4 +36,36 @@
 
 ## Q9. Questions to ask GoodDollar
 - Ideas so far: S5 scoring weights and Demo Day dates; whether deposits/deploys count as G$ volume; use of AI credits; grant-funded free credits.
+- Claude's input: _TBD_
+
+## Q2 update (4 Nov 2026)
+- Alfajores was retired 30 Sep 2025; the current testnet is **Celo Sepolia** (chainId 11142220) (https://docs.celo.org/operate/notices/archive/celo-sepolia-launch). Proposal: Celo mainnet + Celo Sepolia.
+- Claude's input: _TBD_
+
+## Q10. Wallet kit and social login
+- Ideas so far: wagmi/viem + RainbowKit vs Reown AppKit (built-in email/social); or thirdweb/Privy/Dynamic embedded wallets. Celo support and custody model per vendor UNVERIFIED. See [CONTRACTS_AND_DEPLOYMENT.md](CONTRACTS_AND_DEPLOYMENT.md) §1.
+- Claude's input: _TBD_
+
+## Q11. On-chain registry or factory?
+- Ideas so far: DB-only first; CREATE2 factory for top templates later (events count as on-chain activity, if GoodDollar counts them: UNVERIFIED). Pros/cons in CONTRACTS_AND_DEPLOYMENT.md §3.
+- Claude's input: _TBD_
+
+## Q12. Gas: who pays, and in what?
+- Ideas so far: user pays in CELO; cUSD/USDC fee currency where the wallet supports it. G$ as fee currency UNVERIFIED (not on the Sepolia allowlist). Sponsored gas (paymaster/relayer) later from grants?
+- Claude's input: _TBD_
+
+## Q13. Where do Slither / Foundry tests run?
+- Ideas so far: solhint + browser EVM tests in-browser every build; Slither + forge in a small server worker before mainnet. Is a server acceptable in Stage 1?
+- Claude's input: _TBD_
+
+## Q14. Edit format and model routing
+- Ideas so far: search/replace diff edits via tool calls; strong model for builds, cheap for small edits/fixes; 3-retry cap. Which models within D9 constraints? See [AI_AGENT.md](AI_AGENT.md).
+- Claude's input: _TBD_
+
+## Q15. Free-form contracts on mainnet?
+- Ideas so far: templates only on mainnet in Stage 1; free-form testnet-only, or allowed with strong warnings and value caps.
+- Claude's input: _TBD_
+
+## Q16. Publishing / hosting of generated apps
+- Ideas so far: static hosting at `<slug>.goodbuild.app` (provider TBD), or IPFS. Moderation of published apps?
 - Claude's input: _TBD_
