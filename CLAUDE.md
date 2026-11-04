@@ -2,7 +2,7 @@
 
 Guidance for Claude Code in this repo.
 
-1. **Read the docs first**: README.md, then docs/DECISIONS.md, ARCHITECTURE.md, AI_AGENT.md, CONTRACTS_AND_DEPLOYMENT.md, RESEARCH.md, ROADMAP.md, OPEN_QUESTIONS.md.
+1. **Read the docs first**: README.md and docs/HANDOFF.md (current build status), then docs/DECISIONS.md, ARCHITECTURE.md, AI_AGENT.md, CONTRACTS_AND_DEPLOYMENT.md, RESEARCH.md, ROADMAP.md, OPEN_QUESTIONS.md.
 2. **Challenge anything that's not right or could be done better**: every recommendation, design doc, architecture choice and stack pick, with reasons. Record changes in docs/DECISIONS.md (or propose in docs/OPEN_QUESTIONS.md). The only fixed items are the user's D1–D4, D11 and D12, and even those can be flagged for the user to reconsider.
 3. **User decisions (D1–D4) are fixed** unless the user changes them: app builder (not an LLM router), Stage 1 = dApps only with user-signed deploys to Celo, backend/DB support deferred, no sports betting.
 4. **Ego's recommendations (D5–D10) can be challenged.** Propose changes with reasons in docs/OPEN_QUESTIONS.md or to the user; don't silently diverge.
