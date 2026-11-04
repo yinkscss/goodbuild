@@ -83,24 +83,12 @@ const STYLES = `html, body, #root { min-height: 100%; }
 body { margin: 0; }
 `;
 
-const APP = `import { ConnectButton } from "./components/ConnectButton";
-import { Card, CardContent, CardHeader, CardTitle } from "./components/ui/card";
-
-export default function App() {
+// Deliberately layout-free: a placeholder the agent replaces, so its first build designs a
+// page for the request instead of copying a stock header-plus-card shell.
+const APP = `export default function App() {
   return (
-    <div className="min-h-screen">
-      <header className="flex h-14 items-center justify-between border-b border-border bg-background px-6">
-        <b>My dApp</b>
-        <ConnectButton />
-      </header>
-      <main className="mx-auto max-w-3xl p-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Getting ready</CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">GoodBuild is writing your app.</CardContent>
-        </Card>
-      </main>
+    <div className="grid min-h-screen place-items-center p-6 text-center">
+      <p className="text-sm text-muted-foreground">Your app is being written. It will appear here in a moment.</p>
     </div>
   );
 }
@@ -215,6 +203,99 @@ export function useWallet() {
   }, []);
 
   return { account, connect, connecting, error };
+}
+`;
+
+const FORMAT = `/** Token amount (smallest unit) to a short human string, e.g. 1234.5 G$. */
+export function formatAmount(value: bigint | undefined, decimals = 18, maxFraction = 2) {
+  if (value === undefined) return "…";
+  const zero = BigInt(0);
+  const neg = value < zero;
+  const abs = neg ? -value : value;
+  const base = BigInt(10) ** BigInt(decimals);
+  const whole = abs / base;
+  const frac = (abs % base).toString().padStart(decimals, "0").slice(0, maxFraction).replace(/0+$/, "");
+  return (neg ? "-" : "") + whole.toLocaleString("en-US") + (frac ? "." + frac : "");
+}
+
+/** Readable message from a wallet or contract error (user rejections, reverts, RPC errors). */
+export function errorMessage(e: unknown): string {
+  const err = e as { shortMessage?: string; message?: string; code?: number } | undefined;
+  if (err?.code === 4001 || /user (rejected|denied)/i.test(err?.message ?? "")) return "You cancelled the request in your wallet.";
+  const text = err?.shortMessage ?? err?.message ?? "Something went wrong.";
+  return text.split("\\n")[0];
+}
+`;
+
+const HOOKS = `import { useCallback, useEffect, useRef, useState } from "react";
+import type { TransactionReceipt } from "viem";
+import { errorMessage } from "./format";
+
+/**
+ * Run an async read (usually publicClient.readContract) with loading and error state.
+ * Pass enabled=false to skip it (e.g. no wallet or no deployed address yet).
+ *   const tips = useRead(() => publicClient.readContract({ address, abi, functionName: "totalTips" }), [address], !!address);
+ */
+export function useRead<T>(fn: () => Promise<T>, deps: unknown[], enabled = true) {
+  const [data, setData] = useState<T | undefined>(undefined);
+  const [loading, setLoading] = useState(enabled);
+  const [error, setError] = useState<string | null>(null);
+  const fnRef = useRef(fn);
+  fnRef.current = fn;
+
+  const refresh = useCallback(async () => {
+    if (!enabled) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      setData(await fnRef.current());
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setLoading(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, ...deps]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  return { data, loading, error, refresh };
+}
+
+/**
+ * Track one wallet transaction: pending while the wallet signs and the chain confirms,
+ * then success or a readable error.
+ *   const tx = useTx();
+ *   await tx.run(() => writeContract({ ... }));  // returns the receipt, or undefined on error
+ */
+export function useTx() {
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [receipt, setReceipt] = useState<TransactionReceipt | null>(null);
+
+  const run = useCallback(async (send: () => Promise<TransactionReceipt>) => {
+    setPending(true);
+    setError(null);
+    setReceipt(null);
+    try {
+      const r = await send();
+      if (r.status !== "success") throw new Error("The transaction was reverted.");
+      setReceipt(r);
+      return r;
+    } catch (e) {
+      setError(errorMessage(e));
+      return undefined;
+    } finally {
+      setPending(false);
+    }
+  }, []);
+
+  return { run, pending, error, receipt, reset: () => (setError(null), setReceipt(null)) };
 }
 `;
 
@@ -341,6 +422,68 @@ export function Badge({ tone = "default", className, ...props }: React.HTMLAttri
 }
 `;
 
+const SKELETON = `import * as React from "react";
+import { cn } from "../../lib/utils";
+
+/** Grey shimmer block for loading values. Size it with classes: <Skeleton className="h-6 w-24" /> */
+export function Skeleton({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+  return <div className={cn("animate-pulse rounded-md bg-muted", className)} {...props} />;
+}
+`;
+
+const NOTICE = `import * as React from "react";
+import { AlertTriangle, CheckCircle2, Info, XCircle } from "lucide-react";
+import { cn } from "../../lib/utils";
+
+const tones = {
+  info: { box: "bg-accent/5 text-foreground", icon: Info, iconClass: "text-accent" },
+  success: { box: "bg-success/10 text-foreground", icon: CheckCircle2, iconClass: "text-success" },
+  warning: { box: "bg-warning/10 text-foreground", icon: AlertTriangle, iconClass: "text-warning" },
+  danger: { box: "bg-danger/10 text-foreground", icon: XCircle, iconClass: "text-danger" },
+};
+
+/** Inline message: errors, success after a transaction, "deploy to go live" hints. */
+export function Notice({
+  tone = "info",
+  title,
+  children,
+  action,
+  className,
+}: {
+  tone?: keyof typeof tones;
+  title?: React.ReactNode;
+  children?: React.ReactNode;
+  action?: React.ReactNode;
+  className?: string;
+}) {
+  const t = tones[tone];
+  const Icon = t.icon;
+  return (
+    <div role={tone === "danger" ? "alert" : "status"} className={cn("flex items-start gap-3 rounded-lg p-4 text-sm", t.box, className)}>
+      <Icon className={cn("mt-0.5 size-4 shrink-0", t.iconClass)} />
+      <div className="min-w-0 flex-1">
+        {title && <p className="font-medium">{title}</p>}
+        {children && <div className="break-words text-muted-foreground">{children}</div>}
+      </div>
+      {action}
+    </div>
+  );
+}
+`;
+
+const TEXTAREA = `import * as React from "react";
+import { cn } from "../../lib/utils";
+
+export function Textarea({ className, ...props }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  return (
+    <textarea
+      className={cn("min-h-20 w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-accent/30", className)}
+      {...props}
+    />
+  );
+}
+`;
+
 /** Files every project starts with (paths without a leading slash). */
 export function starterFiles(): Record<string, string> {
   return {
@@ -353,6 +496,8 @@ export function starterFiles(): Record<string, string> {
     "src/lib/chain.ts": CHAIN,
     "src/lib/useWallet.ts": USE_WALLET,
     "src/lib/tokens.ts": TOKENS,
+    "src/lib/format.ts": FORMAT,
+    "src/lib/hooks.ts": HOOKS,
     "src/contracts/index.ts": CONTRACTS_INDEX,
     "src/components/ConnectButton.tsx": CONNECT_BUTTON,
     "src/components/ui/button.tsx": BUTTON,
@@ -360,7 +505,22 @@ export function starterFiles(): Record<string, string> {
     "src/components/ui/input.tsx": INPUT,
     "src/components/ui/label.tsx": LABEL,
     "src/components/ui/badge.tsx": BADGE,
+    "src/components/ui/skeleton.tsx": SKELETON,
+    "src/components/ui/notice.tsx": NOTICE,
+    "src/components/ui/textarea.tsx": TEXTAREA,
   };
+}
+
+/**
+ * Older projects started before a helper existed. Add starter helpers and UI pieces that
+ * are missing (never overwrite), so the prompt's list of available files is always true.
+ */
+export function withStarterHelpers(files: Record<string, string>): Record<string, string> {
+  const out = { ...files };
+  for (const [p, content] of Object.entries(starterFiles())) {
+    if (/^src\/(lib|components\/ui)\//.test(p) && !(p in out)) out[p] = content;
+  }
+  return out;
 }
 
 /** Dependencies listed in a project's package.json. */

@@ -8,7 +8,7 @@ import { checkApp, checkContracts, formatIssues, mentionsGd, mentionsNativeCelo,
 import { TIER_FOR, ModelUnavailableError, type ChatMessage, type ModelClient, type ModelTier, type ToolCall } from "./model";
 import { BUILD_TOOLS, PLAN_TOOLS, contextMessage, systemPrompt } from "./prompt";
 import { checkpoint, claimTurn, loadFiles, recordUsage, releaseTurn } from "./store";
-import { PLATFORM_DIR, contractModule, contractsIndex, starterFiles } from "./template";
+import { PLATFORM_DIR, contractModule, contractsIndex, starterFiles, withStarterHelpers } from "./template";
 import { Workspace, type FileChange } from "./workspace";
 
 
@@ -106,7 +106,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
 
     let files = await loadFiles(db, input.projectId);
     const firstBuild = Object.keys(files).length === 0;
-    if (firstBuild) files = starterFiles();
+    files = firstBuild ? starterFiles() : withStarterHelpers(files);
     const ws = new Workspace(files);
 
     const history = await recentHistory(db, input.projectId, [userMessageId, assistantId]);
@@ -123,13 +123,20 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
 
     let calls = 0;
     const replies: string[] = [];
-    const callModel = async (tier: ModelTier) => {
+    // quiet: a fix pass. Its text goes to the model's history but not to the user, so the
+    // first pass's reply (and its follow-up questions) stays the last thing they read; the
+    // auto-fix steps already show what happened.
+    const callModel = async (tier: ModelTier, quiet = false) => {
       if (++calls > MAX_CALLS) throw new Error("This build used too many steps. Try a smaller change.");
       let replyText = "";
       const toolCalls: ToolCall[] = [];
       const textBefore = text;
       for await (const ev of model.stream({ tier, messages: convo, tools, maxTokens: MAX_TOKENS })) {
         if (ev.type === "text") {
+          if (quiet) {
+            replyText += ev.delta;
+            continue;
+          }
           // Separate replies from different calls with a blank line.
           const delta = !replyText && text && !text.endsWith("\n") ? `\n\n${ev.delta.replace(/^\s+/, "")}` : ev.delta;
           replyText += ev.delta;
@@ -154,7 +161,9 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       }
       // A reply that repeats one already shown in this turn (models often restate the
       // summary after a fix) is dropped from what the user sees, live and saved.
-      if (replyText.trim() && isRepeat(replyText, replies)) {
+      if (quiet) {
+        // Nothing was shown.
+      } else if (replyText.trim() && isRepeat(replyText, replies)) {
         text = textBefore;
         emit({ type: "text_set", text });
       } else if (replyText.trim()) {
@@ -171,9 +180,9 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     };
 
     /** Let the model work until it stops calling tools. */
-    const phase = async (tier: ModelTier) => {
+    const phase = async (tier: ModelTier, quiet = false) => {
       for (let round = 0; round < MAX_TOOL_ROUNDS_PER_PHASE; round++) {
-        const toolCalls = await callModel(tier);
+        const toolCalls = await callModel(tier, quiet);
         if (!toolCalls.length) return;
         for (const call of toolCalls) {
           const stepId = `tool:${call.id}`;
@@ -232,9 +241,9 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       step({ id: `fix:${attempt}`, label: `Fixing errors (attempt ${attempt} of ${MAX_FIX_ATTEMPTS})`, detail: `${plural(report.errors.length, "error")} to fix: ${firstIssue(report.errors)}`, status: "running" });
       convo.push({
         role: "user",
-        content: `GoodBuild's checks failed. Fix these errors with edit_file, then reply with one sentence on what you changed:\n${issues}`,
+        content: `GoodBuild's checks failed. Fix these errors with edit_file. Then stop with a very short note (the user sees the fix steps, not this note):\n${issues}`,
       });
-      await phase(TIER_FOR.fix);
+      await phase(TIER_FOR.fix, true);
       report = await runChecks(ws.files, compile, lint, step, log, attempt, contractOptions);
       step({
         id: `fix:${attempt}`,
