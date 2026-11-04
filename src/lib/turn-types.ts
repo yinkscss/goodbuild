@@ -26,12 +26,23 @@ export type TurnEvent =
   /** Replace the turn's text (used to drop a reply that repeated an earlier one). */
   | { type: "text_set"; text: string }
   | { type: "plan"; summary: string; steps: string[] }
+  /** Next steps the user can click (Lovable-style chips), from the suggest_next tool. */
+  | { type: "suggestions"; items: string[] }
   | { type: "step"; step: Step }
   | { type: "log"; line: string }
   | { type: "file"; change: FileChange }
   | { type: "files"; files: Record<string, string> }
   | { type: "version"; number: number }
-  | { type: "usage"; chargedMicro: number; totalChargedMicro: number }
+  | {
+      type: "usage";
+      chargedMicro: number;
+      totalChargedMicro: number;
+      /** Per-call detail, for evals and cost debugging. */
+      model?: string;
+      inputTokens?: number;
+      outputTokens?: number;
+      cachedInputTokens?: number;
+    }
   | { type: "done"; status: "ready" | "needs_fix" | "answered"; summary: string }
   | { type: "error"; message: string }
   /** Sent instead of a turn when one is already running for the project. */
@@ -42,6 +53,8 @@ export interface TurnRecord {
   kind: "turn";
   mode: TurnMode;
   plan?: { summary: string; steps: string[] };
+  /** Clickable next steps shown under the reply. */
+  suggestions?: string[];
   steps: Step[];
   log: string[];
   changes: FileChange[];

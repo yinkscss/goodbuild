@@ -1,5 +1,6 @@
 import { MAX_FILES, MAX_FILE_BYTES, pathProblem } from "./checks";
 import { applyEdits, diffStat, unifiedDiff, type SearchReplace } from "./edits";
+import { loadGuides } from "./guides";
 import { ALLOWED_DEPENDENCIES, dependenciesOf, packageJson } from "./template";
 
 import type { FileChange } from "@/lib/turn-types";
@@ -12,6 +13,10 @@ export interface ToolOutcome {
   ok: boolean;
   change?: FileChange;
   plan?: { summary: string; steps: string[] };
+  /** Next-step suggestions from suggest_next. */
+  suggestions?: string[];
+  /** Guides returned to the model by this call (for the build log). */
+  guides?: string[];
 }
 
 /**
@@ -61,8 +66,24 @@ export class Workspace {
     switch (name) {
       case "set_plan": {
         const summary = String(args.summary ?? "").slice(0, 400);
-        const steps = Array.isArray(args.steps) ? args.steps.map((s) => String(s).slice(0, 160)).slice(0, 8) : [];
-        return { ok: true, result: "Plan noted.", plan: { summary, steps } };
+        const steps = Array.isArray(args.steps) ? args.steps.map((s) => stepText(s).slice(0, 160)).filter(Boolean).slice(0, 8) : [];
+        if (args.guides === undefined || (Array.isArray(args.guides) && !args.guides.length)) {
+          return { ok: true, result: "Plan noted.", plan: { summary, steps } };
+        }
+        const g = loadGuides(args.guides);
+        return { ok: true, result: `Plan noted. Guides for this work:\n\n${g.text}`, plan: { summary, steps }, guides: g.loaded };
+      }
+      case "suggest_next": {
+        const items = (Array.isArray(args.suggestions) ? args.suggestions : [])
+          .map((x) => String(x ?? "").replace(/\s+/g, " ").trim().slice(0, 90))
+          .filter(Boolean)
+          .slice(0, 2);
+        if (!items.length) return { ok: false, result: "Error: give one or two suggestions." };
+        return { ok: true, result: "Suggestions shown. You're done; don't call more tools.", suggestions: items };
+      }
+      case "read_guide": {
+        const g = loadGuides(args.name);
+        return { ok: g.loaded.length > 0, result: g.text || "Error: give a guide name.", guides: g.loaded };
       }
       case "list_files":
         return {
@@ -103,6 +124,13 @@ export class Workspace {
         const size = this.sizeProblem(path, r.content);
         if (size) return { ok: false, result: `Error: ${size}` };
         const prev = this.files[path];
+        if (r.content === prev) {
+          // Cheap models can loop on edits that change nothing; say so plainly.
+          return {
+            ok: true,
+            result: `No change: ${path} already contains this. Don't repeat the edit. If the work is done, stop calling tools and write your reply.`,
+          };
+        }
         this.files[path] = r.content;
         this.touched.add(path);
         return {
@@ -160,4 +188,17 @@ export class Workspace {
     if (!(path in this.files) && Object.keys(this.files).length >= MAX_FILES) return `Too many files (max ${MAX_FILES}).`;
     return null;
   }
+}
+
+/** A plan step as text. Models sometimes send objects ({title, detail}) instead of strings. */
+function stepText(step: unknown): string {
+  if (typeof step === "string") return step.trim();
+  if (step && typeof step === "object") {
+    const o = step as Record<string, unknown>;
+    const main = [o.title, o.step, o.name, o.text, o.description, o.summary].find((v) => typeof v === "string" && v.trim());
+    if (typeof main === "string") return main.trim();
+    const firstString = Object.values(o).find((v) => typeof v === "string" && v.trim());
+    return typeof firstString === "string" ? firstString.trim() : "";
+  }
+  return step === undefined || step === null ? "" : String(step);
 }

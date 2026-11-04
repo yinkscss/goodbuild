@@ -9,7 +9,7 @@ import { createProjectFromPrompt } from "@/server/projects";
 import { scriptedModel } from "./fake-model";
 import { runTurn, TurnBusyError, type TurnEvent } from "./runner";
 import { claimTurn, listVersions, loadFiles, revertTo } from "./store";
-import { isRepeat } from "./runner";
+import { fixTier, isRepeat } from "./runner";
 import { DEMO_APP, DEMO_TIP_JAR_DRAFT, demoModel } from "./demo-model";
 
 const HEADER = "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.24;\n";
@@ -48,6 +48,19 @@ describe("isRepeat", () => {
     expect(isRepeat("Built the tip jar!", ["built the  tip jar"])).toBe(true);
     expect(isRepeat("Fixed the semicolon.", ["Built the tip jar."])).toBe(false);
     expect(isRepeat("ok", ["ok"])).toBe(false); // too short to judge
+  });
+});
+
+describe("fixTier (D19 amendment)", () => {
+  const t = { file: "contracts/test/A.t.sol", message: "ATest.testX failed", source: "test" as const };
+  const solc = { file: "contracts/A.sol", message: "bad", source: "solc" as const };
+  it("sends a first attempt with only test failures to the cheap tier", () => {
+    expect(fixTier(1, [t, t])).toBe("cheap");
+  });
+  it("sends mixed failures, a second attempt, or no errors to the strong tier", () => {
+    expect(fixTier(1, [t, solc])).toBe("strong");
+    expect(fixTier(2, [t])).toBe("strong");
+    expect(fixTier(1, [])).toBe("strong");
   });
 });
 
@@ -96,7 +109,9 @@ describe("runTurn", { timeout: 120_000 }, () => {
     const assistant = chat.find((m) => m.role === "assistant")!;
     expect(assistant.status).toBe("done");
     expect(assistant.content).toContain("Built a tip jar");
-    expect(assistant.content).toContain("tip.\n\nAdded the missing semicolon.");
+    // Fix passes are quiet: the first reply (and its follow-ups) stays the last thing shown.
+    expect(assistant.content).not.toContain("Added the missing semicolon.");
+    expect(events.some((e) => e.type === "text" && e.delta.includes("semicolon"))).toBe(false);
     expect(chat.find((m) => m.id === queuedId)?.status).toBe("done");
 
     const types = events.map((e) => e.type);
@@ -119,9 +134,117 @@ describe("runTurn", { timeout: 120_000 }, () => {
     const [assistant] = (await db.select().from(messages).where(eq(messages.projectId, projectId))).filter((m) => m.role === "assistant");
     expect(assistant.content).toBe(summary);
     expect(assistant.content.split("Built a tip jar").length - 1).toBe(1);
-    // Live: the repeat streams, then a text_set replaces it with the deduplicated text.
-    expect(events.filter((e) => e.type === "text_set").at(-1)).toEqual({ type: "text_set", text: summary });
+    // The fix pass is quiet, so the repeat never reaches the user.
+    expect(events.some((e) => e.type === "text_set")).toBe(false);
     expect(record.status).toBe("ready");
+  });
+
+  it("asks for a reply when the build pass runs out of tool rounds, and flags no-op edits", async () => {
+    const noop = { name: "edit_file", args: { path: "src/App.tsx", edits: [{ search: "export default", replace: "export default" }] } };
+    const { client, requests } = scriptedModel([
+      { text: "I'll start by planning this out.", tools: [{ name: "set_plan", args: { summary: "Add a thank-you banner.", steps: ["Banner"] } }] },
+      ...Array.from({ length: 15 }, () => ({ tools: [noop] })),
+      { text: "Added a thank-you banner.\n\nWant it to show the tip amount?" },
+    ]);
+    const record = await runTurn({ db, model: client }, { projectId, userId, mode: "build", userMessageId: queuedId }, () => {});
+    const [assistant] = (await db.select().from(messages).where(eq(messages.projectId, projectId))).filter((m) => m.role === "assistant");
+    expect(assistant.content).toBe("Added a thank-you banner.\n\nWant it to show the tip amount?");
+    expect(record.log).toContain("! stopped: too many tool rounds in one pass");
+    const toolResults = requests.at(-1)!.messages.filter((m) => m.role === "tool").map((m) => String(m.content));
+    expect(toolResults.some((c) => c.startsWith("No change: src/App.tsx"))).toBe(true);
+    expect(String(requests.at(-1)!.messages.at(-1)!.content)).toMatch(/Reply to the user now/);
+  });
+
+  it("asks for the reply again when the only reply came with a tool call", async () => {
+    const noop = { name: "edit_file", args: { path: "src/App.tsx", edits: [{ search: "export default", replace: "export default" }] } };
+    const { client } = scriptedModel([
+      { text: "Built it.\n\nWant a goal bar?", tools: [noop] },
+      {},
+      { text: "Built a tip page.\n\nWant a goal bar?" },
+    ]);
+    await runTurn({ db, model: client }, { projectId, userId, mode: "build", userMessageId: queuedId }, () => {});
+    const [assistant] = (await db.select().from(messages).where(eq(messages.projectId, projectId))).filter((m) => m.role === "assistant");
+    expect(assistant.content).toBe("Built a tip page.\n\nWant a goal bar?");
+  });
+
+  it("a build-mode question on an existing project is answered without checks or a new version", async () => {
+    const first = scriptedModel([{ tools: [{ name: "create_file", args: { path: "src/App.tsx", content: APP } }] }, { text: "Built it." }]);
+    await runTurn({ db, model: first.client }, { projectId, userId, mode: "build", userMessageId: queuedId }, () => {});
+    const { client } = scriptedModel([{ text: "I build dApps on Celo and websites.\n\nWant a landing page?" }]);
+    const record = await runTurn({ db, model: client }, { projectId, userId, mode: "build", prompt: "what can you build?" }, () => {});
+    expect(record.status).toBe("answered");
+    expect(record.version).toBeUndefined();
+    expect(record.steps.some((s) => s.id === "compile" || s.id === "app")).toBe(false);
+    expect(await listVersions(db, projectId)).toHaveLength(1);
+  });
+
+  it("keeps the reply that comes with suggest_next, saves the chips and ends the pass", async () => {
+    const { client, requests } = scriptedModel([
+      { tools: [{ name: "create_file", args: { path: "src/App.tsx", content: APP } }] },
+      { text: "Built a tip page.", tools: [{ name: "suggest_next", args: { suggestions: ["Add a leaderboard of top tippers", "  Let tips carry a note  ", "third"] } }] },
+    ]);
+    const { events, emit } = collect();
+    const record = await runTurn({ db, model: client }, { projectId, userId, mode: "build", userMessageId: queuedId }, emit);
+    expect(requests).toHaveLength(2); // no extra round after suggest_next
+    expect(record.suggestions).toEqual(["Add a leaderboard of top tippers", "Let tips carry a note"]);
+    expect(events).toContainEqual({ type: "suggestions", items: record.suggestions });
+    const [assistant] = (await db.select().from(messages).where(eq(messages.projectId, projectId))).filter((m) => m.role === "assistant");
+    expect(assistant.content).toBe("Built a tip page.");
+    expect((assistant.meta as { suggestions?: string[] }).suggestions).toHaveLength(2);
+
+    // The next turn's history names the chips, so "yes, the first one" has a referent.
+    const next = scriptedModel([{ text: "On it." }]);
+    await runTurn({ db, model: next.client }, { projectId, userId, mode: "build", prompt: "yes, the first one" }, () => {});
+    const msgs = next.requests[0].messages;
+    expect(String(msgs.at(-1)!.content)).toContain("offered these next steps as buttons");
+    expect(String(msgs.at(-1)!.content)).toContain("1. Add a leaderboard of top tippers");
+    // Not appended to the assistant's own history, so the model doesn't copy the format.
+    expect(msgs.filter((m) => m.role === "assistant").every((m) => !String(m.content).includes("next steps"))).toBe(true);
+  });
+
+  it("a response cut off at the output limit doesn't end the pass; the model is asked for smaller files", async () => {
+    const { client, requests } = scriptedModel([
+      { text: "", finish: "length" }, // the create_file it was writing was dropped
+      { tools: [{ name: "create_file", args: { path: "src/App.tsx", content: APP } }] },
+      { text: "Built it." },
+    ]);
+    const record = await runTurn({ db, model: client }, { projectId, userId, mode: "build", userMessageId: queuedId }, () => {});
+    expect(record.log).toContain("! a response hit the output limit; asking for smaller files");
+    expect(String(requests[1].messages.at(-1)!.content)).toMatch(/smaller pieces/);
+    expect((await loadFiles(db, projectId))["src/App.tsx"]).toBe(APP);
+  });
+
+  it("plan steps sent as objects become readable text", async () => {
+    const { client } = scriptedModel([
+      { tools: [{ name: "set_plan", args: { summary: "RTX", steps: [{ title: "Write RTX.sol", detail: "ERC-20" }, "Build the UI", { foo: 1 }] } }] },
+      { text: "Planned." },
+    ]);
+    const record = await runTurn({ db, model: client }, { projectId, userId, mode: "plan", userMessageId: queuedId }, () => {});
+    expect(record.plan?.steps).toEqual(["Write RTX.sol", "Build the UI"]);
+  });
+
+  it("runs contract tests after compiling and sends failures to the fix loop on the cheap tier", async () => {
+    const { readFileSync } = await import("node:fs");
+    const run2 = readFileSync(new URL("./fixtures/rtx-run2.sol", import.meta.url), "utf8");
+    const fixed = run2.replace("bool ok = transferFrom(from, to, amount);\n        if (!ok) revert TransferFailed();", "_transfer(from, to, amount);");
+    const test =
+      HEADER +
+      'import {Test, Actor} from "@goodbuild/Test.sol";\nimport {MockGoodDollar} from "@goodbuild/MockGoodDollar.sol";\nimport {RTX} from "../RTX.sol";\n' +
+      "contract RTXTest is Test {\n  function testSupply() public {\n    RTX rtx = new RTX(new MockGoodDollar());\n    assertEq(rtx.totalSupply(), 50_000_001e18, \"supply\");\n  }\n}\n";
+    const { client, requests } = scriptedModel([
+      { tools: [{ name: "create_file", args: { path: "contracts/RTX.sol", content: fixed } }, { name: "create_file", args: { path: "contracts/test/RTX.t.sol", content: test } }] },
+      { text: "Built RTX." },
+      { tools: [{ name: "edit_file", args: { path: "contracts/test/RTX.t.sol", edits: [{ search: "50_000_001e18", replace: "50_000_000e18" }] } }] },
+      { text: "Fixed the test." },
+    ]);
+    const record = await runTurn({ db, model: client }, { projectId, userId, mode: "build", userMessageId: queuedId }, () => {});
+    // Only a test failed, so the first fix attempt ran on the cheap tier.
+    expect(requests.map((r) => r.tier)).toEqual(["cheap", "cheap", "cheap", "cheap"]);
+    expect(record.steps.find((s) => s.id === "test")).toMatchObject({ status: "error" });
+    expect(record.steps.find((s) => s.id === "test:1")).toMatchObject({ status: "done", detail: "1 test passed in a local EVM" });
+    expect(record.status).toBe("ready");
+    expect(record.contracts?.map((c) => c.name)).toEqual(["RTX"]);
+    expect(Object.keys(await loadFiles(db, projectId)).some((p) => p.startsWith("src/contracts/RTXTest"))).toBe(false);
   });
 
   it("reports the auto-fix result clearly in the step rows", async () => {
@@ -218,6 +341,29 @@ describe("runTurn", { timeout: 120_000 }, () => {
     const other = await signInUser(db, { wallet: "0xdef", walletKind: "external", attestation: { ageOk: true, notUsPerson: true } });
     const { client } = scriptedModel([]);
     await expect(runTurn({ db, model: client }, { projectId, userId: other.id, mode: "build", prompt: "x" }, () => {})).rejects.toBeInstanceOf(TurnBusyError);
+  });
+
+  it("retries once when the provider fails mid-response, dropping the partial text", async () => {
+    const { ModelUnavailableError } = await import("./model");
+    const inner = scriptedModel([{ tools: [{ name: "create_file", args: { path: "src/App.tsx", content: APP } }] }, { text: "Built it." }]);
+    let failed = false;
+    const client = {
+      async *stream(req: Parameters<typeof inner.client.stream>[0]) {
+        if (!failed) {
+          failed = true;
+          yield { type: "text" as const, delta: "Half a repl" };
+          throw new ModelUnavailableError("The AI provider rejected the request: Failed to process successful response");
+        }
+        yield* inner.client.stream(req);
+      },
+    };
+    const { events, emit } = collect();
+    const record = await runTurn({ db, model: client }, { projectId, userId, mode: "build", userMessageId: queuedId }, emit);
+    expect(record.status).toBe("ready");
+    expect(record.log).toContain("! the AI provider failed mid-response; retrying once");
+    expect(events).toContainEqual({ type: "text_set", text: "" });
+    const [assistant] = (await db.select().from(messages).where(eq(messages.projectId, projectId))).filter((m) => m.role === "assistant");
+    expect(assistant.content).toBe("Built it.");
   });
 
   it("ends cleanly when the model is unreachable, and releases the lock", async () => {

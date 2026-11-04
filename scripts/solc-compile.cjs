@@ -7,9 +7,20 @@ const solc = require("solc");
 
 const root = path.join(__dirname, "..", "node_modules");
 const ALLOWED_PREFIX = "@openzeppelin/contracts/";
+// Platform-owned test helpers (Test, Actor, MockGoodDollar) for contracts/test/*.t.sol.
+const GOODBUILD_PREFIX = "@goodbuild/";
+const goodbuildRoot = path.join(__dirname, "solidity", "goodbuild");
 
 function findImports(importPath) {
-  if (!importPath.startsWith(ALLOWED_PREFIX) || importPath.includes("..")) {
+  if (importPath.includes("..")) return { error: `Invalid import "${importPath}".` };
+  if (importPath.startsWith(GOODBUILD_PREFIX)) {
+    try {
+      return { contents: fs.readFileSync(path.join(goodbuildRoot, importPath.slice(GOODBUILD_PREFIX.length)), "utf8") };
+    } catch {
+      return { error: `Not found: ${importPath}. Available: @goodbuild/Test.sol, @goodbuild/MockGoodDollar.sol` };
+    }
+  }
+  if (!importPath.startsWith(ALLOWED_PREFIX)) {
     return { error: `Only @openzeppelin/contracts imports are available (got "${importPath}").` };
   }
   try {

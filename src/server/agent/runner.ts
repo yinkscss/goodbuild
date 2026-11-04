@@ -5,10 +5,11 @@ import { and, asc, eq } from "drizzle-orm";
 import type { Db } from "@/server/db/client";
 import { messages, projects } from "@/server/db/schema";
 import { checkApp, checkContracts, formatIssues, mentionsGd, mentionsNativeCelo, type CheckIssue, type CheckReport, type ContractCheckOptions } from "./checks";
+import { runContractTests } from "./contract-tests";
 import { TIER_FOR, ModelUnavailableError, type ChatMessage, type ModelClient, type ModelTier, type ToolCall } from "./model";
 import { BUILD_TOOLS, PLAN_TOOLS, contextMessage, systemPrompt } from "./prompt";
 import { checkpoint, claimTurn, loadFiles, recordUsage, releaseTurn } from "./store";
-import { PLATFORM_DIR, contractModule, contractsIndex, starterFiles } from "./template";
+import { PLATFORM_DIR, contractModule, contractsIndex, starterFiles, withStarterHelpers } from "./template";
 import { Workspace, type FileChange } from "./workspace";
 
 
@@ -106,14 +107,14 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
 
     let files = await loadFiles(db, input.projectId);
     const firstBuild = Object.keys(files).length === 0;
-    if (firstBuild) files = starterFiles();
+    files = firstBuild ? starterFiles() : withStarterHelpers(files);
     const ws = new Workspace(files);
 
     const history = await recentHistory(db, input.projectId, [userMessageId, assistantId]);
     const convo: ChatMessage[] = [
       { role: "system", content: systemPrompt(input.mode) },
       ...history,
-      { role: "user", content: contextMessage({ files: ws.files, request }), cache: true },
+      { role: "user", content: contextMessage({ files: ws.files, request, lastSuggestions: await lastSuggestions(db, input.projectId, assistantId) }), cache: true },
     ];
     const tools = input.mode === "plan" ? PLAN_TOOLS : BUILD_TOOLS;
 
@@ -123,38 +124,89 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
 
     let calls = 0;
     const replies: string[] = [];
-    const callModel = async (tier: ModelTier) => {
+    // Set by each model call: the response stopped at the output-token limit, so any tool
+    // call it was writing (usually a big create_file) was lost.
+    let cutOff = false;
+    let cutAtLimit = false;
+    // quiet: a fix pass. Its text goes to the model's history but not to the user, so the
+    // first pass's reply (and its follow-up questions) stays the last thing they read; the
+    // auto-fix steps already show what happened.
+    const callModel = async (tier: ModelTier, quiet = false, wrapUp = false) => {
       if (++calls > MAX_CALLS) throw new Error("This build used too many steps. Try a smaller change.");
       let replyText = "";
       const toolCalls: ToolCall[] = [];
       const textBefore = text;
-      for await (const ev of model.stream({ tier, messages: convo, tools, maxTokens: MAX_TOKENS })) {
-        if (ev.type === "text") {
-          // Separate replies from different calls with a blank line.
-          const delta = !replyText && text && !text.endsWith("\n") ? `\n\n${ev.delta.replace(/^\s+/, "")}` : ev.delta;
-          replyText += ev.delta;
-          text += delta;
-          emit({ type: "text", delta });
-        } else if (ev.type === "tool_call") {
-          toolCalls.push(ev.call);
-        } else if (ev.type === "usage") {
-          const cost = await recordUsage(db, {
-            userId: input.userId,
-            projectId: input.projectId,
-            messageId: assistantId,
-            callId: ev.callId || `${assistantId}:${calls}`,
-            model: ev.model,
-            inputTokens: ev.inputTokens,
-            outputTokens: ev.outputTokens,
-            cachedInputTokens: ev.cachedInputTokens,
-          });
-          record.chargedMicro += cost.chargedMicro;
-          emit({ type: "usage", chargedMicro: cost.chargedMicro, totalChargedMicro: record.chargedMicro });
+      cutOff = false;
+      cutAtLimit = false;
+      // One retry when the provider fails mid-response (e.g. the SDK couldn't parse a chunk):
+      // nothing from the failed attempt has been executed, so drop its partial text and calls.
+      for (let attempt = 0; ; attempt++) {
+        try {
+          for await (const ev of model.stream({ tier, messages: convo, tools, maxTokens: MAX_TOKENS })) {
+            if (ev.type === "text") {
+              if (quiet) {
+                replyText += ev.delta;
+                continue;
+              }
+              // Separate replies from different calls with a blank line.
+              const delta = !replyText && text && !text.endsWith("\n") ? `\n\n${ev.delta.replace(/^\s+/, "")}` : ev.delta;
+              replyText += ev.delta;
+              text += delta;
+              emit({ type: "text", delta });
+            } else if (ev.type === "tool_call") {
+              toolCalls.push(ev.call);
+            } else if (ev.type === "done") {
+              // "length": stopped at the output limit. "tool-calls" with no call that reached us:
+              // the call was malformed or dropped on the way. Either way the work isn't done.
+              cutAtLimit = ev.finishReason === "length";
+              cutOff = cutAtLimit || (/^tool[-_]calls$/.test(ev.finishReason ?? "") && toolCalls.length === 0);
+            } else if (ev.type === "usage") {
+              const cost = await recordUsage(db, {
+                userId: input.userId,
+                projectId: input.projectId,
+                messageId: assistantId,
+                callId: ev.callId || `${assistantId}:${calls}`,
+                model: ev.model,
+                inputTokens: ev.inputTokens,
+                outputTokens: ev.outputTokens,
+                cachedInputTokens: ev.cachedInputTokens,
+              });
+              record.chargedMicro += cost.chargedMicro;
+              emit({
+                type: "usage",
+                chargedMicro: cost.chargedMicro,
+                totalChargedMicro: record.chargedMicro,
+                model: ev.model,
+                inputTokens: ev.inputTokens,
+                outputTokens: ev.outputTokens,
+                cachedInputTokens: ev.cachedInputTokens,
+              });
+            }
+          }
+          break;
+        } catch (error) {
+          if (attempt >= 1 || !(error instanceof ModelUnavailableError)) throw error;
+          log("! the AI provider failed mid-response; retrying once");
+          replyText = "";
+          toolCalls.length = 0;
+          cutOff = false;
+          cutAtLimit = false;
+          if (!quiet && text !== textBefore) {
+            text = textBefore;
+            emit({ type: "text_set", text });
+          }
         }
       }
       // A reply that repeats one already shown in this turn (models often restate the
       // summary after a fix) is dropped from what the user sees, live and saved.
-      if (replyText.trim() && isRepeat(replyText, replies)) {
+      if (quiet) {
+        // Nothing was shown.
+      } else if (!wrapUp && input.mode === "build" && toolCalls.length && !onlySuggestions(toolCalls) && replyText.trim()) {
+        // Narration before tool calls ("I'll start by planning this out.") isn't the reply;
+        // the steps already show the work. Keep it in the model's history only.
+        text = textBefore;
+        emit({ type: "text_set", text });
+      } else if (replyText.trim() && isRepeat(replyText, replies)) {
         text = textBefore;
         emit({ type: "text_set", text });
       } else if (replyText.trim()) {
@@ -170,17 +222,33 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       return toolCalls;
     };
 
-    /** Let the model work until it stops calling tools. */
-    const phase = async (tier: ModelTier) => {
+    /** Record next-step chips from suggest_next. Fix passes (quiet) don't change them. */
+    const takeSuggestions = (items: string[] | undefined, quiet: boolean) => {
+      if (!items?.length || quiet) return;
+      record.suggestions = items;
+      emit({ type: "suggestions", items });
+    };
+
+    /** Let the model work until it stops calling tools. False when it ran out of rounds. */
+    const phase = async (tier: ModelTier, quiet = false) => {
       for (let round = 0; round < MAX_TOOL_ROUNDS_PER_PHASE; round++) {
-        const toolCalls = await callModel(tier);
-        if (!toolCalls.length) return;
+        const toolCalls = await callModel(tier, quiet);
+        if (cutOff) {
+          // Not finished: the model was mid-write. Run whatever calls did complete, then
+          // ask it to continue in smaller pieces (below), instead of ending the pass.
+          log(cutAtLimit ? "! a response hit the output limit; asking for smaller files" : "! a response ended without a usable tool call; asking for smaller files");
+        }
+        if (!toolCalls.length && !cutOff) return true;
+        // The final reply arrives with suggest_next: that ends the pass, no extra round.
+        const final = onlySuggestions(toolCalls);
         for (const call of toolCalls) {
           const stepId = `tool:${call.id}`;
           // Plan mode can't edit; a refused edit attempt isn't worth showing as a failed step.
           const label = input.mode === "plan" ? null : toolLabel(call);
           if (label) step({ id: stepId, label, status: "running" });
           const outcome = ws.execute(call.name, call.arguments, input.mode);
+          if (outcome.guides?.length) log(`guides: ${outcome.guides.join(", ")}`);
+          takeSuggestions(outcome.suggestions, quiet);
           if (outcome.plan) {
             record.plan = outcome.plan;
             emit({ type: "plan", ...outcome.plan });
@@ -201,13 +269,46 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
           }
           convo.push({ role: "tool", tool_call_id: call.id, content: outcome.result });
         }
+        if (cutOff) {
+          convo.push({
+            role: "user",
+            content:
+              "Your last response hit the output limit and was cut off, so the file you were writing was lost. Continue the work in smaller pieces: one file per create_file call, under about 250 lines each (split big contracts and pages into several files or components), and keep going until everything is written.",
+          });
+          continue;
+        }
+        if (final) return true;
       }
       log("! stopped: too many tool rounds in one pass");
+      return false;
     };
 
-    await phase(input.mode === "plan" ? TIER_FOR.plan : TIER_FOR.build);
+    const finished = await phase(input.mode === "plan" ? TIER_FOR.plan : TIER_FOR.build);
+    if (!finished || !text.trim()) {
+      // Out of tool rounds, or the pass ended with nothing shown (its reply came with a tool
+      // call and was dropped as narration): ask once for the reply, so the user gets a
+      // summary and follow-ups instead of an empty message. Tools stay declared (some
+      // providers require it once the history has tool calls) but any calls are not run.
+      convo.push({ role: "user", content: "Stop editing: you've used all your tool steps for this pass. Reply to the user now, as instructed (suggest_next is the only tool you may still call)." });
+      const extra = await callModel(input.mode === "plan" ? TIER_FOR.plan : TIER_FOR.build, false, true);
+      for (const call of extra) {
+        if (call.name === "suggest_next") {
+          const outcome = ws.execute(call.name, call.arguments, input.mode);
+          takeSuggestions(outcome.suggestions, false);
+          convo.push({ role: "tool", tool_call_id: call.id, content: outcome.result });
+        } else {
+          convo.push({ role: "tool", tool_call_id: call.id, content: "Not run: no tool steps left in this pass." });
+        }
+      }
+      if (!text.trim() && record.plan?.summary) {
+        text = record.plan.summary;
+        emit({ type: "text_set", text });
+      }
+    }
 
-    if (input.mode === "plan") {
+    // Plan mode, or a build-mode question answered without touching files (not a first
+    // build, which must still seed and check the starter): nothing to check or save.
+    if (input.mode === "plan" || (!firstBuild && !ws.changed())) {
       record.status = "answered";
       emit({ type: "done", status: "answered", summary: text.trim() });
       await finish(db, assistantId, text, record);
@@ -232,9 +333,9 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       step({ id: `fix:${attempt}`, label: `Fixing errors (attempt ${attempt} of ${MAX_FIX_ATTEMPTS})`, detail: `${plural(report.errors.length, "error")} to fix: ${firstIssue(report.errors)}`, status: "running" });
       convo.push({
         role: "user",
-        content: `GoodBuild's checks failed. Fix these errors with edit_file, then reply with one sentence on what you changed:\n${issues}`,
+        content: `GoodBuild's checks failed. Fix these errors with edit_file. If a contract test fails, decide whether the contract or the test is wrong: fix the contract when it misbehaves; change a test only when its expectation is mistaken, and never delete or weaken a check just to make it pass. Then stop with a very short note (the user sees the fix steps, not this note):\n${issues}`,
       });
-      await phase(TIER_FOR.fix);
+      await phase(fixTier(attempt, report.errors), true);
       report = await runChecks(ws.files, compile, lint, step, log, attempt, contractOptions);
       step({
         id: `fix:${attempt}`,
@@ -295,6 +396,7 @@ async function runChecks(
   log: (l: string) => void,
   attempt: number,
   contractOptions: ContractCheckOptions = {},
+  runTests: typeof runContractTests = runContractTests,
 ): Promise<CheckReport> {
   const suffix = attempt ? `:${attempt}` : "";
   const hasContracts = Object.keys(files).some((p) => p.startsWith("contracts/") && p.endsWith(".sol"));
@@ -312,6 +414,20 @@ async function runChecks(
         ? `0 errors · ${plural(contracts.warnings.length, "warning")}`
         : `${plural(contracts.errors.length, "error")}: ${firstIssue(contracts.errors)}`,
       status: contracts.ok ? "done" : "error",
+    });
+  }
+  if (hasContracts && contracts.ok && contracts.tests?.length) {
+    step({ id: `test${suffix}`, label: "Testing contracts", status: "running" });
+    const { results, issues } = await runTests(contracts);
+    const passed = results.filter((r) => r.ok).length;
+    for (const r of results) log(`${r.ok ? "✓" : "✗"} ${r.contract}.${r.test}${r.ok ? "" : `: ${r.reason}`}`);
+    if (!results.length) for (const i of issues) log(`✗ ${i.message}`);
+    contracts = { ...contracts, ok: issues.length === 0, errors: [...contracts.errors, ...issues] };
+    step({
+      id: `test${suffix}`,
+      label: "Testing contracts",
+      detail: issues.length ? `${plural(issues.length, "failure")}: ${issues[0].message.slice(0, 120)}` : `${plural(passed, "test")} passed in a local EVM`,
+      status: issues.length ? "error" : "done",
     });
   }
   step({ id: `app${suffix}`, label: "Checking the app", status: "running" });
@@ -334,6 +450,17 @@ async function runChecks(
 }
 
 /** Last few user prompts and assistant replies (text only), oldest first. */
+/**
+ * The chips on the latest earlier reply. They aren't in the reply text, so the context
+ * block names them and "yes" or "the second one" has a referent. (Put in the user-side
+ * context, not appended to the assistant's history, so the model doesn't copy the format.)
+ */
+async function lastSuggestions(db: Db, projectId: string, exclude: string): Promise<string[]> {
+  const rows = await db.select().from(messages).where(eq(messages.projectId, projectId)).orderBy(asc(messages.createdAt));
+  const last = rows.filter((m) => m.role === "assistant" && m.id !== exclude).at(-1);
+  return (last?.meta as { suggestions?: string[] } | null)?.suggestions ?? [];
+}
+
 async function recentHistory(db: Db, projectId: string, exclude: string[]): Promise<ChatMessage[]> {
   const rows = await db.select().from(messages).where(eq(messages.projectId, projectId)).orderBy(asc(messages.createdAt));
   return rows
@@ -347,6 +474,18 @@ async function finish(db: Db, id: string, text: string, record: TurnRecord) {
     .update(messages)
     .set({ content: text.trim(), status: record.status === "error" ? "error" : "done", meta: record as unknown as Record<string, unknown> })
     .where(eq(messages.id, id));
+}
+
+/**
+ * D19 amendment: when the only failures are contract tests, the cheap model gets the first
+ * fix attempt (TIER_FOR.testFix); anything else, or a later attempt, goes to TIER_FOR.fix.
+ */
+export function fixTier(attempt: number, errors: CheckIssue[]): ModelTier {
+  return attempt === 1 && errors.length > 0 && errors.every((i) => i.source === "test") ? TIER_FOR.testFix : TIER_FOR.fix;
+}
+
+function onlySuggestions(calls: ToolCall[]): boolean {
+  return calls.length > 0 && calls.every((c) => c.name === "suggest_next");
 }
 
 function toolLabel(call: ToolCall): string | null {
@@ -364,6 +503,8 @@ function toolLabel(call: ToolCall): string | null {
       return `Writing ${base}`;
     case "delete_file":
       return `Deleting ${base}`;
+    case "read_guide":
+      return `Reading the ${String(args.name ?? "")} guide`;
     case "rename_file":
       return `Renaming ${String(args.from ?? "").split("/").pop()}`;
     case "add_dependency":

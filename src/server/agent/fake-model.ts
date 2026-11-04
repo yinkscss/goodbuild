@@ -4,6 +4,8 @@ export interface ScriptedReply {
   text?: string;
   tools?: Array<{ name: string; args: unknown }>;
   usage?: { input: number; output: number };
+  /** Override the finish reason (e.g. "length" for a response cut off at the token limit). */
+  finish?: string;
 }
 
 /**
@@ -36,7 +38,7 @@ export function scriptedModel(replies: ScriptedReply[], model: Partial<Record<Mo
         cachedInputTokens: 0,
         callId: `fake-${i}-${Math.random().toString(36).slice(2)}`,
       };
-      yield { type: "done", finishReason: reply.tools?.length ? "tool_calls" : "stop" };
+      yield { type: "done", finishReason: reply.finish ?? (reply.tools?.length ? "tool_calls" : "stop") };
     },
   };
   return { client, requests };

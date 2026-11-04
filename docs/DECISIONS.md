@@ -107,7 +107,13 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - Date: 4 Nov 2026 · Decided by: user (Olayinka) · Refines D14 and D18
 - Routing: `deepseek-flash` for planning and the first build pass; `claude-sonnet-5-5` for every auto-fix attempt (compile errors, guardrail and app-check failures). The fallback wrapper still retries a failed strong call on cheap.
 - Why: the first live runs cost about $0.02 on DeepSeek and $0.10 on Sonnet for a similar small contract, and both compiled clean. Claude is kept for the step where a cheap model has already failed.
+- Amendment (4 Nov 2026, decided by: user, implemented with the model.ts owner): when every failure is a contract test (P16), the first auto-fix attempt uses `TIER_FOR.testFix` (cheap). Mixed failures and any later attempt still use `TIER_FOR.fix` (strong). Why: in the RTX eval run 4, Sonnet's five fix calls cost $0.44 of $0.50, and most were test fixes. See [evals/RTX.md](evals/RTX.md). Runner: `fixTier()` in `runner.ts`.
 - Open: whether follow-up edits (reprompts on an existing project) should use Claude. Claude recommends yes, see AI_AGENT.md. One line in `TIER_FOR` (`src/server/agent/model.ts`).
+
+### D20. Websites and pages are in scope alongside dApps
+- Date: 4 Nov 2026 · Decided by: user (Olayinka), in chat: vibe-coding a website is also something GoodBuild does · Widens D2 (Stage 1 = dApps only).
+- The agent builds plain websites and pages (landing, about, signup, event or shop sites) as well as dApps, and writes a contract only when the app needs on-chain state or payments. Still no backend or database (D3): forms that must store data either use an on-chain registry or say storage is coming later.
+- Flag for the user: CLAUDE.md item 3 still reads "Stage 1 = dApps only"; update it if this stands.
 
 ### P3. Off-chain deployments table is the source of truth; on-chain factory optional later (proposed)
 - Date: 4 Nov 2026 · Proposed by: Grok Bot · See CONTRACTS_AND_DEPLOYMENT.md §3. Open: Q11.
@@ -142,6 +148,30 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 
 ### P12. Preview uses Sandpack's hosted bundler (proposed)
 - Date: 4 Nov 2026 · Proposed by: Claude · Implements D5. Sandpack's classic `react-ts` bundler is loaded from CodeSandbox's servers, and generated apps get Tailwind from the `@tailwindcss/browser` CDN build. Fine for previews; it is an external dependency (Q36).
+
+### P13. Designed-per-prompt output: layout-free starter, helper hooks, follow-ups, quiet fix passes (proposed)
+- Date: 4 Nov 2026 · Proposed by: Claude · The user reported generated pages looked hardcoded: the starter `App.tsx` (header bar with "My dApp" plus a card) was being copied. The starter is now a one-line placeholder, and the system prompt gains design rules (layout by app type, verb-labelled main action, real copy, per-app accent colour) plus `useRead`/`useTx`/`formatAmount`/`errorMessage`, `Skeleton` and `Notice` so a cheap model gets loading, error and success states right. Build and plan replies end with one or two follow-up questions (Lovable style). Auto-fix passes no longer add text to the reply, so the follow-ups stay last; the fix steps already show what happened.
+- Runner changes, each from a live DeepSeek run: (1) fix passes are quiet, because a fix note appended after the follow-ups buried them; (2) text that comes with tool calls in build mode ("I'll start by planning this out.") is dropped as narration, because DeepSeek kept writing it despite the prompt; (3) if a pass runs out of tool rounds or ends with nothing shown, one more call asks for the reply (plan summary as a last resort), because a turn that looped on no-op edits saved an empty reply; (4) an `edit_file` that changes nothing returns "No change ... stop and reply" so the model breaks the loop. Plan answers are capped at about 120 words with no code blocks.
+- `checkApp` now rejects using `<Name>Address` (a chain-id map) as an address; it must be indexed (`TipJarAddress[chain.id]`). This was the cause of viem's `Address "[object Object]" is invalid` in the preview.
+
+### P14. Front-end guides loaded on demand (proposed)
+- Date: 4 Nov 2026 · Proposed by: Claude · `src/server/agent/guides.ts` holds short guides (pages-and-routing, landing-page, forms-and-signup, design-tokens, content-pages, dashboard-and-data). The system prompt lists each with one line on when it applies; the model picks them in `set_plan` (`guides` field, so no extra round) or with `read_guide`, and the runner logs which were loaded. No regex classification of the request: the model decides, the guide teaches. Modelled on Dyad's AI_RULES and the Lovable prompt's design-system rules (semantic tokens, variants, SEO-ish single h1), kept small for a cheap model.
+- Multi-page apps use react-router-dom 6.30.6 with HashRouter (now a base dependency), pages in `src/pages/`, a shared `Layout`. Starter `@theme` gains card, ring, accent-foreground and display-font tokens; the guides ban raw palette classes.
+
+### P15. Follow-ups are clickable chips from a suggest_next tool (proposed)
+- Date: 4 Nov 2026 · Proposed by: Claude · Requested by the user (Lovable-style follow-ups). The model calls `suggest_next` with one or two next steps, phrased as the request the user would send, in the same response as its final reply. The runner keeps that reply (not treated as narration), ends the pass without another round, saves the chips on the turn record and appends them to later history so "yes, the first one" resolves. The chat shows them on the newest turn only; a click sends the step as a build prompt. Structured, so nothing parses the reply text. Fix passes can't change them.
+
+### P16. Contract tests in a local EVM, plus checks for complex apps (proposed)
+- Date: 4 Nov 2026 · Proposed by: Claude · From the RTX eval ([evals/RTX.md](evals/RTX.md)): a buy/sell/swap contract compiled cleanly, but every sell and every liquidity add would have reverted. Compiling proves nothing about behaviour.
+- The agent writes `contracts/test/<Name>.t.sol` for contracts that move tokens. GoodBuild compiles it with the project and runs each `test*()` in a fresh in-memory EVM, using `@ethereumjs/evm` 10.1.3 with Cancun, in a child process with a 60s timeout. Platform helpers live under `@goodbuild/`: `Test` (asserts and expectRevert), `Actor` (acts as another wallet) and `MockGoodDollar` (ERC-20 plus `transferAndCall`). Reverts are decoded by name from every compiled ABI. Failures feed the existing auto-fix loop. Test contracts are never deployable, never written to `src/contracts/`, and don't count for G$ guardrails.
+- Not M5: nothing touches a network. M5's pre-deploy simulation against Celo stays separate.
+- Also added:
+  - an AST guardrail: an ERC20 contract may not call its own public `transfer` or `transferFrom`;
+  - an EIP-170 size check (24,576 bytes of runtime code);
+  - recovery for responses cut off at the output limit;
+  - the guides `tokens`, `swaps-and-markets`, `multi-contract`, `cross-chain` and `contract-tests`;
+  - `Math`, `ERC20Burnable` and `ERC20Capped` on the import list.
+- Open for M5: deploy order and constructor wiring between project contracts (for example RTXPool needs the RTXToken address), and a test G$ on Sepolia (Q39).
 
 ### P3. GoodDollar AI credits via AntSeed gateway behind LiteLLM (DEFERRED by D11)
 - Status: deferred. GoodDollar/AntSeed is an optional future provider only, revisit once GoodDollar ships its proxy/API keys.

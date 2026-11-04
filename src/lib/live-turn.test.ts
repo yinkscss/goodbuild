@@ -35,6 +35,11 @@ describe("applyTurnEvent", () => {
     expect(t.record).toMatchObject({ chargedMicro: 30, version: 2, status: "ready" });
   });
 
+  it("suggestions land on the record", () => {
+    const t = applyTurnEvent(emptyTurn("build"), { type: "suggestions", items: ["Add a leaderboard"] });
+    expect(t.record.suggestions).toEqual(["Add a leaderboard"]);
+  });
+
   it("text_set replaces the text (repeated reply dropped)", () => {
     const t = [{ type: "text", delta: "Built it." }, { type: "text", delta: "\n\nBuilt it." }, { type: "text_set", text: "Built it." }].reduce(
       (acc, e) => applyTurnEvent(acc, e as TurnEvent),

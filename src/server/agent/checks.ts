@@ -12,14 +12,14 @@ export const SOLC_SETTINGS = {
   // UNVERIFIED in Celo's docs (Q35); M5's pre-deploy simulation will surface it.
   evmVersion: "cancun",
   optimizer: { enabled: true, runs: 200 },
-  outputSelection: { "*": { "*": ["abi", "evm.bytecode.object"], "": ["ast"] } },
+  outputSelection: { "*": { "*": ["abi", "evm.bytecode.object", "evm.deployedBytecode.object"], "": ["ast"] } },
 } as const;
 
 export interface CheckIssue {
   file: string;
   line?: number;
   message: string;
-  source: "solc" | "guardrail" | "syntax" | "imports" | "paths";
+  source: "solc" | "guardrail" | "syntax" | "imports" | "paths" | "test";
 }
 
 export interface CompiledContract {
@@ -29,15 +29,30 @@ export interface CompiledContract {
   bytecodeBytes: number;
 }
 
+/** A compiled test contract (contracts/test/*.t.sol), run in a local EVM, never deployed. */
+export interface CompiledTest {
+  name: string;
+  file: string;
+  abi: unknown[];
+  /** Creation bytecode, hex without 0x. */
+  bytecode: string;
+}
+
 export interface CheckReport {
   ok: boolean;
   errors: CheckIssue[];
   warnings: CheckIssue[];
   contracts: CompiledContract[];
+  /** Test contracts to run after a clean compile. */
+  tests?: CompiledTest[];
+  /** Every ABI from the compile (project, tests, OpenZeppelin), for decoding reverts. */
+  abis?: unknown[][];
   compilerVersion?: string;
 }
 
 export const MAX_FILE_BYTES = 120_000;
+/** EIP-170 runtime code size limit. */
+export const MAX_CONTRACT_BYTES = 24_576;
 export const MAX_FILES = 80;
 
 /** Where generated files may live. Everything else is refused. */
@@ -48,9 +63,10 @@ export function pathProblem(p: string): string | null {
   if (p === "package.json") return "package.json is managed by GoodBuild. Use add_dependency.";
   if (p.startsWith(PLATFORM_DIR)) return `${PLATFORM_DIR} is written by GoodBuild from the compiled contracts. Import from it instead.`;
   if (/^contracts\/[A-Za-z0-9_]+\.sol$/.test(p)) return null;
+  if (/^contracts\/test\/[A-Za-z0-9_]+\.t\.sol$/.test(p)) return null;
   if (/^src\/[A-Za-z0-9_\-/.]+\.(tsx?|css|json)$/.test(p)) return null;
   if (p === "public/index.html") return null;
-  return `Files must be under src/ (.ts, .tsx, .css, .json) or contracts/ (Name.sol). Got "${p}".`;
+  return `Files must be under src/ (.ts, .tsx, .css, .json), contracts/ (Name.sol) or contracts/test/ (Name.t.sol). Got "${p}".`;
 }
 
 // ---------------------------------------------------------------------------
@@ -60,7 +76,7 @@ type Json = Record<string, unknown>;
 
 interface SolcOutput {
   errors?: Array<{ severity: string; message: string; formattedMessage?: string; sourceLocation?: { file: string; start: number } }>;
-  contracts?: Record<string, Record<string, { abi: unknown[]; evm: { bytecode: { object: string } } }>>;
+  contracts?: Record<string, Record<string, { abi: unknown[]; evm: { bytecode: { object: string }; deployedBytecode?: { object: string } } }>>;
   sources?: Record<string, { ast: Json; id: number }>;
 }
 
@@ -99,10 +115,19 @@ export function guardrailIssues(file: string, ast: Json, content?: string): Chec
   };
   const flag = (node: Json, message: string) => issues.push({ file, line: at(node), message, source: "guardrail" });
 
+  let inErc20 = false; // inside a contract that inherits ERC20 (its own token)
   const walk = (node: unknown) => {
     if (!node || typeof node !== "object") return;
     if (Array.isArray(node)) return node.forEach(walk);
     const n = node as Json;
+    if (n.nodeType === "ContractDefinition") {
+      const bases = ((n.baseContracts as Json[]) ?? []).map((b) => String((b.baseName as Json | undefined)?.name ?? ""));
+      const was = inErc20;
+      inErc20 = bases.some((b) => /^ERC20/.test(b));
+      for (const value of Object.values(n)) if (value && typeof value === "object") walk(value);
+      inErc20 = was;
+      return;
+    }
     switch (n.nodeType) {
       case "InlineAssembly":
         flag(n, "Inline assembly isn't allowed in generated contracts.");
@@ -126,6 +151,12 @@ export function guardrailIssues(file: string, ast: Json, content?: string): Chec
           const reason = args[1];
           const customError = reason?.nodeType === "FunctionCall";
           if (!customError) flag(n, "Use a custom error instead of require: declare `error Name();` and write `if (!condition) revert Name();`.");
+        }
+        // A token contract calling its own public transferFrom/transfer: msg.sender is still
+        // the user, so it spends allowance[user][user] (or moves from the user) and usually
+        // reverts. It must use the internal _transfer.
+        if (inErc20 && callee?.nodeType === "Identifier" && (callee.name === "transferFrom" || callee.name === "transfer")) {
+          flag(n, `Don't call this token's own public ${String(callee.name)}() from inside the contract: msg.sender is still the user, so it spends their allowance to themselves and reverts. Use _transfer(from, to, amount).`);
         }
         if (callee?.nodeType === "Identifier" && callee.name === "revert") {
           flag(n, 'Use a custom error instead of revert("..."): `revert Name();`.');
@@ -264,21 +295,44 @@ export async function checkContracts(files: Record<string, string>, options: Con
   }
   const projectAsts: Array<{ file: string; ast: Json; content?: string }> = [];
   for (const [file, src] of Object.entries(output.sources ?? {})) {
-    if (!file.startsWith("contracts/")) continue;
+    // Tests never deploy, so deploy guardrails don't apply to them (and a test touching
+    // IERC20 mustn't satisfy the G$ "handles a token" check for the real contracts).
+    if (!file.startsWith("contracts/") || isTestFile(file)) continue;
     errors.push(...guardrailIssues(file, src.ast, files[file]));
     projectAsts.push({ file, ast: src.ast, content: files[file] });
   }
   if (options.gdToken && projectAsts.length) errors.push(...gdTokenIssues(projectAsts, { allowNative: options.allowNative }));
   const contracts: CompiledContract[] = [];
+  const tests: CompiledTest[] = [];
+  const abis: unknown[][] = [];
   for (const [file, byName] of Object.entries(output.contracts ?? {})) {
+    for (const c of Object.values(byName)) abis.push(c.abi);
     if (!file.startsWith("contracts/")) continue;
     for (const [name, c] of Object.entries(byName)) {
       const bytecode = c.evm?.bytecode?.object ?? "";
       if (!bytecode) continue; // interfaces and abstract contracts
+      if (isTestFile(file)) {
+        // Only the contract named in the file (FooTest in Foo.t.sol or any *Test) is a suite.
+        if (/Test$/.test(name)) tests.push({ name, file, abi: c.abi, bytecode });
+        continue;
+      }
       contracts.push({ name, file, abi: c.abi, bytecodeBytes: bytecode.length / 2 });
+      // EIP-170: EVM chains (Celo included) refuse to deploy runtime code over 24,576 bytes.
+      const runtime = (c.evm?.deployedBytecode?.object ?? bytecode).length / 2;
+      if (runtime > MAX_CONTRACT_BYTES) {
+        errors.push({
+          file,
+          message: `${name} is ${(runtime / 1024).toFixed(1)} KB, over the 24 KB contract size limit, so it can't be deployed. Split it into smaller contracts (e.g. move features into a second contract that takes this one's address), drop on-chain history arrays, or shorten error and event lists.`,
+          source: "solc",
+        });
+      }
     }
   }
-  return { ok: errors.length === 0, errors, warnings, contracts, compilerVersion: result.version };
+  return { ok: errors.length === 0, errors, warnings, contracts, tests, abis, compilerVersion: result.version };
+}
+
+export function isTestFile(path: string): boolean {
+  return path.startsWith("contracts/test/");
 }
 
 // ---------------------------------------------------------------------------
@@ -329,8 +383,54 @@ export function checkApp(files: Record<string, string>): CheckReport {
       }
     }
   }
+  for (const [file, content] of Object.entries(files)) {
+    if (/\.(tsx?|jsx?)$/.test(file) && !file.startsWith(PLATFORM_DIR)) errors.push(...addressMapIssues(file, content));
+  }
   if (!files["src/App.tsx"]) errors.push({ file: "src/App.tsx", message: "src/App.tsx is missing (it's the app entry).", source: "paths" });
   return { ok: errors.length === 0, errors, warnings: [], contracts: [] };
+}
+
+/**
+ * `<Name>Address` from the platform contracts module is a map from chain id to address.
+ * Passing the map itself to viem throws `Address "[object Object]" is invalid` at runtime,
+ * so every use must index it (`TipJarAddress[chain.id]`). Other uses are rejected.
+ */
+export function addressMapIssues(file: string, content: string): CheckIssue[] {
+  const sf = ts.createSourceFile(file, content, ts.ScriptTarget.ES2020, true, file.endsWith("x") ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
+  const maps = new Set<string>();
+  for (const st of sf.statements) {
+    if (!ts.isImportDeclaration(st) || !ts.isStringLiteral(st.moduleSpecifier)) continue;
+    if (!/(^|\/)contracts(\/[A-Za-z0-9_]+)?$/.test(st.moduleSpecifier.text)) continue;
+    const named = st.importClause?.namedBindings;
+    if (!named || !ts.isNamedImports(named)) continue;
+    for (const el of named.elements) {
+      if ((el.propertyName ?? el.name).text.endsWith("Address")) maps.add(el.name.text);
+    }
+  }
+  if (!maps.size) return [];
+  const issues: CheckIssue[] = [];
+  const visit = (node: ts.Node) => {
+    if (ts.isIdentifier(node) && maps.has(node.text)) {
+      const p = node.parent;
+      const ok =
+        ts.isImportSpecifier(p) ||
+        (ts.isElementAccessExpression(p) && p.expression === node) ||
+        // `chain.id in TipJarAddress` is a fine existence check.
+        (ts.isBinaryExpression(p) && p.operatorToken.kind === ts.SyntaxKind.InKeyword && p.right === node);
+      if (!ok) {
+        const line = sf.getLineAndCharacterOfPosition(node.getStart()).line + 1;
+        issues.push({
+          file,
+          line,
+          message: `${node.text} is a map from chain id to address, not an address. Use ${node.text}[chain.id] (chain from lib/chain.ts), which is undefined until the contract is deployed.`,
+          source: "imports",
+        });
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+  return issues;
 }
 
 /** Human-readable list for the model and the build log. */
