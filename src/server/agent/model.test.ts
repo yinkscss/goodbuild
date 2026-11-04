@@ -129,6 +129,16 @@ describe("toSdkMessages", () => {
     expect(messages[1]).toMatchObject({ role: "user", providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } } });
   });
 
+  it("maps image parts and keeps the cache flag", () => {
+    const { messages } = toSdkMessages([
+      { role: "user", cache: true, content: [{ type: "text", text: "describe" }, { type: "image", data: "AAAA", mediaType: "image/png" }] },
+    ]);
+    expect(messages[0]).toMatchObject({
+      role: "user",
+      content: [{ type: "text", text: "describe" }, { type: "image", image: "AAAA", mediaType: "image/png" }],
+      providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } },
+    });
+  });
 
   it("round-trips an assistant tool call and its result", () => {
     const convo: ChatMessage[] = [
