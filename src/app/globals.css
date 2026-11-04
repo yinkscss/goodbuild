@@ -1,0 +1,170 @@
+@import "tailwindcss";
+
+/*
+ * GoodBuild design tokens. Source of truth: docs/DESIGN_SYSTEM.md §1 and §6 (D12).
+ * Tailwind v4 keeps theme config in CSS, so §6's tailwind.config values live here 1:1.
+ * The default palette is reset so only design-system colours can be used.
+ */
+@theme {
+  --color-*: initial;
+  --color-white: #ffffff;
+  --color-black: #000000;
+  --color-transparent: transparent;
+  --color-current: currentColor;
+
+  --color-canvas: #f5f5f5;
+  --color-surface: #ffffff;
+  --color-tint: #f3eef8;
+  --color-violet: #592e81;
+  --color-violet-ink: #1a0d26;
+  --color-violet-soft: #efe6f7;
+  --color-violet-mist: #e2d2f0;
+  --color-pink: #ff85d9;
+  --color-ink: #111111;
+  --color-grey-600: rgb(17 17 17 / 0.55);
+  --color-grey-400: rgb(17 17 17 / 0.35);
+  --color-hairline: rgb(17 17 17 / 0.05);
+  --color-success: #1f9d6b;
+  --color-warning: #c77700;
+  --color-danger: #d2384b;
+
+  --radius-card: 24px;
+  --radius-block: 16px;
+  --radius-tip: 10px;
+
+  --shadow-card: 0 1px 2px rgba(17, 17, 17, 0.03), 0 18px 50px -24px rgba(89, 46, 129, 0.18);
+  --shadow-pop: 0 2px 6px rgba(17, 17, 17, 0.04), 0 40px 80px -30px rgba(89, 46, 129, 0.3);
+  --shadow-focus: 0 0 0 4px rgba(89, 46, 129, 0.14);
+
+  --ease-gb: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  --animate-bob: gb-bob 6s ease-in-out infinite;
+  --animate-pulse-dot: gb-pulse 1.6s ease-in-out infinite;
+  --animate-caret: gb-caret 1s steps(1) infinite;
+  --animate-draw: gb-draw 2.4s var(--ease-gb) forwards;
+  --animate-snap: gb-snap 6s var(--ease-gb) infinite;
+
+  @keyframes gb-bob {
+    50% { transform: translateY(-10px); }
+  }
+  @keyframes gb-pulse {
+    50% { opacity: 0.35; }
+  }
+  @keyframes gb-caret {
+    50% { opacity: 0; }
+  }
+  @keyframes gb-draw {
+    from { stroke-dashoffset: var(--gb-dash, 900); }
+    to { stroke-dashoffset: 0; }
+  }
+  /* A block drops in, snaps, holds, then resets for the next loop. */
+  @keyframes gb-snap {
+    0% { transform: translateY(-110px); opacity: 0; }
+    12% { opacity: 1; }
+    32% { transform: translateY(0); opacity: 1; }
+    36% { transform: translateY(-4px); }
+    40%, 88% { transform: translateY(0); opacity: 1; }
+    100% { transform: translateY(0); opacity: 0; }
+  }
+}
+
+/* shadcn/ui variables (DESIGN_SYSTEM §6), written as full colours for Tailwind v4. */
+:root {
+  --background: hsl(0 0% 96%);
+  --foreground: hsl(0 0% 7%);
+  --card: hsl(0 0% 100%);
+  --card-foreground: hsl(0 0% 7%);
+  --popover: hsl(0 0% 100%);
+  --popover-foreground: hsl(0 0% 7%);
+  --primary: hsl(271 47% 34%);
+  --primary-foreground: hsl(0 0% 100%);
+  --secondary: hsl(273 45% 95%);
+  --secondary-foreground: hsl(271 47% 34%);
+  --muted: hsl(273 45% 95%);
+  --muted-foreground: hsl(0 0% 45%);
+  --accent: hsl(318 100% 76%);
+  --accent-foreground: hsl(275 50% 10%);
+  --destructive: hsl(353 62% 52%);
+  --destructive-foreground: hsl(0 0% 100%);
+  --border: hsl(0 0% 7% / 0.05);
+  --input: hsl(0 0% 100%);
+  --ring: hsl(271 47% 34%);
+  --radius: 1.5rem;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --font-display: var(--font-unbounded), "Syne", sans-serif;
+  --font-sans: var(--font-inter), sans-serif;
+  --font-mono: var(--font-jetbrains), monospace;
+}
+
+/* Display type: headlines and big numbers only (DESIGN_SYSTEM §1 Type). */
+@utility display {
+  font-family: var(--font-display);
+  letter-spacing: -0.03em;
+  line-height: 0.95;
+  text-transform: uppercase;
+}
+
+/* Eyebrow: 11-12px, uppercase, tracking .18em, 600, violet. */
+@utility eyebrow {
+  font-size: 11px;
+  line-height: 1.4;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-violet);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    background: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 14px;
+  }
+  ::selection {
+    background: var(--color-violet-mist);
+  }
+  :focus-visible {
+    outline: none;
+    box-shadow: var(--shadow-focus);
+  }
+}
+
+/* DESIGN_SYSTEM §5: no bobs, shimmer, draw-ins or confetti under reduced motion. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

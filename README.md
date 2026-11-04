@@ -7,7 +7,16 @@ A Lovable/Replit-style AI app builder for GoodDollar (G$, on Celo) users. Descri
 **Audience:** university students, Web3 newcomers and OG Web3 users. Goal: onboard people into Web3, 500+ returning users.
 
 ## Status
-Documentation only (4 Nov 2026). No app code yet. Stage 1 MVP is dApps only.
+Stage 1 in progress. M1 (scaffold and landing) done; see [the build prompt](docs/BUILD_PROMPT_STAGE1.md).
+
+## Develop
+```bash
+pnpm install
+cp .env.example .env.local
+pnpm dev          # http://localhost:3000
+pnpm check        # lint, typecheck, tests, production build
+```
+Stack: Next.js 16 (App Router), TypeScript, Tailwind v4 + shadcn/ui, Vitest. Design tokens live in `src/app/globals.css` (DESIGN_SYSTEM §6).
 
 ## Docs
 - [Decisions](docs/DECISIONS.md): what is fixed and what is recommended

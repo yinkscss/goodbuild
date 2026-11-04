@@ -58,7 +58,7 @@ Base 4px. Scale: 4, 8, 12, 16, 24, 32, 48, 64, 96. Bento gap **16px**. Card padd
 - **Prompt box (hero centrepiece):** must be richer than the mockup. Use a large white card with an 18px textarea that auto-grows (2 to 8 rows). Its toolbar has:
   - attach (image or sketch)
   - a template picker
-  - a network toggle (`Celo` / `Alfajores`)
+  - a network toggle (`Celo Sepolia` / `Celo`; Alfajores was retired 30 Sep 2025, see P1)
   - example chips: `G$ savings circle`, `Community tip jar`, `Event tickets on Celo`
   - a `credits: 120 G$` hint
   - the violet `Build it` send button
