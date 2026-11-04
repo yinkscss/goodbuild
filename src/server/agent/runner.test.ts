@@ -142,6 +142,18 @@ describe("runTurn", { timeout: 120_000 }, () => {
     expect(String(requests.at(-1)!.messages.at(-1)!.content)).toMatch(/Reply to the user now/);
   });
 
+  it("asks for the reply again when the only reply came with a tool call", async () => {
+    const noop = { name: "edit_file", args: { path: "src/App.tsx", edits: [{ search: "export default", replace: "export default" }] } };
+    const { client } = scriptedModel([
+      { text: "Built it.\n\nWant a goal bar?", tools: [noop] },
+      {},
+      { text: "Built a tip page.\n\nWant a goal bar?" },
+    ]);
+    await runTurn({ db, model: client }, { projectId, userId, mode: "build", userMessageId: queuedId }, () => {});
+    const [assistant] = (await db.select().from(messages).where(eq(messages.projectId, projectId))).filter((m) => m.role === "assistant");
+    expect(assistant.content).toBe("Built a tip page.\n\nWant a goal bar?");
+  });
+
   it("reports the auto-fix result clearly in the step rows", async () => {
     const { client } = scriptedModel([
       { tools: [{ name: "create_file", args: { path: "contracts/TipJar.sol", content: BROKEN } }] },
