@@ -49,13 +49,14 @@ flowchart TD
 - Chat history stored per project (D8).
 
 ## 5. Multi-page apps
-- Template uses React Router: `src/routes.tsx` (route table), `src/layouts/AppLayout.tsx` (nav + wallet button + outlet), `src/pages/*.tsx`.
-- UI shows a page list from the route table; "Add page" or prompt "add a leaderboard page" → agent creates page, adds route + nav entry in one turn. Preview has a route switcher. Use HashRouter or SPA fallback for static hosting.
+- Implemented (P14): react-router-dom 6.30.6 with `HashRouter` (base dependency; the preview and static hosting have no server routes). Route table in `src/App.tsx`, pages in `src/pages/*.tsx`, shared `src/components/Layout.tsx` (nav, wallet button, outlet, footer). The `pages-and-routing` guide tells the agent to add page, route and nav link in one turn.
+- Not yet: a page list or route switcher in the preview toolbar (navigate inside the preview for now).
 
 ## 6. UI quality
 - **Design system:** shadcn/ui + Tailwind + React Bits (D7), pre-installed in the template so the model composes, not invents. Theme tokens as CSS variables (`--primary`, radius, font) in the brief; "make it greener" edits tokens, not components.
 - **Prompts:** component catalog (names + when to use) in system prompt; rules: mobile-first, accessible labels, loading/empty/error states for every contract call, no lorem ipsum.
 - **Starter (P13):** `src/App.tsx` is a layout-free placeholder the first build replaces, so the model designs the page for the request instead of copying a stock header and card. Helpers it composes: `lib/format.ts` (`formatAmount`, `errorMessage`), `lib/hooks.ts` (`useRead` for reads with loading/error, `useTx` for wallet writes), `ui/{skeleton,notice,textarea}` beside button, card, input, label, badge. Older projects get missing helpers backfilled (never overwritten) at the start of a turn. The system prompt's design rules ask for a layout that fits the app, real copy, a per-app accent colour in `public/index.html`, and one or two follow-up questions at the end of each build or plan reply. Fix passes are quiet and build-mode narration that comes with tool calls is dropped, so that reply stays last; a pass that runs out of tool rounds or shows nothing gets one more call for the reply, and no-op edits are reported to the model as no change.
+- **Guides (P14):** detailed front-end know-how lives in `src/server/agent/guides.ts` and is loaded on demand (via `set_plan`'s `guides` or `read_guide`), so the base prompt stays small. Websites without contracts are in scope (D20).
 - **Assets:** user uploads stored and referenced by URL; generated images via image model (optional); icons from lucide-react. No base64 blobs in code.
 - **Checks:** preview at 375px and 1280px; **screenshot self-review (optional)** using a vision model on a captured iframe (capture of Sandpack iframe e.g. html-to-image: feasibility UNVERIFIED). Lovable has browser testing with screenshots ([glossary](https://docs.lovable.dev/glossary)).
 

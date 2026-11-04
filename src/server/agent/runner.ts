@@ -195,6 +195,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
           const label = input.mode === "plan" ? null : toolLabel(call);
           if (label) step({ id: stepId, label, status: "running" });
           const outcome = ws.execute(call.name, call.arguments, input.mode);
+          if (outcome.guides?.length) log(`guides: ${outcome.guides.join(", ")}`);
           if (outcome.plan) {
             record.plan = outcome.plan;
             emit({ type: "plan", ...outcome.plan });
@@ -392,6 +393,8 @@ function toolLabel(call: ToolCall): string | null {
       return `Writing ${base}`;
     case "delete_file":
       return `Deleting ${base}`;
+    case "read_guide":
+      return `Reading the ${String(args.name ?? "")} guide`;
     case "rename_file":
       return `Renaming ${String(args.from ?? "").split("/").pop()}`;
     case "add_dependency":
