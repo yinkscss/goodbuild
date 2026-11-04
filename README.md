@@ -18,6 +18,8 @@ Documentation only (4 Nov 2026). No app code yet. Stage 1 MVP is dApps only.
 - [Roadmap](docs/ROADMAP.md): Stage 1, S5 weeks 1–12, growth plan, metrics
 - [Open questions](docs/OPEN_QUESTIONS.md): not final; input invited
 - [CLAUDE.md](CLAUDE.md): guidance for Claude Code in this repo
+- [Auth and wallets](docs/AUTH.md): Privy email/embedded + external wallets, SIWE, prompt gating (P5)
+- [Stage 1 build prompt](docs/BUILD_PROMPT_STAGE1.md): the prompt to hand Claude
 - [Design system](docs/DESIGN_SYSTEM.md): light bento UI (D12, fixed); landing reference in design/landing/index.html
 - [Credits system](docs/CREDITS.md): GoodBuild's own G$ credits (D11)
 - [GoodDollar AI credits (AntSeed)](docs/GOODDOLLAR_AI_CREDITS.md): researched, deferred

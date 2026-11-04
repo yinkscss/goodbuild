@@ -1,0 +1,69 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GoodBuild — dApps, described into existence</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+body{background:#F5F5F5;font-family:Inter,sans-serif;color:#111}
+.disp{font-family:Unbounded,sans-serif;letter-spacing:-.03em;line-height:.95}
+.card{background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(17,17,17,.03),0 18px 50px -24px rgba(89,46,129,.18)}
+.chip{background:#F3EEF8;color:#592E81;border-radius:999px}
+@keyframes draw{from{stroke-dashoffset:900}to{stroke-dashoffset:0}}
+.line{stroke-dasharray:900;animation:draw 2.4s ease-out forwards}
+@keyframes bob{50%{transform:translateY(-10px)}}.bob{animation:bob 6s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.35}}.pl{animation:pulse 1.6s infinite}
+</style></head><body>
+<header class="max-w-[1360px] mx-auto px-8 h-20 flex items-center justify-between relative">
+ <a class="flex items-center gap-2.5"><svg viewBox="0 0 32 32" class="w-8 h-8"><rect x="2" y="2" width="28" height="28" rx="9" fill="#592E81"/><path d="M21 12.5a6.5 6.5 0 1 0 0 7H16" stroke="#fff" stroke-width="2.6" stroke-linecap="round" fill="none"/><rect x="18.5" y="15" width="4" height="4" rx="1" fill="#FF85D9"/></svg><span class="font-semibold text-lg tracking-tight">GoodBuild</span></a>
+ <nav class="absolute left-1/2 -translate-x-1/2 flex gap-9 text-sm text-black/60"><a>Templates</a><a>How it works</a><a>Pricing in G$</a><a>Docs</a></nav>
+ <a class="bg-black text-white rounded-full px-6 py-3 text-sm font-medium flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-[#FF85D9]"></span>Connect wallet</a>
+</header>
+<main class="max-w-[1360px] mx-auto px-8">
+ <div class="grid grid-cols-[1fr_2.1fr_1fr] gap-4 h-[520px]">
+  <div class="card p-6 flex flex-col">
+   <div class="flex justify-between items-center"><p class="text-sm font-medium text-black/50">G$ deployed this week</p><span class="text-[11px] chip px-2 py-1 font-semibold">Live</span></div>
+   <p class="disp text-[40px] mt-4">2.48M</p><p class="text-sm text-[#592E81] font-medium mt-1">+31.6% vs last week</p>
+   <svg viewBox="0 0 300 180" preserveAspectRatio="none" class="mt-6 w-full flex-1"><defs><linearGradient id="f" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FF85D9" stop-opacity=".45"/><stop offset="1" stop-color="#FF85D9" stop-opacity="0"/></linearGradient></defs>
+    <g stroke="#000" stroke-opacity=".05"><path d="M0 45H300M0 90H300M0 135H300"/></g>
+    <path d="M0 150 C30 140 45 120 70 126 S110 96 135 104 S175 60 200 72 S245 30 270 38 L300 20 V180 H0Z" fill="url(#f)"/>
+    <path class="line" d="M0 150 C30 140 45 120 70 126 S110 96 135 104 S175 60 200 72 S245 30 270 38 L300 20" fill="none" stroke="#FF85D9" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="300" cy="20" r="5" fill="#FF85D9" class="pl"/></svg>
+   <div class="flex justify-between text-[11px] text-black/35 mt-2"><span>MON</span><span>WED</span><span>FRI</span><span>SUN</span></div>
+   <div class="border-t border-black/5 mt-5 pt-4 flex justify-between text-sm"><span class="text-black/50">Contracts compiled</span><b>14,902</b></div>
+  </div>
+  <div class="card relative overflow-hidden" style="background:radial-gradient(70% 70% at 50% 40%,#fff 0%,#EFE6F7 60%,#E2D2F0 100%)">
+   <div class="absolute inset-x-0 -top-4 flex justify-center"><img src="../landing/assets/hero-b.jpg" class="bob h-[430px] mix-blend-multiply" style="-webkit-mask-image:radial-gradient(closest-side,#000 70%,transparent 100%);mask-image:radial-gradient(closest-side,#000 70%,transparent 100%)" alt=""></div>
+   <div class="absolute top-6 left-6 chip px-3 py-1.5 text-xs font-semibold bg-white/70">AI dApp builder · Celo</div>
+   <div class="absolute bottom-0 inset-x-0 p-8"><h1 class="disp text-[58px] font-extrabold uppercase text-[#1a0d26]">Say it.<br>Sign it. <span class="text-[#592E81]">Ship it.</span></h1></div>
+  </div>
+  <div class="card p-6 flex flex-col">
+   <img src="../landing/assets/chrome-cube.jpg" class="w-[78%] mx-auto -mt-1 mix-blend-multiply" alt="">
+   <p class="text-xs uppercase tracking-[.18em] text-[#592E81] font-semibold mt-auto">Audited templates</p>
+   <h3 class="text-xl font-semibold mt-2 leading-snug">Every contract starts from battle-tested blocks.</h3>
+   <p class="text-sm text-black/55 mt-2">Savings circles, tip jars, ticketing and streaming G$ payouts — pre-audited, then shaped to your prompt.</p>
+  </div>
+ </div>
+ <div class="card mt-4 p-5 flex gap-6 items-stretch">
+  <div class="flex-1">
+   <textarea rows="2" class="w-full resize-none outline-none text-[18px] placeholder-black/35" placeholder="Describe the dApp you want to build…">A weekly G$ savings circle for 12 members. Everyone deposits 50 G$ every Friday and the pot rotates to one member each week.</textarea>
+   <div class="flex gap-2 text-[13px] font-medium mt-2"><button class="chip px-3.5 py-1.5">G$ savings circle</button><button class="chip px-3.5 py-1.5">Community tip jar</button><button class="chip px-3.5 py-1.5">Event tickets on Celo</button></div>
+  </div>
+  <div class="flex flex-col items-end justify-between"><span class="text-xs text-black/40">credits: <b class="text-black/70">120 G$</b></span>
+  <button class="flex items-center gap-2 bg-[#592E81] text-white rounded-full pl-5 pr-2 py-2 font-medium">Build it<span class="w-8 h-8 rounded-full bg-[#FF85D9] grid place-items-center"><svg width="14" height="14" fill="none" stroke="#1a0d26" stroke-width="2.4" stroke-linecap="round"><path d="M2 7h10M8 3l4 4-4 4"/></svg></span></button></div>
+ </div>
+ <section class="grid grid-cols-3 gap-4 mt-24">
+  <div class="col-span-3 flex justify-between items-end mb-6"><h2 class="disp text-[40px] uppercase font-bold max-w-[820px]">From sentence to smart contract in one sitting</h2><p class="max-w-sm text-black/55">You own the code and the keys. GoodBuild writes, tests and packages — your wallet does the signing.</p></div>
+  <div class="card p-8"><span class="disp text-[#FF85D9] text-2xl">01</span><h3 class="text-lg font-semibold mt-5">Describe</h3><p class="text-black/55 mt-2 text-sm">“A tip jar for our football club that splits G$ 70/30 between coach and kit fund.”</p></div>
+  <div class="card p-8"><span class="disp text-[#FF85D9] text-2xl">02</span><h3 class="text-lg font-semibold mt-5">Refine</h3><p class="text-black/55 mt-2 text-sm">Solidity and React appear side by side. Tweak with follow-ups, preview on Alfajores.</p></div>
+  <div class="card p-8 bg-[#592E81] text-white" style="background:#592E81"><span class="disp text-[#FF85D9] text-2xl">03</span><h3 class="text-lg font-semibold mt-5">Sign & deploy</h3><p class="text-white/70 mt-2 text-sm">One signature from your wallet puts it on Celo mainnet. Share the link, done.</p></div>
+ </section>
+ <footer class="flex justify-between text-sm text-black/40 py-14"><span>© 2026 GoodBuild · Made for the GoodDollar community</span><span>Celo · G$ · Open source templates</span></footer>
+</main><div class="fixed inset-0 z-50 bg-[#1a0d26]/25 backdrop-blur-[3px] flex items-center justify-center">
+<div class="w-[480px] bg-white rounded-[24px] p-7" style="box-shadow:0 2px 6px rgba(17,17,17,.04),0 40px 80px -30px rgba(89,46,129,.45)">
+ <div class="flex justify-between items-start"><div><p class="text-[11px] uppercase tracking-[.18em] text-[#592E81] font-semibold">One step before we build</p><h2 class="disp text-[26px] font-extrabold uppercase mt-2">Sign in to send</h2></div><button class="w-8 h-8 rounded-full bg-[#F5F5F5] text-black/50">✕</button></div>
+ <p class="text-sm text-black/55 mt-2">Your prompt is saved. We'll send it as soon as you're in.</p>
+ <div class="mt-5 rounded-2xl bg-[#F5F5F5] p-1.5 flex gap-1.5"><input class="flex-1 bg-transparent px-3 text-sm outline-none" value="ada@lagosbuilders.xyz"><button class="bg-black text-white rounded-full px-5 py-2.5 text-sm font-medium whitespace-nowrap">Continue with email</button></div>
+ <p class="text-[11px] text-black/40 mt-2 px-1">We'll email a 6-digit code and create a wallet for you. You can export the key at any time.</p>
+ <div class="flex items-center gap-3 my-5 text-[11px] uppercase tracking-[.18em] text-black/35"><span class="flex-1 h-px bg-black/5"></span>or connect a wallet<span class="flex-1 h-px bg-black/5"></span></div>
+ <div class="space-y-1"><button class="w-full flex items-center gap-3 px-3 py-3 rounded-2xl hover:bg-[#F3EEF8] bg-[#F7F7F7]"><span class="w-9 h-9 rounded-xl grid place-items-center text-white font-bold text-sm" style="background:#F6851B">M</span><span class="text-left flex-1"><span class="block text-sm font-semibold">MetaMask</span><span class="block text-xs text-black/45">Browser extension</span></span><span class='text-[11px] chip px-2 py-0.5 font-semibold'>Detected</span></button><button class="w-full flex items-center gap-3 px-3 py-3 rounded-2xl hover:bg-[#F3EEF8] "><span class="w-9 h-9 rounded-xl grid place-items-center text-white font-bold text-sm" style="background:#35D07F">V</span><span class="text-left flex-1"><span class="block text-sm font-semibold">MiniPay / Valora</span><span class="block text-xs text-black/45">Celo mobile wallets</span></span><span class='text-black/30'>›</span></button><button class="w-full flex items-center gap-3 px-3 py-3 rounded-2xl hover:bg-[#F3EEF8] "><span class="w-9 h-9 rounded-xl grid place-items-center text-white font-bold text-sm" style="background:#3B99FC">W</span><span class="text-left flex-1"><span class="block text-sm font-semibold">WalletConnect</span><span class="block text-xs text-black/45">Scan with any wallet</span></span><span class='text-black/30'>›</span></button><button class="w-full flex items-center gap-3 px-3 py-3 rounded-2xl hover:bg-[#F3EEF8] "><span class="w-9 h-9 rounded-xl grid place-items-center text-white font-bold text-sm" style="background:#0052FF">C</span><span class="text-left flex-1"><span class="block text-sm font-semibold">Coinbase Wallet</span><span class="block text-xs text-black/45">Extension or app</span></span><span class='text-black/30'>›</span></button></div>
+ <p class="text-[11px] text-black/40 mt-5 text-center">By continuing you confirm you're 18+ and not a US person. Signing in is free and gasless.</p>
+</div></div></body></html>

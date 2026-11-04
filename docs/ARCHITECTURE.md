@@ -15,6 +15,8 @@ Detail docs: [AI agent](AI_AGENT.md) · [Contracts and deployment](CONTRACTS_AND
 8. **Project store**: DB of projects, versions/checkpoints, chat history, deployments, wallet→projects (D8).
 9. **Interaction panel**: auto-generated from the ABI after deploy; generated front end wired to the address.
 
+9. **Auth gate** ([AUTH.md](AUTH.md)): Send requires a connected wallet and a SIWE session. A pending prompt is preserved across the connect modal. The server checks the session on every agent, compile and credit call.
+
 ## Data flow
 ```mermaid
 flowchart LR
@@ -46,7 +48,7 @@ flowchart LR
 | Generated apps | React + Vite template, shadcn/ui + React Bits (D7) |
 | Preview | Sandpack |
 | Contracts | solc-js in browser; OpenZeppelin imports |
-| Wallet | wagmi/viem + a social-login wallet (thirdweb or Privy; Celo support UNVERIFIED) |
+| Wallet / auth | Privy (email embedded wallet + external wallets) on wagmi/viem, SIWE session cookie; fallback thirdweb. See [AUTH.md](AUTH.md) (P5) |
 | Identity | `@goodsdks/citizen-sdk` |
 | DB | Postgres |
 | Models | LiteLLM proxy with per-user budgets, or GoodDollar AI credits |
