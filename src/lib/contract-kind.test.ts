@@ -13,5 +13,7 @@ describe("inferKind", () => {
     expect(inferKind({ text: "Class poll" })).toBe("vote");
     expect(inferKind({ text: "Meetup attendance badges" })).toBe("badges");
     expect(inferKind({ text: "Co-op grain fund" })).toBe("custom");
+    expect(inferKind({ text: "A landing page for my coffee shop in Lagos" })).toBe("site");
+    expect(inferKind({ text: "A landing page for our tip jar" })).toBe("tips");
   });
 });

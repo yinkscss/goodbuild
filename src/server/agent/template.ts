@@ -22,13 +22,14 @@ export const ALLOWED_DEPENDENCIES: Record<string, string> = {
   clsx: "2.1.1",
   "tailwind-merge": "3.7.0",
   "class-variance-authority": "0.7.1",
+  "react-router-dom": "6.30.6",
   // Optional, added on request via add_dependency:
   "date-fns": "4.1.0",
   "canvas-confetti": "1.9.3",
   "qrcode.react": "4.2.0",
 };
 
-export const BASE_DEPENDENCIES = ["react", "react-dom", "viem", "lucide-react", "clsx", "tailwind-merge", "class-variance-authority"];
+export const BASE_DEPENDENCIES = ["react", "react-dom", "react-router-dom", "viem", "lucide-react", "clsx", "tailwind-merge", "class-variance-authority"];
 
 export function packageJson(deps: string[]): string {
   const dependencies = Object.fromEntries(
@@ -49,15 +50,19 @@ const INDEX_HTML = `<!doctype html>
         --color-foreground: #0f172a;
         --color-muted: #f1f5f9;
         --color-muted-foreground: #64748b;
+        --color-card: #ffffff;
         --color-border: #e2e8f0;
+        --color-ring: #592e81;
         --color-primary: #0f172a;
         --color-primary-foreground: #ffffff;
         --color-accent: #592e81;
+        --color-accent-foreground: #ffffff;
         --color-success: #059669;
         --color-warning: #d97706;
         --color-danger: #dc2626;
         --radius-lg: 0.75rem;
         --font-sans: Inter, ui-sans-serif, system-ui, sans-serif;
+        --font-display: Inter, ui-sans-serif, system-ui, sans-serif;
       }
     </style>
   </head>
@@ -347,14 +352,14 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "../../lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium transition-colors disabled:pointer-events-none disabled:opacity-50",
+  "inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:pointer-events-none disabled:opacity-50",
   {
     variants: {
       variant: {
         default: "bg-primary text-primary-foreground hover:opacity-90",
         outline: "border border-border bg-background hover:bg-muted",
         ghost: "hover:bg-muted",
-        accent: "bg-accent text-white hover:opacity-90",
+        accent: "bg-accent text-accent-foreground hover:opacity-90",
       },
       size: { default: "h-9 px-4", sm: "h-8 px-3 text-xs", lg: "h-11 px-6" },
     },
@@ -373,7 +378,7 @@ const CARD = `import * as React from "react";
 import { cn } from "../../lib/utils";
 
 export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("rounded-lg border border-border bg-background shadow-sm", className)} {...props} />;
+  return <div className={cn("rounded-lg border border-border bg-card shadow-sm", className)} {...props} />;
 }
 export function CardHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return <div className={cn("p-5 pb-2", className)} {...props} />;

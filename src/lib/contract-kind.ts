@@ -2,7 +2,7 @@
  * What kind of dApp a project is, for card tiles and (later) agent template choice.
  * Taken from the template when one was picked, otherwise inferred from the name or prompt.
  */
-export type ContractKind = "savings" | "tips" | "tickets" | "crowdfund" | "vote" | "badges" | "token" | "escrow" | "custom";
+export type ContractKind = "savings" | "tips" | "tickets" | "crowdfund" | "vote" | "badges" | "token" | "escrow" | "site" | "custom";
 
 export const KIND_LABEL: Record<ContractKind, string> = {
   savings: "Savings circle",
@@ -13,6 +13,7 @@ export const KIND_LABEL: Record<ContractKind, string> = {
   badges: "NFT badges",
   token: "Token",
   escrow: "Escrow",
+  site: "Website",
   custom: "Custom dApp",
 };
 
@@ -35,6 +36,8 @@ const RULES: Array<[ContractKind, RegExp]> = [
   ["badges", /\b(badges?|poap|attendance|certificates?|nfts?|soulbound)\b/i],
   ["escrow", /\b(escrow|milestones?)\b/i],
   ["token", /\b(token|erc-?20|coin)\b/i],
+  // Last, so "a landing page for my tip jar" is still a tip jar.
+  ["site", /\b(landing ?page|website|web ?site|portfolio|home ?page|blog)\b/i],
 ];
 
 export function inferKind(input: { templateId?: string | null; text?: string | null }): ContractKind {

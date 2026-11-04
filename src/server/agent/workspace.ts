@@ -1,5 +1,6 @@
 import { MAX_FILES, MAX_FILE_BYTES, pathProblem } from "./checks";
 import { applyEdits, diffStat, unifiedDiff, type SearchReplace } from "./edits";
+import { loadGuides } from "./guides";
 import { ALLOWED_DEPENDENCIES, dependenciesOf, packageJson } from "./template";
 
 import type { FileChange } from "@/lib/turn-types";
@@ -12,6 +13,8 @@ export interface ToolOutcome {
   ok: boolean;
   change?: FileChange;
   plan?: { summary: string; steps: string[] };
+  /** Guides returned to the model by this call (for the build log). */
+  guides?: string[];
 }
 
 /**
@@ -62,7 +65,15 @@ export class Workspace {
       case "set_plan": {
         const summary = String(args.summary ?? "").slice(0, 400);
         const steps = Array.isArray(args.steps) ? args.steps.map((s) => String(s).slice(0, 160)).slice(0, 8) : [];
-        return { ok: true, result: "Plan noted.", plan: { summary, steps } };
+        if (args.guides === undefined || (Array.isArray(args.guides) && !args.guides.length)) {
+          return { ok: true, result: "Plan noted.", plan: { summary, steps } };
+        }
+        const g = loadGuides(args.guides);
+        return { ok: true, result: `Plan noted. Guides for this work:\n\n${g.text}`, plan: { summary, steps }, guides: g.loaded };
+      }
+      case "read_guide": {
+        const g = loadGuides(args.name);
+        return { ok: g.loaded.length > 0, result: g.text || "Error: give a guide name.", guides: g.loaded };
       }
       case "list_files":
         return {
