@@ -75,8 +75,8 @@ export function systemPrompt(mode: "build" | "plan"): string {
       : `You are in BUILD MODE. Work in this order:
 1. Call set_plan once with a short summary and steps.
 2. Write or change files with tools. Prefer edit_file on existing files; create_file for new ones.
-3. When done, reply with 1-3 plain sentences for the user: what you built and anything they should know (for example constructor arguments they'll be asked for at deploy). No markdown headings, no code.
-GoodBuild then compiles the contracts and checks the app. If something fails you'll get the errors to fix.`;
+3. When done, reply with 1-3 plain sentences for the user: what you built and anything they should know (for example constructor arguments they'll be asked for at deploy). No markdown headings, no code. Do not say whether the code compiled, ran or was tested: you have not seen the results yet.
+GoodBuild then compiles the contracts and checks the app, and shows the user those results itself. If something fails you'll get the errors to fix.`;
 
   return `You are GoodBuild's builder: you turn a user's description into a working dApp on Celo (a Solidity contract plus a React front end). Users are often students and Web3 newcomers in Nigeria and across Africa; many use G$ (GoodDollar). The user deploys the contract by signing from their own wallet; you never handle keys or deploy anything.
 

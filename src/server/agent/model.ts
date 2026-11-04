@@ -20,7 +20,7 @@ const KEY_NAME: Record<ModelTier, string> = { strong: "ANTHROPIC_API_KEY", cheap
 /** OpenAI-style chat messages, the shape the runner builds. Converted to AI SDK messages inside the client. */
 export type ChatMessage =
   | { role: "system"; content: string }
-  | { role: "user"; content: string }
+  | { role: "user"; content: string; /** Stable prefix up to here: let Anthropic cache it for the rest of the turn. */ cache?: boolean }
   | {
       role: "assistant";
       content: string | null;
@@ -174,7 +174,7 @@ export function toSdkMessages(input: ChatMessage[]): { system: ModelMessage[]; m
     if (m.role === "system") {
       system.push({ role: "system", content: m.content, providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } } });
     } else if (m.role === "user") {
-      messages.push({ role: "user", content: m.content });
+      messages.push({ role: "user", content: m.content, ...(m.cache ? { providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } } } : {}) });
     } else if (m.role === "assistant") {
       const parts: Extract<ModelMessage, { role: "assistant" }>["content"] = [];
       if (m.content) parts.push({ type: "text", text: m.content });

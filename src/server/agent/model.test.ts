@@ -120,6 +120,16 @@ describe("aiSdkClient", () => {
 });
 
 describe("toSdkMessages", () => {
+  it("marks only the flagged user message for Anthropic caching", () => {
+    const { messages } = toSdkMessages([
+      { role: "user", content: "old" },
+      { role: "user", content: "project context", cache: true },
+    ]);
+    expect(messages[0]).toEqual({ role: "user", content: "old" });
+    expect(messages[1]).toMatchObject({ role: "user", providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } } });
+  });
+
+
   it("round-trips an assistant tool call and its result", () => {
     const convo: ChatMessage[] = [
       { role: "system", content: "sys" },

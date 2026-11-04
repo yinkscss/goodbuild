@@ -113,7 +113,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     const convo: ChatMessage[] = [
       { role: "system", content: systemPrompt(input.mode) },
       ...history,
-      { role: "user", content: contextMessage({ files: ws.files, request }) },
+      { role: "user", content: contextMessage({ files: ws.files, request }), cache: true },
     ];
     const tools = input.mode === "plan" ? PLAN_TOOLS : BUILD_TOOLS;
 
