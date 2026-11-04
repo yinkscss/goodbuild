@@ -12,7 +12,7 @@ export type ModelTier = "strong" | "cheap";
  * Which tier each kind of work uses (D19). DeepSeek writes the first pass; Claude fixes what
  * the checks reject. Moving follow-up edits to Claude later is one line: build for edits.
  */
-export const TIER_FOR = { plan: "cheap", build: "cheap", fix: "strong", testFix: "cheap", vision: "strong" } as const satisfies Record<string, ModelTier>;
+export const TIER_FOR = { plan: "cheap", build: "cheap", fix: "strong", testFix: "cheap" } as const satisfies Record<string, ModelTier>;
 /** `testFix`: first auto-fix attempt when every failing check is a contract test (D19 amendment). Later attempts use `fix`. */
 
 export const MODEL_IDS: Record<ModelTier, string> = { strong: "claude-sonnet-5-5", cheap: "deepseek-flash" };
@@ -181,7 +181,7 @@ export function toSdkMessages(input: ChatMessage[]): { system: ModelMessage[]; m
       const content =
         typeof m.content === "string"
           ? m.content
-          : m.content.map((p) => (p.type === "text" ? { type: "text" as const, text: p.text } : { type: "image" as const, image: p.data, mediaType: p.mediaType }));
+          : m.content.map((p) => (p.type === "text" ? { type: "text" as const, text: p.text } : { type: "file" as const, data: p.data, mediaType: p.mediaType }));
       messages.push({ role: "user", content, ...(m.cache ? { providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } } } : {}) });
     } else if (m.role === "assistant") {
       const parts: Extract<ModelMessage, { role: "assistant" }>["content"] = [];

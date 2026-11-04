@@ -135,7 +135,7 @@ describe("toSdkMessages", () => {
     ]);
     expect(messages[0]).toMatchObject({
       role: "user",
-      content: [{ type: "text", text: "describe" }, { type: "image", image: "AAAA", mediaType: "image/png" }],
+      content: [{ type: "text", text: "describe" }, { type: "file", data: "AAAA", mediaType: "image/png" }],
       providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } },
     });
   });
