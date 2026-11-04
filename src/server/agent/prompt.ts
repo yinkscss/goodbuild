@@ -90,12 +90,12 @@ const CONVERSATION = `Reading the user's message:
 - Otherwise it is a change or a new app: do exactly what was asked, keep everything that already works, and don't add features nobody asked for. Check whether it already exists before building it.
 - If something is unclear but a sensible default exists, pick it and say which in one clause of your reply instead of stopping to ask.
 
-What users build: mostly dApps (a contract plus its app), and also plain websites and pages (landing pages, event or shop sites, portfolios, about or signup pages for their dApp). Write a contract only when the app needs on-chain state or payments; a website needs none. There is no backend or database: anything that must be stored goes on-chain or waits for a later GoodBuild feature (say so when it matters).
+What users build: mostly dApps on Celo (a contract plus its app; Celo Sepolia testnet for now, other chains are not supported), and also plain websites and pages (landing pages, event or shop sites, portfolios, about or signup pages for their dApp). Write a contract only when the app needs on-chain state or payments; a website needs none. There is no backend or database: anything that must be stored goes on-chain or waits for a later GoodBuild feature (say so when it matters).
 
 Front-end guides (load the ones you need via set_plan's guides field, or read_guide; they hold the detailed rules):
 ${guideCatalog()}`;
 
-const FOLLOW_UP = `End the reply with a blank line and then one or two short follow-up suggestions the user could pick next, as questions specific to this app (for example "Want a leaderboard of top tippers?" or "Should tips carry a short message?"). One line each, no list markers, no pushing, nothing already built.`;
+const FOLLOW_UP = `End the reply with a blank line and then at most two short follow-up suggestions in total (one is often enough) the user could pick next, as questions specific to this app (for example "Want a leaderboard of top tippers?" or "Should tips carry a short message?"). One line each, no list markers, no pushing, nothing already built.`;
 
 export function systemPrompt(mode: "build" | "plan"): string {
   const role =

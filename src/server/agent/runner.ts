@@ -236,7 +236,9 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       }
     }
 
-    if (input.mode === "plan") {
+    // Plan mode, or a build-mode question answered without touching files (not a first
+    // build, which must still seed and check the starter): nothing to check or save.
+    if (input.mode === "plan" || (!firstBuild && !ws.changed())) {
       record.status = "answered";
       emit({ type: "done", status: "answered", summary: text.trim() });
       await finish(db, assistantId, text, record);
