@@ -61,8 +61,8 @@ export function sanitizeSvg(text: string): { ok: true; svg: string } | { ok: fal
     .replace(/<!DOCTYPE[^>]*>/gi, "")
     // Event handlers: onload="...", onclick='...', onfocus=bare
     .replace(/\s+on[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "");
-  // Every href/src must be a fragment or an embedded raster image.
-  const refs = [...svg.matchAll(/\s(?:xlink:)?(?:href|src)\s*=\s*("([^"]*)"|'([^']*)')/gi)].map((m) => (m[2] ?? m[3] ?? "").trim());
+  // Every href/src must be a fragment or an embedded raster image (quoted or not).
+  const refs = [...svg.matchAll(/\s(?:xlink:)?(?:href|src)\s*=\s*("([^"]*)"|'([^']*)'|([^\s>]+))/gi)].map((m) => (m[2] ?? m[3] ?? m[4] ?? "").trim());
   if (refs.some((r) => !(r.startsWith("#") || /^data:image\/(png|jpeg|webp);base64,/i.test(r)))) {
     return { ok: false, error: "SVGs that link to external files aren't accepted. Embed or remove the linked images." };
   }

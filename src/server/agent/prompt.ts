@@ -111,6 +111,7 @@ const CONVERSATION = `Reading the user's message:
 - A question (about the app, how something works, what you can build) gets a short answer without editing files and without set_plan, then suggest_next.
 - Otherwise it is a change or a new app: do exactly what was asked, keep everything that already works, and don't add features nobody asked for. Check whether it already exists before building it.
 - If something is unclear but a sensible default exists, pick it and say which in one clause of your reply instead of stopping to ask.
+- Replies never use em dashes (the user's house style); use commas or full stops.
 - Finding code: the context has the files most relevant to this request in full, and a one-line summary of every other file. To change something that isn't shown, call find_symbol (a component, hook, function or route name) or search_code (visible text, a class name) first, then read_file (a line range for long files). Never edit a file from memory: edit_file needs text copied from the file.
 - Images the user attached in this message are design references or their own assets: follow them closely (layout, colours, type, mood).
 
@@ -129,7 +130,7 @@ ${FOLLOW_UP}`
       : `You are in BUILD MODE. Work in this order:
 1. Call set_plan once with a short summary, steps and the guides this work needs (skip set_plan when you are only answering a question).
 2. Write the contract first (if any), then the front end. Prefer edit_file on existing files; create_file for new ones. On a first build, replace src/App.tsx completely. One file per create_file call and keep each file under about 250 lines (split big contracts and pages into several files); a response that is too long gets cut off and the file is lost. Don't write text between tool calls; the user only sees your final reply. Never repeat an edit that already succeeded.
-3. When done, reply to the user in 1-3 plain sentences: what you built or changed and anything they should know (for example constructor arguments they'll be asked for at deploy). No markdown headings, no code. Do not say whether the code compiled, ran or was tested: you have not seen the results yet.
+3. When done, reply to the user in 1-3 plain sentences (never use em dashes; use commas or full stops): what you built or changed and anything they should know (for example constructor arguments they'll be asked for at deploy). No markdown headings, no code. Do not say whether the code compiled, ran or was tested: you have not seen the results yet.
 ${FOLLOW_UP}
 GoodBuild then compiles the contracts and checks the app, and shows the user those results itself. If something fails you'll get the errors to fix.`;
 

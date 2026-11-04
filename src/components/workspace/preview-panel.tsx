@@ -14,6 +14,8 @@ import { Monitor, RotateCw, ShieldAlert, Smartphone, Wrench } from "lucide-react
 
 import { LogoMark } from "@/components/brand/logo";
 import { Button } from "@/components/ui/button";
+import { isInfraError, previewFixPrompt, type PreviewError } from "@/lib/preview-errors";
+import { CAPTURE_DEPENDENCY, CAPTURE_ENTRY, CAPTURE_FILES, capturePreview } from "./preview-capture";
 import { cn } from "@/lib/utils";
 
 type Tab = "preview" | "code" | "contract";
@@ -52,12 +54,7 @@ const theme: SandpackTheme = {
   },
 };
 
-export interface PreviewError {
-  title: string;
-  message: string;
-  path?: string;
-  line?: number;
-}
+export type { PreviewError };
 
 /**
  * Files Sandpack bundles: everything except contracts (shown in the Contract tab). Uploaded
@@ -73,7 +70,8 @@ export function toSandpack(files: Record<string, string>, assetUrls: Record<stri
     if (p.startsWith("contracts/")) continue;
     out[`/${p}`] = re && c.includes("/assets/") ? c.replace(re, (_m, name: string) => assetUrls[name]) : c;
   }
-  return out;
+  // The screenshot helper for the visual check: preview only, never saved with the project.
+  return { ...out, ...CAPTURE_FILES };
 }
 
 function dependencies(files: Record<string, string>): Record<string, string> {
@@ -91,9 +89,16 @@ export function PreviewPanel({
   contracts,
   onFix,
   fixDisabled,
+  onRuntimeError,
+  checkVersion,
+  onCaptured,
 }: {
   files: Record<string, string>;
   assetUrls?: Record<string, string>;
+  onRuntimeError?: (error: PreviewError) => void;
+  /** The version to screenshot once it renders (the build this browser just finished). */
+  checkVersion?: number | null;
+  onCaptured?: (shot: { url: string; width: number }, version: number) => void;
   version: number;
   contracts: Array<{ name: string; file: string; bytecodeBytes: number }>;
   onFix: (prompt: string) => void;
@@ -101,6 +106,7 @@ export function PreviewPanel({
 }) {
   const [tab, setTab] = React.useState<Tab>("preview");
   const [device, setDevice] = React.useState<"desktop" | "mobile">("desktop");
+  const frameRef = React.useRef<HTMLDivElement>(null);
   const hasApp = "src/App.tsx" in files;
   const sandpackFiles = React.useMemo(() => toSandpack(files, assetUrls), [files, assetUrls]);
   const deps = React.useMemo(() => dependencies(files), [files]);
@@ -149,7 +155,7 @@ export function PreviewPanel({
         template="react-ts"
         theme={theme}
         files={sandpackFiles}
-        customSetup={{ entry: "/src/main.tsx", dependencies: deps }}
+        customSetup={{ entry: CAPTURE_ENTRY, dependencies: { ...deps, ...CAPTURE_DEPENDENCY } }}
         options={{
           activeFile: "/src/App.tsx",
           visibleFiles: visible,
@@ -160,7 +166,7 @@ export function PreviewPanel({
         <Toolbar tabs={tabs} tab={tab} device={device} setDevice={setDevice} />
         <div className="gb-sandpack mt-3 min-h-0 flex-1 overflow-hidden rounded-block bg-canvas">
           <div className={cn("h-full", tab !== "preview" && "hidden")}>
-            <div className={cn("relative mx-auto h-full transition-[max-width] duration-200 ease-gb", device === "mobile" ? "max-w-[390px] py-3" : "max-w-none")}>
+            <div ref={frameRef} className={cn("relative mx-auto h-full transition-[max-width] duration-200 ease-gb", device === "mobile" ? "max-w-[390px] py-3" : "max-w-none")}>
               <PreviewCover rounded={device === "mobile"} />
               <SandpackPreview
                 className={cn("!h-full overflow-hidden bg-surface", device === "mobile" ? "rounded-[24px] shadow-card" : "")}
@@ -178,7 +184,8 @@ export function PreviewPanel({
           )}
           {tab === "contract" && <ContractView files={files} solFiles={solFiles} contracts={contracts} />}
         </div>
-        <ErrorWatcher onFix={onFix} fixDisabled={fixDisabled} />
+        <ErrorWatcher onFix={onFix} fixDisabled={fixDisabled} onRuntimeError={onRuntimeError} />
+        {onCaptured && <VisualCheckRunner version={version} checkVersion={checkVersion ?? null} visible={tab === "preview"} container={frameRef} onCaptured={onCaptured} />}
       </SandpackProvider>
     </section>
   );
@@ -278,15 +285,80 @@ function Toolbar({
 }
 
 /** Sandpack compile and runtime errors, with a "Fix it" that sends them to the agent (AI_AGENT.md §7). */
-function ErrorWatcher({ onFix, fixDisabled }: { onFix: (prompt: string) => void; fixDisabled: boolean }) {
+/**
+ * The visual check (P17): once the bundle for the version just built renders without an error,
+ * wait for it to settle, capture it from inside the iframe (preview-capture.ts) and hand the PNG
+ * to the workspace, which asks the vision model for visible defects. Once per version.
+ */
+function VisualCheckRunner({
+  version,
+  checkVersion,
+  visible,
+  container,
+  onCaptured,
+}: {
+  version: number;
+  checkVersion: number | null;
+  visible: boolean;
+  container: React.RefObject<HTMLDivElement | null>;
+  onCaptured: (shot: { url: string; width: number }, version: number) => void;
+}) {
+  const { listen } = useSandpack();
+  const [rendered, setRendered] = React.useState(false);
+  const done = React.useRef<number | null>(null);
+  const captured = React.useRef(onCaptured);
+  React.useEffect(() => {
+    captured.current = onCaptured;
+  }, [onCaptured]);
+
+  React.useEffect(
+    () =>
+      listen((msg) => {
+        if (msg.type === "action" && msg.action === "show-error") setRendered(false);
+        else if (msg.type === "success" || (msg.type === "done" && !(msg as { compilatonError?: boolean }).compilatonError)) setRendered(true);
+      }),
+    [listen],
+  );
+
+  React.useEffect(() => {
+    if (!rendered || !visible || checkVersion !== version || done.current === version) return;
+    const timer = window.setTimeout(() => {
+      const iframe = container.current?.querySelector<HTMLIFrameElement>("iframe");
+      if (!iframe || iframe.clientWidth < 200) return;
+      done.current = version;
+      capturePreview(iframe)
+        .then((shot) => captured.current({ url: shot.url, width: shot.width }, version))
+        .catch(() => undefined); // best effort: no screenshot, no check
+    }, 2500);
+    return () => window.clearTimeout(timer);
+  }, [rendered, visible, checkVersion, version, container]);
+  return null;
+}
+
+function ErrorWatcher({
+  onFix,
+  fixDisabled,
+  onRuntimeError,
+}: {
+  onFix: (prompt: string) => void;
+  fixDisabled: boolean;
+  /** Called once per error shown; the workspace decides whether to auto-fix. */
+  onRuntimeError?: (error: PreviewError) => void;
+}) {
   const { listen } = useSandpack();
   const [error, setError] = React.useState<PreviewError | null>(null);
+  const report = React.useRef(onRuntimeError);
+  React.useEffect(() => {
+    report.current = onRuntimeError;
+  }, [onRuntimeError]);
 
   React.useEffect(() => {
     return listen((msg) => {
       if (msg.type === "action" && msg.action === "show-error") {
         const m = msg as unknown as PreviewError;
-        setError({ title: m.title, message: m.message, path: m.path, line: m.line });
+        const e = { title: m.title, message: m.message, path: m.path, line: m.line };
+        setError(e);
+        if (!isInfraError(e)) report.current?.(e);
       } else if (msg.type === "success") {
         setError(null);
       }
@@ -309,7 +381,7 @@ function ErrorWatcher({ onFix, fixDisabled }: { onFix: (prompt: string) => void;
         size="sm"
         disabled={fixDisabled}
         onClick={() => {
-          onFix(`The preview shows this error${where}. Fix it:\n${error.title}\n${error.message}`);
+          onFix(previewFixPrompt(error, false));
           setError(null);
         }}
       >

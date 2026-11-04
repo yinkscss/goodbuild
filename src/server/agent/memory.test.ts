@@ -21,7 +21,9 @@ describe("updateMemory", () => {
     const m = await updateMemory(client, null, convo(HISTORY_WINDOW + 2), (ev) => void usage.push(ev.model));
     expect(m).toEqual({ summary: "A G$ tip jar for a club.", decisions: ["Minimum tip 5 G$", "Brand colour #0f766e"], upTo: 2 });
     expect(requests[0].tier).toBe("cheap");
-    expect(String(requests[0].messages[1].content)).toContain("Tips must be at least 5 G$");
+    expect(String(requests[0].messages[1].content)).toContain("USER (turn 1): Tips must be at least 5 G$");
+    expect(String(requests[0].messages[1].content)).toContain("ASSISTANT (turn 1): message 1");
+    expect(String(requests[0].messages[0].content)).toContain("[tN]");
     expect(usage).toEqual(["deepseek-flash"]);
     // Already folded: no new call.
     const again = await updateMemory(client, m, convo(HISTORY_WINDOW + 2), () => undefined);
@@ -31,7 +33,7 @@ describe("updateMemory", () => {
   it("keeps the user's words when the model reply can't be parsed", async () => {
     const { client } = scriptedModel([{ text: "Sorry, I can't." }]);
     const m = await updateMemory(client, { summary: "", decisions: ["Keep it green"], upTo: 0 }, convo(HISTORY_WINDOW + 1), () => undefined);
-    expect(m.summary).toContain("User asked: Tips must be at least 5 G$");
+    expect(m.summary).toContain("User asked (turn 1): Tips must be at least 5 G$");
     expect(m.decisions).toEqual(["Keep it green"]);
     expect(m.upTo).toBe(1);
   });
@@ -44,7 +46,7 @@ describe("memory text", () => {
     expect(parseMemory("{}")).toBeNull();
   });
   it("renders decisions as rules to follow", () => {
-    expect(memoryBlock({ summary: "Built a jar.", decisions: ["Minimum tip 5 G$"], upTo: 2 })).toContain("still in force; follow them):\n- Minimum tip 5 G$");
+    expect(memoryBlock({ summary: "Built a jar.", decisions: ["Minimum tip 5 G$"], upTo: 2 })).toContain("1 = their first message):\n- Minimum tip 5 G$");
     expect(memoryBlock(null)).toBe("");
   });
 });

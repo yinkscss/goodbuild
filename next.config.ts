@@ -5,7 +5,8 @@ const nextConfig: NextConfig = {
   cacheComponents: true,
   // Loaded from node_modules at runtime, not bundled: PGlite resolves its WASM and data
   // files relative to its own package, which bundling breaks on restart.
-  serverExternalPackages: ["@electric-sql/pglite", "solc"],
+  // jsdom (with DOMPurify, for SVG uploads) reads its own data files at runtime too.
+  serverExternalPackages: ["@electric-sql/pglite", "solc", "jsdom", "dompurify"],
   partialPrefetching: true,
   turbopack: {
     rules: {

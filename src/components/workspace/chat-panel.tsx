@@ -1,14 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { ArrowUp, ImageIcon, ImagePlus, Loader2, X } from "lucide-react";
+import { ArrowUp, Loader2 } from "lucide-react";
 
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { formatMicroUsd } from "@/lib/pricing";
 import type { AssetInfo, AssetKind } from "@/server/agent/assets";
 import { isSubmitShortcut } from "@/lib/prompt";
 import type { TurnMode, TurnRecord } from "@/lib/turn-types";
 import { cn } from "@/lib/utils";
+import { AssetBar, AttachMenu, imageFiles } from "./asset-bar";
 import { TurnView } from "./turn-view";
 import type { UseWorkspace } from "./use-workspace";
 
@@ -66,6 +66,7 @@ export function ChatPanel({ ws, assetUrls = {} }: { ws: UseWorkspace; assetUrls?
               onFix={() => send(FIX_PROMPT, "build")}
               fixDisabled={running}
               onSuggest={!live && canSuggest && m.id === lastAssistantId ? suggest : undefined}
+              checking={m.id === lastAssistantId && ws.checking}
             />
           );
         })}
@@ -98,6 +99,7 @@ export function ChatPanel({ ws, assetUrls = {} }: { ws: UseWorkspace; assetUrls?
         assetUrls={assetUrls}
         onUpload={ws.upload}
         onRemove={ws.removeAsset}
+        onChangeKind={ws.changeAssetKind}
         uploading={ws.uploading}
         running={running}
         estimate={state.estimate}
@@ -110,107 +112,12 @@ export function ChatPanel({ ws, assetUrls = {} }: { ws: UseWorkspace; assetUrls?
   );
 }
 
-const KIND_LABEL: Record<AssetKind, string> = { logo: "Logo", image: "Image", reference: "Design reference" };
-const KIND_HELP: Record<AssetKind, string> = {
-  logo: "Shown in the header and as the favicon; colours come from it",
-  image: "A photo or illustration to use on the site",
-  reference: "A screenshot or mockup to match (not shown in the app)",
-};
-
-/** Uploaded files as chips above the composer, with the attach menu (DESIGN_SYSTEM §3 prompt box). */
-function AssetBar({
-  assets,
-  assetUrls,
-  onRemove,
-}: {
-  assets: AssetInfo[];
-  assetUrls: Record<string, string>;
-  onRemove: (id: string) => void;
-}) {
-  if (!assets.length) return null;
-  return (
-    <ul className="mb-3 flex flex-wrap gap-2" aria-label="Uploaded files">
-      {assets.map((a) => (
-        <li key={a.id} className="flex items-center gap-2 rounded-full bg-tint py-1 pr-1.5 pl-1 text-[13px] font-medium text-violet" title={a.description || a.name}>
-          {assetUrls[a.name] ? (
-            // eslint-disable-next-line @next/next/no-img-element -- a data URL thumbnail
-            <img src={assetUrls[a.name]} alt="" className="size-6 rounded-full bg-surface object-cover" />
-          ) : (
-            <ImageIcon className="size-4" aria-hidden />
-          )}
-          <span className="max-w-[9rem] truncate">{a.name}</span>
-          <span className="text-[11px] font-normal text-grey-600">{KIND_LABEL[a.kind]}</span>
-          <button
-            type="button"
-            onClick={() => onRemove(a.id)}
-            aria-label={`Remove ${a.name}`}
-            className="grid size-5 place-items-center rounded-full text-grey-600 outline-none hover:bg-surface hover:text-violet focus-visible:shadow-focus"
-          >
-            <X className="size-3" aria-hidden />
-          </button>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-function AttachMenu({ onUpload, uploading }: { onUpload: (file: File, kind: AssetKind) => void; uploading: boolean }) {
-  const input = React.useRef<HTMLInputElement>(null);
-  const kind = React.useRef<AssetKind>("image");
-  return (
-    <>
-      <input
-        ref={input}
-        type="file"
-        accept="image/png,image/jpeg,image/webp,image/svg+xml"
-        className="hidden"
-        onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (file) onUpload(file, kind.current);
-          e.target.value = "";
-        }}
-      />
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button
-            type="button"
-            aria-label="Attach an image"
-            title="Attach a logo, image or design reference"
-            className="grid size-8 place-items-center rounded-full bg-surface text-grey-600 outline-none hover:text-violet focus-visible:shadow-focus disabled:opacity-55"
-            disabled={uploading}
-          >
-            {uploading ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <ImagePlus className="size-4" aria-hidden />}
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-72">
-          <DropdownMenuLabel>Attach</DropdownMenuLabel>
-          {(["logo", "image", "reference"] as const).map((k) => (
-            <DropdownMenuItem
-              key={k}
-              onSelect={() => {
-                kind.current = k;
-                // Let the menu close before the file dialog opens.
-                setTimeout(() => input.current?.click(), 0);
-              }}
-            >
-              <span className="min-w-0">
-                <span className="block font-medium">{KIND_LABEL[k]}</span>
-                <span className="block text-xs text-grey-600">{KIND_HELP[k]}</span>
-              </span>
-            </DropdownMenuItem>
-          ))}
-          <p className="px-3 py-2 text-[11px] text-grey-600">PNG, JPEG, WebP or SVG, up to 5 MB.</p>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </>
-  );
-}
-
-function Composer({
+export function Composer({
   assets,
   assetUrls,
   onUpload,
   onRemove,
+  onChangeKind,
   uploading,
   running,
   estimate,
@@ -221,6 +128,7 @@ function Composer({
   assetUrls: Record<string, string>;
   onUpload: (file: File, kind: AssetKind) => Promise<void>;
   onRemove: (id: string) => Promise<void>;
+  onChangeKind: (id: string, kind: AssetKind) => Promise<void>;
   uploading: boolean;
   running: boolean;
   estimate: { buildMicro: number; planMicro: number };
@@ -245,15 +153,30 @@ function Composer({
   }
 
   const est = mode === "plan" ? estimate.planMicro : estimate.buildMicro;
+  const [dragging, setDragging] = React.useState(false);
   return (
     <form
-      className="m-4 mt-0 rounded-block bg-canvas p-3 focus-within:shadow-focus"
+      className={cn("m-4 mt-0 rounded-block bg-canvas p-3 focus-within:shadow-focus", dragging && "shadow-focus")}
       onSubmit={(e) => {
         e.preventDefault();
         submit();
       }}
+      // Drop or paste an image: uploaded as an image; its chip menu changes it to a logo or reference.
+      onDragOver={(e) => {
+        if (![...e.dataTransfer.types].includes("Files")) return;
+        e.preventDefault();
+        setDragging(true);
+      }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={(e) => {
+        const files = imageFiles(e.dataTransfer.files);
+        setDragging(false);
+        if (!files.length) return;
+        e.preventDefault();
+        for (const f of files) void onUpload(f, "image");
+      }}
     >
-      <AssetBar assets={assets} assetUrls={assetUrls} onRemove={(id) => void onRemove(id)} />
+      <AssetBar assets={assets} assetUrls={assetUrls} onRemove={(id) => void onRemove(id)} onChangeKind={(id, k) => void onChangeKind(id, k)} />
       <label htmlFor="composer" className="sr-only">
         Message GoodBuild
       </label>
@@ -263,6 +186,12 @@ function Composer({
         rows={1}
         value={value}
         onChange={(e) => setValue(e.target.value)}
+        onPaste={(e) => {
+          const files = imageFiles(e.clipboardData.files);
+          if (!files.length) return;
+          e.preventDefault();
+          for (const f of files) void onUpload(f, "image");
+        }}
         onKeyDown={(e) => {
           if (isSubmitShortcut({ key: e.key, metaKey: e.metaKey, ctrlKey: e.ctrlKey, isComposing: e.nativeEvent.isComposing })) {
             e.preventDefault();

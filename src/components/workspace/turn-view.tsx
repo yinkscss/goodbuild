@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ArrowUpRight, Check, ChevronRight, Hexagon, RotateCw } from "lucide-react";
+import { ArrowUpRight, Check, ChevronRight, Eye, Hexagon, RotateCw, Wrench } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { formatMicroUsd } from "@/lib/pricing";
@@ -195,6 +195,50 @@ export function SuggestionChips({ items, onPick, disabled }: { items: string[]; 
   );
 }
 
+/** Visual check result (P17): a quiet line when it looks right, a card with "Fix these" when not. */
+export function VisualCheckNote({ record, checking, onFix, disabled }: { record: TurnRecord; checking?: boolean; onFix?: (prompt: string) => void; disabled: boolean }) {
+  const check = record.visualCheck;
+  if (!check && checking) {
+    return (
+      <p className="mt-3 flex items-center gap-2 text-xs text-grey-600">
+        <Eye className="size-3.5 animate-pulse motion-reduce:animate-none" aria-hidden /> Checking the preview…
+      </p>
+    );
+  }
+  if (!check) return null;
+  if (check.ok) {
+    return (
+      <p className="mt-3 flex items-center gap-2 text-xs text-grey-600">
+        <Eye className="size-3.5 text-success" aria-hidden /> Visual check: the preview looks right at {check.width}px.
+      </p>
+    );
+  }
+  const prompt = `Fix these visual problems the preview check found at ${check.width}px:\n${check.issues.map((i) => `- ${i}`).join("\n")}`;
+  return (
+    <div className="mt-4 rounded-block bg-canvas p-4" role="status">
+      <div className="flex items-start gap-3">
+        <span className="mt-1.5 size-2 shrink-0 rounded-full bg-warning" aria-hidden />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium">The visual check spotted {check.issues.length === 1 ? "a problem" : `${check.issues.length} problems`}</p>
+          <ul className="mt-1 list-disc space-y-0.5 pl-4 text-sm text-grey-600">
+            {check.issues.map((i) => (
+              <li key={i}>{i}</li>
+            ))}
+          </ul>
+        </div>
+      </div>
+      {onFix && (
+        <div className="mt-3 flex justify-end">
+          <Button variant="chipSelected" size="sm" disabled={disabled} onClick={() => onFix(prompt)}>
+            <Wrench />
+            Fix these
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** An assistant turn: text, steps, log, diffs, then the deploy card or an error card. */
 export function TurnView({
   text,
@@ -203,6 +247,7 @@ export function TurnView({
   onFix,
   fixDisabled,
   onSuggest,
+  checking,
 }: {
   text: string;
   record: TurnRecord;
@@ -211,6 +256,8 @@ export function TurnView({
   fixDisabled: boolean;
   /** Set on the latest turn only: shows its suggestion chips. */
   onSuggest?: (prompt: string) => void;
+  /** The visual check of this turn's preview is running. */
+  checking?: boolean;
 }) {
   const showError = !live && (record.status === "needs_fix" || record.status === "error");
   return (
@@ -225,6 +272,7 @@ export function TurnView({
       {!live && <DiffChips changes={record.changes} />}
       {!live && record.status === "ready" && <DeployCard record={record} />}
       {showError && <TurnError record={record} onFix={onFix} disabled={fixDisabled} />}
+      {!live && <VisualCheckNote record={record} checking={checking} onFix={onSuggest} disabled={fixDisabled} />}
       {!live && onSuggest && record.status !== "error" && record.suggestions?.length ? (
         <SuggestionChips items={record.suggestions} onPick={onSuggest} disabled={fixDisabled} />
       ) : null}

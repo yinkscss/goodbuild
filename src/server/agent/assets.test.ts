@@ -15,6 +15,7 @@ import {
   visionImage,
   type AssetInfo,
 } from "./assets";
+import { sanitizeSvgDocument } from "./svg-sanitize";
 
 const enc = (s: string) => new TextEncoder().encode(s);
 
@@ -58,6 +59,42 @@ describe("sanitizeSvg", () => {
     expect(sanitizeSvg('<svg><style>@import url(https://x/y.css);</style></svg>').ok).toBe(false);
     expect(sanitizeSvg('<svg><rect style="fill:url(https://x/p.svg#a)"/></svg>').ok).toBe(false);
     expect(sanitizeSvg('<svg><a href="javascript:alert(1)"><rect/></a></svg>').ok).toBe(false);
+  });
+});
+
+describe("sanitizeSvgDocument (regex pre-check, DOMPurify, post-check)", () => {
+  it("keeps a normal logo intact, with its namespace, styles, gradients and text", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const logo = await readFile("docs/evals/harness/kola-logo.svg", "utf8");
+    const r = await sanitizeSvgDocument(logo);
+    if (!r.ok) throw new Error(r.error);
+    expect(r.svg).toMatch(/^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg"/);
+    expect(r.svg).toContain("KOLA");
+    const styled = await sanitizeSvgDocument(
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><defs><linearGradient id="g"><stop offset="0" stop-color="#f00"/></linearGradient><style>.a{fill:url(#g)}</style></defs><rect class="a" width="10" height="10"/></svg>',
+    );
+    expect(styled.ok && styled.svg).toContain("linearGradient");
+    expect(styled.ok && styled.svg).toContain("viewBox");
+    // Still a valid standalone SVG: sharp (librsvg) can render it, xlink included.
+    const xlink = await sanitizeSvgDocument('<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="4" height="4"><defs><rect id="r" width="4" height="4" fill="#0f766e"/></defs><use xlink:href="#r"/></svg>');
+    if (!xlink.ok) throw new Error(xlink.error);
+    expect((await analyseImage(new TextEncoder().encode(xlink.svg))).palette[0]).toBe("#0f766e");
+    if (styled.ok) expect((await analyseImage(new TextEncoder().encode(styled.svg))).width).toBe(10);
+  });
+  it("rejects unquoted external references and SVG data URLs in use", async () => {
+    expect((await sanitizeSvgDocument('<svg xmlns="http://www.w3.org/2000/svg"><image href=https://evil.example/x.png /></svg>')).ok).toBe(false);
+    expect((await sanitizeSvgDocument('<svg xmlns="http://www.w3.org/2000/svg"><use href="data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=#x"/></svg>')).ok).toBe(false);
+  });
+  it("drops handlers and animation tricks the regex can't see", async () => {
+    const r = await sanitizeSvgDocument(
+      '<svg xmlns="http://www.w3.org/2000/svg"><a><animate attributeName="href" to="#x"/><rect width="1" height="1"/></a><g><circle r="1" ONLOAD="x()"/></g></svg>',
+    );
+    if (!r.ok) throw new Error(r.error);
+    expect(r.svg).not.toMatch(/animate|onload/i);
+    expect(r.svg).toContain("<circle");
+  });
+  it("rejects files that aren't SVG once parsed", async () => {
+    expect((await sanitizeSvgDocument("<svg><p>not closed")).ok).toBe(false);
   });
 });
 

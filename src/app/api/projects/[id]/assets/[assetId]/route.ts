@@ -1,6 +1,8 @@
 import { NextResponse, connection } from "next/server";
 
-import { dbAssetStore } from "@/server/agent/asset-store";
+import { modelClient } from "@/server/agent";
+import { dbAssetStore, reclassifyAsset } from "@/server/agent/asset-store";
+import { ASSET_KINDS, type AssetKind } from "@/server/agent/assets";
 import { errorResponse, requireSession } from "@/server/auth/http";
 import { getDb } from "@/server/db/client";
 import { getOwnedProject } from "@/server/projects";
@@ -31,6 +33,24 @@ export async function GET(_request: Request, ctx: RouteContext<"/api/projects/[i
         "Content-Disposition": `inline; filename="${asset.name}"`,
       },
     });
+  } catch (error) {
+    return errorResponse(error);
+  }
+}
+
+/** Change what an upload is for: { kind: "logo" | "image" | "reference" }. */
+export async function PATCH(request: Request, ctx: RouteContext<"/api/projects/[id]/assets/[assetId]">) {
+  try {
+    const session = await requireSession();
+    const { id, assetId } = await ctx.params;
+    const db = await getDb();
+    if (!(await getOwnedProject(db, id, session.user.id)) || !/^[0-9a-f-]{36}$/i.test(assetId)) {
+      return NextResponse.json({ error: "not_found" }, { status: 404 });
+    }
+    const body = (await request.json().catch(() => null)) as { kind?: string } | null;
+    if (!body?.kind || !(ASSET_KINDS as string[]).includes(body.kind)) return NextResponse.json({ error: "invalid_body" }, { status: 400 });
+    const asset = await reclassifyAsset({ store: dbAssetStore(db), db, model: modelClient(), projectId: id, userId: session.user.id, id: assetId, kind: body.kind as AssetKind });
+    return asset ? NextResponse.json({ asset }) : NextResponse.json({ error: "not_found" }, { status: 404 });
   } catch (error) {
     return errorResponse(error);
   }

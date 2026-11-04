@@ -18,6 +18,9 @@ describe("Workspace search tools", () => {
     expect(r.result).toMatch(/^Lines 1-3 of \d+/);
     expect(r.access).toBe("read_file src/App.tsx:1-3");
     expect(call(ws, "list_files", {}).result).toContain("src/components/sections/Hero.tsx");
+    const img = call(ws, "read_file", { path: "public/assets/coders-logo.svg" });
+    expect(img.ok).toBe(true);
+    expect(img.result).toContain('"/assets/coders-logo.svg"');
   });
 });
 
