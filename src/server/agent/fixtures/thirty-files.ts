@@ -311,4 +311,5 @@ export const FIND_CASES: Array<{ request: string; target: string }> = [
   { request: "On the about page add a paragraph about our mission", target: "src/pages/About.tsx" },
   { request: "Change the call to action band text to 'Fuel Saturday'", target: "src/components/sections/CtaBand.tsx" },
   { request: "The mobile menu should close when I press Escape", target: "src/components/Layout.tsx" },
+  { request: "Make the 404 page friendlier with a button back to the tip jar", target: "src/pages/NotFound.tsx" },
 ];

@@ -74,6 +74,10 @@ describe("context selection on a 30-file project (HARNESS.md eval 3, offline par
     }
     expect(inContext).toBeGreaterThanOrEqual(8);
   });
+  it("maps how users name things to file names (404 → NotFound, menu → Layout)", () => {
+    expect(selectContext(files, "Make the 404 page friendlier", { budgetChars: SMALL }).map((p) => p.path)).toContain("src/pages/NotFound.tsx");
+    expect(selectContext(files, "The menu should close on Escape", { budgetChars: SMALL }).map((p) => p.path)).toContain("src/components/Layout.tsx");
+  });
   it("stays within budget and always sends the entry, theme and contracts", () => {
     const { picks, text } = contextWithPicks({ files, request: "Make the hero headline bigger", budgetChars: SMALL });
     const paths = picks.map((p) => p.path);

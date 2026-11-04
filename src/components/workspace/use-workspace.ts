@@ -3,6 +3,7 @@
 import * as React from "react";
 
 import { applyTurnEvent, emptyTurn, type LiveTurn } from "@/lib/live-turn";
+import { AUTO_FIX_LEAD, previewFixPrompt, shouldAutoFix, type PreviewError } from "@/lib/preview-errors";
 import { createSseParser } from "@/lib/sse";
 import type { TurnEvent, TurnMode } from "@/lib/turn-types";
 import type { AssetInfo, AssetKind } from "@/server/agent/assets";
@@ -27,6 +28,17 @@ export interface UseWorkspace {
   /** Upload a logo, image or design reference to the project. */
   upload: (file: File, kind: AssetKind) => Promise<void>;
   removeAsset: (id: string) => Promise<void>;
+  /** Re-classify an upload (logo, image, design reference); the server re-describes it. */
+  changeAssetKind: (id: string, kind: AssetKind) => Promise<void>;
+  /** Preview runtime errors: auto-fixed once right after a build (shouldAutoFix). */
+  onPreviewError: (error: PreviewError, version: number) => void;
+  /** The version to screenshot for the visual check, and whether a check is running. */
+  checkVersion: number | null;
+  checking: boolean;
+  /** The check couldn't produce a result for the latest build. */
+  checkFailed: boolean;
+  onPreviewCaptured: (shot: { url: string; width: number }, version: number) => Promise<void>;
+  onCaptureFailed: () => void;
   uploading: boolean;
 }
 
@@ -35,15 +47,20 @@ export interface UseWorkspace {
  * origin that can't load images from the GoodBuild server in development (P17), so the
  * workspace fetches each asset once (same origin, with the session) and inlines it.
  */
-export function useAssetDataUrls(projectId: string, assets: AssetInfo[]): Record<string, string> {
+export function useAssetDataUrls(projectId: string, assets: Array<AssetInfo & { url?: string }>): Record<string, string> {
   const [urls, setUrls] = React.useState<Record<string, string>>({});
   const loaded = React.useRef(new Map<string, string>());
-  const key = assets.map((a) => `${a.id}:${a.name}`).join("|");
+  const key = assets.map((a) => `${a.id}:${a.name}:${a.url ?? ""}`).join("|");
   React.useEffect(() => {
     let cancelled = false;
     void (async () => {
       const next: Record<string, string> = {};
       for (const a of assets) {
+        // Production on a public https origin: the preview loads the signed URL itself.
+        if (a.url) {
+          next[a.name] = a.url;
+          continue;
+        }
         let url = loaded.current.get(a.id);
         if (!url) {
           const res = await fetch(`/api/projects/${projectId}/assets/${a.id}`).catch(() => null);
@@ -78,6 +95,10 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
   const [error, setError] = React.useState<string | null>(null);
   const runningRef = React.useRef(false);
   const projectId = initial.project.id;
+  const [autoFixVersion, setAutoFixVersion] = React.useState<number | null>(null);
+  const [checkVersion, setCheckVersion] = React.useState<number | null>(null);
+  const [checking, setChecking] = React.useState(false);
+  const [checkFailed, setCheckFailed] = React.useState(false);
 
   const refresh = React.useCallback(async () => {
     const res = await fetch(`/api/projects/${projectId}`, { cache: "no-store" });
@@ -89,6 +110,7 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
       if (runningRef.current) return;
       runningRef.current = true;
       setError(null);
+      setCheckFailed(false);
       // Show the user's prompt immediately (the server stores it as part of the turn).
       if (body.prompt) {
         const prompt = body.prompt;
@@ -123,6 +145,10 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
           }
         }
         if (turn.phase === "busy") setError("Another build is still running for this project. It'll show here when it finishes.");
+        // A build this browser just watched finish may get one automatic preview fix.
+        if (turn.phase === "done" && turn.record.version && !(body.prompt ?? "").startsWith(AUTO_FIX_LEAD)) setAutoFixVersion(turn.record.version);
+        // ...and one visual check of the preview (an auto-fix build is checked too).
+        if (turn.phase === "done" && turn.record.version && turn.record.status === "ready") setCheckVersion(turn.record.version);
       } catch (e) {
         // The turn may still be running server-side; the reload below picks it up.
         setError(e instanceof Error ? e.message : "The connection dropped. Reloading the project.");
@@ -219,7 +245,69 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
     [projectId, refresh],
   );
 
+  const changeAssetKind = React.useCallback(
+    async (id: string, kind: AssetKind) => {
+      setUploading((n) => n + 1);
+      try {
+        const res = await fetch(`/api/projects/${projectId}/assets/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ kind }),
+        });
+        if (!res.ok) setError("Couldn't change that file's role. Try again.");
+        await refresh();
+      } finally {
+        setUploading((n) => n - 1);
+      }
+    },
+    [projectId, refresh],
+  );
+
+  /** The preview reported an error: fix it automatically once, if policy allows (P17). */
+  const onPreviewError = React.useCallback(
+    (error: PreviewError, version: number) => {
+      if (!shouldAutoFix({ error, version, eligibleVersion: autoFixVersion, running: runningRef.current })) return;
+      setAutoFixVersion(null);
+      void run({ mode: "build", prompt: previewFixPrompt(error, true) });
+    },
+    [autoFixVersion, run],
+  );
+
+  /** A screenshot of the version just built: ask the server's vision check, then show the result. */
+  const onPreviewCaptured = React.useCallback(
+    async (shot: { url: string; width: number }, version: number) => {
+      setCheckVersion(null);
+      setChecking(true);
+      try {
+        const res = await fetch(`/api/projects/${projectId}/visual-check`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ version, width: Math.round(shot.width), image: shot.url }),
+        });
+        if (!res.ok) setCheckFailed(true);
+        await refresh();
+      } catch {
+        setCheckFailed(true);
+      } finally {
+        setChecking(false);
+      }
+    },
+    [projectId, refresh],
+  );
+
+  const onCaptureFailed = React.useCallback(() => {
+    setCheckVersion(null);
+    setCheckFailed(true);
+  }, []);
+
   return {
+    checkVersion,
+    checking,
+    checkFailed,
+    onPreviewCaptured,
+    onCaptureFailed,
+    onPreviewError,
+    changeAssetKind,
     state,
     live,
     queue,

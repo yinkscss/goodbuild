@@ -10,7 +10,15 @@ import { dbAssetStore, ingestAsset } from "./asset-store";
 import { scriptedModel } from "./fake-model";
 import { runTurn, TurnBusyError, type TurnEvent } from "./runner";
 import { claimTurn, listVersions, loadFiles, revertTo } from "./store";
-import { fixTier, isRepeat } from "./runner";
+import { fixTier, isRepeat, plainDashes } from "./runner";
+
+describe("plainDashes", () => {
+  it("turns em dashes into commas in replies", () => {
+    expect(plainDashes("Built it — swap the address later.")).toBe("Built it, swap the address later.");
+    expect(plainDashes("a—b")).toBe("a, b");
+    expect(plainDashes("no dashes here - fine")).toBe("no dashes here - fine");
+  });
+});
 import { DEMO_APP, DEMO_TIP_JAR_DRAFT, demoModel } from "./demo-model";
 
 const HEADER = "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.24;\n";
@@ -57,6 +65,12 @@ describe("fixTier (D19 amendment)", () => {
   const solc = { file: "contracts/A.sol", message: "bad", source: "solc" as const };
   it("sends a first attempt with only test failures to the cheap tier", () => {
     expect(fixTier(1, [t, t])).toBe("cheap");
+  });
+  it("treats a compile error inside a test file as a test failure", () => {
+    const testCompile = { file: "contracts/test/A.t.sol", message: "Invalid implicit conversion", source: "solc" as const };
+    expect(fixTier(1, [testCompile, t])).toBe("cheap");
+    expect(fixTier(1, [testCompile, solc])).toBe("strong");
+    expect(fixTier(2, [testCompile])).toBe("strong");
   });
   it("sends mixed failures, a second attempt, or no errors to the strong tier", () => {
     expect(fixTier(1, [t, solc])).toBe("strong");

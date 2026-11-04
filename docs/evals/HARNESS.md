@@ -114,6 +114,31 @@ Prompt: "Build a G$ tip jar dApp for the Lagos Coders club: a landing page, plus
   ([home](harness/screens/e5-home.jpg), [leaderboard](harness/screens/e5-leaderboard.jpg))
 - **Bug seen:** the Home nav link stays active on every page, because the `/` NavLink needs `end`. Added to the `pages-and-routing` guide; not re-run.
 
+## Gap checklist
+
+From the review after the first evals. "Live" means driven in a real browser or against the real providers; "unit" means automated tests only.
+
+- [ ] Re-run E3b after keeping contract ABI files out of large projects' context. Unit only so far; live re-run pending (see E3b re-run when recorded).
+- [x] Attach menu items. Live: the Logo item opened the file dialog, the file was supplied from JS, and the upload stored it as a logo. Unit: all three items. The Playwright `setInputFiles` test isn't written.
+- [x] Memory keeps when a decision was made (turn tags in `memory.ts`). Unit only; the live E4 probe is pending.
+- [x] Request words that don't match file names: synonym list in the context ranking (404 and NotFound, home and index, nav and Layout or Header). Unit only.
+- [x] Test compile errors no longer go to Sonnet first: `fixTier()` in `runner.ts`, no change to `TIER_FOR`. Unit only. D19 second amendment, awaiting the user's approval.
+- [x] Em dashes in model replies: a prompt line plus `plainDashes` in the runner. Unit only.
+- [x] Assets in production: signed public URLs at `/a/<token>`; data URLs stay for local development. Unit only, because it needs a public https origin. Object storage isn't built; `AssetStore` is the seam.
+- [x] SVG sanitising with a real parser (DOMPurify on jsdom). Unit, plus live uploads of a normal logo.
+- [x] Visual check (vision self-review). Live, see below.
+
+### Visual check, measured live (4 Nov 2026)
+
+Driven in headless Chrome with Playwright on the running dev server, real DeepSeek calls, three fresh projects.
+
+- **Why the v12 result never appeared:** the capture and POST worked, and the route answered `422 no_result`, which the client ignored. Calling `deepseek-flash` directly with the same kind of request: with thinking on, 500, 2,500 and 6,000 output tokens all ended at `length` with no text (6,000 took 35 s). With thinking off: `stop`, 2 s, 111 to 160 tokens, valid JSON. Fixed with `visionClient()`; upload descriptions use it too.
+- **Second bug, found by the defect build:** a broken `<img>` made html-to-image reject with `[object Event]`, so the check couldn't run on one of the defects it looks for. Fixed with `onImageErrorHandler`.
+- **Normal build (Surulere Tailors):** "the preview looks right at 908px" about 2 s after the capture, $0.0003, still there after a reload.
+- **Defect build (white text on white, a broken image):** four issues on the card, including the blank hero and the broken image; still there after a reload. "Fix these" sent the prompt, built v2 for under $0.01, and v2 was checked again automatically.
+- **Weak spot:** v2's check still listed four issues, and at least one was wrong: it treated the original "white on white" instruction as a requirement and also complained about CSS pattern tiles standing in for photos. The check advises and never edits, so this costs only attention. Its prompt needs tuning against more builds.
+- **Not tested live:** the "couldn't run" line (it replaces the failure that used to be silent). Its failure path ran live before the fix, but the line itself wasn't looked at.
+
 ## Not covered yet
 - L2: a vision self-review of the preview after each build (not built; offered).
 - L3: a nightly runner that scores this battery automatically. `scripts/eval-harness.mjs` is most of it.

@@ -88,6 +88,10 @@ export function Workspace({ initial }: { initial: WorkspaceState }) {
             version={live?.record.version ?? state.project.currentVersion}
             contracts={latestRecord?.contracts ?? []}
             onFix={(prompt) => ws.send(prompt, "build")}
+            onRuntimeError={(e) => ws.onPreviewError(e, live?.record.version ?? state.project.currentVersion)}
+            checkVersion={live ? null : ws.checkVersion}
+            onCaptured={(shot, v) => void ws.onPreviewCaptured(shot, v)}
+            onCaptureFailed={ws.onCaptureFailed}
             fixDisabled={running}
           />
         </div>

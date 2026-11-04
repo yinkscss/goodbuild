@@ -97,6 +97,15 @@ export class Workspace {
         return { ok: true, result: manifest(this.files), access: "list_files" };
       case "read_file": {
         const path = String(args.path ?? "");
+        // Measured live: models try to read an uploaded image as a file (public/assets/logo.svg).
+        const upload = /(?:^|\/)assets\/([A-Za-z0-9][A-Za-z0-9._-]*\.(?:png|jpe?g|webp|svg))$/i.exec(path);
+        if (upload && !(path in this.files)) {
+          return {
+            ok: true,
+            result: `${upload[1]} is an uploaded image, not a code file, so there is nothing to read. Use it by its path "/assets/${upload[1]}" or through import { assets } from the src/assets folder (its key, size, palette and description are in the context under Uploaded assets).`,
+            access: `read_file ${path} (uploaded image)`,
+          };
+        }
         if (!(path in this.files)) return { ok: false, result: `Error: ${path} doesn't exist. Use list_files or find_symbol.`, access: `read_file ${path} (missing)` };
         const start = num(args.start_line);
         const end = num(args.end_line);

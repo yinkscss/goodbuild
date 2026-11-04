@@ -39,7 +39,15 @@ export async function updateMemory(
   const current = memory ?? EMPTY_MEMORY;
   const older = all.slice(0, Math.max(0, all.length - HISTORY_WINDOW));
   if (older.length <= current.upTo) return current;
+  // Turn numbers (1 = the first user message) so decisions keep when they were made.
+  const turnOf: number[] = [];
+  let turn = 0;
+  for (const m of all) {
+    if (m.role === "user") turn++;
+    turnOf.push(Math.max(1, turn));
+  }
   const fresh = older.slice(current.upTo);
+  const freshTurns = turnOf.slice(current.upTo, older.length);
   try {
     let text = "";
     for await (const ev of model.stream({
@@ -50,7 +58,7 @@ export async function updateMemory(
         {
           role: "user",
           content: `Current memory:\n${JSON.stringify({ summary: current.summary, decisions: current.decisions })}\n\nNew messages, oldest first:\n${fresh
-            .map((m) => `${m.role.toUpperCase()}: ${m.content.slice(0, 1500)}`)
+            .map((m, i) => `${m.role.toUpperCase()} (turn ${freshTurns[i]}): ${m.content.slice(0, 1500)}`)
             .join("\n\n")}`,
         },
       ],
@@ -63,13 +71,13 @@ export async function updateMemory(
   } catch {
     /* fall through to the digest */
   }
-  return { ...digest(current, fresh), upTo: older.length };
+  return { ...digest(current, fresh, freshTurns), upTo: older.length };
 }
 
 const SUMMARISER = `You maintain the memory of a conversation between a user and GoodBuild, an AI that builds dApps and websites. Merge the new messages into the current memory and reply with JSON only, no code fence:
 {"summary": "...", "decisions": ["...", "..."]}
 - summary: under 120 words. What the app is, what has been built and changed so far, in order. Plain sentences.
-- decisions: every decision, requirement, constraint or preference the USER stated that still applies, one short line each, keeping exact values (names, colours, amounts, limits, wording they asked for, things they said not to do). Keep earlier decisions unless the user reversed them; drop reversed ones. Not the assistant's ideas unless the user accepted them. At most ${MAX_DECISIONS}, most important first.`;
+- decisions: every decision, requirement, constraint or preference the USER stated that still applies, one short line each, starting with the turn it was made in as [tN] (e.g. "[t1] Minimum tip is 20 G$"), keeping exact values (names, colours, amounts, limits, wording they asked for, things they said not to do). Keep earlier decisions and their [tN] unless the user reversed them; drop reversed ones. Not the assistant's ideas unless the user accepted them. At most ${MAX_DECISIONS}, in turn order.`;
 
 export function parseMemory(text: string): Omit<Memory, "upTo"> | null {
   const start = text.indexOf("{");
@@ -89,15 +97,17 @@ export function parseMemory(text: string): Omit<Memory, "upTo"> | null {
 }
 
 /** Fallback without a model: keep the user's own words, trimmed. */
-function digest(current: Memory, fresh: MemoryMessage[]): Omit<Memory, "upTo"> {
-  const asks = fresh.filter((m) => m.role === "user").map((m) => m.content.replace(/\s+/g, " ").trim().slice(0, 160));
-  const summary = [current.summary, ...asks.map((a) => `User asked: ${a}`)].filter(Boolean).join(" ").slice(-1200);
+function digest(current: Memory, fresh: MemoryMessage[], turns: number[]): Omit<Memory, "upTo"> {
+  const asks = fresh.map((m, i) => ({ m, t: turns[i] })).filter((x) => x.m.role === "user").map((x) => `User asked (turn ${x.t}): ${x.m.content.replace(/\s+/g, " ").trim().slice(0, 160)}`);
+  const summary = [current.summary, ...asks].filter(Boolean).join(" ").slice(-1200);
   return { summary, decisions: current.decisions };
 }
 
 /** The memory block for the context message. */
 export function memoryBlock(memory: Memory | null): string {
   if (!memory || (!memory.summary && !memory.decisions.length)) return "";
-  const decisions = memory.decisions.length ? `\nDecisions and constraints the user set earlier (still in force; follow them):\n${memory.decisions.map((d) => `- ${d}`).join("\n")}` : "";
+  const decisions = memory.decisions.length
+    ? `\nDecisions and constraints the user set earlier (still in force; follow them; [tN] is the turn, 1 = their first message):\n${memory.decisions.map((d) => `- ${d}`).join("\n")}`
+    : "";
   return `Earlier in this conversation (older messages, summarised):\n${memory.summary}${decisions}`;
 }

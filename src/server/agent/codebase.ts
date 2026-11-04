@@ -207,6 +207,44 @@ const STOP = new Set(
   "the and for with that this from into make add change update use can you please want some more less have like just also need page app my our your its it's what when where which there their them then than show button text colour color new all one two".split(" "),
 );
 
+/**
+ * How users name things vs how files are named (HARNESS.md E3b: "404 page" missed NotFound.tsx).
+ * Applied to the request only, never to paths.
+ */
+const ALIASES: Record<string, string[]> = {
+  "404": ["found"],
+  notfound: ["found"],
+  nav: ["layout", "header", "navbar"],
+  navbar: ["layout", "header", "nav"],
+  navigation: ["layout", "header", "nav"],
+  menu: ["layout", "header", "nav"],
+  header: ["layout", "nav"],
+  topbar: ["layout", "header"],
+  landing: ["home", "hero"],
+  homepage: ["home", "hero"],
+  headline: ["hero"],
+  banner: ["hero"],
+  faq: ["question"],
+  questions: ["faq"],
+  question: ["faq"],
+  cta: ["call", "action", "band"],
+  stat: ["stats", "statsrow"],
+  stats: ["stat", "statsrow"],
+  leaderboard: ["top", "rank"],
+  wallet: ["connect", "connectbutton"],
+  colour: ["index", "theme"],
+  color: ["index", "theme"],
+  font: ["index", "theme"],
+  theme: ["index"],
+  favicon: ["index"],
+};
+
+/** Request words plus their aliases, for context ranking. */
+export function requestTerms(text: string): string[] {
+  const base = terms(text);
+  return [...new Set(base.flatMap((w) => [w, ...(ALIASES[w] ?? [])]))];
+}
+
 /** Request words worth matching: lowercased, ≥ 3 letters, stopwords dropped, simple plural folding. */
 export function terms(text: string): string[] {
   const words = text
@@ -246,7 +284,7 @@ export function selectContext(
   opts: { budgetChars?: number; recent?: string[]; history?: string } = {},
 ): ContextPick[] {
   const budget = opts.budgetChars ?? 40_000;
-  const want = terms(request);
+  const want = requestTerms(request);
   const soft = terms(opts.history ?? "").filter((t) => !want.includes(t));
   const symbols = symbolIndex(files);
   const scored: ContextPick[] = [];

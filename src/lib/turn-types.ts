@@ -64,5 +64,16 @@ export interface TurnRecord {
   checks?: { errors: number; warnings: number };
   contracts?: Array<{ name: string; file: string; bytecodeBytes: number }>;
   error?: string;
+  /** Screenshot review of the preview right after this build (P17 visual check). */
+  visualCheck?: VisualCheck;
+}
+
+export interface VisualCheck {
+  ok: boolean;
+  /** Concrete visible defects, at most four. */
+  issues: string[];
+  /** Preview width the screenshot was taken at. */
+  width: number;
+  chargedMicro: number;
 }
 

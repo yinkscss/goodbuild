@@ -371,6 +371,13 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       }
     }
 
+    // The user's house style: no em dashes in what they read (the prompt asks too; models slip).
+    const styled = plainDashes(text);
+    if (styled !== text) {
+      text = styled;
+      emit({ type: "text_set", text });
+    }
+
     // Plan mode, or a build-mode question answered without touching files (not a first
     // build, which must still seed and check the starter): nothing to check or save.
     if (input.mode === "plan" || (!firstBuild && !ws.changed())) {
@@ -551,9 +558,12 @@ async function finish(db: Db, id: string, text: string, record: TurnRecord) {
 /**
  * D19 amendment: when the only failures are contract tests, the cheap model gets the first
  * fix attempt (TIER_FOR.testFix); anything else, or a later attempt, goes to TIER_FOR.fix.
+ * A compile error inside a test file (contracts/test/) counts as a test failure (second D19
+ * amendment, HARNESS.md E5: Sonnet's fix of one was $0.20 of a $0.26 build).
  */
 export function fixTier(attempt: number, errors: CheckIssue[]): ModelTier {
-  return attempt === 1 && errors.length > 0 && errors.every((i) => i.source === "test") ? TIER_FOR.testFix : TIER_FOR.fix;
+  const testOnly = errors.length > 0 && errors.every((i) => i.source === "test" || (i.source === "solc" && i.file.startsWith("contracts/test/")));
+  return attempt === 1 && testOnly ? TIER_FOR.testFix : TIER_FOR.fix;
 }
 
 function onlySuggestions(calls: ToolCall[]): boolean {
@@ -608,6 +618,11 @@ function firstIssue(issues: CheckIssue[]): string {
   const where = `${e.file.split("/").pop()}${e.line ? `:${e.line}` : ""}`;
   const text = e.message.length > 90 ? `${e.message.slice(0, 89)}…` : e.message;
   return `${where} ${text}`;
+}
+
+/** Em dashes in a reply become commas (a spaced or unspaced dash between words). Replies only, never files. */
+export function plainDashes(text: string): string {
+  return text.replace(/\s*—\s*/g, ", ").replace(/, ,/g, ",");
 }
 
 function normalise(t: string): string {

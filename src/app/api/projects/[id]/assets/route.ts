@@ -1,6 +1,6 @@
 import { NextResponse, connection } from "next/server";
 
-import { modelClient } from "@/server/agent";
+import { visionClient } from "@/server/agent";
 import { AssetRejected, dbAssetStore, ingestAsset } from "@/server/agent/asset-store";
 import { ASSET_KINDS, MAX_ASSET_BYTES, type AssetKind } from "@/server/agent/assets";
 import { errorResponse, requireSession } from "@/server/auth/http";
@@ -43,7 +43,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/projects/[i
     const asset = await ingestAsset({
       store: dbAssetStore(db),
       db,
-      model: modelClient(),
+      model: visionClient(),
       projectId: id,
       userId: session.user.id,
       fileName: file.name || "image",
