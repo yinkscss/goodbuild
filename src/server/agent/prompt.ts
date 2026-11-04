@@ -11,6 +11,9 @@ export const BUILD_TOOLS: ToolSpec[] = [
     // workspace dedupes names and reports unknown ones instead.
     guides: { type: "array", items: { type: "string" }, description: `Any of: ${guideNames().join(", ")}` },
   }, ["summary", "steps"]),
+  fn("suggest_next", "Offer the user one or two next steps as clickable buttons. Call it once, in the same response as your final reply, as your last action. Each suggestion is the request the user would send, short and specific to this app.", {
+    suggestions: { type: "array", items: { type: "string" }, description: 'One or two, e.g. "Add a leaderboard of top tippers"' },
+  }, ["suggestions"]),
   fn("read_guide", `Read one front-end guide by name: ${guideNames().join(", ")}.`, {
     name: { type: "string" },
   }, ["name"]),
@@ -37,7 +40,7 @@ export const BUILD_TOOLS: ToolSpec[] = [
 
 /** Plan mode: read-only (AI_AGENT.md §4). */
 export const PLAN_TOOLS: ToolSpec[] = BUILD_TOOLS.filter((t) =>
-  t.type === "function" ? ["set_plan", "read_guide", "list_files", "read_file"].includes(t.function.name) : false,
+  t.type === "function" ? ["set_plan", "read_guide", "suggest_next", "list_files", "read_file"].includes(t.function.name) : false,
 );
 
 function fn(name: string, description: string, properties: Record<string, unknown>, required: string[]): ToolSpec {
@@ -87,8 +90,8 @@ const DESIGN_RULES = `Design: make each app look made for its purpose, not like 
 - Small touches that make it feel finished: quick-pick amount chips (e.g. 10 / 50 / 100 G$), a balance hint under amount inputs, shortAddress for addresses, relative or formatted values, disabled buttons with "Sending…" while pending.`;
 
 const CONVERSATION = `Reading the user's message:
-- Read it with the conversation so far. A short reply to your last follow-up question ("yes", "the second one", "do it") means: build that suggestion now.
-- A question (about the app, how something works, what you can build) gets a short answer without editing files and without set_plan, then follow-ups.
+- Read it with the conversation so far. A short reply to your last suggestions ("yes", "the second one", "do it") means: build that suggestion now. Your earlier suggestions are listed after your earlier replies.
+- A question (about the app, how something works, what you can build) gets a short answer without editing files and without set_plan, then suggest_next.
 - Otherwise it is a change or a new app: do exactly what was asked, keep everything that already works, and don't add features nobody asked for. Check whether it already exists before building it.
 - If something is unclear but a sensible default exists, pick it and say which in one clause of your reply instead of stopping to ask.
 
@@ -97,7 +100,7 @@ What users build: mostly dApps on Celo (a contract plus its app; Celo Sepolia te
 Front-end guides (load the ones you need via set_plan's guides field, or read_guide; they hold the detailed rules):
 ${guideCatalog()}`;
 
-const FOLLOW_UP = `End the reply with a blank line and then at most two short follow-up suggestions in total (one is often enough) the user could pick next, as questions specific to this app (for example "Want a leaderboard of top tippers?" or "Should tips carry a short message?"). One line each, no list markers, no pushing, nothing already built.`;
+const FOLLOW_UP = `Then, in the same response as that reply, call suggest_next with one or two next steps specific to this app, written as the request the user would send ("Add a leaderboard of top tippers", "Let tips carry a short message"). They appear as buttons under your reply, so don't repeat them in the text. Nothing already built, no pushing.`;
 
 export function systemPrompt(mode: "build" | "plan"): string {
   const role =

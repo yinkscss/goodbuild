@@ -163,7 +163,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       // summary after a fix) is dropped from what the user sees, live and saved.
       if (quiet) {
         // Nothing was shown.
-      } else if (!wrapUp && input.mode === "build" && toolCalls.length && replyText.trim()) {
+      } else if (!wrapUp && input.mode === "build" && toolCalls.length && !onlySuggestions(toolCalls) && replyText.trim()) {
         // Narration before tool calls ("I'll start by planning this out.") isn't the reply;
         // the steps already show the work. Keep it in the model's history only.
         text = textBefore;
@@ -184,11 +184,20 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       return toolCalls;
     };
 
+    /** Record next-step chips from suggest_next. Fix passes (quiet) don't change them. */
+    const takeSuggestions = (items: string[] | undefined, quiet: boolean) => {
+      if (!items?.length || quiet) return;
+      record.suggestions = items;
+      emit({ type: "suggestions", items });
+    };
+
     /** Let the model work until it stops calling tools. False when it ran out of rounds. */
     const phase = async (tier: ModelTier, quiet = false) => {
       for (let round = 0; round < MAX_TOOL_ROUNDS_PER_PHASE; round++) {
         const toolCalls = await callModel(tier, quiet);
         if (!toolCalls.length) return true;
+        // The final reply arrives with suggest_next: that ends the pass, no extra round.
+        const final = onlySuggestions(toolCalls);
         for (const call of toolCalls) {
           const stepId = `tool:${call.id}`;
           // Plan mode can't edit; a refused edit attempt isn't worth showing as a failed step.
@@ -196,6 +205,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
           if (label) step({ id: stepId, label, status: "running" });
           const outcome = ws.execute(call.name, call.arguments, input.mode);
           if (outcome.guides?.length) log(`guides: ${outcome.guides.join(", ")}`);
+          takeSuggestions(outcome.suggestions, quiet);
           if (outcome.plan) {
             record.plan = outcome.plan;
             emit({ type: "plan", ...outcome.plan });
@@ -216,6 +226,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
           }
           convo.push({ role: "tool", tool_call_id: call.id, content: outcome.result });
         }
+        if (final) return true;
       }
       log("! stopped: too many tool rounds in one pass");
       return false;
@@ -227,9 +238,17 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       // call and was dropped as narration): ask once for the reply, so the user gets a
       // summary and follow-ups instead of an empty message. Tools stay declared (some
       // providers require it once the history has tool calls) but any calls are not run.
-      convo.push({ role: "user", content: "Stop editing: you've used all your tool steps for this pass. Don't call tools. Reply to the user now, as instructed." });
+      convo.push({ role: "user", content: "Stop editing: you've used all your tool steps for this pass. Reply to the user now, as instructed (suggest_next is the only tool you may still call)." });
       const extra = await callModel(input.mode === "plan" ? TIER_FOR.plan : TIER_FOR.build, false, true);
-      for (const call of extra) convo.push({ role: "tool", tool_call_id: call.id, content: "Not run: no tool steps left in this pass." });
+      for (const call of extra) {
+        if (call.name === "suggest_next") {
+          const outcome = ws.execute(call.name, call.arguments, input.mode);
+          takeSuggestions(outcome.suggestions, false);
+          convo.push({ role: "tool", tool_call_id: call.id, content: outcome.result });
+        } else {
+          convo.push({ role: "tool", tool_call_id: call.id, content: "Not run: no tool steps left in this pass." });
+        }
+      }
       if (!text.trim() && record.plan?.summary) {
         text = record.plan.summary;
         emit({ type: "text_set", text });
@@ -370,7 +389,12 @@ async function recentHistory(db: Db, projectId: string, exclude: string[]): Prom
   return rows
     .filter((m) => !exclude.includes(m.id) && (m.role === "user" || m.role === "assistant") && m.content.trim())
     .slice(-8)
-    .map((m) => ({ role: m.role as "user" | "assistant", content: m.content.slice(0, 4000) }));
+    .map((m) => {
+      // Chips aren't in the text, so the model sees what "yes" or "the second one" refers to.
+      const chips = m.role === "assistant" ? (m.meta as { suggestions?: string[] } | null)?.suggestions : undefined;
+      const content = m.content.slice(0, 4000) + (chips?.length ? `\n\n(Suggested next steps: ${chips.map((c, i) => `${i + 1}. ${c}`).join(" ")})` : "");
+      return { role: m.role as "user" | "assistant", content };
+    });
 }
 
 async function finish(db: Db, id: string, text: string, record: TurnRecord) {
@@ -378,6 +402,10 @@ async function finish(db: Db, id: string, text: string, record: TurnRecord) {
     .update(messages)
     .set({ content: text.trim(), status: record.status === "error" ? "error" : "done", meta: record as unknown as Record<string, unknown> })
     .where(eq(messages.id, id));
+}
+
+function onlySuggestions(calls: ToolCall[]): boolean {
+  return calls.length > 0 && calls.every((c) => c.name === "suggest_next");
 }
 
 function toolLabel(call: ToolCall): string | null {

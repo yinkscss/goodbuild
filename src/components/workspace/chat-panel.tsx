@@ -22,6 +22,10 @@ export function ChatPanel({ ws }: { ws: UseWorkspace }) {
   }, [state.messages.length, live?.text, live?.record.steps.length, live?.record.log.length]);
 
   const liveMessageId = live?.messageId;
+  // Chips only on the newest assistant turn, and not while another turn runs or waits.
+  const lastAssistantId = [...state.messages].reverse().find((m) => m.role === "assistant")?.id;
+  const suggest = (prompt: string) => send(prompt, "build");
+  const canSuggest = !running && queue.length === 0;
   return (
     <section aria-label="Chat" className="flex min-h-0 flex-col rounded-card bg-surface shadow-card">
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5" aria-live="polite">
@@ -59,10 +63,20 @@ export function ChatPanel({ ws }: { ws: UseWorkspace }) {
               live={false}
               onFix={() => send(FIX_PROMPT, "build")}
               fixDisabled={running}
+              onSuggest={!live && canSuggest && m.id === lastAssistantId ? suggest : undefined}
             />
           );
         })}
-        {live && <TurnView text={live.text} record={live.record} live={live.phase === "running"} onFix={() => send(FIX_PROMPT, "build")} fixDisabled />}
+        {live && (
+          <TurnView
+            text={live.text}
+            record={live.record}
+            live={live.phase === "running"}
+            onFix={() => send(FIX_PROMPT, "build")}
+            fixDisabled={live.phase === "running"}
+            onSuggest={live.phase === "done" && queue.length === 0 ? suggest : undefined}
+          />
+        )}
         {queue.map((q) => (
           <div key={q.id} className="flex flex-col items-end gap-1 opacity-60">
             <p className="max-w-[85%] rounded-block rounded-br-md bg-tint px-4 py-3 text-sm whitespace-pre-wrap">{q.prompt}</p>
