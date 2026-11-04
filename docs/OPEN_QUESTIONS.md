@@ -69,3 +69,7 @@
 ## Q16. Publishing / hosting of generated apps
 - Ideas so far: static hosting at `<slug>.goodbuild.app` (provider TBD), or IPFS. Moderation of published apps?
 - Claude's input: _TBD_
+
+## Q17. How does GoodBuild spend users' GoodDollar AI credits?
+- Ideas so far: (A) hold user's derived AntSeed buyer key in a server-side AntSeed gateway; (B) wait for GoodDollar's `gd_live_` keys + Worker proxy (not yet implemented). See [GOODDOLLAR_AI_CREDITS.md](GOODDOLLAR_AI_CREDITS.md) §4–6.
+- Claude's input: _TBD_

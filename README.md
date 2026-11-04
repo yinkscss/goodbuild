@@ -18,3 +18,4 @@ Documentation only (4 Nov 2026). No app code yet. Stage 1 MVP is dApps only.
 - [Roadmap](docs/ROADMAP.md): Stage 1, S5 weeks 1–12, growth plan, metrics
 - [Open questions](docs/OPEN_QUESTIONS.md): not final; input invited
 - [CLAUDE.md](CLAUDE.md): guidance for Claude Code in this repo
+- [GoodDollar AI credits (AntSeed)](docs/GOODDOLLAR_AI_CREDITS.md)

@@ -6,6 +6,7 @@ What powers generation, editing, steering and self-repair, modelled on Lovable, 
 
 ## 1. Models and routing
 Calls go through GoodDollar AI credits if allowed, else LiteLLM (D9; no OpenRouter, no public Claude API without approval).
+- GoodDollar AI credits = AntSeed (OpenAI/Anthropic-compatible buyer proxy/gateway). GoodDollar's own hosted proxy/API keys are NOT yet implemented. Proposed: AntSeed gateway as a LiteLLM OpenAI-compatible provider, fallback to direct providers on 402/502. See [GOODDOLLAR_AI_CREDITS.md](GOODDOLLAR_AI_CREDITS.md), DECISIONS P3, Q17.
 | Task | Tier | Candidates (check current pricing) |
 |---|---|---|
 | First build, multi-file features, contract code | Strong coding model | Claude Sonnet/Opus, GPT-5-class, Gemini Pro |
