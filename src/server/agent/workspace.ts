@@ -103,6 +103,13 @@ export class Workspace {
         const size = this.sizeProblem(path, r.content);
         if (size) return { ok: false, result: `Error: ${size}` };
         const prev = this.files[path];
+        if (r.content === prev) {
+          // Cheap models can loop on edits that change nothing; say so plainly.
+          return {
+            ok: true,
+            result: `No change: ${path} already contains this. Don't repeat the edit. If the work is done, stop calling tools and write your reply.`,
+          };
+        }
         this.files[path] = r.content;
         this.touched.add(path);
         return {

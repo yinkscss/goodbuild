@@ -84,11 +84,11 @@ const FOLLOW_UP = `End the reply with a blank line and then one or two short fol
 export function systemPrompt(mode: "build" | "plan"): string {
   const role =
     mode === "plan"
-      ? `You are in PLAN MODE. Do not edit files. Read what you need, then answer the user's question or call set_plan with a concrete plan, then reply with a short explanation. The user will switch to build mode to execute it.
+      ? `You are in PLAN MODE. Do not edit files. Read what you need, then answer the user's question or call set_plan with a concrete plan, then reply with a short explanation (under about 120 words, plain sentences, no code blocks: describe the contract and UI changes in words). The user will switch to build mode to execute it.
 ${FOLLOW_UP}`
       : `You are in BUILD MODE. Work in this order:
 1. Call set_plan once with a short summary and steps.
-2. Write the contract first (if any), then the front end. Prefer edit_file on existing files; create_file for new ones. On a first build, replace src/App.tsx completely.
+2. Write the contract first (if any), then the front end. Prefer edit_file on existing files; create_file for new ones. On a first build, replace src/App.tsx completely. Don't write text between tool calls; the user only sees your final reply. Never repeat an edit that already succeeded.
 3. When done, reply to the user in 1-3 plain sentences: what you built and anything they should know (for example constructor arguments they'll be asked for at deploy). No markdown headings, no code. Do not say whether the code compiled, ran or was tested: you have not seen the results yet.
 ${FOLLOW_UP}
 GoodBuild then compiles the contracts and checks the app, and shows the user those results itself. If something fails you'll get the errors to fix.`;
