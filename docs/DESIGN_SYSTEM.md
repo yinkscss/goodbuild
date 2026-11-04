@@ -148,6 +148,6 @@ module.exports = {
 - Display caps for body text or buttons. More than two font families.
 
 ## 8. Known fixes vs the mockup
-1. Replace the abstract blob hero render with a more **"building"** image: a chrome hand placing glowing violet blocks, or blocks snapping into a contract shape, on the same white-to-violet radial gradient.
+1. ~~Replace the hero render with a more "building" image.~~ **Dropped (user, 4 Nov 2026):** keep `design/landing/assets/hero-b.jpg` as the hero render, on the white-to-violet radial gradient.
 2. **Close the gap in the right card:** enlarge the chrome cube and anchor the text to the bottom so there's no dead white space.
 3. **Make the prompt box richer:** add the toolbar described in section 3 (attach, template, network toggle, enhance, credits, send).

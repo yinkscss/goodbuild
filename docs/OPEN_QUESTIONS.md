@@ -121,6 +121,6 @@
 - Mockups b and c use `#35D07F` for status dots; the token is `success #1F9D6B`.
 - Claude's input: use the token everywhere (M3 onward).
 
-## Q29. Hero "building" image
-- DESIGN_SYSTEM §8.1 asks for a chrome hand placing violet blocks, or blocks snapping into a contract shape. No such asset exists.
-- Claude's input: M1 ships a code-drawn isometric version (chrome and violet blocks, the last one dropping in and snapping into place; no pink, reduced-motion safe). If you want a rendered 3D image like `hero-b.jpg`, it can be generated (e.g. via Figma's image generator, which spends Figma AI credits) and swapped in without layout changes.
+## Q29. Hero "building" image (resolved)
+- DESIGN_SYSTEM §8.1 asked to replace the hero render with a "building" image. M1 first shipped a code-drawn block stack.
+- Resolved 4 Nov 2026 by the user: keep the original render `design/landing/assets/hero-b.jpg`. §8.1 updated; the SVG version was removed.

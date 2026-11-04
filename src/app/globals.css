@@ -42,7 +42,6 @@
   --animate-pulse-dot: gb-pulse 1.6s ease-in-out infinite;
   --animate-caret: gb-caret 1s steps(1) infinite;
   --animate-draw: gb-draw 2.4s var(--ease-gb) forwards;
-  --animate-snap: gb-snap 6s var(--ease-gb) infinite;
 
   @keyframes gb-bob {
     50% { transform: translateY(-10px); }
@@ -56,15 +55,6 @@
   @keyframes gb-draw {
     from { stroke-dashoffset: var(--gb-dash, 900); }
     to { stroke-dashoffset: 0; }
-  }
-  /* A block drops in, snaps, holds, then resets for the next loop. */
-  @keyframes gb-snap {
-    0% { transform: translateY(-110px); opacity: 0; }
-    12% { opacity: 1; }
-    32% { transform: translateY(0); opacity: 1; }
-    36% { transform: translateY(-4px); }
-    40%, 88% { transform: translateY(0); opacity: 1; }
-    100% { transform: translateY(0); opacity: 0; }
   }
 }
 
