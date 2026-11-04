@@ -27,3 +27,8 @@ Draft. S5 Demo Day dates are UNVERIFIED.
 - G$ volume and number of G$ transactions per user.
 - Contracts deployed and transactions to generated apps.
 - Community votes (showcase) and mentor feedback (demo quality).
+
+## Credits system milestones (proposed, D11)
+- Stage 1: vault on Celo Sepolia, indexer + ledger, LiteLLM billing callback, preflight/cutoff, GoodID free tier.
+- S5 early weeks: mainnet vault (after Slither/review), manual treasury swaps.
+- Later: Superfluid streaming, bonuses, optional AntSeed provider. See [CREDITS.md](CREDITS.md).

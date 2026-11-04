@@ -21,6 +21,10 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - Date: 4 Nov 2026 · Decided by: user
 - Rationale: grey or illegal. GoodDollar ToS §6.3 bans use that violates applicable law; Lagos requires an LSLGA licence for betting (LSLGA Law 2021). See [RESEARCH.md](RESEARCH.md#legal-and-terms).
 
+### D11. GoodBuild builds its own credit system
+- Date: 4 Nov 2026 · Decided by: user (Olayinka)
+- Rationale: GoodDollar AI credits have no usable inference API/API keys yet ("not yet implemented"; see [GOODDOLLAR_AI_CREDITS.md](GOODDOLLAR_AI_CREDITS.md)). Users deposit G$ to a GoodBuild vault on Celo; an off-chain ledger funds LLM spend via LiteLLM. Design: [CREDITS.md](CREDITS.md). GoodDollar/AntSeed may become an optional future provider (P3).
+
 ## Recommended decisions (Ego; adopted unless changed)
 
 ### D5. In-browser preview via Sandpack
@@ -63,5 +67,6 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 ### P4. Agent uses tool-based diff edits, checks + auto-fix (max 3), checkpoint per prompt, plan/build modes (proposed)
 - Date: 4 Nov 2026 · Proposed by: Grok Bot · See AI_AGENT.md. Open: Q14.
 
-### P3. GoodDollar AI credits via AntSeed gateway behind LiteLLM (proposed)
+### P3. GoodDollar AI credits via AntSeed gateway behind LiteLLM (DEFERRED by D11)
+- Status: deferred. GoodDollar/AntSeed is an optional future provider only, revisit once GoodDollar ships its proxy/API keys.
 - Date: 4 Nov 2026 · Proposed by: Grok Bot · Users fund credits with the GoodWidget AI credits widget; GoodBuild runs an AntSeed gateway registered as an OpenAI-compatible LiteLLM provider, falling back to direct providers. Blocked on buyer-key custody / GoodDollar proxy (see [GOODDOLLAR_AI_CREDITS.md](GOODDOLLAR_AI_CREDITS.md), Q17).

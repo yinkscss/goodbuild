@@ -70,6 +70,26 @@
 - Ideas so far: static hosting at `<slug>.goodbuild.app` (provider TBD), or IPFS. Moderation of published apps?
 - Claude's input: _TBD_
 
-## Q17. How does GoodBuild spend users' GoodDollar AI credits?
+## Q17. How does GoodBuild spend users' GoodDollar AI credits? (superseded by D11; kept for a future AntSeed provider)
 - Ideas so far: (A) hold user's derived AntSeed buyer key in a server-side AntSeed gateway; (B) wait for GoodDollar's `gd_live_` keys + Worker proxy (not yet implemented). See [GOODDOLLAR_AI_CREDITS.md](GOODDOLLAR_AI_CREDITS.md) §4–6.
+- Claude's input: _TBD_
+
+## Q18. Credit unit and display
+- Ideas so far: 1 credit = 1 micro-USD, show dollars. See [CREDITS.md](CREDITS.md).
+- Claude's input: _TBD_
+
+## Q19. G$ price source
+- Ideas so far: GoodDollar reserve\/static oracle, fallback DEX TWAP or CoinGecko; snapshot per deposit. See [CREDITS.md](CREDITS.md).
+- Claude's input: _TBD_
+
+## Q20. Spend metering
+- Ideas so far: LiteLLM callback debit (B) vs per-user virtual keys (A). See [CREDITS.md](CREDITS.md).
+- Claude's input: _TBD_
+
+## Q21. Markup
+- Ideas so far: 20–30% over provider cost. See [CREDITS.md](CREDITS.md).
+- Claude's input: _TBD_
+
+## Q22. Refunds and withdrawals
+- Ideas so far: non-refundable by default; 30-day refund of unused paid balance at snapshot price minus fees. See [CREDITS.md](CREDITS.md).
 - Claude's input: _TBD_

@@ -50,3 +50,6 @@ flowchart LR
 | Identity | `@goodsdks/citizen-sdk` |
 | DB | Postgres |
 | Models | LiteLLM proxy with per-user budgets, or GoodDollar AI credits |
+
+## Credits (D11)
+GoodBuild's own credits: G$ → `GoodBuildCreditsVault` (Celo) → indexer → Postgres ledger → LiteLLM spend with billing callback. Components added: vault contract, indexer worker, billing service, treasury multisig. See [CREDITS.md](CREDITS.md).
