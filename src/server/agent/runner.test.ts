@@ -96,7 +96,9 @@ describe("runTurn", { timeout: 120_000 }, () => {
     const assistant = chat.find((m) => m.role === "assistant")!;
     expect(assistant.status).toBe("done");
     expect(assistant.content).toContain("Built a tip jar");
-    expect(assistant.content).toContain("tip.\n\nAdded the missing semicolon.");
+    // Fix passes are quiet: the first reply (and its follow-ups) stays the last thing shown.
+    expect(assistant.content).not.toContain("Added the missing semicolon.");
+    expect(events.some((e) => e.type === "text" && e.delta.includes("semicolon"))).toBe(false);
     expect(chat.find((m) => m.id === queuedId)?.status).toBe("done");
 
     const types = events.map((e) => e.type);
@@ -119,8 +121,8 @@ describe("runTurn", { timeout: 120_000 }, () => {
     const [assistant] = (await db.select().from(messages).where(eq(messages.projectId, projectId))).filter((m) => m.role === "assistant");
     expect(assistant.content).toBe(summary);
     expect(assistant.content.split("Built a tip jar").length - 1).toBe(1);
-    // Live: the repeat streams, then a text_set replaces it with the deduplicated text.
-    expect(events.filter((e) => e.type === "text_set").at(-1)).toEqual({ type: "text_set", text: summary });
+    // The fix pass is quiet, so the repeat never reaches the user.
+    expect(events.some((e) => e.type === "text_set")).toBe(false);
     expect(record.status).toBe("ready");
   });
 

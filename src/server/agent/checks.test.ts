@@ -1,8 +1,8 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 
-import { checkApp, checkContracts, pathProblem } from "./checks";
-import { starterFiles } from "./template";
+import { addressMapIssues, checkApp, checkContracts, pathProblem } from "./checks";
+import { starterFiles, withStarterHelpers } from "./template";
 
 const SPDX = "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.24;\n";
 
@@ -97,5 +97,43 @@ const broken = (;
     expect(text).toMatch(/date-fns.*add_dependency/);
     expect(text).toMatch(/relative import instead of "@\/lib\/utils"/);
     expect(text).toMatch(/syntax:/);
+  });
+});
+
+describe("addressMapIssues", () => {
+  const head = 'import { TipJarAbi, TipJarAddress } from "./contracts";\nimport { chain } from "./lib/chain";\n';
+  it("accepts indexing the chain-id map", () => {
+    const ok = head + "const address = TipJarAddress[chain.id];\nconst live = chain.id in TipJarAddress;\nconst b = TipJarAddress?.[chain.id];\n";
+    expect(addressMapIssues("src/App.tsx", ok)).toEqual([]);
+  });
+  it("rejects passing the map as an address", () => {
+    const bad = head + "publicClient.readContract({ address: TipJarAddress, abi: TipJarAbi, functionName: 'gd' });\n";
+    const issues = addressMapIssues("src/App.tsx", bad);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({ line: 3 });
+    expect(issues[0].message).toMatch(/TipJarAddress\[chain\.id\]/);
+  });
+  it("follows renamed imports and the per-contract module path", () => {
+    const bad = 'import { TipJarAddress as jar } from "../contracts/TipJar";\nconst x = { address: jar };\n';
+    expect(addressMapIssues("src/components/Jar.tsx", bad)).toHaveLength(1);
+  });
+  it("is part of checkApp, and the starter passes", () => {
+    const files = { ...starterFiles(), "src/App.tsx": head + "export default function App() { return <p>{String(TipJarAddress)}</p>; }\n", "src/contracts/index.ts": "export const TipJarAddress = {}; export const TipJarAbi = [];\n" };
+    expect(checkApp(files).errors.some((e) => e.message.includes("map from chain id"))).toBe(true);
+    expect(checkApp(starterFiles()).errors).toEqual([]);
+  });
+});
+
+describe("withStarterHelpers", () => {
+  it("adds missing helpers and UI pieces without overwriting the project's files", () => {
+    const old = { "src/App.tsx": "x", "src/lib/utils.ts": "custom", "src/components/ui/button.tsx": "mine", "contracts/A.sol": "c" };
+    const out = withStarterHelpers(old);
+    expect(out["src/lib/utils.ts"]).toBe("custom");
+    expect(out["src/components/ui/button.tsx"]).toBe("mine");
+    expect(out["src/App.tsx"]).toBe("x");
+    expect(out["src/lib/hooks.ts"]).toContain("export function useTx");
+    expect(out["src/lib/format.ts"]).toContain("export function formatAmount");
+    expect(out["src/components/ui/notice.tsx"]).toBeDefined();
+    expect(out["package.json"]).toBeUndefined();
   });
 });

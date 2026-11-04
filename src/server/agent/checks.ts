@@ -329,8 +329,54 @@ export function checkApp(files: Record<string, string>): CheckReport {
       }
     }
   }
+  for (const [file, content] of Object.entries(files)) {
+    if (/\.(tsx?|jsx?)$/.test(file) && !file.startsWith(PLATFORM_DIR)) errors.push(...addressMapIssues(file, content));
+  }
   if (!files["src/App.tsx"]) errors.push({ file: "src/App.tsx", message: "src/App.tsx is missing (it's the app entry).", source: "paths" });
   return { ok: errors.length === 0, errors, warnings: [], contracts: [] };
+}
+
+/**
+ * `<Name>Address` from the platform contracts module is a map from chain id to address.
+ * Passing the map itself to viem throws `Address "[object Object]" is invalid` at runtime,
+ * so every use must index it (`TipJarAddress[chain.id]`). Other uses are rejected.
+ */
+export function addressMapIssues(file: string, content: string): CheckIssue[] {
+  const sf = ts.createSourceFile(file, content, ts.ScriptTarget.ES2020, true, file.endsWith("x") ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
+  const maps = new Set<string>();
+  for (const st of sf.statements) {
+    if (!ts.isImportDeclaration(st) || !ts.isStringLiteral(st.moduleSpecifier)) continue;
+    if (!/(^|\/)contracts(\/[A-Za-z0-9_]+)?$/.test(st.moduleSpecifier.text)) continue;
+    const named = st.importClause?.namedBindings;
+    if (!named || !ts.isNamedImports(named)) continue;
+    for (const el of named.elements) {
+      if ((el.propertyName ?? el.name).text.endsWith("Address")) maps.add(el.name.text);
+    }
+  }
+  if (!maps.size) return [];
+  const issues: CheckIssue[] = [];
+  const visit = (node: ts.Node) => {
+    if (ts.isIdentifier(node) && maps.has(node.text)) {
+      const p = node.parent;
+      const ok =
+        ts.isImportSpecifier(p) ||
+        (ts.isElementAccessExpression(p) && p.expression === node) ||
+        // `chain.id in TipJarAddress` is a fine existence check.
+        (ts.isBinaryExpression(p) && p.operatorToken.kind === ts.SyntaxKind.InKeyword && p.right === node);
+      if (!ok) {
+        const line = sf.getLineAndCharacterOfPosition(node.getStart()).line + 1;
+        issues.push({
+          file,
+          line,
+          message: `${node.text} is a map from chain id to address, not an address. Use ${node.text}[chain.id] (chain from lib/chain.ts), which is undefined until the contract is deployed.`,
+          source: "imports",
+        });
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+  return issues;
 }
 
 /** Human-readable list for the model and the build log. */
