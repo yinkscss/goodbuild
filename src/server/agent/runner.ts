@@ -113,7 +113,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     const convo: ChatMessage[] = [
       { role: "system", content: systemPrompt(input.mode) },
       ...history,
-      { role: "user", content: contextMessage({ files: ws.files, request }), cache: true },
+      { role: "user", content: contextMessage({ files: ws.files, request, lastSuggestions: await lastSuggestions(db, input.projectId, assistantId) }), cache: true },
     ];
     const tools = input.mode === "plan" ? PLAN_TOOLS : BUILD_TOOLS;
 
@@ -384,17 +384,23 @@ async function runChecks(
 }
 
 /** Last few user prompts and assistant replies (text only), oldest first. */
+/**
+ * The chips on the latest earlier reply. They aren't in the reply text, so the context
+ * block names them and "yes" or "the second one" has a referent. (Put in the user-side
+ * context, not appended to the assistant's history, so the model doesn't copy the format.)
+ */
+async function lastSuggestions(db: Db, projectId: string, exclude: string): Promise<string[]> {
+  const rows = await db.select().from(messages).where(eq(messages.projectId, projectId)).orderBy(asc(messages.createdAt));
+  const last = rows.filter((m) => m.role === "assistant" && m.id !== exclude).at(-1);
+  return (last?.meta as { suggestions?: string[] } | null)?.suggestions ?? [];
+}
+
 async function recentHistory(db: Db, projectId: string, exclude: string[]): Promise<ChatMessage[]> {
   const rows = await db.select().from(messages).where(eq(messages.projectId, projectId)).orderBy(asc(messages.createdAt));
   return rows
     .filter((m) => !exclude.includes(m.id) && (m.role === "user" || m.role === "assistant") && m.content.trim())
     .slice(-8)
-    .map((m) => {
-      // Chips aren't in the text, so the model sees what "yes" or "the second one" refers to.
-      const chips = m.role === "assistant" ? (m.meta as { suggestions?: string[] } | null)?.suggestions : undefined;
-      const content = m.content.slice(0, 4000) + (chips?.length ? `\n\n(Suggested next steps: ${chips.map((c, i) => `${i + 1}. ${c}`).join(" ")})` : "");
-      return { role: m.role as "user" | "assistant", content };
-    });
+    .map((m) => ({ role: m.role as "user" | "assistant", content: m.content.slice(0, 4000) }));
 }
 
 async function finish(db: Db, id: string, text: string, record: TurnRecord) {

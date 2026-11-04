@@ -90,7 +90,7 @@ const DESIGN_RULES = `Design: make each app look made for its purpose, not like 
 - Small touches that make it feel finished: quick-pick amount chips (e.g. 10 / 50 / 100 G$), a balance hint under amount inputs, shortAddress for addresses, relative or formatted values, disabled buttons with "Sending…" while pending.`;
 
 const CONVERSATION = `Reading the user's message:
-- Read it with the conversation so far. A short reply to your last suggestions ("yes", "the second one", "do it") means: build that suggestion now. Your earlier suggestions are listed after your earlier replies.
+- Read it with the conversation so far. A short reply to your last suggestions ("yes", "the second one", "do it") means: build that suggestion now. The project context lists the suggestions your previous reply offered.
 - A question (about the app, how something works, what you can build) gets a short answer without editing files and without set_plan, then suggest_next.
 - Otherwise it is a change or a new app: do exactly what was asked, keep everything that already works, and don't add features nobody asked for. Check whether it already exists before building it.
 - If something is unclear but a sensible default exists, pick it and say which in one clause of your reply instead of stopping to ask.
@@ -100,7 +100,7 @@ What users build: mostly dApps on Celo (a contract plus its app; Celo Sepolia te
 Front-end guides (load the ones you need via set_plan's guides field, or read_guide; they hold the detailed rules):
 ${guideCatalog()}`;
 
-const FOLLOW_UP = `Then, in the same response as that reply, call suggest_next with one or two next steps specific to this app, written as the request the user would send ("Add a leaderboard of top tippers", "Let tips carry a short message"). They appear as buttons under your reply, so don't repeat them in the text. Nothing already built, no pushing.`;
+const FOLLOW_UP = `Then, in the same response as that reply, call suggest_next with one or two next steps specific to this app, written as the request the user would send ("Add a leaderboard of top tippers", "Let tips carry a short message"). They appear as buttons under your reply. suggest_next is the only place for next steps: don't list or ask them in the reply text. Nothing already built, no pushing.`;
 
 export function systemPrompt(mode: "build" | "plan"): string {
   const role =
@@ -136,6 +136,8 @@ export function contextMessage(args: {
   budgetChars?: number;
   /** Paths to include first (contracts, App, recently changed). */
   priority?: string[];
+  /** Next steps your previous reply offered as buttons. */
+  lastSuggestions?: string[];
 }): string {
   const budget = args.budgetChars ?? 100_000;
   const paths = Object.keys(args.files).sort();
@@ -158,5 +160,8 @@ export function contextMessage(args: {
     used += content.length;
     blocks.push(`<file path="${p}">\n${content}\n</file>`);
   }
-  return `Project files:\n${tree}\n\nCurrent contents (others: use read_file):\n${blocks.join("\n\n")}\n\nUser request:\n${args.request}`;
+  const chips = args.lastSuggestions?.length
+    ? `\n\nYour previous reply offered these next steps as buttons (the user may be answering them):\n${args.lastSuggestions.map((c, i) => `${i + 1}. ${c}`).join("\n")}`
+    : "";
+  return `Project files:\n${tree}\n\nCurrent contents (others: use read_file):\n${blocks.join("\n\n")}${chips}\n\nUser request:\n${args.request}`;
 }

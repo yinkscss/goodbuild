@@ -182,8 +182,11 @@ describe("runTurn", { timeout: 120_000 }, () => {
     // The next turn's history names the chips, so "yes, the first one" has a referent.
     const next = scriptedModel([{ text: "On it." }]);
     await runTurn({ db, model: next.client }, { projectId, userId, mode: "build", prompt: "yes, the first one" }, () => {});
-    const history = next.requests[0].messages.filter((m) => m.role === "assistant").map((m) => String(m.content));
-    expect(history.some((c) => c.includes("Suggested next steps: 1. Add a leaderboard of top tippers"))).toBe(true);
+    const msgs = next.requests[0].messages;
+    expect(String(msgs.at(-1)!.content)).toContain("offered these next steps as buttons");
+    expect(String(msgs.at(-1)!.content)).toContain("1. Add a leaderboard of top tippers");
+    // Not appended to the assistant's own history, so the model doesn't copy the format.
+    expect(msgs.filter((m) => m.role === "assistant").every((m) => !String(m.content).includes("next steps"))).toBe(true);
   });
 
   it("reports the auto-fix result clearly in the step rows", async () => {
