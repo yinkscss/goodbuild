@@ -32,8 +32,8 @@ describe("CreditsPill", () => {
 
 const now = new Date(2026, 10, 4, 15, 0);
 const projects = [
-  { id: "a", name: "SavingsCircle", status: "deployed", chainId: 11142220, updatedAt: new Date(2026, 10, 4, 13, 0) },
-  { id: "b", name: "Co-op Grain Fund", status: "needs_fix", chainId: 11142220, updatedAt: new Date(2026, 9, 27, 9, 0) },
+  { id: "a", name: "SavingsCircle", status: "deployed", chainId: 11142220, updatedAt: new Date(2026, 10, 4, 13, 0), kind: "savings" as const },
+  { id: "b", name: "Co-op Grain Fund", status: "needs_fix", chainId: 11142220, updatedAt: new Date(2026, 9, 27, 9, 0), kind: "custom" as const },
 ];
 
 describe("project cards", () => {
@@ -44,6 +44,8 @@ describe("project cards", () => {
     expect(screen.getByText("2h ago")).toBeInTheDocument();
     expect(screen.getByText("Needs fix · build error")).toBeInTheDocument();
     expect(screen.getByText("Last week")).toBeInTheDocument();
+    expect(screen.getByText("Savings circle")).toBeInTheDocument();
+    expect(screen.getByText("Custom dApp")).toBeInTheDocument();
   });
 
   it("sidebar shows a hint when there are no builds", () => {

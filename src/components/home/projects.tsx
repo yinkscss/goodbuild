@@ -2,7 +2,9 @@ import Image from "next/image";
 import Link from "next/link";
 
 import { FillPromptChip } from "@/components/home/home-prompt";
+import { KindTile } from "@/components/home/kind-tile";
 import { RetryButton } from "@/components/home/retry-button";
+import type { ContractKind } from "@/lib/contract-kind";
 import { TONE_CLASS, projectStatusMeta, relativeTime } from "@/lib/home";
 import { cn } from "@/lib/utils";
 import cube from "../../../public/assets/chrome-cube.jpg";
@@ -13,12 +15,8 @@ export interface ProjectSummary {
   status: string;
   chainId: number;
   updatedAt: Date;
+  kind: ContractKind;
 }
-
-const THUMBS = [
-  "linear-gradient(135deg, #F3EEF8, #E2D2F0)",
-  "linear-gradient(135deg, #F3EEF8, #EFE6F7)",
-];
 
 /** One project card: thumbnail, name, status dot and line, relative time (mockup b). */
 export function ProjectCard({ project, index, now }: { project: ProjectSummary; index: number; now: Date }) {
@@ -28,12 +26,7 @@ export function ProjectCard({ project, index, now }: { project: ProjectSummary; 
       href={`/p/${project.id}`}
       className="group flex h-[196px] flex-col rounded-card bg-surface p-5 shadow-card outline-none transition-shadow duration-200 ease-gb hover:shadow-pop focus-visible:shadow-focus"
     >
-      <div className="h-[78px] rounded-block" style={{ background: THUMBS[index % THUMBS.length] }} aria-hidden>
-        <div className="flex gap-1.5 p-3">
-          <span className="h-2 w-8 rounded bg-white/80" />
-          <span className="h-2 w-5 rounded bg-white/60" />
-        </div>
-      </div>
+      <KindTile kind={project.kind} index={index} />
       <p className="mt-4 truncate font-semibold">{project.name}</p>
       <div className="mt-1 flex flex-col gap-0.5 text-xs text-grey-600">
         <span className="flex items-center gap-1.5">

@@ -17,6 +17,7 @@ import { currentSession } from "@/server/auth/http";
 import { getCredits } from "@/server/credits";
 import { getDb } from "@/server/db/client";
 import { listProjects } from "@/server/projects";
+import { inferKind } from "@/lib/contract-kind";
 
 export const metadata = { title: "Home · GoodBuild" };
 
@@ -32,7 +33,14 @@ const loadProjects = cache(async (): Promise<{ projects: ProjectSummary[] } | { 
   try {
     const rows = await listProjects(await getDb(), session.user.id, 8);
     return {
-      projects: rows.map((p) => ({ id: p.id, name: p.name, status: p.status, chainId: p.chainId, updatedAt: p.updatedAt })),
+      projects: rows.map((p) => ({
+        id: p.id,
+        name: p.name,
+        status: p.status,
+        chainId: p.chainId,
+        updatedAt: p.updatedAt,
+        kind: inferKind({ templateId: p.templateId, text: p.name }),
+      })),
     };
   } catch (error) {
     console.error(error);

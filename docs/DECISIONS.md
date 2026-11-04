@@ -31,6 +31,18 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - All UI must follow [DESIGN_SYSTEM.md](DESIGN_SYSTEM.md).
 - Rationale: the user chose it over the dark exploration.
 
+### D13. Credits are USD-denominated; builds billed at actual LLM cost + 25%
+- Date: 4 Nov 2026 · Decided by: user (Olayinka) · Resolves Q26 (and Q18, Q21 for Stage 1)
+- **Unit:** USD is the primary credit unit everywhere in the UI. G$ is shown alongside, converted at the rate snapshotted when the deposit was made (CREDITS.md §3).
+- **Price:** each build is billed at the actual LLM cost of its calls plus a 25% markup. Cost comes from the token usage the provider reports, priced with GoodBuild's own table (`src/config/model-pricing.ts`), not LiteLLM's cost map, which may lag new models.
+- **Preflight:** an estimate is shown before Build, and the balance check and reservation follow CREDITS.md §4.
+- Rationale: users see a stable price while G$ moves; billing at real cost keeps the platform from losing money on large builds.
+
+### D14. Stage 1 models via LiteLLM, direct providers only
+- Date: 4 Nov 2026 · Decided by: user (Olayinka) · Refines D9
+- Strong (planning and code): `anthropic/claude-sonnet-5-5`. Cheap and fallback (titles, summaries, first auto-fix attempt): DeepSeek (user asked for `deepseek/deepseek-chat`; Claude proposed `deepseek/deepseek-flash` because DeepSeek's current docs list only Flash and V4 Pro, see Q34). No OpenRouter.
+- Keys: `ANTHROPIC_API_KEY` and `DEEPSEEK_API_KEY` in `.env.local`, read by the LiteLLM proxy only. The app calls two aliases, `gb-strong` and `gb-cheap`, so models change in `litellm/config.yaml` alone.
+
 ## Recommended decisions (Ego; adopted unless changed)
 
 ### D5. In-browser preview via Sandpack

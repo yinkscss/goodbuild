@@ -108,7 +108,7 @@
 - The mockup says templates are "pre-audited". GoodBuild templates are not audited; their OpenZeppelin bases are.
 - Claude's input: M1 copy says "built on audited OpenZeppelin contracts" and the eyebrow reads "Audited building blocks". Revert only once templates have their own audit.
 
-## Q26. Credit price vs real build cost
+## Q26. Credit price vs real build cost (resolved: D13)
 - Mockup b shows "≈ 4 G$ per build" and "120 G$ ≈ $0.02". At ~$0.000112/G$ (RESEARCH.md), 4 G$ is about $0.0005. A strong-model build is plausibly $0.05–$1 (UNVERIFIED until the AI_AGENT §8 benchmark runs), i.e. roughly 450–9,000 G$. The daily UBI claim (~126 G$) would not fund one build.
 - The UI also shows balances in G$ while CREDITS.md stores USD micro-units and says to show dollars (Q18).
 - Claude's input: decide before M3/M6. Proposal: show USD as the primary unit ("$0.42 of build credit") with G$ as the deposit currency; show the per-build estimate from real metered cost; lean on the GoodID free tier for first builds.
@@ -136,9 +136,13 @@
 ## Q32. MiniPay / Valora detection
 - The modal marks MiniPay as detected when `window.ethereum.isMiniPay` is set, and connects it as the injected wallet; elsewhere "MiniPay / Valora" falls back to WalletConnect. Not yet tested inside MiniPay (UNVERIFIED), per AUTH.md's pre-M2 check.
 
-## Q33. Home (M3) choices to confirm
+## Q33. Home (M3) choices to confirm (resolved: user approved all defaults)
 - **Credits pill before M6:** shows "Testnet beta · free" instead of a balance, because the ledger doesn't exist yet. The low (≤10 G$) and zero states are built and tested; M6 supplies the real balance. Still depends on Q26 (G$ vs USD as the main unit).
 - **Mainnet copy:** "Mainnet unlocks after GoodDollar face verification" (CONTRACTS_AND_DEPLOYMENT §1), not the mockup's "after your first verified contract". See Q27.
 - **Account pill:** follows DESIGN_SYSTEM §3 (white pill, pink dot, address) rather than mockup b's black pill, so it matches the landing and workspace.
 - **Chips:** mockup b's "Streaming G$ payroll" is swapped for "Crowdfund with refund", since Superfluid streaming is post-MVP (CREDITS.md §2).
 - **Not yet built:** Templates, Deployments and Credits pages (shown as "Soon" in the sidebar) and "View all" (the grid shows the latest 8).
+
+## Q34. `deepseek-chat` vs `deepseek-flash`
+- On 4 Nov 2026 DeepSeek's pricing page (https://api-docs.deepseek.com/quick_start/pricing) listed only `deepseek-flash` (DeepSeek-V4.1-Flash-1017; $0.30 / $1.20 per MTok input/output at peak, half off-peak) and `deepseek-v4-pro`, and said older names route to the current Flash model. `deepseek-chat` isn't mentioned, so it may stop resolving.
+- Claude's input: use `deepseek/deepseek-flash` for `gb-cheap`. Switching is one line in `litellm/config.yaml`.
