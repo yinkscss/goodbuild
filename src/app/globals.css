@@ -39,12 +39,25 @@
   --ease-gb: cubic-bezier(0.2, 0.8, 0.2, 1);
 
   --animate-bob: gb-bob 6s ease-in-out infinite;
+  --animate-float: gb-float 8s ease-in-out infinite;
+  --animate-glow: gb-glow 8s ease-in-out infinite;
   --animate-pulse-dot: gb-pulse 1.6s ease-in-out infinite;
   --animate-caret: gb-caret 1s steps(1) infinite;
   --animate-draw: gb-draw 2.4s var(--ease-gb) forwards;
 
   @keyframes gb-bob {
     50% { transform: translateY(-10px); }
+  }
+  /* Hero render idle: drift, slight sway and a breathing scale (DESIGN_SYSTEM §5). */
+  @keyframes gb-float {
+    0%, 100% { transform: translateY(0) rotate(0deg) scale(1); }
+    25% { transform: translateY(-7px) rotate(-1.2deg) scale(1.01); }
+    50% { transform: translateY(-14px) rotate(0deg) scale(1.025); }
+    75% { transform: translateY(-6px) rotate(1.2deg) scale(1.01); }
+  }
+  @keyframes gb-glow {
+    0%, 100% { opacity: 0.55; transform: scale(0.94); }
+    50% { opacity: 0.9; transform: scale(1.04); }
   }
   @keyframes gb-pulse {
     50% { opacity: 0.35; }

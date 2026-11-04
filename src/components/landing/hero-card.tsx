@@ -1,9 +1,5 @@
-import Image from "next/image";
-
 import BlurText from "@/components/react-bits/BlurText";
-import heroRender from "../../../public/assets/hero-b.jpg";
-
-const heroMask = "radial-gradient(closest-side, #000 70%, transparent 100%)";
+import { HeroRender } from "@/components/landing/hero-render";
 
 /**
  * Centre bento card: radial violet gradient, the chrome/violet hero render
@@ -18,14 +14,7 @@ export function HeroCard() {
       style={{ background: "radial-gradient(70% 70% at 50% 40%, #FFFFFF 0%, #EFE6F7 60%, #E2D2F0 100%)" }}
     >
       <div className="absolute inset-x-0 -top-4 flex justify-center">
-        <Image
-          src={heroRender}
-          alt=""
-          priority
-          sizes="(min-width: 1024px) 575px, 90vw"
-          className="h-[320px] w-auto animate-bob mix-blend-multiply motion-reduce:animate-none sm:h-[400px] lg:h-[430px]"
-          style={{ WebkitMaskImage: heroMask, maskImage: heroMask }}
-        />
+        <HeroRender />
       </div>
 
       <span className="absolute top-6 left-6 z-10 rounded-full bg-white/70 px-3 py-1.5 text-xs font-semibold text-violet">
