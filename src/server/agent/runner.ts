@@ -163,6 +163,11 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       // summary after a fix) is dropped from what the user sees, live and saved.
       if (quiet) {
         // Nothing was shown.
+      } else if (input.mode === "build" && toolCalls.length && replyText.trim()) {
+        // Narration before tool calls ("I'll start by planning this out.") isn't the reply;
+        // the steps already show the work. Keep it in the model's history only.
+        text = textBefore;
+        emit({ type: "text_set", text });
       } else if (replyText.trim() && isRepeat(replyText, replies)) {
         text = textBefore;
         emit({ type: "text_set", text });

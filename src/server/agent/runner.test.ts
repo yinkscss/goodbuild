@@ -129,7 +129,7 @@ describe("runTurn", { timeout: 120_000 }, () => {
   it("asks for a reply when the build pass runs out of tool rounds, and flags no-op edits", async () => {
     const noop = { name: "edit_file", args: { path: "src/App.tsx", edits: [{ search: "export default", replace: "export default" }] } };
     const { client, requests } = scriptedModel([
-      { tools: [{ name: "set_plan", args: { summary: "Add a thank-you banner.", steps: ["Banner"] } }] },
+      { text: "I'll start by planning this out.", tools: [{ name: "set_plan", args: { summary: "Add a thank-you banner.", steps: ["Banner"] } }] },
       ...Array.from({ length: 15 }, () => ({ tools: [noop] })),
       { text: "Added a thank-you banner.\n\nWant it to show the tip amount?" },
     ]);
