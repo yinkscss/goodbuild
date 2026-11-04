@@ -5,7 +5,7 @@ import { and, asc, eq } from "drizzle-orm";
 import type { Db } from "@/server/db/client";
 import { messages, projects } from "@/server/db/schema";
 import { checkApp, checkContracts, formatIssues, mentionsGd, mentionsNativeCelo, type CheckIssue, type CheckReport, type ContractCheckOptions } from "./checks";
-import { ModelUnavailableError, type ChatMessage, type ModelClient, type ModelTier, type ToolCall } from "./model";
+import { TIER_FOR, ModelUnavailableError, type ChatMessage, type ModelClient, type ModelTier, type ToolCall } from "./model";
 import { BUILD_TOOLS, PLAN_TOOLS, contextMessage, systemPrompt } from "./prompt";
 import { checkpoint, claimTurn, loadFiles, recordUsage, releaseTurn } from "./store";
 import { PLATFORM_DIR, contractModule, contractsIndex, starterFiles } from "./template";
@@ -205,7 +205,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       log("! stopped: too many tool rounds in one pass");
     };
 
-    await phase("strong");
+    await phase(input.mode === "plan" ? TIER_FOR.plan : TIER_FOR.build);
 
     if (input.mode === "plan") {
       record.status = "answered";
@@ -214,7 +214,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       return record;
     }
 
-    // Checks and auto-fix (max 3; cheap model first, then strong). Same errors twice → stop.
+    // Checks and auto-fix (max 3, all on the fix tier). Same errors twice → stop.
     let report = await runChecks(ws.files, compile, lint, step, log, 0, contractOptions);
     let previous = "";
     const initialErrors = report.errors.length;
@@ -234,7 +234,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
         role: "user",
         content: `GoodBuild's checks failed. Fix these errors with edit_file, then reply with one sentence on what you changed:\n${issues}`,
       });
-      await phase(attempt === 1 ? "cheap" : "strong");
+      await phase(TIER_FOR.fix);
       report = await runChecks(ws.files, compile, lint, step, log, attempt, contractOptions);
       step({
         id: `fix:${attempt}`,

@@ -103,6 +103,12 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 ### P2. Audited-template-first contracts, non-upgradeable by default (proposed)
 - Date: 4 Nov 2026 · Proposed by: Grok Bot · See CONTRACTS_AND_DEPLOYMENT.md §4. Open: Q1, Q4, Q15.
 
+### D19. DeepSeek builds first, Claude fixes
+- Date: 4 Nov 2026 · Decided by: user (Olayinka) · Refines D14 and D18
+- Routing: `deepseek-flash` for planning and the first build pass; `claude-sonnet-5-5` for every auto-fix attempt (compile errors, guardrail and app-check failures). The fallback wrapper still retries a failed strong call on cheap.
+- Why: the first live runs cost about $0.02 on DeepSeek and $0.10 on Sonnet for a similar small contract, and both compiled clean. Claude is kept for the step where a cheap model has already failed.
+- Open: whether follow-up edits (reprompts on an existing project) should use Claude. Claude recommends yes, see AI_AGENT.md. One line in `TIER_FOR` (`src/server/agent/model.ts`).
+
 ### P3. Off-chain deployments table is the source of truth; on-chain factory optional later (proposed)
 - Date: 4 Nov 2026 · Proposed by: Grok Bot · See CONTRACTS_AND_DEPLOYMENT.md §3. Open: Q11.
 

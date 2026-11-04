@@ -70,7 +70,7 @@ Small benchmark (~20 prompts) run on every prompt/model change; scored for: comp
 Q13–Q16 in [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md).
 
 ## Implementation (M4)
-- **Models:** the Vercel AI SDK (D18) in `src/server/agent/model.ts`: `claude-sonnet-5-5` (`@ai-sdk/anthropic`) for plan and code, `deepseek-flash` (`@ai-sdk/deepseek`, an alias for the current V4 Flash, see Q34) for cheap tasks and as fallback. The SDK retries once; `withFallback` then retries a strong call on cheap only if nothing has streamed yet. Keys come from `ANTHROPIC_API_KEY` and `DEEPSEEK_API_KEY`. The system prompt is cache-marked for Anthropic.
+- **Models:** the Vercel AI SDK (D18) in `src/server/agent/model.ts`: `claude-sonnet-5-5` (`@ai-sdk/anthropic`) for fixes (D19), `deepseek-flash` (`@ai-sdk/deepseek`, an alias for the current V4 Flash, see Q34) for planning, the first build and as fallback. The SDK retries once; `withFallback` then retries a strong call on cheap only if nothing has streamed yet. Keys come from `ANTHROPIC_API_KEY` and `DEEPSEEK_API_KEY`. The system prompt is cache-marked for Anthropic.
 - **Loop:** `src/server/agent/runner.ts`. Plan (`set_plan`), tool edits (`src/server/agent/workspace.ts`), checks (`checks.ts`), up to 3 auto-fixes (cheap model first), one checkpoint per prompt (`store.ts`). One turn per project at a time; follow-ups queue in the browser.
 - **Edits:** search/replace with exact match, then a whitespace-tolerant unique match (`edits.ts`).
 - **Platform-owned files:** after each compile GoodBuild writes `src/contracts/<Name>.ts` (ABI; addresses after deploy in M5). The agent can read but not edit them.

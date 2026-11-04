@@ -73,8 +73,8 @@ describe("runTurn", { timeout: 120_000 }, () => {
     expect(record.version).toBe(1);
     expect(record.contracts?.map((c) => c.name)).toEqual(["TipJar"]);
     expect(record.plan?.steps).toHaveLength(2);
-    // Fix attempt 1 goes to the cheap model; everything else to the strong one.
-    expect(requests.map((r) => r.tier)).toEqual(["strong", "strong", "cheap", "cheap"]);
+    // D19: the build runs on the cheap model; fix attempts go to the strong one.
+    expect(requests.map((r) => r.tier)).toEqual(["cheap", "cheap", "strong", "strong"]);
     expect(record.steps.find((s) => s.id === "fix:1")).toMatchObject({ status: "done" });
     expect(record.log.some((l) => l.includes("TipJar"))).toBe(true);
 
