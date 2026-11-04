@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { modelClient } from "@/server/agent";
+import { visionClient } from "@/server/agent";
 import { runVisualCheck } from "@/server/agent/visual-check";
 import { errorResponse, requireSession } from "@/server/auth/http";
 import { getDb } from "@/server/db/client";
@@ -26,7 +26,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/projects/[i
     const db = await getDb();
     if (!(await getOwnedProject(db, id, session.user.id))) return NextResponse.json({ error: "not_found" }, { status: 404 });
     const png = new Uint8Array(Buffer.from(parsed.data.image.slice("data:image/png;base64,".length), "base64"));
-    const check = await runVisualCheck({ db, model: modelClient(), projectId: id, userId: session.user.id, version: parsed.data.version, width: parsed.data.width, png });
+    const check = await runVisualCheck({ db, model: visionClient(), projectId: id, userId: session.user.id, version: parsed.data.version, width: parsed.data.width, png });
     return check ? NextResponse.json({ check }) : NextResponse.json({ error: "no_result" }, { status: 422 });
   } catch (error) {
     return errorResponse(error);

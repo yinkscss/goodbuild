@@ -1,6 +1,6 @@
 import { NextResponse, connection } from "next/server";
 
-import { modelClient } from "@/server/agent";
+import { visionClient } from "@/server/agent";
 import { dbAssetStore, reclassifyAsset } from "@/server/agent/asset-store";
 import { ASSET_KINDS, type AssetKind } from "@/server/agent/assets";
 import { errorResponse, requireSession } from "@/server/auth/http";
@@ -49,7 +49,7 @@ export async function PATCH(request: Request, ctx: RouteContext<"/api/projects/[
     }
     const body = (await request.json().catch(() => null)) as { kind?: string } | null;
     if (!body?.kind || !(ASSET_KINDS as string[]).includes(body.kind)) return NextResponse.json({ error: "invalid_body" }, { status: 400 });
-    const asset = await reclassifyAsset({ store: dbAssetStore(db), db, model: modelClient(), projectId: id, userId: session.user.id, id: assetId, kind: body.kind as AssetKind });
+    const asset = await reclassifyAsset({ store: dbAssetStore(db), db, model: visionClient(), projectId: id, userId: session.user.id, id: assetId, kind: body.kind as AssetKind });
     return asset ? NextResponse.json({ asset }) : NextResponse.json({ error: "not_found" }, { status: 404 });
   } catch (error) {
     return errorResponse(error);

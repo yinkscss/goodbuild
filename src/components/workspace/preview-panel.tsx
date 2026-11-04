@@ -92,6 +92,7 @@ export function PreviewPanel({
   onRuntimeError,
   checkVersion,
   onCaptured,
+  onCaptureFailed,
 }: {
   files: Record<string, string>;
   assetUrls?: Record<string, string>;
@@ -99,6 +100,7 @@ export function PreviewPanel({
   /** The version to screenshot once it renders (the build this browser just finished). */
   checkVersion?: number | null;
   onCaptured?: (shot: { url: string; width: number }, version: number) => void;
+  onCaptureFailed?: () => void;
   version: number;
   contracts: Array<{ name: string; file: string; bytecodeBytes: number }>;
   onFix: (prompt: string) => void;
@@ -185,7 +187,7 @@ export function PreviewPanel({
           {tab === "contract" && <ContractView files={files} solFiles={solFiles} contracts={contracts} />}
         </div>
         <ErrorWatcher onFix={onFix} fixDisabled={fixDisabled} onRuntimeError={onRuntimeError} />
-        {onCaptured && <VisualCheckRunner version={version} checkVersion={checkVersion ?? null} visible={tab === "preview"} container={frameRef} onCaptured={onCaptured} />}
+        {onCaptured && <VisualCheckRunner version={version} checkVersion={checkVersion ?? null} visible={tab === "preview"} container={frameRef} onCaptured={onCaptured} onFailed={onCaptureFailed} />}
       </SandpackProvider>
     </section>
   );
@@ -296,20 +298,24 @@ function VisualCheckRunner({
   visible,
   container,
   onCaptured,
+  onFailed,
 }: {
   version: number;
   checkVersion: number | null;
   visible: boolean;
   container: React.RefObject<HTMLDivElement | null>;
   onCaptured: (shot: { url: string; width: number }, version: number) => void;
+  onFailed?: () => void;
 }) {
   const { listen } = useSandpack();
   const [rendered, setRendered] = React.useState(false);
   const done = React.useRef<number | null>(null);
   const captured = React.useRef(onCaptured);
+  const failed = React.useRef(onFailed);
   React.useEffect(() => {
     captured.current = onCaptured;
-  }, [onCaptured]);
+    failed.current = onFailed;
+  }, [onCaptured, onFailed]);
 
   React.useEffect(
     () =>
@@ -328,7 +334,7 @@ function VisualCheckRunner({
       done.current = version;
       capturePreview(iframe)
         .then((shot) => captured.current({ url: shot.url, width: shot.width }, version))
-        .catch(() => undefined); // best effort: no screenshot, no check
+        .catch(() => failed.current?.());
     }, 2500);
     return () => window.clearTimeout(timer);
   }, [rendered, visible, checkVersion, version, container]);

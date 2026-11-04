@@ -21,7 +21,8 @@ window.addEventListener("message", async (event: MessageEvent) => {
     const { toPng } = await import("html-to-image");
     const node = document.documentElement;
     const height = Math.min(Math.max(node.scrollHeight, window.innerHeight), data.maxHeight ?? 2400);
-    const options = { width: window.innerWidth, height, pixelRatio: 1, cacheBust: true, backgroundColor: getComputedStyle(document.body).backgroundColor || "#ffffff" };
+    // A broken image must not fail the capture: it's one of the defects the check looks for.
+    const options = { width: window.innerWidth, height, pixelRatio: 1, cacheBust: true, backgroundColor: getComputedStyle(document.body).backgroundColor || "#ffffff", onImageErrorHandler: () => undefined };
     let url: string;
     try {
       url = await toPng(node, options);

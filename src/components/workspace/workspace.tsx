@@ -91,6 +91,7 @@ export function Workspace({ initial }: { initial: WorkspaceState }) {
             onRuntimeError={(e) => ws.onPreviewError(e, live?.record.version ?? state.project.currentVersion)}
             checkVersion={live ? null : ws.checkVersion}
             onCaptured={(shot, v) => void ws.onPreviewCaptured(shot, v)}
+            onCaptureFailed={ws.onCaptureFailed}
             fixDisabled={running}
           />
         </div>

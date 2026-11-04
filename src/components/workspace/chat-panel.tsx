@@ -67,6 +67,7 @@ export function ChatPanel({ ws, assetUrls = {} }: { ws: UseWorkspace; assetUrls?
               fixDisabled={running}
               onSuggest={!live && canSuggest && m.id === lastAssistantId ? suggest : undefined}
               checking={m.id === lastAssistantId && ws.checking}
+              checkFailed={m.id === lastAssistantId && ws.checkFailed}
             />
           );
         })}

@@ -196,12 +196,19 @@ export function SuggestionChips({ items, onPick, disabled }: { items: string[]; 
 }
 
 /** Visual check result (P17): a quiet line when it looks right, a card with "Fix these" when not. */
-export function VisualCheckNote({ record, checking, onFix, disabled }: { record: TurnRecord; checking?: boolean; onFix?: (prompt: string) => void; disabled: boolean }) {
+export function VisualCheckNote({ record, checking, failed, onFix, disabled }: { record: TurnRecord; checking?: boolean; failed?: boolean; onFix?: (prompt: string) => void; disabled: boolean }) {
   const check = record.visualCheck;
   if (!check && checking) {
     return (
       <p className="mt-3 flex items-center gap-2 text-xs text-grey-600">
         <Eye className="size-3.5 animate-pulse motion-reduce:animate-none" aria-hidden /> Checking the preview…
+      </p>
+    );
+  }
+  if (!check && failed) {
+    return (
+      <p className="mt-3 flex items-center gap-2 text-xs text-grey-600">
+        <Eye className="size-3.5" aria-hidden /> The visual check couldn&apos;t run for this build. The build itself is fine.
       </p>
     );
   }
@@ -248,6 +255,7 @@ export function TurnView({
   fixDisabled,
   onSuggest,
   checking,
+  checkFailed,
 }: {
   text: string;
   record: TurnRecord;
@@ -258,6 +266,8 @@ export function TurnView({
   onSuggest?: (prompt: string) => void;
   /** The visual check of this turn's preview is running. */
   checking?: boolean;
+  /** The visual check of this turn's preview couldn't produce a result. */
+  checkFailed?: boolean;
 }) {
   const showError = !live && (record.status === "needs_fix" || record.status === "error");
   return (
@@ -272,7 +282,7 @@ export function TurnView({
       {!live && <DiffChips changes={record.changes} />}
       {!live && record.status === "ready" && <DeployCard record={record} />}
       {showError && <TurnError record={record} onFix={onFix} disabled={fixDisabled} />}
-      {!live && <VisualCheckNote record={record} checking={checking} onFix={onSuggest} disabled={fixDisabled} />}
+      {!live && <VisualCheckNote record={record} checking={checking} failed={checkFailed} onFix={onSuggest} disabled={fixDisabled} />}
       {!live && onSuggest && record.status !== "error" && record.suggestions?.length ? (
         <SuggestionChips items={record.suggestions} onPick={onSuggest} disabled={fixDisabled} />
       ) : null}

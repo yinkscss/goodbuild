@@ -30,7 +30,7 @@ export function parseVisualCheck(text: string): { ok: boolean; issues: string[] 
   if (start < 0 || end <= start) return null;
   try {
     const j = JSON.parse(text.slice(start, end + 1)) as { ok?: unknown; issues?: unknown };
-    const issues = Array.isArray(j.issues) ? j.issues.map((s) => String(s ?? "").replace(/\s+/g, " ").trim().slice(0, 200)).filter(Boolean).slice(0, MAX_ISSUES) : [];
+    const issues = Array.isArray(j.issues) ? j.issues.map((s) => String(s ?? "").replace(/\s*—\s*/g, ", ").replace(/\s+/g, " ").trim().slice(0, 200)).filter(Boolean).slice(0, MAX_ISSUES) : [];
     if (typeof j.ok !== "boolean") return null;
     return { ok: j.ok && issues.length === 0, issues: j.ok ? [] : issues };
   } catch {
@@ -59,29 +59,36 @@ export async function runVisualCheck(args: {
   if (!turn) return null;
   const request = rows.slice(0, rows.indexOf(turn)).reverse().find((m) => m.role === "user")?.content ?? "";
   const image = await visionImage(args.png, "image/png");
-  let text = "";
   let charged = 0;
-  for await (const ev of args.model.stream({
-    tier: TIER_FOR.build,
-    maxTokens: 500,
-    messages: [{ role: "user", content: [{ type: "text", text: visualCheckPrompt({ width: args.width, request }) }, { type: "image", ...image }] }],
-  })) {
-    if (ev.type === "text") text += ev.delta;
-    else if (ev.type === "usage") {
-      const cost = await recordUsage(args.db, {
-        userId: args.userId,
-        projectId: args.projectId,
-        messageId: turn.id,
-        callId: ev.callId || `visual:${crypto.randomUUID()}`,
-        model: ev.model,
-        inputTokens: ev.inputTokens,
-        outputTokens: ev.outputTokens,
-        cachedInputTokens: ev.cachedInputTokens,
-      });
-      charged += cost.chargedMicro;
+  let parsed: ReturnType<typeof parseVisualCheck> = null;
+  // One retry: a reply can still come back empty or not as JSON.
+  for (let attempt = 0; attempt < 2 && !parsed; attempt++) {
+    let text = "";
+    let finishReason: string | null = null;
+    for await (const ev of args.model.stream({
+      tier: TIER_FOR.build,
+      maxTokens: 500,
+      messages: [{ role: "user", content: [{ type: "text", text: visualCheckPrompt({ width: args.width, request }) }, { type: "image", ...image }] }],
+    })) {
+      if (ev.type === "text") text += ev.delta;
+      else if (ev.type === "done") finishReason = ev.finishReason;
+      else if (ev.type === "usage") {
+        const cost = await recordUsage(args.db, {
+          userId: args.userId,
+          projectId: args.projectId,
+          messageId: turn.id,
+          callId: ev.callId || `visual:${crypto.randomUUID()}`,
+          model: ev.model,
+          inputTokens: ev.inputTokens,
+          outputTokens: ev.outputTokens,
+          cachedInputTokens: ev.cachedInputTokens,
+        });
+        charged += cost.chargedMicro;
+      }
     }
+    parsed = parseVisualCheck(text);
+    if (!parsed) console.warn(`[visual-check] unusable reply for v${args.version}: finish=${finishReason} chars=${text.length}`);
   }
-  const parsed = parseVisualCheck(text);
   if (!parsed) return null;
   const check: VisualCheck = { ...parsed, width: args.width, chargedMicro: charged };
   const meta = turn.meta as unknown as TurnRecord;

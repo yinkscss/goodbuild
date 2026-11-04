@@ -35,7 +35,10 @@ export interface UseWorkspace {
   /** The version to screenshot for the visual check, and whether a check is running. */
   checkVersion: number | null;
   checking: boolean;
+  /** The check couldn't produce a result for the latest build. */
+  checkFailed: boolean;
   onPreviewCaptured: (shot: { url: string; width: number }, version: number) => Promise<void>;
+  onCaptureFailed: () => void;
   uploading: boolean;
 }
 
@@ -95,6 +98,7 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
   const [autoFixVersion, setAutoFixVersion] = React.useState<number | null>(null);
   const [checkVersion, setCheckVersion] = React.useState<number | null>(null);
   const [checking, setChecking] = React.useState(false);
+  const [checkFailed, setCheckFailed] = React.useState(false);
 
   const refresh = React.useCallback(async () => {
     const res = await fetch(`/api/projects/${projectId}`, { cache: "no-store" });
@@ -106,6 +110,7 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
       if (runningRef.current) return;
       runningRef.current = true;
       setError(null);
+      setCheckFailed(false);
       // Show the user's prompt immediately (the server stores it as part of the turn).
       if (body.prompt) {
         const prompt = body.prompt;
@@ -274,14 +279,15 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
       setCheckVersion(null);
       setChecking(true);
       try {
-        await fetch(`/api/projects/${projectId}/visual-check`, {
+        const res = await fetch(`/api/projects/${projectId}/visual-check`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ version, width: Math.round(shot.width), image: shot.url }),
         });
+        if (!res.ok) setCheckFailed(true);
         await refresh();
       } catch {
-        // Best effort: a failed check shows nothing.
+        setCheckFailed(true);
       } finally {
         setChecking(false);
       }
@@ -289,10 +295,17 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
     [projectId, refresh],
   );
 
+  const onCaptureFailed = React.useCallback(() => {
+    setCheckVersion(null);
+    setCheckFailed(true);
+  }, []);
+
   return {
     checkVersion,
     checking,
+    checkFailed,
     onPreviewCaptured,
+    onCaptureFailed,
     onPreviewError,
     changeAssetKind,
     state,
