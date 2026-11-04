@@ -68,3 +68,12 @@ Small benchmark (~20 prompts) run on every prompt/model change; scored for: comp
 
 ## Open choices (Claude's input invited)
 Q13–Q16 in [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md).
+
+## Implementation (M4)
+- **Models:** the app calls the LiteLLM proxy (`litellm/config.yaml`) with two aliases: `gb-strong` (`anthropic/claude-sonnet-5-5`) and `gb-cheap` (DeepSeek Flash, see Q34). LiteLLM retries once, then falls back from strong to cheap. Run locally with `pnpm llm`.
+- **Loop:** `src/server/agent/runner.ts`. Plan (`set_plan`), tool edits (`src/server/agent/workspace.ts`), checks (`checks.ts`), up to 3 auto-fixes (cheap model first), one checkpoint per prompt (`store.ts`). One turn per project at a time; follow-ups queue in the browser.
+- **Edits:** search/replace with exact match, then a whitespace-tolerant unique match (`edits.ts`).
+- **Platform-owned files:** after each compile GoodBuild writes `src/contracts/<Name>.ts` (ABI; addresses after deploy in M5). The agent can read but not edit them.
+- **Billing data:** every model call is stored in `usage_events`, priced with `src/config/model-pricing.ts` at cost + 25% (D13). M6 debits from these rows.
+- **Streaming:** `POST /api/projects/[id]/turns` returns Server-Sent Events. The turn finishes and persists even if the browser disconnects.
+- **Offline demo:** `GOODBUILD_DEMO_MODEL=1` replays a scripted tip-jar build (development only).

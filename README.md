@@ -7,7 +7,7 @@ A Lovable/Replit-style AI app builder for GoodDollar (G$, on Celo) users. Descri
 **Audience:** university students, Web3 newcomers and OG Web3 users. Goal: onboard people into Web3, 500+ returning users.
 
 ## Status
-Stage 1 in progress. M1 (scaffold and landing), M2 (auth and prompt gating) and M3 (logged-in home) done; see [the build prompt](docs/BUILD_PROMPT_STAGE1.md).
+Stage 1 in progress. M1 (landing), M2 (auth and prompt gating), M3 (home) and M4 (workspace and agent) done; see [the build prompt](docs/BUILD_PROMPT_STAGE1.md).
 
 ## Develop
 ```bash
@@ -19,6 +19,13 @@ pnpm smoke:auth   # end-to-end sign-in checks against a running server (BASE_URL
 node scripts/demo-session.mjs --seed   # throwaway signed-in session with sample projects
 ```
 Set `NEXT_PUBLIC_PRIVY_APP_ID` to turn sign-in on. Without `DATABASE_URL`, development uses an embedded database in `.data/`.
+
+**AI builds** go through a LiteLLM proxy. Put `ANTHROPIC_API_KEY`, `DEEPSEEK_API_KEY` and `LITELLM_MASTER_KEY` in `.env.local`, then:
+```bash
+pip install 'litellm[proxy]'
+pnpm llm          # proxy on http://localhost:4000, models set in litellm/config.yaml
+```
+To try the workspace without keys, set `GOODBUILD_DEMO_MODEL=1` (development only).
 Stack: Next.js 16 (App Router), TypeScript, Tailwind v4 + shadcn/ui, Vitest. Design tokens live in `src/app/globals.css` (DESIGN_SYSTEM §6).
 
 ## Docs

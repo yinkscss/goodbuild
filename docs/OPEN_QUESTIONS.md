@@ -146,3 +146,19 @@
 ## Q34. `deepseek-chat` vs `deepseek-flash`
 - On 4 Nov 2026 DeepSeek's pricing page (https://api-docs.deepseek.com/quick_start/pricing) listed only `deepseek-flash` (DeepSeek-V4.1-Flash-1017; $0.30 / $1.20 per MTok input/output at peak, half off-peak) and `deepseek-v4-pro`, and said older names route to the current Flash model. `deepseek-chat` isn't mentioned, so it may stop resolving.
 - Claude's input: use `deepseek/deepseek-flash` for `gb-cheap`. Switching is one line in `litellm/config.yaml`.
+
+## Q35. Is Celo (and Celo Sepolia) Cancun-compatible?
+- OpenZeppelin 5.6 uses the MCOPY opcode, so contracts compile for EVM `cancun`. Celo's docs say Celo L2 is "fully EVM-compatible" on the OP Stack but don't name an EVM version (UNVERIFIED, checked 4 Nov 2026).
+- Claude's input: M5 simulates every deploy on Celo Sepolia first, which will show it before anyone pays gas. Fallback if Cancun isn't supported: pin an OpenZeppelin release without MCOPY and compile for `shanghai`.
+
+## Q36. Preview depends on CodeSandbox's hosted bundler and the Tailwind CDN
+- Sandpack loads its bundler from CodeSandbox, and generated apps load Tailwind's browser build from jsDelivr. If either is down or blocked (some campus or corporate networks), the preview is blank while chat, code and contract views still work.
+- Claude's input: acceptable for Stage 1. Later options: self-host the Sandpack bundler (supported via `bundlerURL`) and vendor the Tailwind browser build.
+
+## Q37. Workspace chat width
+- DESIGN_SYSTEM §4 says a 420px chat panel; mockup c splits 50/50.
+- Claude's input: followed the design system (420px, 460px on very wide screens), which leaves more room for the preview. Easy to change.
+
+## Q38. Editing code by hand
+- The Code tab is read-only in M4, so the agent's files and checkpoints stay the single source of truth.
+- Claude's input: allow manual edits later, saved as their own version.

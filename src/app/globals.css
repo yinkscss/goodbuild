@@ -186,3 +186,48 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/*
+ * Sandpack injects unlayered CSS at runtime, which outranks Tailwind's layered utilities,
+ * so its layout overrides live here, unlayered and !important.
+ */
+.gb-sp-section > div {
+  display: flex !important;
+  flex-direction: column !important;
+  flex: 1 1 0% !important;
+  min-height: 0 !important;
+}
+.gb-sp-section .gb-sandpack {
+  flex: 1 1 0% !important;
+  min-height: 0 !important;
+}
+
+/* Sandpack panes fill the workspace card instead of their default 300px height. */
+.gb-sandpack .sp-preview,
+.gb-sandpack .sp-preview-container,
+.gb-sandpack .sp-preview-iframe,
+.gb-sandpack .sp-stack,
+.gb-sandpack .sp-code-editor,
+.gb-sandpack .sp-file-explorer,
+.gb-sandpack .cm-editor {
+  height: 100% !important;
+}
+/* Code shows exactly what's typed: no ligatures turning <= into ≤ or == into ═. */
+.font-mono,
+.gb-sandpack .cm-content,
+pre,
+code {
+  font-variant-ligatures: none;
+  font-feature-settings: "liga" 0, "calt" 0;
+}
+.gb-sandpack .sp-preview-container {
+  background: var(--color-surface);
+}
+.gb-sandpack .sp-code-editor,
+.gb-sandpack .sp-stack {
+  min-height: 0;
+  overflow: hidden;
+}
+.gb-sandpack .cm-scroller {
+  overflow: auto !important;
+}

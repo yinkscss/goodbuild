@@ -130,7 +130,7 @@ function AccountMenu({
           {!compact && (
             <>
               <span className="size-1.5 rounded-full bg-pink" aria-hidden />
-              <span className="font-mono text-[13px]">{shortAddress(wallet.address)}</span>
+              <span className="font-mono text-[13px] whitespace-nowrap">{shortAddress(wallet.address)}</span>
               {showNetwork && wallet.chainId !== null && (
                 <span className="rounded-full bg-tint px-2 py-0.5 text-[11px] font-semibold text-violet">
                   {chainName(wallet.chainId)}

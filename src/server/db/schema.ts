@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, index, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { bigint, boolean, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 
 /**
  * Stage 1 schema (D8: project code and chat in our DB; app data on-chain).
@@ -54,6 +54,10 @@ export const projects = pgTable(
     chainId: integer("chain_id").notNull(),
     /** draft | building | ready | needs_fix | deployed */
     status: text("status").notNull().default("draft"),
+    /** Latest checkpoint number (0 = template only). */
+    currentVersion: integer("current_version").notNull().default(0),
+    /** Set while an agent turn runs; one turn per project at a time. */
+    turnStartedAt: timestamp("turn_started_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
@@ -81,7 +85,66 @@ export const messages = pgTable(
   (t) => [index("messages_project_idx").on(t.projectId, t.createdAt)],
 );
 
+/** Current working files of a project (generated app + contracts). */
+export const projectFiles = pgTable(
+  "project_files",
+  {
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    path: text("path").notNull(),
+    content: text("content").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.projectId, t.path] })],
+);
+
+/** A checkpoint per prompt (AI_AGENT.md §4): a full snapshot of the files. */
+export const versions = pgTable(
+  "versions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    number: integer("number").notNull(),
+    /** The assistant message that produced it. */
+    messageId: uuid("message_id"),
+    summary: text("summary").notNull(),
+    files: jsonb("files").$type<Record<string, string>>().notNull(),
+    /** Set when this version restores an older one. */
+    revertedFrom: integer("reverted_from"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("versions_project_number_idx").on(t.projectId, t.number)],
+);
+
+/** One row per model call, priced with GoodBuild's table (D13). M6 debits from these. */
+export const usageEvents = pgTable(
+  "usage_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
+    messageId: uuid("message_id"),
+    /** Provider call id; unique so a replay can't double count. */
+    callId: text("call_id").notNull().unique(),
+    model: text("model").notNull(),
+    inputTokens: integer("input_tokens").notNull(),
+    outputTokens: integer("output_tokens").notNull(),
+    cachedInputTokens: integer("cached_input_tokens").notNull().default(0),
+    providerCostMicro: bigint("provider_cost_micro", { mode: "number" }).notNull(),
+    chargedMicro: bigint("charged_micro", { mode: "number" }).notNull(),
+    markupBps: integer("markup_bps").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("usage_user_idx").on(t.userId, t.createdAt)],
+);
+
 export type User = typeof users.$inferSelect;
 export type Session = typeof sessions.$inferSelect;
 export type Project = typeof projects.$inferSelect;
 export type Message = typeof messages.$inferSelect;
+export type Version = typeof versions.$inferSelect;
