@@ -223,6 +223,10 @@ code {
 .gb-sandpack .sp-preview-container {
   background: var(--color-surface);
 }
+/* Replaced by PreviewCover: Sandpack's overlay can stay opaque over a finished preview. */
+.gb-sandpack .sp-loading {
+  display: none !important;
+}
 .gb-sandpack .sp-code-editor,
 .gb-sandpack .sp-stack {
   min-height: 0;

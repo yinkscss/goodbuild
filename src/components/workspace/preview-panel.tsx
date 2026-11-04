@@ -147,7 +147,8 @@ export function PreviewPanel({
       >
         <Toolbar tabs={tabs} tab={tab} device={device} setDevice={setDevice} />
         <div className="gb-sandpack mt-3 min-h-0 flex-1 overflow-hidden rounded-block bg-canvas">
-          <div className={cn("h-full", tab !== "preview" && "hidden")}>
+          <div className={cn("relative h-full", tab !== "preview" && "hidden")}>
+            <PreviewCover />
             <div className={cn("mx-auto h-full transition-[max-width] duration-200 ease-gb", device === "mobile" ? "max-w-[390px] py-3" : "max-w-none")}>
               <SandpackPreview
                 className={cn("!h-full overflow-hidden bg-surface", device === "mobile" ? "rounded-[24px] shadow-card" : "")}
@@ -168,6 +169,39 @@ export function PreviewPanel({
         <ErrorWatcher onFix={onFix} fixDisabled={fixDisabled} />
       </SandpackProvider>
     </section>
+  );
+}
+
+/**
+ * Sandpack's own loading overlay can stay opaque after the bundler finishes (its listener misses
+ * the "done" message in dev), hiding a working preview. It is hidden in globals.css; this cover
+ * replaces it and clears on the bundler's raw "done" message, which always arrives.
+ */
+function PreviewCover() {
+  const [ready, setReady] = React.useState(false);
+  const [slow, setSlow] = React.useState(false);
+  React.useEffect(() => {
+    const onMessage = (e: MessageEvent) => {
+      const d = e.data as { codesandbox?: boolean; type?: string; firstLoad?: boolean } | null;
+      if (!d || typeof d !== "object" || !d.codesandbox) return;
+      if (d.type === "done" || d.type === "success") setReady(true);
+      else if (d.type === "start" && d.firstLoad) setReady(false);
+    };
+    window.addEventListener("message", onMessage);
+    const timer = window.setTimeout(() => setSlow(true), 45_000);
+    return () => {
+      window.removeEventListener("message", onMessage);
+      window.clearTimeout(timer);
+    };
+  }, []);
+  if (ready) return null;
+  return (
+    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 rounded-block bg-surface p-8 text-center" role="status">
+      <LogoMark className="size-10 animate-pulse opacity-80" />
+      <p className="max-w-xs text-sm text-grey-600">
+        {slow ? "The preview is slow to start. Use the refresh button above to try again." : "Starting the preview. The first load can take a few seconds."}
+      </p>
+    </div>
   );
 }
 
