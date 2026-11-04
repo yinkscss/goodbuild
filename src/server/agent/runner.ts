@@ -138,37 +138,63 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       const textBefore = text;
       cutOff = false;
       cutAtLimit = false;
-      for await (const ev of model.stream({ tier, messages: convo, tools, maxTokens: MAX_TOKENS })) {
-        if (ev.type === "text") {
-          if (quiet) {
-            replyText += ev.delta;
-            continue;
+      // One retry when the provider fails mid-response (e.g. the SDK couldn't parse a chunk):
+      // nothing from the failed attempt has been executed, so drop its partial text and calls.
+      for (let attempt = 0; ; attempt++) {
+        try {
+          for await (const ev of model.stream({ tier, messages: convo, tools, maxTokens: MAX_TOKENS })) {
+            if (ev.type === "text") {
+              if (quiet) {
+                replyText += ev.delta;
+                continue;
+              }
+              // Separate replies from different calls with a blank line.
+              const delta = !replyText && text && !text.endsWith("\n") ? `\n\n${ev.delta.replace(/^\s+/, "")}` : ev.delta;
+              replyText += ev.delta;
+              text += delta;
+              emit({ type: "text", delta });
+            } else if (ev.type === "tool_call") {
+              toolCalls.push(ev.call);
+            } else if (ev.type === "done") {
+              // "length": stopped at the output limit. "tool-calls" with no call that reached us:
+              // the call was malformed or dropped on the way. Either way the work isn't done.
+              cutAtLimit = ev.finishReason === "length";
+              cutOff = cutAtLimit || (/^tool[-_]calls$/.test(ev.finishReason ?? "") && toolCalls.length === 0);
+            } else if (ev.type === "usage") {
+              const cost = await recordUsage(db, {
+                userId: input.userId,
+                projectId: input.projectId,
+                messageId: assistantId,
+                callId: ev.callId || `${assistantId}:${calls}`,
+                model: ev.model,
+                inputTokens: ev.inputTokens,
+                outputTokens: ev.outputTokens,
+                cachedInputTokens: ev.cachedInputTokens,
+              });
+              record.chargedMicro += cost.chargedMicro;
+              emit({
+                type: "usage",
+                chargedMicro: cost.chargedMicro,
+                totalChargedMicro: record.chargedMicro,
+                model: ev.model,
+                inputTokens: ev.inputTokens,
+                outputTokens: ev.outputTokens,
+                cachedInputTokens: ev.cachedInputTokens,
+              });
+            }
           }
-          // Separate replies from different calls with a blank line.
-          const delta = !replyText && text && !text.endsWith("\n") ? `\n\n${ev.delta.replace(/^\s+/, "")}` : ev.delta;
-          replyText += ev.delta;
-          text += delta;
-          emit({ type: "text", delta });
-        } else if (ev.type === "tool_call") {
-          toolCalls.push(ev.call);
-        } else if (ev.type === "done") {
-          // "length": stopped at the output limit. "tool-calls" with no call that reached us:
-          // the call was malformed or dropped on the way. Either way the work isn't done.
-          cutAtLimit = ev.finishReason === "length";
-          cutOff = cutAtLimit || (/^tool[-_]calls$/.test(ev.finishReason ?? "") && toolCalls.length === 0);
-        } else if (ev.type === "usage") {
-          const cost = await recordUsage(db, {
-            userId: input.userId,
-            projectId: input.projectId,
-            messageId: assistantId,
-            callId: ev.callId || `${assistantId}:${calls}`,
-            model: ev.model,
-            inputTokens: ev.inputTokens,
-            outputTokens: ev.outputTokens,
-            cachedInputTokens: ev.cachedInputTokens,
-          });
-          record.chargedMicro += cost.chargedMicro;
-          emit({ type: "usage", chargedMicro: cost.chargedMicro, totalChargedMicro: record.chargedMicro });
+          break;
+        } catch (error) {
+          if (attempt >= 1 || !(error instanceof ModelUnavailableError)) throw error;
+          log("! the AI provider failed mid-response; retrying once");
+          replyText = "";
+          toolCalls.length = 0;
+          cutOff = false;
+          cutAtLimit = false;
+          if (!quiet && text !== textBefore) {
+            text = textBefore;
+            emit({ type: "text_set", text });
+          }
         }
       }
       // A reply that repeats one already shown in this turn (models often restate the

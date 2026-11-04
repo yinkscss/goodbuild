@@ -33,7 +33,16 @@ export type TurnEvent =
   | { type: "file"; change: FileChange }
   | { type: "files"; files: Record<string, string> }
   | { type: "version"; number: number }
-  | { type: "usage"; chargedMicro: number; totalChargedMicro: number }
+  | {
+      type: "usage";
+      chargedMicro: number;
+      totalChargedMicro: number;
+      /** Per-call detail, for evals and cost debugging. */
+      model?: string;
+      inputTokens?: number;
+      outputTokens?: number;
+      cachedInputTokens?: number;
+    }
   | { type: "done"; status: "ready" | "needs_fix" | "answered"; summary: string }
   | { type: "error"; message: string }
   /** Sent instead of a turn when one is already running for the project. */

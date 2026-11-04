@@ -328,6 +328,29 @@ describe("runTurn", { timeout: 120_000 }, () => {
     await expect(runTurn({ db, model: client }, { projectId, userId: other.id, mode: "build", prompt: "x" }, () => {})).rejects.toBeInstanceOf(TurnBusyError);
   });
 
+  it("retries once when the provider fails mid-response, dropping the partial text", async () => {
+    const { ModelUnavailableError } = await import("./model");
+    const inner = scriptedModel([{ tools: [{ name: "create_file", args: { path: "src/App.tsx", content: APP } }] }, { text: "Built it." }]);
+    let failed = false;
+    const client = {
+      async *stream(req: Parameters<typeof inner.client.stream>[0]) {
+        if (!failed) {
+          failed = true;
+          yield { type: "text" as const, delta: "Half a repl" };
+          throw new ModelUnavailableError("The AI provider rejected the request: Failed to process successful response");
+        }
+        yield* inner.client.stream(req);
+      },
+    };
+    const { events, emit } = collect();
+    const record = await runTurn({ db, model: client }, { projectId, userId, mode: "build", userMessageId: queuedId }, emit);
+    expect(record.status).toBe("ready");
+    expect(record.log).toContain("! the AI provider failed mid-response; retrying once");
+    expect(events).toContainEqual({ type: "text_set", text: "" });
+    const [assistant] = (await db.select().from(messages).where(eq(messages.projectId, projectId))).filter((m) => m.role === "assistant");
+    expect(assistant.content).toBe("Built it.");
+  });
+
   it("ends cleanly when the model is unreachable, and releases the lock", async () => {
     const { ModelUnavailableError } = await import("./model");
     const client = {
