@@ -19,7 +19,7 @@ export interface CheckIssue {
   file: string;
   line?: number;
   message: string;
-  source: "solc" | "guardrail" | "syntax" | "imports" | "paths";
+  source: "solc" | "guardrail" | "syntax" | "imports" | "paths" | "test";
 }
 
 export interface CompiledContract {
@@ -29,11 +29,24 @@ export interface CompiledContract {
   bytecodeBytes: number;
 }
 
+/** A compiled test contract (contracts/test/*.t.sol), run in a local EVM, never deployed. */
+export interface CompiledTest {
+  name: string;
+  file: string;
+  abi: unknown[];
+  /** Creation bytecode, hex without 0x. */
+  bytecode: string;
+}
+
 export interface CheckReport {
   ok: boolean;
   errors: CheckIssue[];
   warnings: CheckIssue[];
   contracts: CompiledContract[];
+  /** Test contracts to run after a clean compile. */
+  tests?: CompiledTest[];
+  /** Every ABI from the compile (project, tests, OpenZeppelin), for decoding reverts. */
+  abis?: unknown[][];
   compilerVersion?: string;
 }
 
@@ -50,9 +63,10 @@ export function pathProblem(p: string): string | null {
   if (p === "package.json") return "package.json is managed by GoodBuild. Use add_dependency.";
   if (p.startsWith(PLATFORM_DIR)) return `${PLATFORM_DIR} is written by GoodBuild from the compiled contracts. Import from it instead.`;
   if (/^contracts\/[A-Za-z0-9_]+\.sol$/.test(p)) return null;
+  if (/^contracts\/test\/[A-Za-z0-9_]+\.t\.sol$/.test(p)) return null;
   if (/^src\/[A-Za-z0-9_\-/.]+\.(tsx?|css|json)$/.test(p)) return null;
   if (p === "public/index.html") return null;
-  return `Files must be under src/ (.ts, .tsx, .css, .json) or contracts/ (Name.sol). Got "${p}".`;
+  return `Files must be under src/ (.ts, .tsx, .css, .json), contracts/ (Name.sol) or contracts/test/ (Name.t.sol). Got "${p}".`;
 }
 
 // ---------------------------------------------------------------------------
@@ -281,17 +295,27 @@ export async function checkContracts(files: Record<string, string>, options: Con
   }
   const projectAsts: Array<{ file: string; ast: Json; content?: string }> = [];
   for (const [file, src] of Object.entries(output.sources ?? {})) {
-    if (!file.startsWith("contracts/")) continue;
+    // Tests never deploy, so deploy guardrails don't apply to them (and a test touching
+    // IERC20 mustn't satisfy the G$ "handles a token" check for the real contracts).
+    if (!file.startsWith("contracts/") || isTestFile(file)) continue;
     errors.push(...guardrailIssues(file, src.ast, files[file]));
     projectAsts.push({ file, ast: src.ast, content: files[file] });
   }
   if (options.gdToken && projectAsts.length) errors.push(...gdTokenIssues(projectAsts, { allowNative: options.allowNative }));
   const contracts: CompiledContract[] = [];
+  const tests: CompiledTest[] = [];
+  const abis: unknown[][] = [];
   for (const [file, byName] of Object.entries(output.contracts ?? {})) {
+    for (const c of Object.values(byName)) abis.push(c.abi);
     if (!file.startsWith("contracts/")) continue;
     for (const [name, c] of Object.entries(byName)) {
       const bytecode = c.evm?.bytecode?.object ?? "";
       if (!bytecode) continue; // interfaces and abstract contracts
+      if (isTestFile(file)) {
+        // Only the contract named in the file (FooTest in Foo.t.sol or any *Test) is a suite.
+        if (/Test$/.test(name)) tests.push({ name, file, abi: c.abi, bytecode });
+        continue;
+      }
       contracts.push({ name, file, abi: c.abi, bytecodeBytes: bytecode.length / 2 });
       // EIP-170: EVM chains (Celo included) refuse to deploy runtime code over 24,576 bytes.
       const runtime = (c.evm?.deployedBytecode?.object ?? bytecode).length / 2;
@@ -304,7 +328,11 @@ export async function checkContracts(files: Record<string, string>, options: Con
       }
     }
   }
-  return { ok: errors.length === 0, errors, warnings, contracts, compilerVersion: result.version };
+  return { ok: errors.length === 0, errors, warnings, contracts, tests, abis, compilerVersion: result.version };
+}
+
+export function isTestFile(path: string): boolean {
+  return path.startsWith("contracts/test/");
 }
 
 // ---------------------------------------------------------------------------

@@ -210,6 +210,28 @@ describe("runTurn", { timeout: 120_000 }, () => {
     expect(record.plan?.steps).toEqual(["Write RTX.sol", "Build the UI"]);
   });
 
+  it("runs contract tests after compiling and sends failures to the fix loop", async () => {
+    const { readFileSync } = await import("node:fs");
+    const run2 = readFileSync(new URL("./fixtures/rtx-run2.sol", import.meta.url), "utf8");
+    const fixed = run2.replace("bool ok = transferFrom(from, to, amount);\n        if (!ok) revert TransferFailed();", "_transfer(from, to, amount);");
+    const test =
+      HEADER +
+      'import {Test, Actor} from "@goodbuild/Test.sol";\nimport {MockGoodDollar} from "@goodbuild/MockGoodDollar.sol";\nimport {RTX} from "../RTX.sol";\n' +
+      "contract RTXTest is Test {\n  function testSupply() public {\n    RTX rtx = new RTX(new MockGoodDollar());\n    assertEq(rtx.totalSupply(), 50_000_001e18, \"supply\");\n  }\n}\n";
+    const { client } = scriptedModel([
+      { tools: [{ name: "create_file", args: { path: "contracts/RTX.sol", content: fixed } }, { name: "create_file", args: { path: "contracts/test/RTX.t.sol", content: test } }] },
+      { text: "Built RTX." },
+      { tools: [{ name: "edit_file", args: { path: "contracts/test/RTX.t.sol", edits: [{ search: "50_000_001e18", replace: "50_000_000e18" }] } }] },
+      { text: "Fixed the test." },
+    ]);
+    const record = await runTurn({ db, model: client }, { projectId, userId, mode: "build", userMessageId: queuedId }, () => {});
+    expect(record.steps.find((s) => s.id === "test")).toMatchObject({ status: "error" });
+    expect(record.steps.find((s) => s.id === "test:1")).toMatchObject({ status: "done", detail: "1 test passed in a local EVM" });
+    expect(record.status).toBe("ready");
+    expect(record.contracts?.map((c) => c.name)).toEqual(["RTX"]);
+    expect(Object.keys(await loadFiles(db, projectId)).some((p) => p.startsWith("src/contracts/RTXTest"))).toBe(false);
+  });
+
   it("reports the auto-fix result clearly in the step rows", async () => {
     const { client } = scriptedModel([
       { tools: [{ name: "create_file", args: { path: "contracts/TipJar.sol", content: BROKEN } }] },

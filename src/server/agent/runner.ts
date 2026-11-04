@@ -5,6 +5,7 @@ import { and, asc, eq } from "drizzle-orm";
 import type { Db } from "@/server/db/client";
 import { messages, projects } from "@/server/db/schema";
 import { checkApp, checkContracts, formatIssues, mentionsGd, mentionsNativeCelo, type CheckIssue, type CheckReport, type ContractCheckOptions } from "./checks";
+import { runContractTests } from "./contract-tests";
 import { TIER_FOR, ModelUnavailableError, type ChatMessage, type ModelClient, type ModelTier, type ToolCall } from "./model";
 import { BUILD_TOOLS, PLAN_TOOLS, contextMessage, systemPrompt } from "./prompt";
 import { checkpoint, claimTurn, loadFiles, recordUsage, releaseTurn } from "./store";
@@ -126,6 +127,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     // Set by each model call: the response stopped at the output-token limit, so any tool
     // call it was writing (usually a big create_file) was lost.
     let cutOff = false;
+    let cutAtLimit = false;
     // quiet: a fix pass. Its text goes to the model's history but not to the user, so the
     // first pass's reply (and its follow-up questions) stays the last thing they read; the
     // auto-fix steps already show what happened.
@@ -135,6 +137,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       const toolCalls: ToolCall[] = [];
       const textBefore = text;
       cutOff = false;
+      cutAtLimit = false;
       for await (const ev of model.stream({ tier, messages: convo, tools, maxTokens: MAX_TOKENS })) {
         if (ev.type === "text") {
           if (quiet) {
@@ -151,7 +154,8 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
         } else if (ev.type === "done") {
           // "length": stopped at the output limit. "tool-calls" with no call that reached us:
           // the call was malformed or dropped on the way. Either way the work isn't done.
-          cutOff = ev.finishReason === "length" || (/^tool[-_]calls$/.test(ev.finishReason ?? "") && toolCalls.length === 0);
+          cutAtLimit = ev.finishReason === "length";
+          cutOff = cutAtLimit || (/^tool[-_]calls$/.test(ev.finishReason ?? "") && toolCalls.length === 0);
         } else if (ev.type === "usage") {
           const cost = await recordUsage(db, {
             userId: input.userId,
@@ -206,7 +210,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
         if (cutOff) {
           // Not finished: the model was mid-write. Run whatever calls did complete, then
           // ask it to continue in smaller pieces (below), instead of ending the pass.
-          log(toolCalls.length ? "! a response hit the output limit; asking for smaller files" : "! a response ended without a usable tool call; asking for smaller files");
+          log(cutAtLimit ? "! a response hit the output limit; asking for smaller files" : "! a response ended without a usable tool call; asking for smaller files");
         }
         if (!toolCalls.length && !cutOff) return true;
         // The final reply arrives with suggest_next: that ends the pass, no extra round.
@@ -366,6 +370,7 @@ async function runChecks(
   log: (l: string) => void,
   attempt: number,
   contractOptions: ContractCheckOptions = {},
+  runTests: typeof runContractTests = runContractTests,
 ): Promise<CheckReport> {
   const suffix = attempt ? `:${attempt}` : "";
   const hasContracts = Object.keys(files).some((p) => p.startsWith("contracts/") && p.endsWith(".sol"));
@@ -383,6 +388,20 @@ async function runChecks(
         ? `0 errors · ${plural(contracts.warnings.length, "warning")}`
         : `${plural(contracts.errors.length, "error")}: ${firstIssue(contracts.errors)}`,
       status: contracts.ok ? "done" : "error",
+    });
+  }
+  if (hasContracts && contracts.ok && contracts.tests?.length) {
+    step({ id: `test${suffix}`, label: "Testing contracts", status: "running" });
+    const { results, issues } = await runTests(contracts);
+    const passed = results.filter((r) => r.ok).length;
+    for (const r of results) log(`${r.ok ? "✓" : "✗"} ${r.contract}.${r.test}${r.ok ? "" : `: ${r.reason}`}`);
+    if (!results.length) for (const i of issues) log(`✗ ${i.message}`);
+    contracts = { ...contracts, ok: issues.length === 0, errors: [...contracts.errors, ...issues] };
+    step({
+      id: `test${suffix}`,
+      label: "Testing contracts",
+      detail: issues.length ? `${plural(issues.length, "failure")}: ${issues[0].message.slice(0, 120)}` : `${plural(passed, "test")} passed in a local EVM`,
+      status: issues.length ? "error" : "done",
     });
   }
   step({ id: `app${suffix}`, label: "Checking the app", status: "running" });

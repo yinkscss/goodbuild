@@ -57,6 +57,7 @@ const CONTRACT_RULES = `Smart contracts (contracts/Name.sol, one main contract p
 - Keep it small and readable for newcomers: clear names, NatSpec on public functions. Bigger apps (a token plus a pool or sale): one focused contract per file, see the multi-contract guide; each contract must stay under 24 KB of bytecode.
 - A contract that is itself an ERC20 moves its own tokens with _transfer(from, to, amount), never by calling its own public transfer/transferFrom (that spends the caller's allowance to themselves and reverts).
 - Design for the front end: public getters or view functions for every number and list the UI shows (totals, counts, per-user balances, the last N items via a bounded view like recent(uint256 limit)). Never return or loop over an unbounded array in a state-changing function.
+- For every contract that holds, moves, sells or swaps tokens, also write contracts/test/<Name>.t.sol (load the contract-tests guide). GoodBuild runs it in a local EVM after compiling; failing tests come back to you to fix.
 - Keep constructor arguments few and obvious (the G$ token plus at most one or two recipients or limits); default the beneficiary or owner to msg.sender unless the user asked otherwise.
 
 G$ (GoodDollar), read carefully:

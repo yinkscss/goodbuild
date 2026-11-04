@@ -119,6 +119,21 @@ export const GUIDES: Guide[] = [
 - Share token metadata reads (symbol, decimals) in a small hook (src/lib/useToken.ts) rather than repeating them in every component.`,
   },
   {
+    name: "contract-tests",
+    when: "any contract that holds, moves, sells or swaps tokens (write its test file)",
+    body: `Contract tests: GoodBuild runs contracts/test/<Name>.t.sol in a local EVM after every compile; failures come back to you to fix like compile errors. Nothing is deployed.
+- File contracts/test/<Name>.t.sol, one contract named <Name>Test that extends Test:
+    import {Test, Actor} from "@goodbuild/Test.sol";
+    import {MockGoodDollar} from "@goodbuild/MockGoodDollar.sol";   // G$ stand-in: ERC-20 + transferAndCall + public mint(to, amount)
+    import {RTXPool} from "../RTXPool.sol";
+- setUp() deploys fresh contracts (new MockGoodDollar(), new RTXToken(), new RTXPool(gd, rtx)) and funds users. The test contract is the deployer, so it holds any supply minted to msg.sender.
+- Every function named test...() with no parameters is one test, run on a fresh deploy after setUp(). A test passes if it doesn't revert.
+- Users: Actor alice = newActor(); then act as alice with alice.exec(address(target), abi.encodeCall(target.fn, (args))). Use actors for every user flow (approve then buy, sell, add liquidity), because a contract calling itself hides allowance bugs.
+- Assertions: assertTrue(cond, "msg"), assertEq(a, b, "msg") (uint or address), assertGt, assertGe; expectRevert(alice, address(target), abi.encodeCall(...), "msg") for calls that must fail (slippage, unauthorised, zero amount).
+- Cover the main flows the UI offers, one test each: the happy path (buy, sell, swap, tip, withdraw), the one-step G$ path (alice.exec(address(gd), abi.encodeCall(gd.transferAndCall, (address(pool), amount, data)))), and the important guards (slippage, owner-only, empty pool). 3 to 6 short tests; keep the file under 150 lines.
+- No cheatcodes exist (no vm.prank, no warp); block.timestamp is 0, so deadlines like block.timestamp + 600 work.`,
+  },
+  {
     name: "cross-chain",
     when: "cross-chain, bridge, multichain, other networks, or moving tokens between chains",
     body: `Cross-chain requests.
