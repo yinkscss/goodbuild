@@ -40,12 +40,39 @@ What failed:
 | 8 | 208 s and $0.32 | Cost | n/a | Measured in run 3 below |
 | 9 | Only the `design-tokens` and `dashboard-and-data` guides loaded | Guidance gap | n/a | New guides: `tokens`, `swaps-and-markets`, `multi-contract`, `cross-chain` |
 
+## Run 3 (with the new guides, contract tests and checks)
+
+Result: **the turn died after two model calls** with "The AI provider rejected the request: Failed to process successful response". The AI SDK couldn't parse a streamed DeepSeek chunk. It did load the right guides (tokens, swaps-and-markets, multi-contract, contract-tests, design-tokens) and planned two contracts plus a test file.
+
+Fixed by: the runner retries a model call once when the provider fails mid-response, and drops that attempt's partial text and tool calls. A unit test covers this; there is a note for the `model.ts` owner in the shared notes folder.
+
+## Run 4 (everything above)
+
+Result: **it works end to end in the preview, with tested contracts.** 207 s, $0.50.
+
+| | Run 2 | Run 4 |
+|---|---|---|
+| Guides loaded | design-tokens, dashboard-and-data | tokens, swaps-and-markets, multi-contract, cross-chain, contract-tests, design-tokens, dashboard-and-data |
+| Contracts | 1 (token with the pool inside, broken sell and liquidity) | 2: `RTXToken` (17 lines, fixed 50M supply, burnable) and `RTXPool` (194 lines: constant product, 0.3% fee, liquidity shares, add/remove, slippage and deadline on swaps, one-step G$ buy via `transferAndCall`) |
+| Contract tests | none | `RTXPool.t.sol`, 6 tests: buy, sell, one-step buy, remove liquidity, slippage/deadline guards, fixed supply. All pass in the local EVM. |
+| What the checks caught | an import path | a test compile error, then 2 failing tests (a hand-typed expected amount; a deadline test that couldn't work at timestamp 0) |
+| Fix attempts | 1 | 2 |
+| Deploy order in the reply | no | yes: "Deploy RTXToken first, then RTXPool with the G$ address and the RTXToken address" |
+| Cross-chain | honest, UI shows unavailable routes | honest, says bridging isn't supported yet |
+| Preview | no error | no error; Buy / Sell / Swap card, pool stats, liquidity panel, recent trades, a deploy notice naming both contracts |
+| Cost | $0.32 | $0.50: DeepSeek 14 calls $0.06 (258k input tokens, 238k cached); Sonnet 5 fix calls **$0.44** (208k input tokens, only 43k cached) |
+
+Found in run 4 and fixed after it:
+- **The fixer weakened a test to make it pass.** At block.timestamp 0 an "expired deadline" can't be expressed, so Sonnet deleted that assertion. The test EVM now runs at a realistic timestamp (1,750,000,000). The contract-tests guide says how to test an expired deadline, and to compute expected amounts with the contract's own formula. The fix prompt now says to fix the contract when it misbehaves, and never to delete or weaken a check just to pass.
+
+Still open (not fixed here):
+- **Cost is dominated by the Sonnet fix passes** (88% of run 4). Each fix call resends about 40k tokens of context with little cache reuse. Routing and caching belong to `model.ts` (the other session). Options: let DeepSeek take the first fix attempt for test failures, or cache the context better for Anthropic.
+- The reply is still 4 sentences against the 1-3 sentence rule.
+- The pool's `removeLiquidity` and the test suite were not reviewed by a human. The tests are the model's own, so they show the contract does what the model intended, not that it is safe. The "Unaudited" badge stays.
+
 ## Gaps that belong to M5 (not changed here)
 
-- **Deploy order for several contracts.** For example, RTXToken first, then a pool that takes the RTXToken address. The deploy flow has to read constructor arguments that name other project contracts, and fill them in after each deploy.
-- **A test G$ on Celo Sepolia** (Q39). Until it exists, nothing that uses G$ can be tried on testnet.
+- **Deploy order for several contracts.** Run 4 needs RTXToken deployed first, then RTXPool with the G$ address and the RTXToken address. The deploy flow has to read constructor arguments that name other project contracts and fill them in after each deploy.
+- **The deploy card shows only the first contract** (`contracts[0]`, RTXPool in run 4). M5's deploy UI should list each contract in order.
+- **A test G$ on Celo Sepolia** (Q39). Until it exists, nothing that uses G$ can be tried on testnet. Locally, `@goodbuild/MockGoodDollar.sol` stands in for G$ in contract tests.
 - **The `<Name>Address` maps are filled only after deploy.** Until then every app shows its "deploy to go live" state.
-
-## Run 3 (after everything above)
-
-See the section added at the end of this doc after the re-run.

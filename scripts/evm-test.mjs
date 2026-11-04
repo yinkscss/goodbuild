@@ -4,11 +4,27 @@
 // test contract, call setUp() if present, then the test. A test passes when it doesn't revert.
 import { createEVM } from "@ethereumjs/evm";
 import { Common, Hardfork, Mainnet } from "@ethereumjs/common";
-import { createAddressFromString, hexToBytes, bytesToHex } from "@ethereumjs/util";
+import { createAddressFromString, createZeroAddress, hexToBytes, bytesToHex } from "@ethereumjs/util";
 import { decodeErrorResult, encodeFunctionData } from "viem";
 
 const GAS = 30_000_000n;
 const CALLER = createAddressFromString("0x1000000000000000000000000000000000000001");
+/** Tests see a realistic clock (block.timestamp = TIMESTAMP), so "an expired deadline" can be expressed. */
+export const TIMESTAMP = 1_750_000_000n;
+// Same shape as @ethereumjs/evm's defaultBlock(), with a real timestamp and number.
+const BLOCK = {
+  header: {
+    number: 1n,
+    coinbase: createZeroAddress(),
+    timestamp: TIMESTAMP,
+    difficulty: 0n,
+    prevRandao: new Uint8Array(32),
+    gasLimit: GAS,
+    baseFeePerGas: undefined,
+    slotNumber: 0n,
+    getBlobGasPrice: () => undefined,
+  },
+};
 
 let raw = "";
 process.stdin.setEncoding("utf8");
@@ -54,7 +70,7 @@ function describeRevert(bytes, errors) {
 }
 
 async function call(evm, to, data) {
-  return evm.runCall({ caller: CALLER, origin: CALLER, to, data: hexToBytes(data), gasLimit: GAS, skipBalance: true });
+  return evm.runCall({ block: BLOCK, caller: CALLER, origin: CALLER, to, data: hexToBytes(data), gasLimit: GAS, skipBalance: true });
 }
 
 async function main({ tests, abis }) {
@@ -69,7 +85,7 @@ async function main({ tests, abis }) {
     }
     for (const fn of fns) {
       const evm = await freshEvm();
-      const created = await evm.runCall({ caller: CALLER, origin: CALLER, data: hexToBytes(`0x${t.bytecode}`), gasLimit: GAS, skipBalance: true });
+      const created = await evm.runCall({ block: BLOCK, caller: CALLER, origin: CALLER, data: hexToBytes(`0x${t.bytecode}`), gasLimit: GAS, skipBalance: true });
       if (created.execResult.exceptionError || !created.createdAddress) {
         results.push({ contract: t.name, file: t.file, test: fn.name, ok: false, reason: `deploying the test contract failed: ${describeRevert(created.execResult.returnValue, errors)}` });
         continue;

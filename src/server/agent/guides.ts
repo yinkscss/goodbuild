@@ -131,7 +131,8 @@ export const GUIDES: Guide[] = [
 - Users: Actor alice = newActor(); then act as alice with alice.exec(address(target), abi.encodeCall(target.fn, (args))). Use actors for every user flow (approve then buy, sell, add liquidity), because a contract calling itself hides allowance bugs.
 - Assertions: assertTrue(cond, "msg"), assertEq(a, b, "msg") (uint or address), assertGt, assertGe; expectRevert(alice, address(target), abi.encodeCall(...), "msg") for calls that must fail (slippage, unauthorised, zero amount).
 - Cover the main flows the UI offers, one test each: the happy path (buy, sell, swap, tip, withdraw), the one-step G$ path (alice.exec(address(gd), abi.encodeCall(gd.transferAndCall, (address(pool), amount, data)))), and the important guards (slippage, owner-only, empty pool). 3 to 6 short tests; keep the file under 150 lines.
-- No cheatcodes exist (no vm.prank, no warp); block.timestamp is 0, so deadlines like block.timestamp + 600 work.`,
+- No cheatcodes exist (no vm.prank, no warp). block.timestamp is a fixed realistic time, so use block.timestamp + 600 for a live deadline and block.timestamp - 1 for an expired one.
+- Work out expected amounts with the same formula as the contract in the test (e.g. compute getAmountOut first, then assert the balance equals it) instead of hand-typed numbers.`,
   },
   {
     name: "cross-chain",

@@ -80,3 +80,22 @@ describe("contract tests in a local EVM", { timeout: 120_000 }, () => {
     expect(issues[0].message).toMatch(/RTXTest\.testBuyThenSell failed: AssertionFailedUint\(alice sold everything, 0, 7\)/);
   });
 });
+
+describe("the test clock", { timeout: 120_000 }, () => {
+  it("is a realistic timestamp, so expired deadlines can be tested", async () => {
+    const test = `// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.24;
+import {Test} from "@goodbuild/Test.sol";
+contract ClockTest is Test {
+    function testClock() public view {
+        assertGt(block.timestamp, 1_600_000_000, "realistic time");
+        assertTrue(block.timestamp - 1 < block.timestamp, "past deadline expressible");
+    }
+}
+`;
+    const report = await checkContracts({ "contracts/test/Clock.t.sol": test });
+    expect(report.errors).toEqual([]);
+    const { results } = await runContractTests(report);
+    expect(results).toEqual([expect.objectContaining({ test: "testClock", ok: true })]);
+  });
+});

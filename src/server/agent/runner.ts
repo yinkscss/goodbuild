@@ -333,7 +333,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       step({ id: `fix:${attempt}`, label: `Fixing errors (attempt ${attempt} of ${MAX_FIX_ATTEMPTS})`, detail: `${plural(report.errors.length, "error")} to fix: ${firstIssue(report.errors)}`, status: "running" });
       convo.push({
         role: "user",
-        content: `GoodBuild's checks failed. Fix these errors with edit_file. Then stop with a very short note (the user sees the fix steps, not this note):\n${issues}`,
+        content: `GoodBuild's checks failed. Fix these errors with edit_file. If a contract test fails, decide whether the contract or the test is wrong: fix the contract when it misbehaves; change a test only when its expectation is mistaken, and never delete or weaken a check just to make it pass. Then stop with a very short note (the user sees the fix steps, not this note):\n${issues}`,
       });
       await phase(TIER_FOR.fix, true);
       report = await runChecks(ws.files, compile, lint, step, log, attempt, contractOptions);
