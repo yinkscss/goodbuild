@@ -18,10 +18,13 @@ export const TIER_FOR = { plan: "cheap", build: "cheap", fix: "strong", testFix:
 export const MODEL_IDS: Record<ModelTier, string> = { strong: "claude-sonnet-5-5", cheap: "deepseek-flash" };
 const KEY_NAME: Record<ModelTier, string> = { strong: "ANTHROPIC_API_KEY", cheap: "DEEPSEEK_API_KEY" };
 
+/** A user message part: text, or a base64 image (design references, read by the vision tier). */
+export type UserPart = { type: "text"; text: string } | { type: "image"; data: string; mediaType: "image/png" | "image/jpeg" | "image/webp" };
+
 /** OpenAI-style chat messages, the shape the runner builds. Converted to AI SDK messages inside the client. */
 export type ChatMessage =
   | { role: "system"; content: string }
-  | { role: "user"; content: string; /** Stable prefix up to here: let Anthropic cache it for the rest of the turn. */ cache?: boolean }
+  | { role: "user"; content: string | UserPart[]; /** Stable prefix up to here: let Anthropic cache it for the rest of the turn. */ cache?: boolean }
   | {
       role: "assistant";
       content: string | null;
@@ -175,7 +178,11 @@ export function toSdkMessages(input: ChatMessage[]): { system: ModelMessage[]; m
     if (m.role === "system") {
       system.push({ role: "system", content: m.content, providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } } });
     } else if (m.role === "user") {
-      messages.push({ role: "user", content: m.content, ...(m.cache ? { providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } } } : {}) });
+      const content =
+        typeof m.content === "string"
+          ? m.content
+          : m.content.map((p) => (p.type === "text" ? { type: "text" as const, text: p.text } : { type: "file" as const, data: p.data, mediaType: p.mediaType }));
+      messages.push({ role: "user", content, ...(m.cache ? { providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } } } : {}) });
     } else if (m.role === "assistant") {
       const parts: Extract<ModelMessage, { role: "assistant" }>["content"] = [];
       if (m.content) parts.push({ type: "text", text: m.content });
