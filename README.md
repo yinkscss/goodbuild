@@ -7,7 +7,7 @@ A Lovable/Replit-style AI app builder for GoodDollar (G$, on Celo) users. Descri
 **Audience:** university students, Web3 newcomers and OG Web3 users. Goal: onboard people into Web3, 500+ returning users.
 
 ## Status
-Stage 1 in progress. M1 (scaffold and landing) done; see [the build prompt](docs/BUILD_PROMPT_STAGE1.md).
+Stage 1 in progress. M1 (scaffold and landing) and M2 (auth and prompt gating) done; see [the build prompt](docs/BUILD_PROMPT_STAGE1.md).
 
 ## Develop
 ```bash
@@ -15,7 +15,9 @@ pnpm install
 cp .env.example .env.local
 pnpm dev          # http://localhost:3000
 pnpm check        # lint, typecheck, tests, production build
+pnpm smoke:auth   # end-to-end sign-in checks against a running server (BASE_URL)
 ```
+Set `NEXT_PUBLIC_PRIVY_APP_ID` to turn sign-in on. Without `DATABASE_URL`, development uses an embedded database in `.data/`.
 Stack: Next.js 16 (App Router), TypeScript, Tailwind v4 + shadcn/ui, Vitest. Design tokens live in `src/app/globals.css` (DESIGN_SYSTEM §6).
 
 ## Docs

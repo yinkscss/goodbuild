@@ -1,0 +1,72 @@
+import "server-only";
+
+import { and, asc, desc, eq } from "drizzle-orm";
+
+import { NETWORKS, isMainnetEnabled, type NetworkId } from "@/config/networks";
+import { getTemplate } from "@/config/templates";
+import type { Db } from "@/server/db/client";
+import { messages, projects, type Message, type Project } from "@/server/db/schema";
+
+/** A short project name from the template or the first words of the prompt. */
+export function nameFromPrompt(prompt: string, templateId?: string | null): string {
+  const template = templateId ? getTemplate(templateId) : undefined;
+  if (template) return template.label;
+  const words = prompt
+    .replace(/[^\p{L}\p{N}$\s-]/gu, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 5);
+  const name = words.join(" ").replace(/^(an?|the)\s+/i, "");
+  if (!name) return "Untitled build";
+  const cased = name.charAt(0).toUpperCase() + name.slice(1);
+  return cased.length > 40 ? `${cased.slice(0, 39)}…` : cased;
+}
+
+/** Mainnet only when the flag is on; otherwise everything targets Celo Sepolia. */
+export function chainIdFor(network: NetworkId, mainnetEnabled = isMainnetEnabled()): number {
+  return network === "celo" && mainnetEnabled ? NETWORKS.celo.chainId : NETWORKS["celo-sepolia"].chainId;
+}
+
+/**
+ * Create a project with the user's first prompt queued. The agent (M4) picks up
+ * queued messages; until then the workspace shows the prompt as waiting.
+ */
+export async function createProjectFromPrompt(
+  db: Db,
+  ownerId: string,
+  input: { prompt: string; templateId?: string | null; network: NetworkId },
+): Promise<Project> {
+  const [project] = await db
+    .insert(projects)
+    .values({
+      ownerId,
+      name: nameFromPrompt(input.prompt, input.templateId),
+      templateId: input.templateId ?? null,
+      chainId: chainIdFor(input.network),
+      status: "draft",
+    })
+    .returning();
+  await db.insert(messages).values({ projectId: project.id, role: "user", content: input.prompt, status: "queued" });
+  return project;
+}
+
+/** A project and its chat, only if the user owns it. */
+export async function getOwnedProject(
+  db: Db,
+  projectId: string,
+  ownerId: string,
+): Promise<{ project: Project; messages: Message[] } | null> {
+  if (!/^[0-9a-f-]{36}$/i.test(projectId)) return null;
+  const [project] = await db
+    .select()
+    .from(projects)
+    .where(and(eq(projects.id, projectId), eq(projects.ownerId, ownerId)))
+    .limit(1);
+  if (!project) return null;
+  const chat = await db.select().from(messages).where(eq(messages.projectId, project.id)).orderBy(asc(messages.createdAt));
+  return { project, messages: chat };
+}
+
+export async function listProjects(db: Db, ownerId: string, limit = 20): Promise<Project[]> {
+  return db.select().from(projects).where(eq(projects.ownerId, ownerId)).orderBy(desc(projects.updatedAt)).limit(limit);
+}

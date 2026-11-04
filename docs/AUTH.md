@@ -51,3 +51,10 @@
 - The server authorises every agent call with the SIWE session, never with the client address alone.
 - Never hold private keys. Every deploy is signed in the user's wallet.
 - 18+ and non-US attestation checkbox on first sign-in (D10).
+
+## Implementation (M2)
+- Adapter: UI uses `useAuth()` / `useWallet()` from `src/lib/auth/context.tsx`. Privy lives only in `src/lib/auth/privy/` (P9).
+- API: `GET /api/auth/nonce`, `POST /api/auth/verify`, `GET /api/auth/session`, `POST /api/auth/logout`. Nonces are single use, bound to a 5-minute signed cookie. The SIWE domain must equal `APP_DOMAIN` in production.
+- Gating: `src/components/auth/send-gate.tsx` saves `gb:pendingPrompt`, opens the modal, and after sign-in creates the project and routes to `/p/[id]`.
+- Check it end to end against a running server: `pnpm smoke:auth` (signs with a throwaway key).
+- Design preview without Privy (development only): `/dev/preview?state=modal|code|connecting|error|connected|wrong-network`.

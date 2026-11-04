@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
+import { Providers } from "@/components/providers";
+import { SendGateProvider } from "@/components/auth/send-gate";
 
 // Self-hosted variable fonts (OFL), vendored from @fontsource-variable so builds
 // don't depend on Google Fonts being reachable.
@@ -41,7 +43,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="en"
       className={`${unbounded.variable} ${inter.variable} ${jetbrains.variable} antialiased`}
     >
-      <body className="min-h-dvh">{children}</body>
+      <body className="min-h-dvh">
+        <Providers>
+          <SendGateProvider>{children}</SendGateProvider>
+        </Providers>
+      </body>
     </html>
   );
 }

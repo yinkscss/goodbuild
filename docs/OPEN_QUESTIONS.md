@@ -124,3 +124,14 @@
 ## Q29. Hero "building" image (resolved)
 - DESIGN_SYSTEM §8.1 asked to replace the hero render with a "building" image. M1 first shipped a code-drawn block stack.
 - Resolved 4 Nov 2026 by the user: keep the original render `design/landing/assets/hero-b.jpg`. §8.1 updated; the SVG version was removed.
+
+## Q30. Storing the email of email-login users
+- AUTH.md says to store the email for email logins. The browser knows it, but the server can't trust a client-supplied email.
+- Claude's input: M2 stores no email. Doing it properly means verifying the user's Privy access token server-side (needs `PRIVY_APP_SECRET` or Privy's verification key). Proposal: add that when email is actually used (receipts, notifications).
+
+## Q31. Hosting and the geo-block
+- The API returns 451 for US and comprehensively sanctioned regions (CU, IR, KP, SY; list UNVERIFIED, confirm with counsel), read from the host's country header (`x-vercel-ip-country` or `cf-ipcountry`). With neither header (other hosts, local dev) only the attestation applies.
+- Claude's input: confirm the host (Vercel or Cloudflare work as-is). Pages stay viewable everywhere; only sign-in, building and credits are blocked.
+
+## Q32. MiniPay / Valora detection
+- The modal marks MiniPay as detected when `window.ethereum.isMiniPay` is set, and connects it as the injected wallet; elsewhere "MiniPay / Valora" falls back to WalletConnect. Not yet tested inside MiniPay (UNVERIFIED), per AUTH.md's pre-M2 check.

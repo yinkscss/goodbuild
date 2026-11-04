@@ -1,5 +1,5 @@
 import { Logo } from "@/components/brand/logo";
-import { ConnectButton } from "@/components/landing/connect-button";
+import { WalletButton } from "@/components/auth/wallet-button";
 
 const LINKS = [
   { href: "#templates", label: "Templates" },
@@ -22,7 +22,7 @@ export function SiteNav() {
           </a>
         ))}
       </nav>
-      <ConnectButton />
+      <WalletButton />
     </header>
   );
 }
