@@ -44,6 +44,7 @@
   --animate-pulse-dot: gb-pulse 1.6s ease-in-out infinite;
   --animate-caret: gb-caret 1s steps(1) infinite;
   --animate-draw: gb-draw 2.4s var(--ease-gb) forwards;
+  --animate-shimmer: gb-shimmer 1.8s ease-in-out infinite;
 
   @keyframes gb-bob {
     50% { transform: translateY(-10px); }
@@ -64,6 +65,11 @@
   }
   @keyframes gb-caret {
     50% { opacity: 0; }
+  }
+  /* Loading skeletons: a soft highlight sweeping across surface-tint (DESIGN_SYSTEM §4). */
+  @keyframes gb-shimmer {
+    from { background-position: 150% 0; }
+    to { background-position: -50% 0; }
   }
   @keyframes gb-draw {
     from { stroke-dashoffset: var(--gb-dash, 900); }
@@ -127,6 +133,15 @@
   letter-spacing: -0.03em;
   line-height: 0.95;
   text-transform: uppercase;
+}
+
+/* Skeleton block: surface-tint with a moving soft highlight. */
+@utility skeleton {
+  background-color: var(--color-tint);
+  background-image: linear-gradient(90deg, transparent 0%, rgb(255 255 255 / 0.65) 50%, transparent 100%);
+  background-size: 50% 100%;
+  background-repeat: no-repeat;
+  animation: var(--animate-shimmer);
 }
 
 /* Eyebrow: 11-12px, uppercase, tracking .18em, 600, violet. */

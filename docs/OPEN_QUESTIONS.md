@@ -135,3 +135,10 @@
 
 ## Q32. MiniPay / Valora detection
 - The modal marks MiniPay as detected when `window.ethereum.isMiniPay` is set, and connects it as the injected wallet; elsewhere "MiniPay / Valora" falls back to WalletConnect. Not yet tested inside MiniPay (UNVERIFIED), per AUTH.md's pre-M2 check.
+
+## Q33. Home (M3) choices to confirm
+- **Credits pill before M6:** shows "Testnet beta · free" instead of a balance, because the ledger doesn't exist yet. The low (≤10 G$) and zero states are built and tested; M6 supplies the real balance. Still depends on Q26 (G$ vs USD as the main unit).
+- **Mainnet copy:** "Mainnet unlocks after GoodDollar face verification" (CONTRACTS_AND_DEPLOYMENT §1), not the mockup's "after your first verified contract". See Q27.
+- **Account pill:** follows DESIGN_SYSTEM §3 (white pill, pink dot, address) rather than mockup b's black pill, so it matches the landing and workspace.
+- **Chips:** mockup b's "Streaming G$ payroll" is swapped for "Crowdfund with refund", since Superfluid streaming is post-MVP (CREDITS.md §2).
+- **Not yet built:** Templates, Deployments and Credits pages (shown as "Soon" in the sidebar) and "View all" (the grid shows the latest 8).

@@ -32,7 +32,18 @@ export interface PromptSubmission {
   attachment: File | null;
 }
 
+export interface PromptBoxHandle {
+  /** Fill the prompt from a template (used by empty-state chips) and focus it. */
+  fill: (template: StarterTemplate) => void;
+  focus: () => void;
+}
+
 export interface PromptBoxProps {
+  ref?: React.Ref<PromptBoxHandle>;
+  /** "inside" (landing) or "below" the card (home, mockup b). */
+  chipsPlacement?: "inside" | "below";
+  /** Replaces the credits hint, e.g. "Free during the testnet beta". */
+  hint?: React.ReactNode;
   /** Example chips shown under the textarea. */
   chips?: StarterTemplate[];
   /** Right-hand hint, e.g. "120 G$". */
@@ -60,6 +71,9 @@ const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
  * the violet Build it button. Cmd/Ctrl+Enter submits.
  */
 export function PromptBox({
+  ref,
+  chipsPlacement = "inside",
+  hint,
   chips = [],
   creditsLabel,
   onSubmit,
@@ -145,12 +159,33 @@ export function PromptBox({
     }
   }
 
+  React.useImperativeHandle(ref, () => ({ fill: fillFromTemplate, focus: () => textareaRef.current?.focus() }));
+
   const selectedTemplate = templateId ? getTemplate(templateId) : undefined;
   const empty = value.length === 0;
 
-  return (
+  function chipRow(spacing: string) {
+    if (chips.length === 0) return null;
+    return (
+      <div className={cn("flex flex-wrap gap-2", spacing)} role="group" aria-label="Example prompts">
+        {chips.map((chip) => (
+          <Button
+            key={chip.id}
+            type="button"
+            size="chip"
+            variant={templateId === chip.id && value === chip.examplePrompt ? "chipSelected" : "chip"}
+            onClick={() => fillFromTemplate(chip)}
+          >
+            {chip.label}
+          </Button>
+        ))}
+      </div>
+    );
+  }
+
+  const card = (
     <form
-      className={cn("rounded-card bg-surface p-5 shadow-card md:p-6", className)}
+      className={cn("rounded-card bg-surface p-5 shadow-card md:p-6", chipsPlacement === "inside" && className)}
       onSubmit={(e) => {
         e.preventDefault();
         void submit();
@@ -203,21 +238,7 @@ export function PromptBox({
         </div>
       )}
 
-      {chips.length > 0 && (
-        <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Example prompts">
-          {chips.map((chip) => (
-            <Button
-              key={chip.id}
-              type="button"
-              size="chip"
-              variant={templateId === chip.id && value === chip.examplePrompt ? "chipSelected" : "chip"}
-              onClick={() => fillFromTemplate(chip)}
-            >
-              {chip.label}
-            </Button>
-          ))}
-        </div>
-      )}
+      {chipsPlacement === "inside" && chipRow("mt-3")}
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-hairline pt-4">
         <div className="flex flex-wrap items-center gap-2">
@@ -281,6 +302,8 @@ export function PromptBox({
           <span id={`${id}-hint`} className="hidden text-xs text-grey-400 sm:inline">
             {disabled && disabledReason ? (
               <span className="text-warning">{disabledReason}</span>
+            ) : hint ? (
+              hint
             ) : (
               <>
                 {creditsLabel && (
@@ -301,5 +324,13 @@ export function PromptBox({
 
       {status && <div className="mt-3 text-xs text-grey-600" role="status">{status}</div>}
     </form>
+  );
+
+  if (chipsPlacement === "inside") return card;
+  return (
+    <div className={className}>
+      {card}
+      {chipRow("mt-4")}
+    </div>
   );
 }

@@ -36,6 +36,9 @@ describe("projects", () => {
     expect(nameFromPrompt("anything", "tip-jar")).toBe("Community tip jar");
     expect(nameFromPrompt("A weekly G$ savings circle for 12 members")).toBe("Weekly G$ savings circle");
     expect(nameFromPrompt("!!!")).toBe("Untitled build");
+    expect(nameFromPrompt("Ikeja FC tip jar that splits G$ 70/30")).toBe("Ikeja FC tip jar");
+    expect(nameFromPrompt("Co-op grain fund: members pool G$ to buy maize")).toBe("Co-op grain fund");
+    expect(nameFromPrompt("A class poll for our 400-level excursion")).toBe("Class poll");
   });
 
   it("only targets mainnet when the flag allows it", () => {

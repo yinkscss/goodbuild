@@ -34,7 +34,7 @@ async function ProjectView({ params }: { params: Promise<{ id: string }> }) {
     <>
       <header className="flex h-12 items-center justify-between px-2">
         <div className="flex min-w-0 items-center gap-3">
-          <Logo href="/" />
+          <Logo href="/home" />
           <span className="text-grey-400" aria-hidden>
             /
           </span>

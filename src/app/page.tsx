@@ -2,6 +2,7 @@ import { HeroCard } from "@/components/landing/hero-card";
 import { HowItWorks } from "@/components/landing/how-it-works";
 import { LandingPrompt } from "@/components/landing/landing-prompt";
 import { MetricCard } from "@/components/landing/metric-card";
+import { SignedInRedirect } from "@/components/landing/signed-in-redirect";
 import { SiteNav } from "@/components/landing/site-nav";
 import { TemplateCard } from "@/components/landing/template-card";
 import { landingStats } from "@/config/landing-stats";
@@ -15,6 +16,7 @@ import { landingStats } from "@/config/landing-stats";
 export default function LandingPage() {
   return (
     <>
+      <SignedInRedirect />
       <SiteNav />
       <main className="mx-auto max-w-[1360px] px-4 sm:px-8">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-[1fr_2.1fr_1fr] lg:grid-rows-[520px_auto]">

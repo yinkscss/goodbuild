@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { AlertTriangle, Check, ChevronDown, Copy, ExternalLink, KeyRound, Loader2, LogOut, Wallet } from "lucide-react";
 
 import { useSendGate } from "@/components/auth/send-gate";
@@ -30,7 +31,7 @@ export function expectedChainId(mainnet = isMainnetEnabled()): number {
  * (spinner, "Check your wallet"), connected (white pill, pink dot, address, Celo badge),
  * wrong network (warning "Switch to Celo"). Connected opens the account menu (AUTH.md Flow 7).
  */
-export function WalletButton({ className }: { className?: string }) {
+export function WalletButton({ className, showNetwork = true }: { className?: string; showNetwork?: boolean }) {
   const auth = useAuth();
   const { openConnect } = useSendGate();
   const { wallet, isWrongNetwork, switchChain } = useWallet();
@@ -50,7 +51,7 @@ export function WalletButton({ className }: { className?: string }) {
     );
   }
 
-  if (!auth.user || !wallet) {
+  if (!auth.user) {
     return (
       <Button variant="primary" className={className} onClick={openConnect}>
         <span className="size-1.5 rounded-full bg-pink" aria-hidden />
@@ -59,7 +60,7 @@ export function WalletButton({ className }: { className?: string }) {
     );
   }
 
-  if (isWrongNetwork(expected)) {
+  if (wallet && isWrongNetwork(expected)) {
     return (
       <div className={cn("flex items-center gap-2", className)}>
         <button
@@ -82,16 +83,32 @@ export function WalletButton({ className }: { className?: string }) {
     );
   }
 
-  return <AccountMenu className={className} />;
+  return <AccountMenu className={className} showNetwork={showNetwork} />;
 }
 
-function AccountMenu({ className, compact = false }: { className?: string; compact?: boolean }) {
+function AccountMenu({
+  className,
+  compact = false,
+  showNetwork = true,
+}: {
+  className?: string;
+  compact?: boolean;
+  showNetwork?: boolean;
+}) {
   const auth = useAuth();
-  const { wallet, switchChain } = useWallet();
+  const router = useRouter();
+  const { wallet: browserWallet, switchChain } = useWallet();
   const [copied, setCopied] = React.useState(false);
-  if (!wallet || !auth.user) return null;
+  if (!auth.user) return null;
+  // The session is the source of truth; the browser wallet may be disconnected or locked.
+  const wallet = browserWallet ?? {
+    address: auth.user.wallet as `0x${string}`,
+    chainId: null,
+    kind: auth.user.walletKind,
+    label: auth.user.walletKind === "embedded" ? "Email wallet" : "Wallet",
+  };
 
-  const explorer = wallet.chainId ? explorerAddressUrl(wallet.chainId, wallet.address) : null;
+  const explorer = explorerAddressUrl(wallet.chainId ?? expectedChainId(), wallet.address);
   const mainnet = isMainnetEnabled();
 
   return (
@@ -114,9 +131,11 @@ function AccountMenu({ className, compact = false }: { className?: string; compa
             <>
               <span className="size-1.5 rounded-full bg-pink" aria-hidden />
               <span className="font-mono text-[13px]">{shortAddress(wallet.address)}</span>
-              <span className="rounded-full bg-tint px-2 py-0.5 text-[11px] font-semibold text-violet">
-                {chainName(wallet.chainId)}
-              </span>
+              {showNetwork && wallet.chainId !== null && (
+                <span className="rounded-full bg-tint px-2 py-0.5 text-[11px] font-semibold text-violet">
+                  {chainName(wallet.chainId)}
+                </span>
+              )}
             </>
           )}
           <ChevronDown className="size-3.5 text-grey-600" aria-hidden />
@@ -172,7 +191,13 @@ function AccountMenu({ className, compact = false }: { className?: string; compa
           </DropdownMenuItem>
         )}
         <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={() => void auth.signOut()}>
+        <DropdownMenuItem
+          onSelect={async () => {
+            await auth.signOut();
+            router.push("/");
+            router.refresh();
+          }}
+        >
           <LogOut className="mt-0.5 size-4 text-grey-600" />
           Disconnect
         </DropdownMenuItem>

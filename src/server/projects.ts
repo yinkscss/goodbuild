@@ -7,16 +7,27 @@ import { getTemplate } from "@/config/templates";
 import type { Db } from "@/server/db/client";
 import { messages, projects, type Message, type Project } from "@/server/db/schema";
 
-/** A short project name from the template or the first words of the prompt. */
+const TRAILING_FILLER = new Set([
+  "that", "which", "where", "who", "for", "with", "to", "of", "and", "or", "the", "a", "an", "in", "on", "by",
+  "our", "my", "your", "their", "his", "her", "its", "this", "these", "those",
+]);
+
+/**
+ * A short project name from the template or the prompt: the first clause (up to
+ * punctuation), at most 5 words, without a leading article or trailing filler words.
+ */
 export function nameFromPrompt(prompt: string, templateId?: string | null): string {
   const template = templateId ? getTemplate(templateId) : undefined;
   if (template) return template.label;
-  const words = prompt
+  const clause = prompt.split(/[.,:;!?\n(]/)[0] ?? "";
+  const words = clause
     .replace(/[^\p{L}\p{N}$\s-]/gu, " ")
     .split(/\s+/)
     .filter(Boolean)
     .slice(0, 5);
-  const name = words.join(" ").replace(/^(an?|the)\s+/i, "");
+  if (words.length && /^(an?|the)$/i.test(words[0])) words.shift();
+  while (words.length > 1 && TRAILING_FILLER.has(words[words.length - 1].toLowerCase())) words.pop();
+  const name = words.join(" ");
   if (!name) return "Untitled build";
   const cased = name.charAt(0).toUpperCase() + name.slice(1);
   return cased.length > 40 ? `${cased.slice(0, 39)}…` : cased;

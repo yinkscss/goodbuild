@@ -159,6 +159,12 @@ describe("wallet button", () => {
     expect(screen.getByText("Celo Sepolia")).toBeInTheDocument();
   });
 
+  it("still shows the signed-in account when the browser wallet is disconnected", () => {
+    render(<Harness auth={makeAuth({ user: { ...user, wallet: wallet.address }, wallet: null })} />);
+    expect(screen.getByText("0x7a3…e41c")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /connect wallet/i })).not.toBeInTheDocument();
+  });
+
   it("shows Switch to Celo Sepolia on the wrong network and switches", async () => {
     const auth = makeAuth({ user, wallet: { ...wallet, chainId: 1 } });
     render(<Harness auth={auth} />);
