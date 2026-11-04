@@ -1,3 +1,4 @@
+import { manifest, selectContext, type ContextPick } from "./codebase";
 import type { ToolSpec } from "./model";
 import { guideCatalog, guideNames } from "./guides";
 import { ALLOWED_DEPENDENCIES, PLATFORM_DIR } from "./template";
@@ -17,8 +18,20 @@ export const BUILD_TOOLS: ToolSpec[] = [
   fn("read_guide", `Read one front-end guide by name: ${guideNames().join(", ")}.`, {
     name: { type: "string" },
   }, ["name"]),
-  fn("list_files", "List all project files with their sizes.", {}, []),
-  fn("read_file", "Read a file's current content.", { path: { type: "string" } }, ["path"]),
+  fn("list_files", "List all project files with their sizes and a one-line summary of each.", {}, []),
+  fn("search_code", "Search every project file for text (case-insensitive) or a regex. Returns file:line: text for each match. Use it to find where something lives before reading or editing.", {
+    query: { type: "string" },
+    regex: { type: "boolean", description: "Treat query as a JavaScript regex" },
+    path: { type: "string", description: "Only files under this path prefix, e.g. src/pages/" },
+  }, ["query"]),
+  fn("find_symbol", "Find where a component, hook, function, contract, event or route is defined (file:line) and which files use it.", {
+    name: { type: "string", description: 'e.g. "Hero", "useTipJar", "tip", "/about"' },
+  }, ["name"]),
+  fn("read_file", "Read a file. Give start_line and end_line to read part of a long file (lines come back numbered).", {
+    path: { type: "string" },
+    start_line: { type: "integer" },
+    end_line: { type: "integer" },
+  }, ["path"]),
   fn("create_file", "Create a new file or fully replace a small one. Prefer edit_file for changes to existing files.", {
     path: { type: "string" },
     content: { type: "string" },
@@ -40,7 +53,7 @@ export const BUILD_TOOLS: ToolSpec[] = [
 
 /** Plan mode: read-only (AI_AGENT.md §4). */
 export const PLAN_TOOLS: ToolSpec[] = BUILD_TOOLS.filter((t) =>
-  t.type === "function" ? ["set_plan", "read_guide", "suggest_next", "list_files", "read_file"].includes(t.function.name) : false,
+  t.type === "function" ? ["set_plan", "read_guide", "suggest_next", "list_files", "read_file", "search_code", "find_symbol"].includes(t.function.name) : false,
 );
 
 function fn(name: string, description: string, properties: Record<string, unknown>, required: string[]): ToolSpec {
@@ -74,8 +87,10 @@ G$ (GoodDollar), read carefully:
 
 const APP_RULES = `Front end (React 18 + TypeScript in an in-browser bundler):
 - Entry is src/App.tsx (default export). Use RELATIVE imports only (no "@/" aliases). Split into src/components/*.tsx once App.tsx passes ~150 lines. More than one page: react-router-dom with HashRouter, pages in src/pages/, a shared Layout (load the pages-and-routing guide).
+- File names (the build refuses others for new files): pages src/pages/PascalCase.tsx, components src/components/PascalCase.tsx (sections may go in src/components/sections/), hooks src/lib/useCamelCase.ts, other helpers src/lib/camelCase.ts, contracts contracts/PascalCase.sol, tests contracts/test/PascalCase.t.sol. Load the file-structure guide when adding several files.
+- Uploaded images live at /assets/<name> (listed in the context with their palette and description). Use those paths, never external image URLs or made-up files.
 - Styling: Tailwind classes (v4 browser build) with the semantic theme tokens defined in the @theme block of public/index.html (background, foreground, muted, muted-foreground, card, border, primary, primary-foreground, accent, accent-foreground, ring, success, warning, danger). Use token classes, not raw palette classes like bg-white or text-gray-500; add a token before using a new colour. Mobile-first: it must look right at 375px wide, then use sm:/md:/lg: for wider screens.
-- Starter pieces (compose them, don't rewrite them): src/components/ui/{button,card,input,textarea,label,badge,skeleton,notice}.tsx and src/components/ConnectButton.tsx. Icons: lucide-react.
+- Starter pieces (compose them, don't rewrite them): src/components/ui/{button,card,input,textarea,label,badge,skeleton,notice}.tsx and src/components/ConnectButton.tsx. Icons: lucide-react (no brand icons: no Instagram, Twitter, Github; use AtSign, Camera, Globe, Link).
 - Helpers: src/lib/utils.ts (cn, shortAddress); src/lib/format.ts (formatAmount(value, decimals), errorMessage(e)); src/lib/hooks.ts: useRead(fn, deps, enabled) gives {data, loading, error, refresh} for reads, useTx() gives {run, pending, error, receipt} for writes. Use them instead of hand-rolled useEffect/try-catch.
 - Chain access: src/lib/chain.ts exports publicClient, chain (Celo Sepolia), connectWallet() and writeContract({address, abi, functionName, args, value}) (waits for the receipt). src/lib/useWallet.ts gives {account, connect, connecting, error}. Use viem types.
 - Contract ABIs and addresses: import { <Name>Abi, <Name>Address } from "./contracts" (folder ${PLATFORM_DIR}). GoodBuild writes these after compiling. <Name>Address is a MAP from chain id to address, NOT an address. Always index it: const address = <Name>Address[chain.id]; and pass that variable to viem. Never pass <Name>Address itself (the build rejects it). address is undefined until the user deploys: then show a friendly "Deploy the contract to go live" Notice, keep the rest of the page visible (disabled form, placeholder stats) and make no contract calls.
@@ -96,6 +111,8 @@ const CONVERSATION = `Reading the user's message:
 - A question (about the app, how something works, what you can build) gets a short answer without editing files and without set_plan, then suggest_next.
 - Otherwise it is a change or a new app: do exactly what was asked, keep everything that already works, and don't add features nobody asked for. Check whether it already exists before building it.
 - If something is unclear but a sensible default exists, pick it and say which in one clause of your reply instead of stopping to ask.
+- Finding code: the context has the files most relevant to this request in full, and a one-line summary of every other file. To change something that isn't shown, call find_symbol (a component, hook, function or route name) or search_code (visible text, a class name) first, then read_file (a line range for long files). Never edit a file from memory: edit_file needs text copied from the file.
+- Images the user attached in this message are design references or their own assets: follow them closely (layout, colours, type, mood).
 
 What users build: mostly dApps on Celo (a contract plus its app; Celo Sepolia testnet for now, other chains are not supported), and also plain websites and pages (landing pages, event or shop sites, portfolios, about or signup pages for their dApp). Write a contract only when the app needs on-chain state or payments; a website needs none. There is no backend or database: anything that must be stored goes on-chain or waits for a later GoodBuild feature (say so when it matters).
 
@@ -131,39 +148,41 @@ ${DESIGN_RULES}
 Safety: refuse to build anything designed to take users' funds without consent, gambling or sports betting, or anything illegal. Say so briefly and suggest a legitimate alternative.`;
 }
 
-/** The context block for a turn: file tree, file contents within budget, and the request. */
+/** Default budget for file contents in the context block (P17; was "everything up to 100k"). */
+export const CONTEXT_BUDGET_CHARS = 40_000;
+
+/**
+ * The context block for a turn: the manifest (every file with a one-line summary), the files
+ * picked for this request in full (selectContext), uploaded assets, conversation memory, the
+ * last suggestions, and the request. Returns the picks too, for the build log.
+ */
 export function contextMessage(args: {
   files: Record<string, string>;
   request: string;
   budgetChars?: number;
-  /** Paths to include first (contracts, App, recently changed). */
-  priority?: string[];
+  /** Files changed in the previous turn. */
+  recent?: string[];
+  /** Recent conversation text, to weight files it mentions a little. */
+  history?: string;
   /** Next steps your previous reply offered as buttons. */
   lastSuggestions?: string[];
+  /** Uploaded assets manifest (assetManifest). */
+  assets?: string;
+  /** Rolling memory of older messages (memoryBlock). */
+  memory?: string;
 }): string {
-  const budget = args.budgetChars ?? 100_000;
-  const paths = Object.keys(args.files).sort();
-  const tree = paths.map((p) => `${p} (${args.files[p].length} chars)`).join("\n");
-  const order = [
-    ...(args.priority ?? []),
-    ...paths.filter((p) => p.startsWith("contracts/")),
-    "src/App.tsx",
-    "public/index.html",
-    ...paths.filter((p) => p.startsWith("src/") && !p.startsWith("src/components/ui/")),
-  ];
-  const seen = new Set<string>();
-  let used = 0;
-  const blocks: string[] = [];
-  for (const p of order) {
-    if (seen.has(p) || !(p in args.files)) continue;
-    seen.add(p);
-    const content = args.files[p];
-    if (used + content.length > budget) continue;
-    used += content.length;
-    blocks.push(`<file path="${p}">\n${content}\n</file>`);
-  }
+  return contextWithPicks(args).text;
+}
+
+export function contextWithPicks(args: Parameters<typeof contextMessage>[0]): { text: string; picks: ContextPick[] } {
+  const picks = selectContext(args.files, args.request, { budgetChars: args.budgetChars ?? CONTEXT_BUDGET_CHARS, recent: args.recent, history: args.history });
+  const blocks = picks.map((p) => `<file path="${p.path}">\n${args.files[p.path]}\n</file>`);
+  const shown = new Set(picks.map((p) => p.path));
+  const hidden = Object.keys(args.files).filter((p) => !shown.has(p)).length;
   const chips = args.lastSuggestions?.length
     ? `\n\nYour previous reply offered these next steps as buttons (the user may be answering them):\n${args.lastSuggestions.map((c, i) => `${i + 1}. ${c}`).join("\n")}`
     : "";
-  return `Project files:\n${tree}\n\nCurrent contents (others: use read_file):\n${blocks.join("\n\n")}${chips}\n\nUser request:\n${args.request}`;
+  const extra = [args.memory, args.assets].filter(Boolean).map((s) => `\n\n${s}`).join("");
+  const text = `Project files (path, size, summary):\n${manifest(args.files)}\n\nFiles picked for this request, in full${hidden ? ` (${hidden} others not shown: find them with find_symbol or search_code, then read_file)` : ""}:\n${blocks.join("\n\n")}${extra}${chips}\n\nUser request:\n${args.request}`;
+  return { text, picks };
 }

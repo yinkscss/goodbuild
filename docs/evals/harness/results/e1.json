@@ -1,0 +1,77 @@
+{
+  "scenario": "E1 logo and brand colours",
+  "base": "http://localhost:3001",
+  "projectId": "c4c55946-6835-4605-94d7-a3487375aea7",
+  "uploads": [
+    {
+      "file": "docs/evals/harness/kola-logo.svg",
+      "status": 201,
+      "ms": 5301,
+      "asset": {
+        "id": "c07b70a3-59ba-4eb9-a02e-dccc166907c6",
+        "name": "kola-logo.svg",
+        "kind": "logo",
+        "mime": "image/svg+xml",
+        "size": 668,
+        "width": 480,
+        "height": 160,
+        "palette": [
+          "#e4572e",
+          "#1a4232",
+          "#fff4e6",
+          "#f5bca5",
+          "#ef9577"
+        ],
+        "description": "The mark features a stylized cream coffee cup inside a rounded orange square alongside the dark green wordmark \"KOLA\" and the subtext \"COFFEE · LAGOS.\" Its flat, minimalist geometric style is designed for a light background."
+      }
+    }
+  ],
+  "turns": [
+    {
+      "prompt": "Build a landing page for Kola Coffee, a coffee kiosk in Yaba, Lagos, that opens at 7am and sells cold brew and zobo. Use my logo and brand colours.",
+      "status": "ready",
+      "error": null,
+      "seconds": 69,
+      "firstTryClean": true,
+      "fixAttempts": 0,
+      "reads": 5,
+      "searches": 0,
+      "access": [
+        "· read_file src/assets/index.ts",
+        "· read_file src/components/ui/button.tsx",
+        "· read_file src/components/ui/card.tsx",
+        "· read_file src/components/ui/badge.tsx",
+        "· read_file src/components/ui/notice.tsx"
+      ],
+      "context": "context: 5 of 22 files in full (App.tsx, index.html, package.json, ConnectButton.tsx, styles.css)",
+      "guides": [
+        "guides: landing-page, brand-and-assets, design-tokens, content-pages, file-structure"
+      ],
+      "memory": "memory: 0 older messages summarised, 0 decisions kept",
+      "byModel": {
+        "deepseek-flash": {
+          "calls": 10,
+          "in": 130750,
+          "out": 11961,
+          "usd": 0.024315999999999997
+        }
+      },
+      "reply": "Kola Coffee's landing page is built: a cream and dark-green site with the orange accent from your logo, a hero with the 7am cold brew and zobo pitch, a two-drink menu, a short kiosk story with three steps, a visit block and a footer. I set the brand palette (orange #e4572e, deep green #1a4232, cream) in public/index.html with Fraunces headings, and your logo sits in the header, footer and favicon — swap the placeholder address, phone number and email for the real ones and they'll drop straight in.",
+      "changes": [
+        "index.html",
+        "SiteHeader.tsx",
+        "Hero.tsx",
+        "Hero.tsx",
+        "Menu.tsx",
+        "Story.tsx",
+        "Visit.tsx",
+        "SiteFooter.tsx",
+        "App.tsx"
+      ],
+      "checks": [
+        "app:done:imports and syntax ok"
+      ]
+    }
+  ],
+  "at": "2026-11-04T20:16:01.971Z"
+}

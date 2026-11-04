@@ -41,6 +41,7 @@
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "server-only": "^0.0.1",
+    "sharp": "0.35.5",
     "solc": "0.8.28",
     "tailwind-merge": "^3.7.0",
     "typescript": "^5",

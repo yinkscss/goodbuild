@@ -1,4 +1,5 @@
-import { MAX_FILES, MAX_FILE_BYTES, pathProblem } from "./checks";
+import { MAX_FILES, MAX_FILE_BYTES, namingProblem, pathProblem } from "./checks";
+import { findSymbol, manifest, readRange, searchCode } from "./codebase";
 import { applyEdits, diffStat, unifiedDiff, type SearchReplace } from "./edits";
 import { loadGuides } from "./guides";
 import { ALLOWED_DEPENDENCIES, dependenciesOf, packageJson } from "./template";
@@ -17,6 +18,13 @@ export interface ToolOutcome {
   suggestions?: string[];
   /** Guides returned to the model by this call (for the build log). */
   guides?: string[];
+  /** A read, listing or search, for the build log (the harness eval counts these). */
+  access?: string;
+}
+
+function num(v: unknown): number | undefined {
+  const n = typeof v === "number" ? v : typeof v === "string" && v.trim() ? Number(v) : NaN;
+  return Number.isFinite(n) ? n : undefined;
 }
 
 /**
@@ -86,22 +94,29 @@ export class Workspace {
         return { ok: g.loaded.length > 0, result: g.text || "Error: give a guide name.", guides: g.loaded };
       }
       case "list_files":
-        return {
-          ok: true,
-          result: Object.keys(this.files)
-            .sort()
-            .map((p) => `${p} (${this.files[p].length} chars)`)
-            .join("\n"),
-        };
+        return { ok: true, result: manifest(this.files), access: "list_files" };
       case "read_file": {
         const path = String(args.path ?? "");
-        if (!(path in this.files)) return { ok: false, result: `Error: ${path} doesn't exist. Use list_files.` };
-        return { ok: true, result: this.files[path] };
+        if (!(path in this.files)) return { ok: false, result: `Error: ${path} doesn't exist. Use list_files or find_symbol.`, access: `read_file ${path} (missing)` };
+        const start = num(args.start_line);
+        const end = num(args.end_line);
+        const ranged = start !== undefined || end !== undefined;
+        return { ok: true, result: readRange(this.files[path], start, end), access: `read_file ${path}${ranged ? `:${start ?? 1}-${end ?? ""}` : ""}` };
+      }
+      case "search_code": {
+        const query = String(args.query ?? "");
+        const result = searchCode(this.files, { query, regex: args.regex === true, path: typeof args.path === "string" ? args.path : undefined });
+        return { ok: !result.startsWith("Error"), result, access: `search_code "${query.slice(0, 60)}"` };
+      }
+      case "find_symbol": {
+        const name = String(args.name ?? "");
+        const result = findSymbol(this.files, name);
+        return { ok: !result.startsWith("Error"), result, access: `find_symbol ${name.slice(0, 60)}` };
       }
       case "create_file": {
         const path = String(args.path ?? "");
         const content = typeof args.content === "string" ? args.content : "";
-        const problem = pathProblem(path) ?? this.sizeProblem(path, content);
+        const problem = pathProblem(path) ?? (path in this.files ? null : namingProblem(path)) ?? this.sizeProblem(path, content);
         if (problem) return { ok: false, result: `Error: ${problem}` };
         const prev = this.files[path];
         this.files[path] = content;
@@ -153,7 +168,7 @@ export class Workspace {
       case "rename_file": {
         const from = String(args.from ?? "");
         const to = String(args.to ?? "");
-        const problem = pathProblem(from) ?? pathProblem(to);
+        const problem = pathProblem(from) ?? pathProblem(to) ?? namingProblem(to);
         if (problem) return { ok: false, result: `Error: ${problem}` };
         if (!(from in this.files)) return { ok: false, result: `Error: ${from} doesn't exist.` };
         if (to in this.files) return { ok: false, result: `Error: ${to} already exists.` };

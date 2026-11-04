@@ -1,0 +1,191 @@
+{
+  "scenario": "E3b: more edits on the E3 project after the leftover-budget fix (starter helpers fill unused budget)",
+  "base": "http://localhost:3001",
+  "projectId": "b9e834f8-0622-447d-933d-d704ae841a04",
+  "uploads": [],
+  "turns": [
+    {
+      "prompt": "In the recent tips feed, show each tip's time as 'x minutes ago'.",
+      "status": "ready",
+      "error": null,
+      "seconds": 35,
+      "firstTryClean": true,
+      "fixAttempts": 0,
+      "reads": 1,
+      "searches": 0,
+      "access": [
+        "· read_file src/lib/format.ts"
+      ],
+      "context": "context: 11 of 36 files in full (App.tsx, index.html, TipJar.sol, TipFeed.tsx, useTipJar.ts, TipJar.t.sol, TipForm.tsx, Tip.tsx, TipJar.ts, StatsRow.tsx, Home.tsx)",
+      "guides": [],
+      "memory": "memory: 4 older messages summarised, 7 decisions kept",
+      "byModel": {
+        "deepseek-flash": {
+          "calls": 4,
+          "in": 72777,
+          "out": 2286,
+          "usd": 0.009226
+        }
+      },
+      "reply": "Each tip in the recent tips feed now shows a relative time like \"just now\", \"5 minutes ago\" or \"2 hours ago\" (it refreshes itself every 30 seconds), falling back to a short date for older tips, with the exact date and time on hover.",
+      "changes": [
+        "format.ts",
+        "useNow.ts",
+        "TipFeed.tsx"
+      ],
+      "checks": [
+        "compile:done:0 errors · 0 warnings",
+        "test:done:6 tests passed in a local EVM",
+        "app:done:imports and syntax ok"
+      ]
+    },
+    {
+      "prompt": "Fix the nav: the Home link looks active on every page.",
+      "status": "ready",
+      "error": null,
+      "seconds": 44,
+      "firstTryClean": true,
+      "fixAttempts": 0,
+      "reads": 2,
+      "searches": 1,
+      "access": [
+        "· search_code \"NavLink\"",
+        "· read_file src/lib/utils.ts",
+        "· read_file src/styles.css"
+      ],
+      "context": "context: 13 of 37 files in full (App.tsx, index.html, TipJar.sol, Home.tsx, Layout.tsx, About.tsx, TipFeed.tsx, useNow.ts, useTipJar.ts, Tip.tsx, Hero.tsx, Leaderboard.tsx, ConnectButton.tsx)",
+      "guides": [],
+      "memory": "memory: 6 older messages summarised, 8 decisions kept",
+      "byModel": {
+        "deepseek-flash": {
+          "calls": 4,
+          "in": 70721,
+          "out": 5370,
+          "usd": 0.013739999999999999
+        }
+      },
+      "reply": "The nav now highlights only the page you're on: the Home link is active just on the home page, and Tip / Leaderboard / About light up on their own pages in both the desktop and mobile menus (active links also carry aria-current for screen readers).",
+      "changes": [
+        "Layout.tsx"
+      ],
+      "checks": [
+        "compile:done:0 errors · 0 warnings",
+        "test:done:6 tests passed in a local EVM",
+        "app:done:imports and syntax ok"
+      ]
+    },
+    {
+      "prompt": "On the leaderboard, give the top three rows a gold, silver and bronze badge.",
+      "status": "ready",
+      "error": null,
+      "seconds": 50,
+      "firstTryClean": true,
+      "fixAttempts": 0,
+      "reads": 1,
+      "searches": 1,
+      "access": [
+        "· read_file src/pages/Leaderboard.tsx:70-115",
+        "· search_code \"Crown\""
+      ],
+      "context": "context: 18 of 37 files in full (App.tsx, index.html, TipJar.sol, Leaderboard.tsx, useTipJar.ts, TipJar.t.sol, badge.tsx, Layout.tsx, Tip.tsx, Hero.tsx, About.tsx, StatsRow.tsx, main.tsx, label.tsx, utils.ts, skeleton.tsx, input.tsx, textarea.tsx)",
+      "guides": [
+        "guides: design-tokens, dashboard-and-data"
+      ],
+      "memory": "memory: 8 older messages summarised, 9 decisions kept",
+      "byModel": {
+        "deepseek-flash": {
+          "calls": 8,
+          "in": 154132,
+          "out": 6183,
+          "usd": 0.016370999999999997
+        }
+      },
+      "reply": "The leaderboard's top three rows now carry gold, silver and bronze badges, with the rank number in a matching medal-coloured circle. It needed three new theme colours (gold, silver, bronze) that I tuned to stay readable on the light background rather than using raw yellow.",
+      "changes": [
+        "index.html",
+        "Leaderboard.tsx",
+        "Leaderboard.tsx"
+      ],
+      "checks": [
+        "compile:done:0 errors · 0 warnings",
+        "test:done:6 tests passed in a local EVM",
+        "app:done:imports and syntax ok"
+      ]
+    },
+    {
+      "prompt": "Make the 404 page friendlier with a button back to the tip page.",
+      "status": "ready",
+      "error": null,
+      "seconds": 18,
+      "firstTryClean": true,
+      "fixAttempts": 0,
+      "reads": 2,
+      "searches": 0,
+      "access": [
+        "· read_file src/pages/NotFound.tsx",
+        "· read_file src/components/ui/button.tsx"
+      ],
+      "context": "context: 12 of 37 files in full (App.tsx, index.html, TipJar.sol, useTipJar.ts, TipJar.t.sol, TipFeed.tsx, Tip.tsx, TipForm.tsx, TipJar.ts, Leaderboard.tsx, useNow.ts, main.tsx)",
+      "guides": [],
+      "memory": "memory: 10 older messages summarised, 10 decisions kept",
+      "byModel": {
+        "deepseek-flash": {
+          "calls": 3,
+          "in": 54704,
+          "out": 815,
+          "usd": 0.006876
+        }
+      },
+      "reply": "The 404 page is friendlier now: a softened \"no harm done\" line, a SearchX badge instead of a bare number, a primary \"Send a tip\" button that goes to the Tip page, plus a quieter \"Back home\" and small links to the leaderboard and about pages.",
+      "changes": [
+        "NotFound.tsx"
+      ],
+      "checks": [
+        "compile:done:0 errors · 0 warnings",
+        "test:done:6 tests passed in a local EVM",
+        "app:done:imports and syntax ok"
+      ]
+    },
+    {
+      "prompt": "Add an Events page listing our next three Saturday meetups (sample dates, clearly marked), with a nav link.",
+      "status": "ready",
+      "error": null,
+      "seconds": 38,
+      "firstTryClean": true,
+      "fixAttempts": 0,
+      "reads": 1,
+      "searches": 0,
+      "access": [
+        "· read_file src/App.tsx"
+      ],
+      "context": "context: 16 of 37 files in full (App.tsx, index.html, TipJar.sol, About.tsx, Layout.tsx, Leaderboard.tsx, NotFound.tsx, Hero.tsx, Home.tsx, Tip.tsx, useNow.ts, ConnectButton.tsx, main.tsx, label.tsx, utils.ts, skeleton.tsx)",
+      "guides": [
+        "guides: pages-and-routing, content-pages"
+      ],
+      "memory": "memory: 12 older messages summarised, 11 decisions kept",
+      "byModel": {
+        "deepseek-flash": {
+          "calls": 10,
+          "in": 202275,
+          "out": 4262,
+          "usd": 0.014237
+        }
+      },
+      "reply": "I added an Events page at /events listing the next three Saturday meetups, each as a card with a date block, time, venue, what to bring and a short description; the dates are generated as the upcoming Saturdays and a warning notice says the schedule is sample data to confirm with the club. An Events link sits in the nav between Leaderboard and About, and the page ends with a tip call to action.",
+      "changes": [
+        "Events.tsx",
+        "Events.tsx",
+        "App.tsx",
+        "App.tsx",
+        "App.tsx",
+        "Layout.tsx"
+      ],
+      "checks": [
+        "compile:done:0 errors · 0 warnings",
+        "test:done:6 tests passed in a local EVM",
+        "app:done:imports and syntax ok"
+      ]
+    }
+  ],
+  "at": "2026-11-04T20:42:09.395Z"
+}

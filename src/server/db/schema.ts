@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { bigint, boolean, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { bigint, boolean, customType, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 
 /**
  * Stage 1 schema (D8: project code and chat in our DB; app data on-chain).
@@ -58,6 +58,8 @@ export const projects = pgTable(
     currentVersion: integer("current_version").notNull().default(0),
     /** Set while an agent turn runs; one turn per project at a time. */
     turnStartedAt: timestamp("turn_started_at", { withTimezone: true }),
+    /** Rolling conversation memory for the agent (src/server/agent/memory.ts). */
+    memory: jsonb("memory").$type<{ summary: string; decisions: string[]; upTo: number }>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
@@ -143,8 +145,47 @@ export const usageEvents = pgTable(
   (t) => [index("usage_user_idx").on(t.userId, t.createdAt)],
 );
 
+/** Raw bytes (Postgres bytea). PGlite and postgres-js both return a Uint8Array/Buffer. */
+const bytea = customType<{ data: Uint8Array; driverData: Uint8Array }>({
+  dataType: () => "bytea",
+  fromDriver: (v) => new Uint8Array(v),
+});
+
+/**
+ * Files the user uploads for a project (logos, images, design references). Bytes live here in
+ * development; `AssetStore` (src/server/agent/assets.ts) is the seam for object storage later.
+ * Never part of the model's file map: apps reference them by `/assets/<name>`.
+ */
+export const projectAssets = pgTable(
+  "project_assets",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    /** File name inside /assets/, e.g. logo.png. Unique per project. */
+    name: text("name").notNull(),
+    /** logo | image | reference (a design reference is described for the agent, not shipped). */
+    kind: text("kind").notNull(),
+    mime: text("mime").notNull(),
+    bytes: bytea("bytes").notNull(),
+    size: integer("size").notNull(),
+    width: integer("width"),
+    height: integer("height"),
+    /** Dominant colours, hex, most dominant first. */
+    palette: jsonb("palette").$type<string[]>().notNull().default([]),
+    /** Short description for the manifest; for references, a layout spec from the vision model. */
+    description: text("description").notNull().default(""),
+    /** Message id of the first turn that saw the image itself (null: not yet attached). */
+    attachedAt: uuid("attached_message_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("project_assets_name_idx").on(t.projectId, t.name)],
+);
+
 export type User = typeof users.$inferSelect;
 export type Session = typeof sessions.$inferSelect;
 export type Project = typeof projects.$inferSelect;
 export type Message = typeof messages.$inferSelect;
 export type Version = typeof versions.$inferSelect;
+export type ProjectAsset = typeof projectAssets.$inferSelect;

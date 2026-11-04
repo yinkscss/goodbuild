@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="160" viewBox="0 0 480 160">
+  <!-- Eval logo: Kola Coffee (fictional). Orange cup mark, deep green wordmark. -->
+  <rect x="16" y="24" width="112" height="112" rx="28" fill="#E4572E"/>
+  <path d="M44 62h48v30a24 24 0 0 1-48 0z" fill="#FFF4E6"/>
+  <path d="M92 70h10a12 12 0 0 1 0 24h-10" fill="none" stroke="#FFF4E6" stroke-width="7"/>
+  <text x="150" y="106" font-family="Arial, Helvetica, sans-serif" font-size="64" font-weight="800" fill="#1B4332">KOLA</text>
+  <text x="152" y="134" font-family="Arial, Helvetica, sans-serif" font-size="20" letter-spacing="6" fill="#1B4332">COFFEE · LAGOS</text>
+</svg>

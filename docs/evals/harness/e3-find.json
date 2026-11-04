@@ -1,0 +1,13 @@
+{
+  "name": "E3 find the right file in a 36-file project (the E5 project, 52k chars of its own code, over the 40k budget)",
+  "project": "b9e834f8-0622-447d-933d-d704ae841a04",
+  "cookie": "SET_FROM_E5_RESULT",
+  "targets": ["src/components/sections/HowItWorks.tsx", "src/components/sections/Hero.tsx", "src/components/TipForm.tsx", "src/pages/About.tsx", "src/components/StatsRow.tsx"],
+  "turns": [
+    "In the how it works section, add a fourth step: 'Share your tip in the club WhatsApp group'.",
+    "Change the big headline on the landing page to 'Fuel the Lagos Coders club in G$'.",
+    "Add 500 G$ to the quick amount chips on the tip form.",
+    "Add an FAQ question on the About page: 'Can I get a tip back?' with the answer that tips are final once sent.",
+    "Give each card in the stats row a thin accent-coloured top border."
+  ]
+}

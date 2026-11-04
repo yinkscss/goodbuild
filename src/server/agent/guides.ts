@@ -23,7 +23,8 @@ export const GUIDES: Guide[] = [
     <HashRouter><Routes><Route element={<Layout />}><Route index element={<Home />} /><Route path="about" element={<About />} /><Route path="*" element={<NotFound />} /></Route></Routes></HashRouter>
 - One file per page in src/pages/ (Home.tsx, About.tsx, Signup.tsx, ...), default export, named after the page. Shared pieces go in src/components/.
 - src/components/Layout.tsx: the top bar (app mark + name linking to "/", nav links, ConnectButton when the app uses a wallet), <Outlet />, and a small footer. Every page renders inside it, so the header is written once.
-- Nav: NavLink with an active style (text-foreground font-medium vs text-muted-foreground). On mobile, collapse links into a menu button (lucide Menu / X) that toggles a stacked list; close it on navigation.
+- Nav: NavLink with an active style (text-foreground font-medium vs text-muted-foreground). The link to "/" needs the end prop (<NavLink to="/" end>), or Home looks active on every page. Responsive: links inline from md: up (hidden md:flex); below md, a menu button (lucide Menu / X, aria-expanded, aria-controls, aria-label="Menu") toggles a full-width stacked panel under the bar (each link py-3, ConnectButton at the bottom); close it on navigation (useEffect on location.pathname) and on Escape. Sticky top bar: sticky top-0 z-40 bg-background/80 backdrop-blur border-b border-border. Logo (uploaded or icon) + app name on the left.
+- dApps with several pages: Home (what it is, live stats, button into the app), the app page(s) where the contract actions live (e.g. /app or /jar), plus About or FAQ. The ConnectButton sits in the Layout's top bar; a page that needs the account calls useWallet() itself; contract pages each own their reads with useRead.
 - When you add a page, do all three in one turn: create the page, add its Route, add its nav link. Keep the existing pages working.
 - Links between pages: <Link to="/signup"> (never <a href="/signup">, which reloads and breaks HashRouter). Scroll to top on route change with a tiny effect in Layout (useLocation + window.scrollTo(0, 0)).
 - If the app was a single page, move its content into src/pages/Home.tsx (or a name that fits, e.g. Jar.tsx) rather than rewriting it.
@@ -33,11 +34,19 @@ export const GUIDES: Guide[] = [
     name: "landing-page",
     when: "a landing page, home page, marketing page, product or event page, portfolio, or any website that has to sell or explain something",
     body: `Landing pages: one job (get the visitor to take the main action) and a clear story.
-- Order that works: hero, proof or how-it-works, features or offer, details people ask about (FAQ, pricing, schedule, location), a final call to action, footer. Use only the sections the request needs; a small page is fine.
-- Hero: a specific headline about the visitor's outcome (not the product name alone), one supporting sentence, one primary button with a verb ("Start saving", "Book a table", "Connect wallet") and at most one secondary link. Visual weight on the left text or centred; on mobile everything stacks, button full width.
+- Pick ONE archetype that fits the request, and say which in set_plan:
+  1. Product launch: split hero (copy left, product mock or image right), logo/proof strip, 3 feature cards, how-it-works steps, CTA band.
+  2. Event or community: centred hero with date/place chips and a countdown or "Join" button, schedule list, speakers/organisers placeholders, location card, FAQ, CTA.
+  3. Editorial or story (cause, portfolio, about a person or club): big display headline, long-form sections alternating text and image, pull quote, CTA.
+  4. Bento showcase: hero plus a grid of mixed-size cards (md:grid-cols-3, one card md:col-span-2) each holding one idea: a stat, a feature, an image.
+  5. Shop or menu: hero with offer, category tabs or chips, item card grid with price, "how to pay in G$" steps, contact/location.
+  6. dApp front door: hero that says what the app does in plain words, a live stat row from the contract (or labelled placeholders before deploy), 3 steps, button into the app page.
+- Section library (compose; each is a <section id="..."> with an h2): hero, logo-strip, features (cards), how-it-works (numbered steps), stats (big numbers), showcase (image + text, alternate sides with md:flex-row-reverse), pricing/offer, schedule/timeline, team (placeholders), testimonials ONLY if the user gave quotes, FAQ (<details> cards), cta-band (bg-primary text-primary-foreground rounded-2xl p-8 sm:p-12), footer (links, small print).
+- Hero: a specific headline about the visitor's outcome (not the product name alone), one supporting sentence, one primary button with a verb ("Start saving", "Book a table", "Connect wallet") and at most one secondary link. Headline in font-display, text-4xl sm:text-5xl lg:text-6xl, tracking-tight, max ~12 words. On mobile everything stacks, button full width.
 - How it works: 3 numbered steps with a lucide icon each. Features: 3 to 6 cards in a grid (sm:grid-cols-2 lg:grid-cols-3), each a short title and one sentence.
 - Rhythm: sections py-16 sm:py-24, content max-w-5xl or max-w-6xl mx-auto px-4 sm:px-6. Alternate section backgrounds with tokens (bg-background then bg-muted) instead of borders everywhere. One eyebrow label per section at most (text-xs uppercase tracking-wider text-accent).
-- Visuals without image files: a soft gradient or blurred accent shape behind the hero (bg-accent/10, blur-3xl, absolute, pointer-events-none), icon tiles, a mock card of the product UI built from components. No external image URLs unless the user gives one.
+- Imagery: if the user uploaded images (see Uploaded assets), use them: hero image in a rounded-2xl frame with object-cover and fixed aspect (aspect-[4/3] or aspect-video), showcase sections, avatars. Otherwise: a soft gradient or blurred accent shape behind the hero (bg-accent/10, blur-3xl, absolute, pointer-events-none), icon tiles, a mock card of the product UI built from components. Never external image URLs or invented file paths.
+- Big sites: one component per section in src/components/sections/ (Hero.tsx, Features.tsx, Faq.tsx), composed by the page, so later edits find the right file.
 - Copy: write from the request. Never invent testimonials, customer names, logos, prices, addresses, opening hours or stats and present them as real. If a section needs facts you don't have, write clearly marked sample copy ("Your opening hours here") and mention it in your reply.
 - If the site belongs to a dApp, the landing page explains it in plain words and its button goes to the app page (Link to "/app") or connects the wallet.
 - A single h1 on the page; h2 per section. Buttons and links have visible focus styles (the starter Button does).`,
@@ -60,7 +69,9 @@ export const GUIDES: Guide[] = [
 - Don't use raw palette classes (bg-white, text-gray-500, bg-blue-600, text-black). If you need a colour that has no token, add a token to @theme first (e.g. --color-highlight: #f5b301;) and use bg-highlight.
 - Before using a token, check that public/index.html defines it (older projects may lack --color-card, --color-accent-foreground, --color-ring or --font-display); add any that are missing.
 - "Make it greener" or a brand colour: change --color-accent (and --color-primary if the brand is dark or bold), keep contrast at least 4.5:1 for text on the colour, update --color-accent-foreground to match.
-- Fonts: you may add one Google Fonts <link> in the <head> of public/index.html and set --font-sans (body) and --font-display (headings, used as font-display). Keep it to one or two families.
+- Fonts: you may add one Google Fonts <link> in the <head> of public/index.html and set --font-sans (body) and --font-display (headings: add font-display to h1/h2 and big numbers). Keep it to two families. Pairings by mood (display / body):
+  bold and modern: "Space Grotesk" / "Inter"; friendly: "Fredoka" or "Nunito" / "Nunito Sans"; editorial and warm: "Fraunces" / "Inter"; elegant: "Playfair Display" / "Source Sans 3"; techy: "JetBrains Mono" (labels only) / "Inter"; loud event poster: "Unbounded" or "Archivo Black" (uppercase headings) / "Inter"; African-market warmth: "Outfit" / "DM Sans".
+  Type scale: h1 text-4xl sm:text-5xl, h2 text-2xl sm:text-3xl, body text-base leading-relaxed, small text-sm text-muted-foreground. Display fonts for headings and numbers only, never paragraphs or buttons.
 - Variants over one-off classes: if a style repeats (a hero button, a pill), add a variant to src/components/ui/button.tsx (cva) or a small component, instead of copying long class strings.
 - Dark mode only if asked: add a .dark block that overrides the same tokens and a toggle that sets document.documentElement.classList.
 - Radius and shadow: keep one radius (rounded-lg) and soft shadows (shadow-sm) across the app.`,
@@ -141,6 +152,55 @@ export const GUIDES: Guide[] = [
 - GoodBuild apps run on Celo (Celo Sepolia for now). Real bridging to other chains needs a bridge protocol and relayers that GoodBuild doesn't integrate, and hand-written bridges are a major source of hacks. Don't write a bridge contract, a "lock and mint" contract, or anything that claims to move tokens to another chain.
 - Usually the user means swapping between Celo tokens (G$ to cUSD, G$ to their own coin). Build that on Celo with the swaps-and-markets guide (an in-app pool), and say in one sentence that true cross-chain transfers aren't supported yet.
 - If they need to reach a coin that has no pool in the app, say that swapping it needs an external DEX or bridge that the app doesn't connect to yet, and leave a clear "Coming later" state in the UI rather than a fake button.`,
+  },
+  {
+    name: "brand-and-assets",
+    when: "the user uploaded a logo or images (see Uploaded assets), or asks to use their logo, brand or colours",
+    body: `Using the user's logo, images and brand colours.
+- Uploaded files are served at /assets/<name>. In code: import { assets } from "./assets" (relative to the file, e.g. "../assets" from src/components/) and use assets.logo.src, .width, .height, .alt. A literal "/assets/logo.png" string also works (needed in public/index.html). Never invent a path: the build rejects /assets/ paths that weren't uploaded.
+- Logo in the header: <img src={assets.logo.src} alt={assets.logo.alt} className="h-8 w-auto" /> next to (or instead of, if the logo includes the wordmark) the app name, linking home. Keep its aspect ratio (h-* with w-auto). Also in the footer at h-6. Don't recolour or crop it.
+- Favicon: in public/index.html <head>: <link rel="icon" href="/assets/logo.png" /> (use the logo's real name and type; type="image/svg+xml" for SVG).
+- Brand colours from the logo: the manifest lists its palette, most dominant first. Set --color-primary to the strongest saturated brand colour and --color-accent to the second (or a lighter tint of the first). Set --color-primary-foreground and --color-accent-foreground to #ffffff or #0b0b0b, whichever gives at least 4.5:1 contrast. Keep --color-background and --color-muted calm (white or a very light tint of the primary, e.g. 4% mix), not the logo's raw colours. Near-black or near-white palette entries are usually the outline or background: ignore them for primary.
+- A logo meant for dark backgrounds (the description says so) goes on a bg-primary or dark header band, or ask for a light version in your reply.
+- Images: hero and showcase images in a rounded frame with object-cover and a fixed aspect; always alt text from the manifest description; loading="lazy" below the fold. Design references are NOT files to show: see match-reference.`,
+  },
+  {
+    name: "match-reference",
+    when: "the user uploaded a design reference (screenshot, mockup) or asks to match a look, site or image",
+    body: `Matching a design reference.
+- The reference's layout spec is in the Uploaded assets list (and the image itself is attached to the message it was uploaded with). Treat it as the brief for structure and style, and the user's words as the brief for content.
+- Rebuild the STRUCTURE first: same navigation style, same section order, same column counts and alignment, similar proportions (hero height, card sizes). Name the sections in set_plan in the reference's order.
+- Then the STYLE through tokens: background, surface, text and accent colours from the spec's hex values into @theme (keep contrast ≥ 4.5:1); heading font of the same character (serif, geometric sans, condensed, rounded) via --font-display (see design-tokens pairings); matching radius (rounded-none / rounded-lg / rounded-3xl), borders vs shadows, density (spacing scale).
+- Content: use the user's app and copy, not the reference's brand name, logos, people or text. Placeholder imagery the reference has (photos) becomes uploaded assets if any, otherwise gradients, icons or component mocks.
+- Don't copy anything you can't see in the spec; when the spec is vague, pick the simpler option.
+- In your reply, say in one sentence what you matched (e.g. "Matched the split hero, three-card features row and dark footer").`,
+  },
+  {
+    name: "ui-states",
+    when: "any page that loads data, submits a form or calls a contract (loading, empty, error, success states), or lists that can be empty",
+    body: `States every screen needs. Design them, not just the happy path.
+- Loading: Skeleton shapes that match the final layout (a stat card skeleton is h-8 w-24; a list is 3 rows of h-12). Never a blank area or a lone spinner for content; spinners only inside buttons (lucide Loader2 animate-spin) with a pending label ("Sending…").
+- Empty: a short sentence that says what will appear and how to make it happen, plus the main action ("No tips yet. Be the first to tip the club." + button). Optional muted lucide icon above (size-8 text-muted-foreground). Lists, leaderboards, galleries and histories all need one.
+- Error: Notice tone="danger" with errorMessage(e) in plain words and a retry (refresh from useRead, or re-enable the form). Keep the rest of the page usable. A user rejecting the wallet prompt is not an error: show nothing or a quiet "Cancelled".
+- Not deployed: when the contract address is undefined, a friendly Notice ("Deploy the contract to go live") with the page shown in a disabled state and placeholder values labelled as examples.
+- Not connected: actions that need a wallet show the ConnectButton in place of the action button, with one line explaining why.
+- Success: Notice tone="success" after a write with what happened ("Tipped 50 G$"), then refresh reads. Clear the form.
+- 404 page and a fallback for unknown routes (pages-and-routing).`,
+  },
+  {
+    name: "file-structure",
+    when: "adding several files, pages or components, splitting a big file, or reorganising the project",
+    body: `File names and where things go (new files with other names are refused):
+- src/App.tsx: entry; the router and route table only, once there are pages.
+- src/pages/PascalCase.tsx: one page per file, default export named after the page (Home, About, Jar, Proposal).
+- src/components/PascalCase.tsx: shared pieces (Layout, Header, Footer, TipForm, StatCard). Landing-page sections in src/components/sections/PascalCase.tsx (Hero, Features, Faq, CtaBand).
+- src/components/ui/: the starter primitives (button, card, ...). Add new primitives here in lowercase (e.g. tabs.tsx).
+- src/lib/useCamelCase.ts: hooks (useTipJar, useToken). src/lib/camelCase.ts: helpers (format, chain, utils).
+- contracts/PascalCase.sol: one main contract per file, file name = contract name. contracts/test/PascalCase.t.sol: its tests.
+- /assets/<name>: uploaded images, imported from src/assets (written by GoodBuild; don't create files there).
+- src/contracts/: ABIs and addresses, written by GoodBuild.
+- Name files for what they show or do (TipForm, not Form2 or Component). One component per file unless a helper is tiny and private.
+- When you rename or move a file, update every import of it (find_symbol or search_code for the old path).`,
   },
 ];
 

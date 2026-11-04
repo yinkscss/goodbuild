@@ -1,10 +1,52 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 
-import { addressMapIssues, checkApp, checkContracts, pathProblem } from "./checks";
-import { starterFiles, withStarterHelpers } from "./template";
+import { addressMapIssues, assetRefIssues, checkApp, checkContracts, lucideIssues, namingProblem, pathProblem } from "./checks";
+import { ALLOWED_DEPENDENCIES, starterFiles, withStarterHelpers } from "./template";
 
 const SPDX = "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.24;\n";
+
+describe("namingProblem (file-structure guide)", () => {
+  it("accepts the conventions", () => {
+    for (const p of ["src/pages/Home.tsx", "src/components/TipForm.tsx", "src/components/sections/Hero.tsx", "src/components/ui/tabs.tsx", "src/lib/useTipJar.ts", "src/lib/format.ts", "contracts/TipJar.sol", "contracts/test/TipJar.t.sol", "src/App.tsx", "src/styles.css"]) {
+      expect(namingProblem(p), p).toBeNull();
+    }
+  });
+  it("names the expected file for violations", () => {
+    expect(namingProblem("src/pages/home.tsx")).toContain("src/pages/Home.tsx");
+    expect(namingProblem("src/components/tip-form.tsx")).toContain("src/components/TipForm.tsx");
+    expect(namingProblem("src/lib/use-tip-jar.ts")).toContain("src/lib/useTipJar.ts");
+    expect(namingProblem("src/lib/Format.ts")).toContain("src/lib/format.ts");
+    expect(namingProblem("contracts/tip_jar.sol")).toContain("contracts/TipJar.sol");
+    expect(namingProblem("src/hooks/useX.ts")).toContain("src/lib");
+    expect(namingProblem("src/screens/Home.tsx")).toContain("src/pages");
+  });
+});
+
+describe("lucide icon names", () => {
+  it("rejects icons lucide doesn't have (brand icons) and accepts real ones", () => {
+    const files = { "src/App.tsx": 'import { Instagram, Mail, CheckCircle2 as Ok } from "lucide-react";\nexport default function App() { return null; }' };
+    const issues = lucideIssues(files);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].message).toContain('no icon "Instagram"');
+    expect(issues[0].message).toContain("no brand icons");
+  });
+  it("checks against the same lucide-react version generated apps pin", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const installed = JSON.parse(await readFile("node_modules/lucide-react/package.json", "utf8")).version;
+    expect(installed).toBe(ALLOWED_DEPENDENCIES["lucide-react"]);
+  });
+});
+
+describe("asset references", () => {
+  it("rejects /assets/ paths that weren't uploaded, and src/assets/ edits", () => {
+    const files = { ...starterFiles(), "src/App.tsx": 'export default function App() { return <img src="/assets/logo.png" alt="" />; }', "public/index.html": '<link rel="icon" href="/assets/fav.svg">' };
+    expect(assetRefIssues(files, ["logo.png"]).map((i) => i.file)).toEqual(["public/index.html"]);
+    expect(checkApp(files, { assets: ["logo.png", "fav.svg"] }).ok).toBe(true);
+    expect(checkApp(files, { assets: [] }).errors[0].message).toContain("hasn't uploaded any images");
+    expect(pathProblem("src/assets/index.ts")).toMatch(/uploads/);
+  });
+});
 
 describe("pathProblem", () => {
   it("allows app and contract files", () => {

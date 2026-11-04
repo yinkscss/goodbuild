@@ -13,6 +13,17 @@ Written 4 Nov 2026 at the end of the first build session (claude.ai), for whoeve
 
 The user approved M1–M4 and the pre-M5 fixes.
 
+Agent harness (P17, branch `claude/agent-harness-a8a600`, stacked on the output-quality PR):
+- asset uploads with palette and vision descriptions;
+- `search_code`, `find_symbol` and ranged `read_file`;
+- a file manifest and selective context;
+- rolling conversation memory;
+- file-naming rules;
+- deeper design guides;
+- a lucide icon check.
+
+Live results are in [evals/HARNESS.md](evals/HARNESS.md). Run new evals with `scripts/eval-harness.mjs`.
+
 ## D18 (replace LiteLLM with the Vercel AI SDK): DONE
 Implemented on branch `claude/vercel-ai-sdk-migration-46c76e`: `aiSdkClient()` and `withFallback()` in `src/server/agent/model.ts`, `runner.ts` unchanged, LiteLLM files and `pnpm llm` removed. `deepseek-flash` verified as a model ID in `@ai-sdk/deepseek`. The brief below is kept for reference.
 

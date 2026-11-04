@@ -101,7 +101,8 @@ export async function recordUsage(
   args: {
     userId: string;
     projectId: string;
-    messageId: string;
+    /** Null for calls outside a turn (e.g. describing an uploaded image). */
+    messageId: string | null;
     callId: string;
     model: string;
     inputTokens: number;

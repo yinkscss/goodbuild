@@ -4,6 +4,9 @@ import { execFile } from "node:child_process";
 import path from "node:path";
 import ts from "typescript";
 
+import * as Lucide from "lucide-react";
+
+import { assetRefs } from "./assets";
 import { ALLOWED_DEPENDENCIES, PLATFORM_DIR, dependenciesOf } from "./template";
 
 /** Compiler settings, pinned (CONTRACTS_AND_DEPLOYMENT.md §2, §4). */
@@ -62,11 +65,42 @@ export function pathProblem(p: string): string | null {
   }
   if (p === "package.json") return "package.json is managed by GoodBuild. Use add_dependency.";
   if (p.startsWith(PLATFORM_DIR)) return `${PLATFORM_DIR} is written by GoodBuild from the compiled contracts. Import from it instead.`;
+  if (p.startsWith("src/assets/")) return "src/assets/ is written by GoodBuild from the user's uploads. Import { assets } from it, or use the /assets/<name> path.";
   if (/^contracts\/[A-Za-z0-9_]+\.sol$/.test(p)) return null;
   if (/^contracts\/test\/[A-Za-z0-9_]+\.t\.sol$/.test(p)) return null;
   if (/^src\/[A-Za-z0-9_\-/.]+\.(tsx?|css|json)$/.test(p)) return null;
   if (p === "public/index.html") return null;
   return `Files must be under src/ (.ts, .tsx, .css, .json), contracts/ (Name.sol) or contracts/test/ (Name.t.sol). Got "${p}".`;
+}
+
+/**
+ * File naming conventions (the file-structure guide), checked for NEW files and renames only,
+ * so projects made before the rule keep working. Returns a message with the expected name.
+ */
+export function namingProblem(p: string): string | null {
+  const parts = p.split("/");
+  const file = parts.at(-1) ?? "";
+  const stem = file.replace(/\.(t\.sol|sol|tsx?|css|json|html)$/, "");
+  const pascal = (s: string) => s.replace(/(^|[-_\s.]+)([a-zA-Z0-9])/g, (_m, _sep, c: string) => c.toUpperCase());
+  const camel = (s: string) => pascal(s).replace(/^[A-Z]/, (c) => c.toLowerCase());
+  const moved: Record<string, string> = { screens: "src/pages", views: "src/pages", routes: "src/pages", hooks: "src/lib", utils: "src/lib", helpers: "src/lib", images: "/assets (uploads)" };
+  if (parts[0] === "src" && parts.length > 2 && moved[parts[1]]) {
+    return `Put ${parts[1]} files in ${moved[parts[1]]}/ instead of src/${parts[1]}/ (see the file-structure guide).`;
+  }
+  if (p.startsWith("contracts/") && !/^[A-Z][A-Za-z0-9]*$/.test(stem)) {
+    return `Contract files are PascalCase and named after the contract: ${parts.slice(0, -1).join("/")}/${pascal(stem)}${p.endsWith(".t.sol") ? ".t.sol" : ".sol"}.`;
+  }
+  if (/^src\/pages\/.+\.tsx$/.test(p) && !/^[A-Z][A-Za-z0-9]*$/.test(stem)) {
+    return `Pages are PascalCase: ${parts.slice(0, -1).join("/")}/${pascal(stem)}.tsx.`;
+  }
+  if (/^src\/components\/.+\.tsx$/.test(p) && !p.startsWith("src/components/ui/") && !/^[A-Z][A-Za-z0-9]*$/.test(stem)) {
+    return `Components are PascalCase: ${parts.slice(0, -1).join("/")}/${pascal(stem)}.tsx.`;
+  }
+  if (/^src\/lib\/.+\.tsx?$/.test(p)) {
+    if (/^use/i.test(stem) && !/^use[A-Z][A-Za-z0-9]*$/.test(stem)) return `Hooks are named useCamelCase: src/lib/use${pascal(stem.replace(/^use[-_]?/i, ""))}.ts.`;
+    if (!/^[a-z][A-Za-z0-9]*$/.test(stem)) return `Helpers in src/lib are camelCase: src/lib/${camel(stem)}.ts.`;
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -351,7 +385,7 @@ function packageName(spec: string): string {
 }
 
 /** Syntax errors and unresolved imports in the generated app. Type errors are left to the preview. */
-export function checkApp(files: Record<string, string>): CheckReport {
+export function checkApp(files: Record<string, string>, opts: { assets?: string[] } = {}): CheckReport {
   const errors: CheckIssue[] = [];
   const deps = new Set(dependenciesOf(files));
   for (const [file, content] of Object.entries(files)) {
@@ -387,7 +421,61 @@ export function checkApp(files: Record<string, string>): CheckReport {
     if (/\.(tsx?|jsx?)$/.test(file) && !file.startsWith(PLATFORM_DIR)) errors.push(...addressMapIssues(file, content));
   }
   if (!files["src/App.tsx"]) errors.push({ file: "src/App.tsx", message: "src/App.tsx is missing (it's the app entry).", source: "paths" });
+  if (opts.assets) errors.push(...assetRefIssues(files, opts.assets));
+  errors.push(...lucideIssues(files));
   return { ok: errors.length === 0, errors, warnings: [], contracts: [] };
+}
+
+/**
+ * Icon names in the platform's lucide-react, which must be the version generated apps pin
+ * (ALLOWED_DEPENDENCIES; a test in checks.test.ts fails when they drift apart).
+ */
+const LUCIDE_NAMES = new Set(Object.keys(Lucide));
+
+/**
+ * A named import that lucide-react doesn't export is `undefined` at runtime: React throws
+ * "Element type is invalid" and the preview goes blank. Found in HARNESS.md E1 (Instagram:
+ * lucide 1.x removed brand icons).
+ */
+export function lucideIssues(files: Record<string, string>): CheckIssue[] {
+  const issues: CheckIssue[] = [];
+  for (const [file, content] of Object.entries(files)) {
+    if (!/\.(tsx?|jsx?)$/.test(file)) continue;
+    for (const m of content.matchAll(/import\s*\{([^}]*)\}\s*from\s*["']lucide-react["']/g)) {
+      for (const raw of m[1].split(",")) {
+        const name = raw.trim().split(/\s+as\s+/)[0].replace(/^type\s+/, "").trim();
+        if (!name || LUCIDE_NAMES.has(name)) continue;
+        const line = content.slice(0, m.index).split("\n").length;
+        issues.push({
+          file,
+          line,
+          message: `lucide-react has no icon "${name}"${/^(Instagram|Twitter|Facebook|Github|GitHub|Linkedin|LinkedIn|Youtube|YouTube|Tiktok|TikTok|Whatsapp|WhatsApp|Discord|Telegram|X)$/.test(name) ? " (lucide has no brand icons; use a generic one such as AtSign, Camera, MessageCircle, Globe or Link)" : ""}. Pick an icon that exists.`,
+          source: "imports",
+        });
+      }
+    }
+  }
+  return issues;
+}
+
+/** Every /assets/<name> path in the app must be an uploaded (non-reference) asset. */
+export function assetRefIssues(files: Record<string, string>, assets: string[]): CheckIssue[] {
+  const known = new Set(assets);
+  const issues: CheckIssue[] = [];
+  for (const [file, content] of Object.entries(files)) {
+    if (!/\.(tsx?|jsx?|html|css)$/.test(file) || file.startsWith("src/assets/")) continue;
+    for (const name of new Set(assetRefs(content))) {
+      if (known.has(name)) continue;
+      const line = content.slice(0, content.indexOf(`/assets/${name}`)).split("\n").length;
+      issues.push({
+        file,
+        line,
+        message: `/assets/${name} isn't an uploaded file.${known.size ? ` Uploaded: ${[...known].map((n) => `/assets/${n}`).join(", ")}.` : " The user hasn't uploaded any images; use icons or gradients instead."}`,
+        source: "imports",
+      });
+    }
+  }
+  return issues;
 }
 
 /**
