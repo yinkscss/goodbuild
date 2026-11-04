@@ -19,5 +19,7 @@ export default defineConfig({
     // PGlite's wasm start-up in beforeEach can take >10s while solc and the contract-test EVM
     // child processes run in parallel test files.
     hookTimeout: 30_000,
+    // Cold dynamic imports (sharp, jsdom) are slow when the whole suite runs in parallel.
+    testTimeout: 30_000,
   },
 });
