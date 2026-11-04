@@ -126,7 +126,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     // quiet: a fix pass. Its text goes to the model's history but not to the user, so the
     // first pass's reply (and its follow-up questions) stays the last thing they read; the
     // auto-fix steps already show what happened.
-    const callModel = async (tier: ModelTier, quiet = false) => {
+    const callModel = async (tier: ModelTier, quiet = false, wrapUp = false) => {
       if (++calls > MAX_CALLS) throw new Error("This build used too many steps. Try a smaller change.");
       let replyText = "";
       const toolCalls: ToolCall[] = [];
@@ -163,7 +163,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       // summary after a fix) is dropped from what the user sees, live and saved.
       if (quiet) {
         // Nothing was shown.
-      } else if (input.mode === "build" && toolCalls.length && replyText.trim()) {
+      } else if (!wrapUp && input.mode === "build" && toolCalls.length && replyText.trim()) {
         // Narration before tool calls ("I'll start by planning this out.") isn't the reply;
         // the steps already show the work. Keep it in the model's history only.
         text = textBefore;
@@ -221,12 +221,13 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     };
 
     const finished = await phase(input.mode === "plan" ? TIER_FOR.plan : TIER_FOR.build);
-    if (!finished) {
-      // Out of tool rounds before replying: ask once for the reply, so the user gets a
+    if (!finished || !text.trim()) {
+      // Out of tool rounds, or the pass ended with nothing shown (its reply came with a tool
+      // call and was dropped as narration): ask once for the reply, so the user gets a
       // summary and follow-ups instead of an empty message. Tools stay declared (some
       // providers require it once the history has tool calls) but any calls are not run.
       convo.push({ role: "user", content: "Stop editing: you've used all your tool steps for this pass. Don't call tools. Reply to the user now, as instructed." });
-      const extra = await callModel(input.mode === "plan" ? TIER_FOR.plan : TIER_FOR.build);
+      const extra = await callModel(input.mode === "plan" ? TIER_FOR.plan : TIER_FOR.build, false, true);
       for (const call of extra) convo.push({ role: "tool", tool_call_id: call.id, content: "Not run: no tool steps left in this pass." });
       if (!text.trim() && record.plan?.summary) {
         text = record.plan.summary;
