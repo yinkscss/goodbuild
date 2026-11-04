@@ -2,6 +2,8 @@ import "server-only";
 
 import type { Db } from "@/server/db/client";
 import { estimateTurnMicro } from "@/lib/pricing";
+import { dbAssetStore } from "@/server/agent/asset-store";
+import type { AssetInfo } from "@/server/agent/assets";
 import { systemPrompt } from "@/server/agent/prompt";
 import { listVersions, loadFiles } from "@/server/agent/store";
 import { starterFiles } from "@/server/agent/template";
@@ -23,6 +25,8 @@ export interface WorkspaceState {
   versions: Array<{ number: number; summary: string; createdAt: string; revertedFrom: number | null }>;
   /** Preflight estimates in micro-USD (D13). */
   estimate: { buildMicro: number; planMicro: number };
+  /** Uploaded logos, images and design references (metadata; bytes via the assets API). */
+  assets: AssetInfo[];
 }
 
 /** Everything the workspace needs to render, for the page and for reloads after a turn. */
@@ -58,5 +62,6 @@ export async function workspaceState(db: Db, projectId: string, ownerId: string)
       buildMicro: estimateTurnMicro({ mode: "build", contextChars, firstBuild }),
       planMicro: estimateTurnMicro({ mode: "plan", contextChars, firstBuild }),
     },
+    assets: await dbAssetStore(db).list(projectId),
   };
 }

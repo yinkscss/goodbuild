@@ -1,0 +1,70 @@
+{
+  "scenario": "E1 logo and brand colours",
+  "base": "http://localhost:3001",
+  "projectId": "f1765f86-c6dd-4000-8af2-12e62e308982",
+  "uploads": [
+    {
+      "file": "docs/evals/harness/kola-logo.svg",
+      "status": 201,
+      "ms": 6058,
+      "asset": {
+        "id": "6a9132c0-29ad-4cfb-b002-cfbf1f7f084e",
+        "name": "kola-logo.svg",
+        "kind": "logo",
+        "mime": "image/svg+xml",
+        "size": 668,
+        "width": 480,
+        "height": 160,
+        "palette": [
+          "#e4572e",
+          "#1a4232",
+          "#fff4e6",
+          "#f5bca5",
+          "#ef9577"
+        ],
+        "description": "The mark shows a minimalist orange rounded square containing a cream negative-space coffee cup beside the dark green wordmark \"KOLA\" and the subtext \"COFFEE · LAGOS\". Its clean, flat design is intended for a light background."
+      }
+    }
+  ],
+  "turns": [
+    {
+      "prompt": "Build a landing page for Kola Coffee, a coffee kiosk in Yaba, Lagos, that opens at 7am and sells cold brew and zobo. Use my logo and brand colours.",
+      "status": "ready",
+      "error": null,
+      "seconds": 69,
+      "firstTryClean": true,
+      "fixAttempts": 0,
+      "reads": 0,
+      "searches": 0,
+      "access": [],
+      "context": "context: 22 of 22 files in full (App.tsx, index.html, index.ts, package.json, index.ts, chain.ts, ConnectButton.tsx, badge.tsx, button.tsx, card.tsx, input.tsx, label.tsx, notice.tsx, skeleton.tsx, textarea.tsx, format.ts, hooks.ts, tokens.ts, useWallet.ts, utils.ts, main.tsx, styles.css)",
+      "guides": [
+        "guides: landing-page, brand-and-assets, design-tokens, file-structure"
+      ],
+      "byModel": {
+        "deepseek-flash": {
+          "calls": 12,
+          "in": 192497,
+          "out": 11493,
+          "usd": 0.024665000000000003
+        }
+      },
+      "reply": "Your Kola Coffee landing page is built: a hero with your logo on the green brand colour, opening hours and a \"doors open 7:00 AM\" stat, a filterable menu of cold brew and zobo, a three-step \"how the morning works\" section, a Yaba location card with hours, and a closing call to action — all in your logo's orange and dark green with Fraunces headings. I picked Fraunces as the display font and used your logo as the favicon. Two things to know: the menu prices (₦1,000–₦1,500) and the exact street address are placeholders I marked on the page, so send me the real ones and I'll swap them in.",
+      "changes": [
+        "index.html",
+        "Layout.tsx",
+        "Hero.tsx",
+        "Menu.tsx",
+        "HowItWorks.tsx",
+        "Visit.tsx",
+        "CtaBand.tsx",
+        "App.tsx",
+        "Menu.tsx"
+      ],
+      "checks": [
+        "app:done:imports and syntax ok"
+      ]
+    }
+  ],
+  "at": "2026-11-04T20:19:30.194Z"
+}

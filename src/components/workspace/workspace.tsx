@@ -22,7 +22,7 @@ import type { TurnRecord } from "@/lib/turn-types";
 import { cn } from "@/lib/utils";
 import type { WorkspaceState } from "@/server/workspace-state";
 import { ChatPanel } from "./chat-panel";
-import { useWorkspace } from "./use-workspace";
+import { useAssetDataUrls, useWorkspace } from "./use-workspace";
 
 // Sandpack is browser-only and heavy: load it on the client.
 const PreviewPanel = dynamic(() => import("./preview-panel").then((m) => m.PreviewPanel), {
@@ -38,6 +38,7 @@ export function Workspace({ initial }: { initial: WorkspaceState }) {
 
   // Live files during a turn (once it reports them), otherwise the saved files.
   const files = live?.files ?? state.files;
+  const assetUrls = useAssetDataUrls(state.project.id, state.assets);
   const latestRecord = [...state.messages].reverse().map((m) => m.meta as TurnRecord | null).find((r) => r?.kind === "turn" && r.contracts?.length);
 
   return (
@@ -78,11 +79,12 @@ export function Workspace({ initial }: { initial: WorkspaceState }) {
 
       <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[420px_minmax(0,1fr)] xl:grid-cols-[460px_minmax(0,1fr)]">
         <div className={cn("min-h-0 flex-col", pane === "chat" ? "flex" : "hidden lg:flex", "[&>*]:flex-1")}>
-          <ChatPanel ws={ws} />
+          <ChatPanel ws={ws} assetUrls={assetUrls} />
         </div>
         <div className={cn("min-h-0 flex-col", pane === "preview" ? "flex" : "hidden lg:flex", "[&>*]:flex-1")}>
           <PreviewPanel
             files={files}
+            assetUrls={assetUrls}
             version={live?.record.version ?? state.project.currentVersion}
             contracts={latestRecord?.contracts ?? []}
             onFix={(prompt) => ws.send(prompt, "build")}

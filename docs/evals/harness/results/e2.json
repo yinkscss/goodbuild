@@ -1,0 +1,75 @@
+{
+  "scenario": "E2 match a design reference",
+  "base": "http://localhost:3001",
+  "projectId": "49cd6a7b-de9b-4ff2-aeb2-58850ec7cdb9",
+  "uploads": [
+    {
+      "file": "docs/evals/harness/reference.png",
+      "status": 201,
+      "ms": 9466,
+      "asset": {
+        "id": "34807d01-4fc7-454d-afac-cce6e471edfd",
+        "name": "reference.png",
+        "kind": "reference",
+        "mime": "image/png",
+        "size": 148890,
+        "width": 1440,
+        "height": 1500,
+        "palette": [
+          "#f3eee5",
+          "#798e59",
+          "#a9b98a",
+          "#c5f629",
+          "#141414"
+        ],
+        "description": "Page: crypto community-fund landing page, calm editorial feel.\n\nNavigation: top black bar, ~64px; left italic “Harvest”, right links Fund Projects About FAQ, lime pill “Connect wallet”.\n\nHero: two columns, cream bg, ~560px. Left eyebrow “COMMUNITY FUND · CELO”, large serif headline with italic “together.”, body line, black pill “Start funding”, underlined “How it works”. Right large rounded"
+      }
+    }
+  ],
+  "turns": [
+    {
+      "prompt": "Build a landing page for Oyo Seed Fund, where farmers' cooperatives in Oyo pool G$ to buy seed and fertiliser. Match the design in my screenshot.",
+      "status": "ready",
+      "error": null,
+      "seconds": 72,
+      "firstTryClean": true,
+      "fixAttempts": 0,
+      "reads": 1,
+      "searches": 0,
+      "access": [
+        "· read_file src/components/ui/button.tsx"
+      ],
+      "context": "context: 22 of 22 files in full (App.tsx, index.html, index.ts, package.json, index.ts, ConnectButton.tsx, badge.tsx, button.tsx, card.tsx, input.tsx, label.tsx, notice.tsx, skeleton.tsx, textarea.tsx, chain.ts, format.ts, hooks.ts, tokens.ts, useWallet.ts, utils.ts, main.tsx, styles.css)",
+      "guides": [
+        "guides: landing-page, design-tokens, match-reference, brand-and-assets",
+        "guides: match-reference"
+      ],
+      "byModel": {
+        "deepseek-flash": {
+          "calls": 9,
+          "in": 145408,
+          "out": 12758,
+          "usd": 0.0256
+        }
+      },
+      "reply": "I built the Oyo Seed Fund landing page as a single editorial page, matching your reference's structure and feel: black nav bar with a lime \"Connect wallet\" pill, cream split hero with the big serif headline and a sage circle panel, a dark stats band with lime numbers, the three numbered Pool/Vote/Grow cards, a lime CTA band, plus an about section and FAQ. The palette, Fraunces serif headings and rounded pill buttons come from your screenshot; the copy is Oyo Seed Fund's own, and the stats (12,400 G$ pooled, 38 farmers, 6 plots) and the member quote are labelled sample content for you to replace with real figures. There's no contract yet — \"Start funding\" and \"Join the fund\" simply connect the wallet.",
+      "changes": [
+        "index.html",
+        "button.tsx",
+        "NavBar.tsx",
+        "Hero.tsx",
+        "StatsBand.tsx",
+        "HowItWorks.tsx",
+        "About.tsx",
+        "Faq.tsx",
+        "CtaBand.tsx",
+        "Footer.tsx",
+        "App.tsx"
+      ],
+      "checks": [
+        "app:done:imports and syntax ok"
+      ]
+    }
+  ],
+  "at": "2026-11-04T20:19:36.211Z"
+}

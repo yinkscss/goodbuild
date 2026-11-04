@@ -6,6 +6,7 @@ import { createTestDb, type Db } from "@/server/db/client";
 import { messages, projects, usageEvents } from "@/server/db/schema";
 import { signInUser } from "@/server/auth/service";
 import { createProjectFromPrompt } from "@/server/projects";
+import { dbAssetStore, ingestAsset } from "./asset-store";
 import { scriptedModel } from "./fake-model";
 import { runTurn, TurnBusyError, type TurnEvent } from "./runner";
 import { claimTurn, listVersions, loadFiles, revertTo } from "./store";
@@ -119,6 +120,37 @@ describe("runTurn", { timeout: 120_000 }, () => {
     expect(types).toContain("plan");
     expect(types).toContain("file");
     expect(types.at(-1)).toBe("done");
+  });
+
+  it("gives the model uploaded assets: module, manifest, reference image once, and checks /assets/ paths", async () => {
+    const sharp = (await import("sharp")).default;
+    const store = dbAssetStore(db);
+    const png = await sharp({ create: { width: 40, height: 20, channels: 3, background: "#0f766e" } }).png().toBuffer();
+    await ingestAsset({ store, db, model: null, projectId, userId, fileName: "Logo.png", kind: "logo", bytes: png });
+    await ingestAsset({ store, db, model: null, projectId, userId, fileName: "inspo.png", kind: "reference", bytes: png });
+    const app = 'import { assets } from "./assets";\nexport default function App() { return <header><img src={assets.logo.src} alt="" /><img src="/assets/missing.png" alt="" /></header>; }\n';
+    const { client, requests } = scriptedModel([
+      { tools: [{ name: "create_file", args: { path: "src/App.tsx", content: app } }] },
+      { text: "Added your logo to the header." },
+      { tools: [{ name: "edit_file", args: { path: "src/App.tsx", edits: [{ search: '<img src="/assets/missing.png" alt="" />', replace: "" }] } }] },
+      { text: "Removed the missing image." },
+    ]);
+    const { emit } = collect();
+    const record = await runTurn({ db, model: client }, { projectId, userId, mode: "build", userMessageId: queuedId }, emit);
+
+    const first = requests[0].messages.at(-1)!;
+    expect(Array.isArray(first.content)).toBe(true);
+    const parts = first.content as Array<{ type: string; text?: string }>;
+    expect(parts.filter((p) => p.type === "image")).toHaveLength(1);
+    expect(parts[0].text).toContain("/assets/logo.png (logo, png, 40x20 · palette #0f766e) → assets.logo");
+    expect(parts[0].text).toContain("inspo.png (design reference");
+    expect(record.log.some((l) => l.startsWith("attached 1 design reference"))).toBe(true);
+    // The check caught the made-up path; the fix removed it.
+    expect(record.steps.find((s) => s.id === "app")?.detail).toContain("/assets/missing.png");
+    expect(record.status).toBe("ready");
+    const files = await loadFiles(db, projectId);
+    expect(files["src/assets/index.ts"]).toContain('logo: { src: "/assets/logo.png"');
+    expect(await store.unattached(projectId)).toHaveLength(0);
   });
 
   it("shows the summary once when the model repeats it after a fix", async () => {

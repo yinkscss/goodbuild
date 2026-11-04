@@ -1,0 +1,15 @@
+{
+  "name": "E4 long conversation remembers early decisions",
+  "turns": [
+    "Build a G$ tip jar for the Grace Choir in Ibadan. Rules: the minimum tip is 20 G$ and the tip button must say 'Bless the choir'. Also, for later: any page we add must credit our director, Mrs Funke Adebayo, and we never use the word 'donation' anywhere (we say 'blessing').",
+    "Make the accent colour a deep purple.",
+    "Add a short FAQ with three questions.",
+    "Add a line under the headline saying we rehearse on Thursdays.",
+    "Show the total tipped so far in a stat card.",
+    "Make the browser tab title 'Grace Choir Tips'.",
+    "Add a footer that says 'Made with love in Ibadan'.",
+    "Give the FAQ cards more rounded corners.",
+    "Add an icon to the stat card.",
+    "Add a Robes Fund page with a second tip form for new choir robes, and an About page about the choir."
+  ]
+}

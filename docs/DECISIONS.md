@@ -173,6 +173,31 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
   - `Math`, `ERC20Burnable` and `ERC20Capped` on the import list.
 - Open for M5: deploy order and constructor wiring between project contracts (for example RTXPool needs the RTXToken address), and a test G$ on Sepolia (Q39).
 
+### P17. Agent harness: assets, code search, selective context, rolling memory, naming (proposed)
+- Date: 4 Nov 2026 · Proposed by: Claude, scope (L1) approved by the user (Olayinka) in chat · Evals: [evals/HARNESS.md](evals/HARNESS.md)
+- **Assets.** Users upload logos, images and design references (PNG, JPEG, WebP, SVG, up to 5 MB, 20 per project) from the composer. The type is sniffed from the bytes. SVGs with scripts, entities, `foreignObject`, external refs, `@import` or `javascript:` are rejected; event handlers, doctypes and stylesheet PIs are stripped before anything parses them. Bytes live in a new `project_assets` table behind an `AssetStore` interface (object storage later). sharp (0.35.5, now a direct dependency) reads dimensions and a 5-colour palette that discounts near-white and near-black.
+- **How apps reference assets: a stable path, a data URL in the preview only.** Code uses `/assets/<name>`, directly or through the GoodBuild-written `src/assets/index.ts` (`assets.logo.src`, width, height, alt). The preview swaps those literal paths for data URLs in `toSandpack`. Why not a platform URL: measured on 4 Nov 2026, an `<img>` on an https page (Sandpack's origin) failed to load `http://localhost:3001/...`, while a data URL loaded. Chrome blocks public pages from loading localhost resources. Binaries stay out of the model's file map, checkpoints and context. Publishing later copies real files to `/assets/`. A check rejects `/assets/` paths that weren't uploaded. Design references are never shipped.
+- **Vision.** Measured the same day: both `deepseek-flash` and `claude-sonnet-5-5` read an image through the AI SDK. Each upload is described once with the cheap model (`TIER_FOR.build`): a sentence for logos and images, and a text layout spec for references. The model sees a manifest of name, kind, size, palette and description. A reference's image is also attached to the next turn's message, once. D19 routing is unchanged, and `model.ts` gained image parts (its owner made that change).
+- **Code search.** New tools: `search_code` (literal or regex, `file:line: text`), `find_symbol` (components, hooks, routes, contract functions, events, errors, plus the files that use them), and `read_file` with line ranges. `list_files` returns a manifest with a one-line summary per file. Summaries are computed from the code (exports, routes, h1, sections, contract functions) and cached by content hash, so they cost no model calls. Reads and searches are logged, so evals can count them.
+- **Selective context.** The context block has a manifest of every file, then the files picked for the request. If the whole project fits the 40k-char budget it is sent whole, because a read round trip re-sends the conversation and costs more than the files. Otherwise the block holds:
+  - the entry, the theme, contracts and the assets module;
+  - files ranked by request terms matched against path, symbols and text;
+  - files changed last turn, then import neighbours.
+
+  Measured: a realistic 30-file project is about 28k chars, so most projects today are sent whole. This replaces "everything up to 100k".
+- **No vector search.** Lexical search plus the symbol index found the file in every case of the offline 10-request set and the live E3 run, so embeddings would add a provider, a cost and staleness for no measured gain. Revisit if projects outgrow the 80-file cap or a request misses in evals.
+- **Rolling memory.** The last 8 messages are sent verbatim. Older ones are folded by the cheap model into `projects.memory`: a summary under 120 words, plus a separate list of the user's decisions and constraints with exact values. A prose summary alone is what loses an early decision. This costs at most one cheap call per turn, and the user's own words are kept as a fallback if that call fails.
+- **File naming.** A `file-structure` guide covers:
+  - `src/pages/PascalCase.tsx`;
+  - `src/components/PascalCase.tsx` (sections in `src/components/sections/`);
+  - `src/lib/useCamelCase.ts` and `src/lib/camelCase.ts`;
+  - `contracts/PascalCase.sol` and `contracts/test/PascalCase.t.sol`;
+  - uploads at `/assets/`.
+
+  `namingProblem()` in `checks.ts` enforces these for new files and renames only, so older projects keep working. `pathProblem()` also blocks `src/assets/`.
+- **Design guides.** Deeper `landing-page` (six archetypes, a section library, imagery), `pages-and-routing` (responsive sticky nav, multi-page dApp layout) and `design-tokens` (font pairings via `--font-display`, a type scale). New guides: `brand-and-assets`, `match-reference`, `ui-states` and `file-structure`. The model still picks which to load; nothing classifies the request.
+- **Also found by the evals:** lucide-react 1.68 has no brand icons, so `import { Instagram }` is `undefined` and blanks the preview. The app check now rejects icon names lucide doesn't export, and a test keeps the platform's lucide version equal to the one apps pin.
+
 ### P3. GoodDollar AI credits via AntSeed gateway behind LiteLLM (DEFERRED by D11)
 - Status: deferred. GoodDollar/AntSeed is an optional future provider only, revisit once GoodDollar ships its proxy/API keys.
 - Date: 4 Nov 2026 · Proposed by: Grok Bot · Users fund credits with the GoodWidget AI credits widget; GoodBuild runs an AntSeed gateway registered as an OpenAI-compatible LiteLLM provider, falling back to direct providers. Blocked on buyer-key custody / GoodDollar proxy (see [GOODDOLLAR_AI_CREDITS.md](GOODDOLLAR_AI_CREDITS.md), Q17).

@@ -41,6 +41,12 @@ flowchart TD
 - **Conversation:** last N turns verbatim + rolling summary of older turns.
 - **Budget** *(starting numbers to tune)*: system+brief ≤ 6K tokens, tree ≤ 2K, files ≤ 40K, history ≤ 8K, leave ≥ 8K for output. Summaries refreshed by cheap model on file change.
 
+- **Implemented (P17):**
+  - The context block holds a manifest of every file (path, size, a one-line summary computed from the code) and the files picked for the request (`selectContext` in `codebase.ts`). A project that fits the 40k-char budget is sent whole. Otherwise the block takes the entry, the theme, contracts and the assets module first, then files that match the request by path, symbol and text, then last turn's changes, import neighbours, and small starter files with what budget is left.
+  - Tools: `search_code`, `find_symbol` and `read_file` with line ranges. Every read and search is logged.
+  - History: the last 8 messages verbatim, plus a rolling memory (`memory.ts`, `projects.memory`) of older ones, made of a summary and the user's decisions as a list.
+  - No embeddings; [evals/HARNESS.md](evals/HARNESS.md) has the measurements.
+
 ## 4. Correction and steering
 - **Select-to-edit:** click element(s) in the preview → attaches component file + line + DOM snippet to the prompt. Lovable does this via its preview toolbar (select elements, inline text edit, annotations) ([docs](https://docs.lovable.dev/features/preview-toolbar)). Implementation: Babel/Vite-style plugin adds `data-gb-src="file:line"` to JSX in Sandpack; an iframe script reports clicks via postMessage. Inline text edits can be applied without a model call.
 - **Checkpoints per prompt:** each agent turn = one version (file snapshot/diff in DB). Lovable saves a version per change with revert ([summary](https://aliteq.com/undo-ai-changes)); Cursor checkpoints restore files but not chat and are not a substitute for git (same source). Our revert restores files; chat stays and logs "reverted to v12". **Revert never touches deployed contracts** (show this clearly).
@@ -58,7 +64,12 @@ flowchart TD
 - **Starter (P13):** `src/App.tsx` is a layout-free placeholder the first build replaces, so the model designs the page for the request instead of copying a stock header and card. Helpers it composes: `lib/format.ts` (`formatAmount`, `errorMessage`), `lib/hooks.ts` (`useRead` for reads with loading/error, `useTx` for wallet writes), `ui/{skeleton,notice,textarea}` beside button, card, input, label, badge. Older projects get missing helpers backfilled (never overwritten) at the start of a turn. The system prompt's design rules ask for a layout that fits the app, real copy, a per-app accent colour in `public/index.html`, and one or two next steps as clickable chips (P15, `suggest_next`) after each build, plan or answer. Fix passes are quiet and build-mode narration that comes with tool calls is dropped, so that reply stays last; a pass that runs out of tool rounds or shows nothing gets one more call for the reply, and no-op edits are reported to the model as no change.
 - **Guides (P14):** detailed front-end know-how lives in `src/server/agent/guides.ts` and is loaded on demand (via `set_plan`'s `guides` or `read_guide`), so the base prompt stays small. Websites without contracts are in scope (D20).
 - **Contract tests (P16):** `contracts/test/*.t.sol` runs in a local EVM after each clean compile (`src/server/agent/contract-tests.ts`, `scripts/evm-test.mjs`, helpers in `scripts/solidity/goodbuild/`). Failures go to auto-fix. Evals of complex prompts live in `docs/evals/`.
-- **Assets:** user uploads stored and referenced by URL; generated images via image model (optional); icons from lucide-react. No base64 blobs in code.
+- **Assets (P17, implemented):**
+  - Logos, images and design references are uploaded from the composer (`/api/projects/[id]/assets`), type-sniffed, sanitised if SVG, and stored in `project_assets` behind `AssetStore`.
+  - Code references them as `/assets/<name>`, or through the platform-written `src/assets/index.ts`. The preview inlines them as data URLs, so there are no base64 blobs in project files.
+  - Each upload gets a palette and a one-time description from the cheap model, which reads images. A reference is described as a layout spec, and its image is attached to the next turn.
+  - Guides: `brand-and-assets` and `match-reference`.
+  - Generated images (an image model) are not built. Icons come from lucide-react, which has no brand icons; the app check enforces real icon names.
 - **Checks:** preview at 375px and 1280px; **screenshot self-review (optional)** using a vision model on a captured iframe (capture of Sandpack iframe e.g. html-to-image: feasibility UNVERIFIED). Lovable has browser testing with screenshots ([glossary](https://docs.lovable.dev/glossary)).
 
 ## 7. Error handling

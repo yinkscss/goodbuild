@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="1500" viewBox="0 0 1440 1500">
+  <!-- Eval design reference (made for this eval): cream editorial site, black nav bar, split hero
+       with a big serif headline left and a tall rounded image right, a 4-up stats strip on dark,
+       a 3-card row with thin borders, and a big rounded lime CTA band. -->
+  <rect width="1440" height="1500" fill="#F4EFE6"/>
+  <rect width="1440" height="80" fill="#121212"/>
+  <text x="64" y="50" font-family="Georgia, serif" font-size="28" fill="#F4EFE6" font-style="italic">Harvest</text>
+  <text x="900" y="48" font-family="Arial" font-size="16" fill="#BDBDBD">Fund   Projects   About   FAQ</text>
+  <rect x="1220" y="22" width="160" height="38" rx="19" fill="#C6F432"/>
+  <text x="1248" y="47" font-family="Arial" font-size="15" font-weight="700" fill="#121212">Connect wallet</text>
+  <text x="64" y="200" font-family="Arial" font-size="14" letter-spacing="4" fill="#5C5C5C">COMMUNITY FUND · CELO</text>
+  <text x="64" y="300" font-family="Georgia, serif" font-size="88" fill="#121212">Grow the</text>
+  <text x="64" y="395" font-family="Georgia, serif" font-size="88" fill="#121212">harvest,</text>
+  <text x="64" y="490" font-family="Georgia, serif" font-size="88" font-style="italic" fill="#121212">together.</text>
+  <text x="64" y="560" font-family="Arial" font-size="22" fill="#5C5C5C">Pool G$ with your neighbours and fund the next planting season.</text>
+  <rect x="64" y="610" width="210" height="58" rx="29" fill="#121212"/>
+  <text x="104" y="646" font-family="Arial" font-size="18" font-weight="700" fill="#F4EFE6">Start funding</text>
+  <text x="300" y="646" font-family="Arial" font-size="18" fill="#121212" text-decoration="underline">How it works</text>
+  <rect x="800" y="140" width="576" height="560" rx="40" fill="#7A8F5A"/>
+  <circle cx="1088" cy="420" r="150" fill="#A9B98A"/>
+  <rect x="0" y="760" width="1440" height="170" fill="#121212"/>
+  <text x="96" y="840" font-family="Georgia, serif" font-size="56" fill="#C6F432">12,400</text>
+  <text x="96" y="880" font-family="Arial" font-size="16" fill="#BDBDBD">G$ pooled</text>
+  <text x="440" y="840" font-family="Georgia, serif" font-size="56" fill="#C6F432">38</text>
+  <text x="440" y="880" font-family="Arial" font-size="16" fill="#BDBDBD">farmers</text>
+  <text x="780" y="840" font-family="Georgia, serif" font-size="56" fill="#C6F432">6</text>
+  <text x="780" y="880" font-family="Arial" font-size="16" fill="#BDBDBD">projects</text>
+  <text x="1110" y="840" font-family="Georgia, serif" font-size="56" fill="#C6F432">0%</text>
+  <text x="1110" y="880" font-family="Arial" font-size="16" fill="#BDBDBD">fees</text>
+  <g font-family="Arial" fill="#121212">
+    <rect x="64" y="990" width="410" height="250" rx="24" fill="none" stroke="#121212" stroke-width="2"/>
+    <text x="100" y="1060" font-family="Georgia, serif" font-size="32">01 Pool</text>
+    <text x="100" y="1110" font-size="18" fill="#5C5C5C">Members add G$ to a shared fund.</text>
+    <rect x="515" y="990" width="410" height="250" rx="24" fill="none" stroke="#121212" stroke-width="2"/>
+    <text x="551" y="1060" font-family="Georgia, serif" font-size="32">02 Vote</text>
+    <text x="551" y="1110" font-size="18" fill="#5C5C5C">Pick which plot gets funded.</text>
+    <rect x="966" y="990" width="410" height="250" rx="24" fill="none" stroke="#121212" stroke-width="2"/>
+    <text x="1002" y="1060" font-family="Georgia, serif" font-size="32">03 Grow</text>
+    <text x="1002" y="1110" font-size="18" fill="#5C5C5C">Funds release to the farmer.</text>
+  </g>
+  <rect x="64" y="1300" width="1312" height="150" rx="40" fill="#C6F432"/>
+  <text x="120" y="1392" font-family="Georgia, serif" font-size="48" fill="#121212">Plant something this season.</text>
+  <rect x="1100" y="1345" width="220" height="60" rx="30" fill="#121212"/>
+  <text x="1140" y="1382" font-family="Arial" font-size="18" font-weight="700" fill="#F4EFE6">Join the fund</text>
+</svg>

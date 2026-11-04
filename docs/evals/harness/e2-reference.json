@@ -1,0 +1,5 @@
+{
+  "name": "E2 match a design reference",
+  "uploads": [{ "file": "docs/evals/harness/reference.png", "kind": "reference" }],
+  "turns": ["Build a landing page for Oyo Seed Fund, where farmers' cooperatives in Oyo pool G$ to buy seed and fertiliser. Match the design in my screenshot."]
+}

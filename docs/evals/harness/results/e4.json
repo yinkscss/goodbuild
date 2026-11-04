@@ -1,0 +1,387 @@
+{
+  "scenario": "E4 long conversation remembers early decisions",
+  "base": "http://localhost:3001",
+  "projectId": "d4e9606f-13ab-45d4-bebd-d62d83053031",
+  "uploads": [],
+  "turns": [
+    {
+      "prompt": "Build a G$ tip jar for the Grace Choir in Ibadan. Rules: the minimum tip is 20 G$ and the tip button must say 'Bless the choir'. Also, for later: any page we add must credit our director, Mrs Funke Adebayo, and we never use the word 'donation' anywhere (we say 'blessing').",
+      "status": "ready",
+      "error": null,
+      "seconds": 197,
+      "firstTryClean": false,
+      "fixAttempts": 1,
+      "reads": 0,
+      "searches": 0,
+      "access": [],
+      "context": "context: 21 of 21 files in full (App.tsx, index.html, package.json, index.ts, chain.ts, hooks.ts, notice.tsx, useWallet.ts, ConnectButton.tsx, badge.tsx, button.tsx, card.tsx, input.tsx, label.tsx, skeleton.tsx, textarea.tsx, format.ts, tokens.ts, utils.ts, main.tsx, styles.css)",
+      "guides": [
+        "guides: contract-tests, design-tokens, ui-states, dashboard-and-data, file-structure"
+      ],
+      "byModel": {
+        "deepseek-flash": {
+          "calls": 13,
+          "in": 219418,
+          "out": 31607,
+          "usd": 0.05434800000000001
+        },
+        "claude-sonnet-5-5": {
+          "calls": 2,
+          "in": 66122,
+          "out": 247,
+          "usd": 0.13374
+        }
+      },
+      "reply": "I built the Grace Choir tip jar: a jar contract that accepts blessings in G$ with a 20 G$ minimum, and a page with a \"Bless the choir\" button, quick amounts (20/50/100/250), a stats row and a list of recent blessings, all worded as blessings and with Mrs Funke Adebayo credited as director. When you deploy you'll be asked for the G$ token address, and you become the jar's first beneficiary, so the choir's wallet should be set with setBeneficiary (or blessings withdrawn to you and passed on).",
+      "changes": [
+        "GraceChoirTipJar.sol",
+        "GraceChoirTipJar.t.sol",
+        "index.html",
+        "useGraceJar.ts",
+        "TipForm.tsx",
+        "TipForm.tsx",
+        "StatRow.tsx",
+        "StatRow.tsx",
+        "RecentBlessings.tsx",
+        "App.tsx",
+        "useGraceJar.ts"
+      ],
+      "checks": [
+        "compile:done:0 errors · 0 warnings",
+        "test:done:6 tests passed in a local EVM",
+        "app:error:1 error: useGraceJar.ts:22 GraceChoirTipJarAddress is a map from chain id to address, not an address. Use GraceChoir…",
+        "compile:1:done:0 errors · 0 warnings",
+        "test:1:done:6 tests passed in a local EVM",
+        "app:1:done:imports and syntax ok"
+      ]
+    },
+    {
+      "prompt": "Make the accent colour a deep purple.",
+      "status": "ready",
+      "error": null,
+      "seconds": 20,
+      "firstTryClean": true,
+      "fixAttempts": 0,
+      "reads": 0,
+      "searches": 2,
+      "access": [
+        "· search_code \"a16207\"",
+        "· search_code \"amber|yellow|gold|#a16207\""
+      ],
+      "context": "context: 11 of 28 files in full (App.tsx, index.html, GraceChoirTipJar.sol, GraceChoirTipJar.t.sol, RecentBlessings.tsx, TipForm.tsx, useGraceJar.ts, StatRow.tsx, package.json, ConnectButton.tsx, styles.css)",
+      "guides": [
+        "guides: design-tokens"
+      ],
+      "byModel": {
+        "deepseek-flash": {
+          "calls": 4,
+          "in": 54770,
+          "out": 987,
+          "usd": 0.005418000000000001
+        }
+      },
+      "reply": "The accent is now a deep purple (#5b21b6) everywhere it's used — the top bar on the blessing card, quick-amount chips, stat icons, the header mark and highlights — with white text on it and the focus ring updated to match, so the warm cream background and Fraunces headings still carry the choir's feel.",
+      "changes": [
+        "index.html"
+      ],
+      "checks": [
+        "compile:done:0 errors · 0 warnings",
+        "test:done:6 tests passed in a local EVM",
+        "app:done:imports and syntax ok"
+      ]
+    },
+    {
+      "prompt": "Add a short FAQ with three questions.",
+      "status": "ready",
+      "error": null,
+      "seconds": 36,
+      "firstTryClean": true,
+      "fixAttempts": 0,
+      "reads": 0,
+      "searches": 0,
+      "access": [],
+      "context": "context: 11 of 28 files in full (App.tsx, index.html, GraceChoirTipJar.sol, GraceChoirTipJar.t.sol, RecentBlessings.tsx, useGraceJar.ts, ConnectButton.tsx, StatRow.tsx, TipForm.tsx, package.json, styles.css)",
+      "guides": [
+        "guides: content-pages"
+      ],
+      "byModel": {
+        "deepseek-flash": {
+          "calls": 4,
+          "in": 54674,
+          "out": 1647,
+          "usd": 0.006372
+        }
+      },
+      "reply": "The page now has a \"Questions\" card with three collapsible answers — what a blessing is, how much you can send (from 20 G$), and whether you need a wallet — slotted in above the director credit, with Mrs Funke Adebayo still credited and 'blessing' used throughout.",
+      "changes": [
+        "Faq.tsx",
+        "App.tsx"
+      ],
+      "checks": [
+        "compile:done:0 errors · 0 warnings",
+        "test:done:6 tests passed in a local EVM",
+        "app:done:imports and syntax ok"
+      ]
+    },
+    {
+      "prompt": "Add a line under the headline saying we rehearse on Thursdays.",
+      "status": "ready",
+      "error": null,
+      "seconds": 11,
+      "firstTryClean": true,
+      "fixAttempts": 0,
+      "reads": 0,
+      "searches": 0,
+      "access": [],
+      "context": "context: 12 of 29 files in full (App.tsx, index.html, GraceChoirTipJar.sol, GraceChoirTipJar.t.sol, Faq.tsx, RecentBlessings.tsx, useGraceJar.ts, StatRow.tsx, TipForm.tsx, ConnectButton.tsx, package.json, styles.css)",
+      "guides": [],
+      "byModel": {
+        "deepseek-flash": {
+          "calls": 2,
+          "in": 27752,
+          "out": 1061,
+          "usd": 0.0051790000000000004
+        }
+      },
+      "reply": "The headline now has \"We rehearse on Thursdays.\" right under it, in a small accent-coloured line with a calendar icon, above the choir intro paragraph. Nothing else changed, and the wording still says \"blessing\" throughout with Mrs Funke Adebayo credited.",
+      "changes": [
+        "App.tsx"
+      ],
+      "checks": [
+        "compile:done:0 errors · 0 warnings",
+        "test:done:6 tests passed in a local EVM",
+        "app:done:imports and syntax ok"
+      ]
+    },
+    {
+      "prompt": "Show the total tipped so far in a stat card.",
+      "status": "ready",
+      "error": null,
+      "seconds": 21,
+      "firstTryClean": true,
+      "fixAttempts": 0,
+      "reads": 1,
+      "searches": 0,
+      "access": [
+        "· read_file src/lib/format.ts"
+      ],
+      "context": "context: 14 of 29 files in full (App.tsx, index.html, GraceChoirTipJar.sol, GraceChoirTipJar.t.sol, StatRow.tsx, card.tsx, useGraceJar.ts, RecentBlessings.tsx, TipForm.tsx, Faq.tsx, GraceChoirTipJar.ts, package.json, ConnectButton.tsx, styles.css)",
+      "guides": [
+        "guides: dashboard-and-data"
+      ],
+      "byModel": {
+        "deepseek-flash": {
+          "calls": 4,
+          "in": 69263,
+          "out": 2752,
+          "usd": 0.009453999999999999
+        }
+      },
+      "reply": "The total blessed so far now has its own highlighted card at the top of the stats — a large running G$ figure counted from the very first blessing — with the number of blessings and your own total in two smaller cards below it. The figure reads straight from the jar contract, so it updates as soon as a blessing lands.",
+      "changes": [
+        "StatRow.tsx"
+      ],
+      "checks": [
+        "compile:done:0 errors · 0 warnings",
+        "test:done:6 tests passed in a local EVM",
+        "app:done:imports and syntax ok"
+      ]
+    },
+    {
+      "prompt": "Make the browser tab title 'Grace Choir Tips'.",
+      "status": "ready",
+      "error": null,
+      "seconds": 11,
+      "firstTryClean": true,
+      "fixAttempts": 0,
+      "reads": 0,
+      "searches": 0,
+      "access": [],
+      "context": "context: 13 of 29 files in full (App.tsx, index.html, GraceChoirTipJar.sol, GraceChoirTipJar.t.sol, GraceChoirTipJar.ts, useGraceJar.ts, TipForm.tsx, RecentBlessings.tsx, StatRow.tsx, Faq.tsx, package.json, ConnectButton.tsx, styles.css)",
+      "guides": [],
+      "memory": "memory: 2 older messages summarised, 5 decisions kept",
+      "byModel": {
+        "deepseek-flash": {
+          "calls": 2,
+          "in": 33103,
+          "out": 369,
+          "usd": 0.005208
+        }
+      },
+      "reply": "The browser tab now reads \"Grace Choir Tips\". Nothing else changed on the page.",
+      "changes": [
+        "index.html"
+      ],
+      "checks": [
+        "compile:done:0 errors · 0 warnings",
+        "test:done:6 tests passed in a local EVM",
+        "app:done:imports and syntax ok"
+      ]
+    },
+    {
+      "prompt": "Add a footer that says 'Made with love in Ibadan'.",
+      "status": "ready",
+      "error": null,
+      "seconds": 12,
+      "firstTryClean": true,
+      "fixAttempts": 0,
+      "reads": 0,
+      "searches": 0,
+      "access": [],
+      "context": "context: 12 of 29 files in full (App.tsx, index.html, GraceChoirTipJar.sol, GraceChoirTipJar.t.sol, RecentBlessings.tsx, useGraceJar.ts, Faq.tsx, StatRow.tsx, TipForm.tsx, package.json, ConnectButton.tsx, styles.css)",
+      "guides": [],
+      "memory": "memory: 4 older messages summarised, 6 decisions kept",
+      "byModel": {
+        "deepseek-flash": {
+          "calls": 3,
+          "in": 43086,
+          "out": 864,
+          "usd": 0.00532
+        }
+      },
+      "reply": "The page now ends with a proper footer on a light band: \"Made with love in Ibadan\" with a small purple heart, and the line about blessings being held in the G$ jar and collected by the choir underneath. Nothing above it changed, and the director credit and \"blessing\" wording stay as before.",
+      "changes": [
+        "App.tsx"
+      ],
+      "checks": [
+        "compile:done:0 errors · 0 warnings",
+        "test:done:6 tests passed in a local EVM",
+        "app:done:imports and syntax ok"
+      ]
+    },
+    {
+      "prompt": "Give the FAQ cards more rounded corners.",
+      "status": "ready",
+      "error": null,
+      "seconds": 11,
+      "firstTryClean": true,
+      "fixAttempts": 0,
+      "reads": 0,
+      "searches": 0,
+      "access": [],
+      "context": "context: 13 of 29 files in full (App.tsx, index.html, GraceChoirTipJar.sol, card.tsx, Faq.tsx, RecentBlessings.tsx, GraceChoirTipJar.t.sol, useGraceJar.ts, StatRow.tsx, TipForm.tsx, package.json, ConnectButton.tsx, styles.css)",
+      "guides": [],
+      "memory": "memory: 6 older messages summarised, 7 decisions kept",
+      "byModel": {
+        "deepseek-flash": {
+          "calls": 3,
+          "in": 43790,
+          "out": 592,
+          "usd": 0.004989
+        }
+      },
+      "reply": "The Questions card now has much softer rounded corners (extra round on wider screens), while the rest of the page keeps its usual card shape. Nothing else changed.",
+      "changes": [
+        "Faq.tsx"
+      ],
+      "checks": [
+        "compile:done:0 errors · 0 warnings",
+        "test:done:6 tests passed in a local EVM",
+        "app:done:imports and syntax ok"
+      ]
+    },
+    {
+      "prompt": "Add an icon to the stat card.",
+      "status": "ready",
+      "error": null,
+      "seconds": 17,
+      "firstTryClean": true,
+      "fixAttempts": 0,
+      "reads": 0,
+      "searches": 0,
+      "access": [],
+      "context": "context: 13 of 29 files in full (App.tsx, index.html, GraceChoirTipJar.sol, StatRow.tsx, card.tsx, GraceChoirTipJar.t.sol, Faq.tsx, RecentBlessings.tsx, TipForm.tsx, useGraceJar.ts, package.json, ConnectButton.tsx, styles.css)",
+      "guides": [],
+      "memory": "memory: 8 older messages summarised, 8 decisions kept",
+      "byModel": {
+        "deepseek-flash": {
+          "calls": 3,
+          "in": 44344,
+          "out": 1448,
+          "usd": 0.006385000000000001
+        }
+      },
+      "reply": "The \"Total blessed so far\" card now has a purple icon tile (a G$ coin icon) beside the label and the big total, sized up slightly on wider screens so it reads as the headline stat. The number, wording and everything else on the page are unchanged.",
+      "changes": [
+        "StatRow.tsx"
+      ],
+      "checks": [
+        "compile:done:0 errors · 0 warnings",
+        "test:done:6 tests passed in a local EVM",
+        "app:done:imports and syntax ok"
+      ]
+    },
+    {
+      "prompt": "Add a Robes Fund page with a second tip form for new choir robes, and an About page about the choir.",
+      "status": "ready",
+      "error": null,
+      "seconds": 164,
+      "firstTryClean": true,
+      "fixAttempts": 0,
+      "reads": 10,
+      "searches": 2,
+      "access": [
+        "· read_file src/lib/useWallet.ts",
+        "· read_file src/lib/hooks.ts",
+        "· read_file src/lib/chain.ts",
+        "· read_file src/lib/tokens.ts",
+        "· read_file src/lib/format.ts",
+        "· read_file src/components/ui/card.tsx",
+        "· read_file src/components/ui/button.tsx",
+        "· read_file src/components/ui/badge.tsx",
+        "· read_file src/components/ui/notice.tsx",
+        "· search_code \"useGraceJar\"",
+        "· search_code \"jarAddress\"",
+        "· read_file src/pages/Robes.tsx:1-40"
+      ],
+      "context": "context: 13 of 29 files in full (App.tsx, index.html, GraceChoirTipJar.sol, GraceChoirTipJar.ts, GraceChoirTipJar.t.sol, TipForm.tsx, RecentBlessings.tsx, StatRow.tsx, useGraceJar.ts, Faq.tsx, package.json, ConnectButton.tsx, styles.css)",
+      "guides": [
+        "guides: pages-and-routing, content-pages, file-structure, contract-tests, multi-contract, ui-states"
+      ],
+      "memory": "memory: 10 older messages summarised, 9 decisions kept",
+      "byModel": {
+        "deepseek-flash": {
+          "calls": 17,
+          "in": 503247,
+          "out": 28302,
+          "usd": 0.056527999999999995
+        }
+      },
+      "reply": "Grace Choir now has three pages: the everyday blessings jar, a Robes Fund page with its own second blessing form and a 500 G$ progress bar, and an About page covering the choir, both jars and a plain-words explainer on G$, wallets and transactions (Mrs Funke Adebayo is credited throughout). The Robes Fund is a separate contract, RobesFund.sol, also taking the G$ token address at deploy; deploy it after the main jar, and note the everyday page moved to a shared layout with a nav bar and a \"Robes Fund\" link.",
+      "changes": [
+        "RobesFund.sol",
+        "RobesFund.t.sol",
+        "useJar.ts",
+        "useGraceJar.ts",
+        "useRobesFund.ts",
+        "BlessForm.tsx",
+        "TipForm.tsx",
+        "TipForm.tsx",
+        "RobesForm.tsx",
+        "Layout.tsx",
+        "Home.tsx",
+        "Robes.tsx",
+        "Home.tsx",
+        "Robes.tsx",
+        "About.tsx",
+        "NotFound.tsx",
+        "About.tsx",
+        "App.tsx",
+        "BlessForm.tsx",
+        "Layout.tsx",
+        "index.html",
+        "RecentBlessings.tsx",
+        "StatRow.tsx",
+        "RecentBlessings.tsx",
+        "Robes.tsx",
+        "Robes.tsx"
+      ],
+      "checks": [
+        "compile:done:0 errors · 0 warnings",
+        "test:done:12 tests passed in a local EVM",
+        "app:done:imports and syntax ok"
+      ]
+    }
+  ],
+  "at": "2026-11-04T20:28:00.285Z"
+}

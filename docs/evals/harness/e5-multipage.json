@@ -1,0 +1,4 @@
+{
+  "name": "E5 landing page plus a 3-page dApp",
+  "turns": ["Build a G$ tip jar dApp for the Lagos Coders club: a landing page, plus three pages: Tip (send G$ with a short message), Leaderboard (top tippers) and About (what the club does, FAQ)."]
+}

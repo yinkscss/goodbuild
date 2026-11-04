@@ -6,8 +6,11 @@ import type { Db } from "@/server/db/client";
 import { messages, projects } from "@/server/db/schema";
 import { checkApp, checkContracts, formatIssues, mentionsGd, mentionsNativeCelo, type CheckIssue, type CheckReport, type ContractCheckOptions } from "./checks";
 import { runContractTests } from "./contract-tests";
-import { TIER_FOR, ModelUnavailableError, type ChatMessage, type ModelClient, type ModelTier, type ToolCall } from "./model";
-import { BUILD_TOOLS, PLAN_TOOLS, contextMessage, systemPrompt } from "./prompt";
+import { dbAssetStore, type AssetStore } from "./asset-store";
+import { ASSETS_MODULE, assetManifest, assetsModule, visionImage } from "./assets";
+import { HISTORY_WINDOW, memoryBlock, updateMemory, type Memory, type MemoryMessage } from "./memory";
+import { TIER_FOR, ModelUnavailableError, type ChatMessage, type ModelClient, type ModelTier, type ToolCall, type UserPart } from "./model";
+import { BUILD_TOOLS, PLAN_TOOLS, contextWithPicks, systemPrompt } from "./prompt";
 import { checkpoint, claimTurn, loadFiles, recordUsage, releaseTurn } from "./store";
 import { PLATFORM_DIR, contractModule, contractsIndex, starterFiles, withStarterHelpers } from "./template";
 import { Workspace, type FileChange } from "./workspace";
@@ -22,8 +25,13 @@ export interface TurnDeps {
   model: ModelClient;
   checkContracts?: typeof checkContracts;
   checkApp?: typeof checkApp;
+  /** Uploaded assets (default: the DB store). */
+  assets?: AssetStore;
   now?: () => Date;
 }
+
+/** Design-reference images sent with one turn (each is described in text for later turns). */
+const MAX_IMAGES_PER_TURN = 2;
 
 export interface TurnInput {
   projectId: string;
@@ -55,7 +63,9 @@ export class TurnBusyError extends Error {
 export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEvent) => void): Promise<TurnRecord> {
   const { db, model } = deps;
   const compile = deps.checkContracts ?? checkContracts;
-  const lint = deps.checkApp ?? checkApp;
+  const lintWith = deps.checkApp ?? checkApp;
+  let assetNames: string[] = [];
+  const lint = (files: Record<string, string>) => lintWith(files, { assets: assetNames });
 
   if (!(await claimTurn(db, input.projectId, input.userId))) throw new TurnBusyError();
 
@@ -108,13 +118,67 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     let files = await loadFiles(db, input.projectId);
     const firstBuild = Object.keys(files).length === 0;
     files = firstBuild ? starterFiles() : withStarterHelpers(files);
+    // Uploaded assets: the platform-owned module is refreshed before the workspace snapshot,
+    // so a new upload alone doesn't count as an edit.
+    const assetStore = deps.assets ?? dbAssetStore(db);
+    const assets = await assetStore.list(input.projectId);
+    assetNames = assets.filter((a) => a.kind !== "reference").map((a) => a.name);
+    if (assets.length) files[ASSETS_MODULE] = assetsModule(assets);
+    else delete files[ASSETS_MODULE];
     const ws = new Workspace(files);
 
-    const history = await recentHistory(db, input.projectId, [userMessageId, assistantId]);
+    const all = await conversation(db, input.projectId, [userMessageId, assistantId]);
+    const history: ChatMessage[] = all.slice(-HISTORY_WINDOW).map((m) => ({ role: m.role, content: m.content.slice(0, 4000) }));
+    const memory = await updateMemory(model, (project.memory as Memory | null) ?? null, all, async (ev) => {
+      const cost = await recordUsage(db, {
+        userId: input.userId,
+        projectId: input.projectId,
+        messageId: assistantId,
+        callId: ev.callId || `${assistantId}:memory`,
+        model: ev.model,
+        inputTokens: ev.inputTokens,
+        outputTokens: ev.outputTokens,
+        cachedInputTokens: ev.cachedInputTokens,
+      });
+      record.chargedMicro += cost.chargedMicro;
+    });
+    if (memory.upTo > ((project.memory as Memory | null)?.upTo ?? 0)) {
+      await db.update(projects).set({ memory }).where(eq(projects.id, input.projectId));
+      log(`memory: ${memory.upTo} older messages summarised, ${memory.decisions.length} decisions kept`);
+    }
+
+    const ctx = contextWithPicks({
+      files: ws.files,
+      request,
+      // Evals only: shrink the budget to exercise search on a mid-size project (HARNESS.md).
+      budgetChars: Number(process.env.GOODBUILD_CONTEXT_BUDGET) || undefined,
+      recent: await lastChanged(db, input.projectId, assistantId),
+      history: history.map((m) => String(m.content)).join("\n"),
+      lastSuggestions: await lastSuggestions(db, input.projectId, assistantId),
+      assets: assetManifest(assets),
+      memory: memoryBlock(memory),
+    });
+    log(`context: ${ctx.picks.length} of ${Object.keys(ws.files).length} files in full (${ctx.picks.map((p) => p.path.split("/").pop()).join(", ")})`);
+    // Design references the model hasn't seen yet go in as images, once; the manifest keeps
+    // their text spec for later turns.
+    const fresh = (await assetStore.unattached(input.projectId)).slice(0, MAX_IMAGES_PER_TURN);
+    const images: UserPart[] = [];
+    for (const a of fresh) {
+      const full = await assetStore.get(input.projectId, a.id);
+      if (full) images.push({ type: "image", ...(await visionImage(full.bytes, full.mime)) });
+    }
+    if (images.length) {
+      await assetStore.markAttached(input.projectId, fresh.map((a) => a.id), assistantId);
+      log(`attached ${plural(images.length, "design reference")}: ${fresh.map((a) => a.name).join(", ")}`);
+    }
     const convo: ChatMessage[] = [
       { role: "system", content: systemPrompt(input.mode) },
       ...history,
-      { role: "user", content: contextMessage({ files: ws.files, request, lastSuggestions: await lastSuggestions(db, input.projectId, assistantId) }), cache: true },
+      {
+        role: "user",
+        content: images.length ? [{ type: "text", text: ctx.text }, ...images] : ctx.text,
+        cache: true,
+      },
     ];
     const tools = input.mode === "plan" ? PLAN_TOOLS : BUILD_TOOLS;
 
@@ -248,6 +312,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
           if (label) step({ id: stepId, label, status: "running" });
           const outcome = ws.execute(call.name, call.arguments, input.mode);
           if (outcome.guides?.length) log(`guides: ${outcome.guides.join(", ")}`);
+          if (outcome.access) log(`· ${outcome.access}`);
           takeSuggestions(outcome.suggestions, quiet);
           if (outcome.plan) {
             record.plan = outcome.plan;
@@ -461,12 +526,19 @@ async function lastSuggestions(db: Db, projectId: string, exclude: string): Prom
   return (last?.meta as { suggestions?: string[] } | null)?.suggestions ?? [];
 }
 
-async function recentHistory(db: Db, projectId: string, exclude: string[]): Promise<ChatMessage[]> {
+/** Every user prompt and assistant reply with text, oldest first (the window and memory split it). */
+async function conversation(db: Db, projectId: string, exclude: string[]): Promise<MemoryMessage[]> {
   const rows = await db.select().from(messages).where(eq(messages.projectId, projectId)).orderBy(asc(messages.createdAt));
   return rows
     .filter((m) => !exclude.includes(m.id) && (m.role === "user" || m.role === "assistant") && m.content.trim())
-    .slice(-8)
-    .map((m) => ({ role: m.role as "user" | "assistant", content: m.content.slice(0, 4000) }));
+    .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+}
+
+/** Files the previous turn changed: likely what a follow-up is about. */
+async function lastChanged(db: Db, projectId: string, exclude: string): Promise<string[]> {
+  const rows = await db.select().from(messages).where(eq(messages.projectId, projectId)).orderBy(asc(messages.createdAt));
+  const last = rows.filter((m) => m.role === "assistant" && m.id !== exclude).at(-1);
+  return ((last?.meta as { changes?: FileChange[] } | null)?.changes ?? []).map((c) => c.path);
 }
 
 async function finish(db: Db, id: string, text: string, record: TurnRecord) {

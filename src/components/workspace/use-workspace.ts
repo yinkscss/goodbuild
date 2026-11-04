@@ -5,6 +5,7 @@ import * as React from "react";
 import { applyTurnEvent, emptyTurn, type LiveTurn } from "@/lib/live-turn";
 import { createSseParser } from "@/lib/sse";
 import type { TurnEvent, TurnMode } from "@/lib/turn-types";
+import type { AssetInfo, AssetKind } from "@/server/agent/assets";
 import type { WorkspaceState } from "@/server/workspace-state";
 
 export interface QueuedPrompt {
@@ -23,6 +24,50 @@ export interface UseWorkspace {
   revert: (version: number) => Promise<void>;
   refresh: () => Promise<void>;
   error: string | null;
+  /** Upload a logo, image or design reference to the project. */
+  upload: (file: File, kind: AssetKind) => Promise<void>;
+  removeAsset: (id: string) => Promise<void>;
+  uploading: boolean;
+}
+
+/**
+ * Data URLs for the project's assets, keyed by file name. The preview runs on another https
+ * origin that can't load images from the GoodBuild server in development (P17), so the
+ * workspace fetches each asset once (same origin, with the session) and inlines it.
+ */
+export function useAssetDataUrls(projectId: string, assets: AssetInfo[]): Record<string, string> {
+  const [urls, setUrls] = React.useState<Record<string, string>>({});
+  const loaded = React.useRef(new Map<string, string>());
+  const key = assets.map((a) => `${a.id}:${a.name}`).join("|");
+  React.useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const next: Record<string, string> = {};
+      for (const a of assets) {
+        let url = loaded.current.get(a.id);
+        if (!url) {
+          const res = await fetch(`/api/projects/${projectId}/assets/${a.id}`).catch(() => null);
+          if (!res?.ok) continue;
+          const blob = await res.blob();
+          url = await new Promise<string>((resolve, reject) => {
+            const r = new FileReader();
+            r.onload = () => resolve(String(r.result));
+            r.onerror = () => reject(r.error);
+            r.readAsDataURL(blob);
+          }).catch(() => "");
+          if (!url) continue;
+          loaded.current.set(a.id, url);
+        }
+        next[a.name] = url;
+      }
+      if (!cancelled) setUrls(next);
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `key` captures the asset list
+  }, [projectId, key]);
+  return urls;
 }
 
 /** Workspace state, streamed turns, a follow-up queue, and recovery after reloads. */
@@ -142,5 +187,49 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
     [projectId, refresh],
   );
 
-  return { state, live, queue, running: Boolean(live) || state.project.building, send, revert, refresh, error };
+  const [uploading, setUploading] = React.useState(0);
+  const upload = React.useCallback(
+    async (file: File, kind: AssetKind) => {
+      setError(null);
+      setUploading((n) => n + 1);
+      try {
+        const body = new FormData();
+        body.set("file", file);
+        body.set("kind", kind);
+        const res = await fetch(`/api/projects/${projectId}/assets`, { method: "POST", body });
+        if (!res.ok) {
+          const b = (await res.json().catch(() => ({}))) as { message?: string; error?: string };
+          setError(b.message ?? (b.error === "unauthenticated" ? "Your session ended. Sign in again." : "That upload didn't work. Try again."));
+          return;
+        }
+        await refresh();
+      } finally {
+        setUploading((n) => n - 1);
+      }
+    },
+    [projectId, refresh],
+  );
+
+  const removeAsset = React.useCallback(
+    async (id: string) => {
+      const res = await fetch(`/api/projects/${projectId}/assets/${id}`, { method: "DELETE" });
+      if (!res.ok) setError("Couldn't remove that file. Try again.");
+      await refresh();
+    },
+    [projectId, refresh],
+  );
+
+  return {
+    state,
+    live,
+    queue,
+    running: Boolean(live) || state.project.building,
+    send,
+    revert,
+    refresh,
+    error,
+    upload,
+    removeAsset,
+    uploading: uploading > 0,
+  };
 }

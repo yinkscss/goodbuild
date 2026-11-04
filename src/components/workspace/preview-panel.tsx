@@ -59,10 +59,20 @@ export interface PreviewError {
   line?: number;
 }
 
-/** Files Sandpack bundles: everything except contracts (shown in the Contract tab). */
-function toSandpack(files: Record<string, string>) {
+/**
+ * Files Sandpack bundles: everything except contracts (shown in the Contract tab). Uploaded
+ * assets are referenced as "/assets/<name>"; those literal paths become data URLs here, in the
+ * preview only, because Sandpack's https origin can't load images from the GoodBuild server in
+ * development (P17). Saved files keep the stable paths.
+ */
+export function toSandpack(files: Record<string, string>, assetUrls: Record<string, string> = {}) {
+  const names = Object.keys(assetUrls).sort((a, b) => b.length - a.length);
+  const re = names.length ? new RegExp(`/assets/(${names.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})(?![A-Za-z0-9._-])`, "g") : null;
   const out: Record<string, string> = {};
-  for (const [p, c] of Object.entries(files)) if (!p.startsWith("contracts/")) out[`/${p}`] = c;
+  for (const [p, c] of Object.entries(files)) {
+    if (p.startsWith("contracts/")) continue;
+    out[`/${p}`] = re && c.includes("/assets/") ? c.replace(re, (_m, name: string) => assetUrls[name]) : c;
+  }
   return out;
 }
 
@@ -76,12 +86,14 @@ function dependencies(files: Record<string, string>): Record<string, string> {
 
 export function PreviewPanel({
   files,
+  assetUrls,
   version,
   contracts,
   onFix,
   fixDisabled,
 }: {
   files: Record<string, string>;
+  assetUrls?: Record<string, string>;
   version: number;
   contracts: Array<{ name: string; file: string; bytecodeBytes: number }>;
   onFix: (prompt: string) => void;
@@ -90,7 +102,7 @@ export function PreviewPanel({
   const [tab, setTab] = React.useState<Tab>("preview");
   const [device, setDevice] = React.useState<"desktop" | "mobile">("desktop");
   const hasApp = "src/App.tsx" in files;
-  const sandpackFiles = React.useMemo(() => toSandpack(files), [files]);
+  const sandpackFiles = React.useMemo(() => toSandpack(files, assetUrls), [files, assetUrls]);
   const deps = React.useMemo(() => dependencies(files), [files]);
   const visible = React.useMemo(() => Object.keys(sandpackFiles).filter((p) => p.startsWith("/src/")).sort(), [sandpackFiles]);
   const solFiles = Object.keys(files).filter((p) => p.startsWith("contracts/") && p.endsWith(".sol")).sort();
