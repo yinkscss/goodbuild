@@ -151,6 +151,7 @@ export function DeployCard({ record }: { record: TurnRecord }) {
 /** Inline error card (DESIGN_SYSTEM §4): danger dot, plain cause, Try fix, expandable logs. */
 export function TurnError({ record, onFix, disabled }: { record: TurnRecord; onFix: () => void; disabled: boolean }) {
   const needsFix = record.status === "needs_fix";
+  const autofix = record.steps.find((s) => s.id === "autofix")?.detail;
   return (
     <div className="mt-4 rounded-block bg-canvas p-4" role="alert">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -158,7 +159,7 @@ export function TurnError({ record, onFix, disabled }: { record: TurnRecord; onF
           <span className="mt-1.5 size-2 shrink-0 rounded-full bg-danger" aria-hidden />
           <div>
             <p className="text-sm font-medium">
-              {needsFix ? `${record.checks?.errors ?? "Some"} problem${record.checks?.errors === 1 ? "" : "s"} left after 3 fix attempts` : "This build stopped"}
+              {needsFix ? `Auto-fix ${autofix ? autofix.charAt(0).toLowerCase() + autofix.slice(1) : "couldn't fix every error"}` : "This build stopped"}
             </p>
             <p className="text-sm text-grey-600">
               {needsFix ? "Your files are saved. Ask for a fix, or describe the change differently." : record.error ?? "Something went wrong."}

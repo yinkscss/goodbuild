@@ -89,6 +89,7 @@ function lineAt(content: string | undefined, offset: number): number | undefined
  * Guardrails from CONTRACTS_AND_DEPLOYMENT.md §4, enforced on the compiler AST:
  * no delegatecall/callcode, selfdestruct, inline assembly, tx.origin, or low-level
  * call with arbitrary data (plain value transfers `call{value: x}("")` are allowed).
+ * Plus house style: custom errors only (no require strings, no revert("text")).
  */
 export function guardrailIssues(file: string, ast: Json, content?: string): CheckIssue[] {
   const issues: CheckIssue[] = [];
@@ -119,9 +120,18 @@ export function guardrailIssues(file: string, ast: Json, content?: string): Chec
       }
       case "FunctionCall": {
         let callee = n.expression as Json | undefined;
+        const args = (n.arguments as Json[]) ?? [];
+        // Custom errors only: no require(...) without an error, no revert("text").
+        if (callee?.nodeType === "Identifier" && callee.name === "require") {
+          const reason = args[1];
+          const customError = reason?.nodeType === "FunctionCall";
+          if (!customError) flag(n, "Use a custom error instead of require: declare `error Name();` and write `if (!condition) revert Name();`.");
+        }
+        if (callee?.nodeType === "Identifier" && callee.name === "revert") {
+          flag(n, 'Use a custom error instead of revert("..."): `revert Name();`.');
+        }
         if (callee?.nodeType === "FunctionCallOptions") callee = callee.expression as Json;
         if (callee?.nodeType === "MemberAccess" && callee.memberName === "call") {
-          const args = (n.arguments as Json[]) ?? [];
           const first = args[0];
           const emptyData =
             args.length === 1 && first?.nodeType === "Literal" && (first.value === "" || first.hexValue === "");
@@ -136,7 +146,94 @@ export function guardrailIssues(file: string, ast: Json, content?: string): Chec
   return issues;
 }
 
-export async function checkContracts(files: Record<string, string>): Promise<CheckReport> {
+/** Walk every node of an AST, calling `visit` on objects with a nodeType. */
+function eachNode(node: unknown, visit: (n: Json) => void) {
+  if (!node || typeof node !== "object") return;
+  if (Array.isArray(node)) return node.forEach((c) => eachNode(c, visit));
+  const n = node as Json;
+  if (n.nodeType === "ImportDirective") return; // an import alone doesn't use anything
+  if (typeof n.nodeType === "string") visit(n);
+  for (const value of Object.values(n)) if (value && typeof value === "object") eachNode(value, visit);
+}
+
+const typeString = (n: Json | undefined) => String((n?.typeDescriptions as Json | undefined)?.typeString ?? "");
+
+/**
+ * G$ guardrails, applied when the project is about G$ (GoodDollar): G$ is an ERC-20 on
+ * Celo, never native CELO. Rejects msg.value and payable functions, requires the
+ * contract to actually handle an ERC-20 (IERC20 / SafeERC20 / ERC-677 onTokenTransfer),
+ * requires onTokenTransfer to check msg.sender, and requires SafeERC20 for transfers.
+ */
+export function gdTokenIssues(
+  asts: Array<{ file: string; ast: Json; content?: string }>,
+  { allowNative = false }: { allowNative?: boolean } = {},
+): CheckIssue[] {
+  const issues: CheckIssue[] = [];
+  let handlesToken = false;
+  for (const { file, ast, content } of asts) {
+    const flag = (node: Json, message: string) =>
+      issues.push({ file, line: lineAt(content, Number(String(node.src ?? "").split(":")[0])), message, source: "guardrail" });
+    eachNode(ast, (n) => {
+      if (n.nodeType === "MemberAccess") {
+        const expr = n.expression as Json | undefined;
+        if (!allowNative && n.memberName === "value" && expr?.nodeType === "Identifier" && expr.name === "msg") {
+          flag(n, "This app is about G$, but the contract reads msg.value (native CELO). G$ is an ERC-20: accept it with onTokenTransfer (transferAndCall) or safeTransferFrom.");
+        }
+        if ((n.memberName === "transfer" || n.memberName === "transferFrom") && /^contract (IERC20|ERC20)\b/.test(typeString(expr))) {
+          flag(n, `Use SafeERC20 (${n.memberName === "transfer" ? "safeTransfer" : "safeTransferFrom"}) instead of calling ${n.memberName} on the token directly.`);
+        }
+        if (["safeTransfer", "safeTransferFrom", "transferFrom"].includes(String(n.memberName))) handlesToken = true;
+      }
+      if (n.nodeType === "UserDefinedTypeName" || n.nodeType === "IdentifierPath") {
+        const name = String(n.name ?? (n.pathNode as Json | undefined)?.name ?? "");
+        if (/^(IERC20|SafeERC20)$/.test(name)) handlesToken = true;
+      }
+      if (n.nodeType === "FunctionDefinition") {
+        if (!allowNative && n.stateMutability === "payable") {
+          flag(n, `Function ${String(n.name || n.kind)} is payable, which takes native CELO. For G$, take the token instead (no payable functions).`);
+        }
+        if (n.name === "onTokenTransfer") {
+          handlesToken = true;
+          let checksSender = false;
+          eachNode(n.body, (m) => {
+            const e = m.expression as Json | undefined;
+            if (m.nodeType === "MemberAccess" && m.memberName === "sender" && e?.nodeType === "Identifier" && e.name === "msg") checksSender = true;
+          });
+          if (!checksSender) {
+            flag(n, "onTokenTransfer must first check that msg.sender is the G$ token: if (msg.sender != address(gd)) revert NotGoodDollar();");
+          }
+        }
+      }
+    });
+  }
+  if (asts.length && !handlesToken) {
+    issues.push({
+      file: asts[0].file,
+      message: "This app is about G$, but no contract handles an ERC-20. Take G$ as IERC20 in the constructor and accept it with onTokenTransfer or safeTransferFrom.",
+      source: "guardrail",
+    });
+  }
+  return issues;
+}
+
+export interface ContractCheckOptions {
+  /** The project is about G$ (GoodDollar): apply the G$ token guardrails. */
+  gdToken?: boolean;
+  /** The user also explicitly asked for native CELO, so payable functions are allowed. */
+  allowNative?: boolean;
+}
+
+/** True when a request explicitly asks for native CELO (the word CELO, not "Celo" the network). */
+export function mentionsNativeCelo(text: string): boolean {
+  return /\bCELO\b/.test(text);
+}
+
+/** True when a request talks about G$ / GoodDollar, so G$ must be the ERC-20, not CELO. */
+export function mentionsGd(text: string): boolean {
+  return /G\$|\bgood ?dollars?\b|\bgooddollar\b/i.test(text);
+}
+
+export async function checkContracts(files: Record<string, string>, options: ContractCheckOptions = {}): Promise<CheckReport> {
   const sources = Object.fromEntries(Object.entries(files).filter(([p]) => p.startsWith("contracts/") && p.endsWith(".sol")));
   if (!Object.keys(sources).length) return { ok: true, errors: [], warnings: [], contracts: [] };
 
@@ -165,9 +262,13 @@ export async function checkContracts(files: Record<string, string>): Promise<Che
     if (e.severity === "error") errors.push(issue);
     else warnings.push(issue);
   }
+  const projectAsts: Array<{ file: string; ast: Json; content?: string }> = [];
   for (const [file, src] of Object.entries(output.sources ?? {})) {
-    if (file.startsWith("contracts/")) errors.push(...guardrailIssues(file, src.ast, files[file]));
+    if (!file.startsWith("contracts/")) continue;
+    errors.push(...guardrailIssues(file, src.ast, files[file]));
+    projectAsts.push({ file, ast: src.ast, content: files[file] });
   }
+  if (options.gdToken && projectAsts.length) errors.push(...gdTokenIssues(projectAsts, { allowNative: options.allowNative }));
   const contracts: CompiledContract[] = [];
   for (const [file, byName] of Object.entries(output.contracts ?? {})) {
     if (!file.startsWith("contracts/")) continue;

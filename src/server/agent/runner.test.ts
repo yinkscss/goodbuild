@@ -9,6 +9,8 @@ import { createProjectFromPrompt } from "@/server/projects";
 import { scriptedModel } from "./fake-model";
 import { runTurn, TurnBusyError, type TurnEvent } from "./runner";
 import { claimTurn, listVersions, loadFiles, revertTo } from "./store";
+import { isRepeat } from "./runner";
+import { DEMO_APP, DEMO_TIP_JAR_DRAFT, demoModel } from "./demo-model";
 
 const HEADER = "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.24;\n";
 const BROKEN = HEADER + "contract TipJar {\n  event Tipped(address indexed from, uint256 amount);\n  function tip() external payable { emit Tipped(msg.sender, msg.value) }\n}\n";
@@ -40,6 +42,14 @@ function collect() {
   const events: TurnEvent[] = [];
   return { events, emit: (e: TurnEvent) => events.push(e) };
 }
+
+describe("isRepeat", () => {
+  it("matches repeats ignoring case, spacing and punctuation", () => {
+    expect(isRepeat("Built the tip jar!", ["built the  tip jar"])).toBe(true);
+    expect(isRepeat("Fixed the semicolon.", ["Built the tip jar."])).toBe(false);
+    expect(isRepeat("ok", ["ok"])).toBe(false); // too short to judge
+  });
+});
 
 describe("runTurn", { timeout: 120_000 }, () => {
   it("builds, auto-fixes a compile error with the cheap model, checkpoints and bills usage", async () => {
@@ -96,6 +106,45 @@ describe("runTurn", { timeout: 120_000 }, () => {
     expect(types.at(-1)).toBe("done");
   });
 
+  it("shows the summary once when the model repeats it after a fix", async () => {
+    const summary = "Built a tip jar: supporters send CELO and the page lists every tip.";
+    const { client } = scriptedModel([
+      { tools: [{ name: "create_file", args: { path: "contracts/TipJar.sol", content: BROKEN } }] },
+      { text: summary },
+      { tools: [{ name: "edit_file", args: { path: "contracts/TipJar.sol", edits: [{ search: "msg.value) }", replace: "msg.value); }" }] } }] },
+      { text: summary + " " },
+    ]);
+    const { events, emit } = collect();
+    const record = await runTurn({ db, model: client }, { projectId, userId, mode: "build", userMessageId: queuedId }, emit);
+    const [assistant] = (await db.select().from(messages).where(eq(messages.projectId, projectId))).filter((m) => m.role === "assistant");
+    expect(assistant.content).toBe(summary);
+    expect(assistant.content.split("Built a tip jar").length - 1).toBe(1);
+    // Live: the repeat streams, then a text_set replaces it with the deduplicated text.
+    expect(events.filter((e) => e.type === "text_set").at(-1)).toEqual({ type: "text_set", text: summary });
+    expect(record.status).toBe("ready");
+  });
+
+  it("reports the auto-fix result clearly in the step rows", async () => {
+    const { client } = scriptedModel([
+      { tools: [{ name: "create_file", args: { path: "contracts/TipJar.sol", content: BROKEN } }] },
+      { text: "Done." },
+      { tools: [{ name: "edit_file", args: { path: "contracts/TipJar.sol", edits: [{ search: "msg.value) }", replace: "msg.value); }" }] } }] },
+      { text: "Added the semicolon." },
+    ]);
+    const record = await runTurn({ db, model: client }, { projectId, userId, mode: "build", userMessageId: queuedId }, () => {});
+    const compileFail = record.steps.find((s) => s.id === "compile");
+    expect(compileFail).toMatchObject({ status: "error" });
+    expect(compileFail?.detail).toMatch(/^1 error: TipJar\.sol:5 /);
+    expect(record.steps.find((s) => s.id === "fix:1")).toMatchObject({ status: "done", detail: "all checks pass" });
+    expect(record.steps.find((s) => s.id === "autofix")).toEqual({
+      id: "autofix",
+      label: "Auto-fix: fixed",
+      detail: "Fixed 1 error on attempt 1 of 3",
+      status: "done",
+    });
+    expect(record.log).toContain("✓ fixed 1 error on attempt 1 of 3");
+  });
+
   it("stops after 3 failed fix attempts and saves the build as needs_fix", async () => {
     const stuck = { tools: [{ name: "edit_file", args: { path: "contracts/TipJar.sol", edits: [{ search: "event Tipped", replace: "event  Tipped" }] } }] };
     const { client, requests } = scriptedModel([
@@ -110,8 +159,41 @@ describe("runTurn", { timeout: 120_000 }, () => {
     // Attempt 2 sees identical errors and stops early instead of burning credits.
     expect(record.log).toContain("! the same errors came back after a fix, stopping");
     expect(requests.length).toBeLessThanOrEqual(6);
+    expect(record.steps.find((s) => s.id === "autofix")).toMatchObject({
+      label: "Auto-fix: failed",
+      detail: "Failed after 1 attempt: the same error came back",
+      status: "error",
+    });
     const [project] = await db.select().from(projects).where(eq(projects.id, projectId));
     expect(project.status).toBe("needs_fix");
+  });
+
+  it("a G$ request that gets a native-CELO contract is sent back to fix it", async () => {
+    const gd = await createProjectFromPrompt(db, userId, { prompt: "A tip jar that splits G$ 70/30", network: "celo-sepolia" });
+    const [q] = await db.select().from(messages).where(eq(messages.projectId, gd.id));
+    const { client, requests } = scriptedModel([
+      { tools: [{ name: "create_file", args: { path: "contracts/TipJar.sol", content: FIXED } }] }, // takes msg.value
+      { text: "Done." },
+      { text: "I'd rather not." },
+    ]);
+    const record = await runTurn({ db, model: client }, { projectId: gd.id, userId, mode: "build", userMessageId: q.id }, () => {});
+    expect(record.status).toBe("needs_fix");
+    const fixPrompt = String(requests[2].messages.at(-1)?.content);
+    expect(fixPrompt).toMatch(/msg\.value \(native CELO\)/);
+    expect(fixPrompt).toMatch(/payable/);
+  });
+
+  it("the demo model builds the G$ tip jar end to end", async () => {
+    const gd = await createProjectFromPrompt(db, userId, { prompt: "A tip jar for Ikeja FC that splits G$ 70/30 between the coach and the kit fund", templateId: "tip-jar", network: "celo-sepolia" });
+    const [q] = await db.select().from(messages).where(eq(messages.projectId, gd.id));
+    const record = await runTurn({ db, model: demoModel() }, { projectId: gd.id, userId, mode: "build", userMessageId: q.id }, () => {});
+    expect(record.status).toBe("ready");
+    expect(record.steps.find((s) => s.id === "autofix")).toMatchObject({ label: "Auto-fix: fixed" });
+    const files = await loadFiles(db, gd.id);
+    expect(files["contracts/TipJar.sol"]).toBe(DEMO_TIP_JAR_DRAFT.replace("emit Tipped(from, amount, note)\n", "emit Tipped(from, amount, note);\n"));
+    expect(files["src/App.tsx"]).toBe(DEMO_APP);
+    expect(files["src/contracts/TipJar.ts"]).toContain('"name": "onTokenTransfer"');
+    expect(files["src/contracts/TipJar.ts"]).not.toContain('"stateMutability": "payable"');
   });
 
   it("plan mode answers without editing files or checkpointing", async () => {

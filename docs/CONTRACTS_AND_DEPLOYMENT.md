@@ -98,6 +98,7 @@ erDiagram
 | Tipping / tip jar | custom | G$ default token |
 | G$ integrations | uses G$ ERC-677 `transferAndCall`, Identity/FV check | e.g. "verified humans only" modifier; addresses per GoodDollar docs |
 - **Guardrails (blocklist, enforced by compiler-AST check):** no `delegatecall`, `selfdestruct`, inline `assembly`, `tx.origin` auth, `call` with arbitrary data; owner-controlled fund drains flagged; pragma pinned.
+- **House rules (D15, enforced):** custom errors only; for G$ projects, G$ is the ERC-20 (no `msg.value`/`payable`), accepted via `onTokenTransfer` (with a `msg.sender` check) or `safeTransferFrom`, with SafeERC20 for every transfer.
 - **Static analysis:** solhint rules in browser (JS; feasible). Slither is Python → **not in-browser**; run on a small server worker (feasible, but it adds a server, ~seconds per run) or Pyodide (**UNVERIFIED**). Aderyn (Rust) is an alternative (**UNVERIFIED** wasm).
 - **Tests:** AI generates tests per template (template ships golden tests too). Options: (a) browser EVM (@ethereumjs/vm or Tevm) running deploy + calls in a worker (feasible; **UNVERIFIED** performance); (b) Foundry `forge test` in a cloud worker (strongest, needs a server); (c) Hardhat server. Proposal: (a) for every build, (b) before mainnet.
 - **Upgradeability:** **non-upgradeable by default** (simpler, no admin-key risk for newcomers). Upgrades = redeploy a new version (§5). UUPS proxies only for advanced users later.

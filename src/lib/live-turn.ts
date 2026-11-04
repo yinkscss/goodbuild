@@ -37,6 +37,8 @@ export function applyTurnEvent(turn: LiveTurn, e: TurnEvent): LiveTurn {
       return { ...turn, messageId: e.messageId, mode: e.mode, record: { ...r, mode: e.mode } };
     case "text":
       return { ...turn, text: turn.text + e.delta };
+    case "text_set":
+      return { ...turn, text: e.text };
     case "plan":
       return { ...turn, record: { ...r, plan: { summary: e.summary, steps: e.steps } } };
     case "step":

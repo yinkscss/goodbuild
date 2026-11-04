@@ -43,6 +43,21 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - Strong (planning and code): `anthropic/claude-sonnet-5-5`. Cheap and fallback (titles, summaries, first auto-fix attempt): DeepSeek (user asked for `deepseek/deepseek-chat`; Claude proposed `deepseek/deepseek-flash` because DeepSeek's current docs list only Flash and V4 Pro, see Q34). No OpenRouter.
 - Keys: `ANTHROPIC_API_KEY` and `DEEPSEEK_API_KEY` in `.env.local`, read by the LiteLLM proxy only. The app calls two aliases, `gb-strong` and `gb-cheap`, so models change in `litellm/config.yaml` alone.
 
+### D15. Generated contracts: G$ is the ERC-20, custom errors only
+- Date: 4 Nov 2026 · Decided by: user (Olayinka)
+- "G$" / GoodDollar in a prompt always means the G$ ERC-20 on Celo, never native CELO or `msg.value`. G$ payments use ERC-677 `transferAndCall` (receiver implements `onTokenTransfer` and checks `msg.sender` is the token) or `approve` + `safeTransferFrom`, always with SafeERC20. The token address is a constructor argument.
+- Contracts use custom errors only: no `require(...)` without a custom error, no `revert("text")`.
+- Enforced in the agent's system prompt and by build-blocking guardrails on the compiler AST (`src/server/agent/checks.ts`). Native CELO is allowed only when the user explicitly writes "CELO".
+
+### D16. Cheap model is DeepSeek Flash; generated apps use viem
+- Date: 4 Nov 2026 · Decided by: user (Olayinka) · Resolves Q34, adopts P10
+- `gb-cheap` = `deepseek/deepseek-flash`. Generated apps use viem directly (no wagmi).
+
+### D17. EVM target and source verification
+- Date: 4 Nov 2026 · Decided by: user (Olayinka) · Resolves Q35
+- Compile for `cancun`. The M5 pre-deploy simulation on Celo must fail loudly if Celo rejects the bytecode (for example an unsupported opcode), and then offer a rebuild for `evmVersion: paris`. OpenZeppelin 5.6 needs Cancun (MCOPY), so the paris fallback also means a pinned older OpenZeppelin release (version to confirm in M5).
+- Source verification starts with Sourcify (no API key); Celoscan comes later.
+
 ## Recommended decisions (Ego; adopted unless changed)
 
 ### D5. In-browser preview via Sandpack
@@ -104,7 +119,7 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - Date: 4 Nov 2026 · Proposed by: Claude · Implements P5. Privy handles email OTP, embedded wallets and the external-wallet connectors. The session is ours: SIWE (EIP-4361) verified server-side, a signed httpOnly cookie (7 days, rotated daily, revocable via a `sessions` row). Every API route checks this session, never a client-supplied address. Keeping Privy out of the session is what makes the thirdweb fallback a one-folder swap (`src/lib/auth/privy`).
 - The sign-in signature is silent for email wallets; all other embedded-wallet signatures (deploys, top-ups) keep Privy's confirmation screen.
 
-### P10. Generated apps use viem directly, not wagmi (proposed)
+### P10. Generated apps use viem directly, not wagmi (adopted: D16)
 - Date: 4 Nov 2026 · Proposed by: Claude · Generated apps run in Sandpack's in-browser bundler, where wagmi's dependency tree is heavy and slow to resolve. The starter template ships `src/lib/chain.ts` (viem clients, connect, chain switch, simulate-then-write) and a `useWallet` hook. CONTRACTS_AND_DEPLOYMENT §5 says "uses wagmi hooks"; revisit when apps get a real build step (publishing).
 
 ### P11. Agent checks: solc + guardrails, syntax and imports; no full type-check (proposed)

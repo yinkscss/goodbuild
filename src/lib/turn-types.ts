@@ -23,6 +23,8 @@ export interface Step {
 export type TurnEvent =
   | { type: "start"; messageId: string; mode: TurnMode }
   | { type: "text"; delta: string }
+  /** Replace the turn's text (used to drop a reply that repeated an earlier one). */
+  | { type: "text_set"; text: string }
   | { type: "plan"; summary: string; steps: string[] }
   | { type: "step"; step: Step }
   | { type: "log"; line: string }

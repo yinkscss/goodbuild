@@ -39,12 +39,24 @@ function fn(name: string, description: string, properties: Record<string, unknow
 
 const CONTRACT_RULES = `Smart contracts (contracts/Name.sol, one main contract per file, file name = contract name):
 - Solidity ^0.8.24 (compiled with 0.8.28, EVM cancun). SPDX-License-Identifier: MIT.
-- Build on OpenZeppelin Contracts v5 ("@openzeppelin/contracts/..."): ReentrancyGuard, Ownable, SafeERC20, ERC20, ERC721, ERC1155, Pausable. No other imports.
-- Forbidden (the build rejects them): inline assembly, delegatecall, selfdestruct, tx.origin, low-level .call with data. Plain value transfers call{value: x}("") are fine.
+- Build on OpenZeppelin Contracts v5 ("@openzeppelin/contracts/..."): ReentrancyGuard, Ownable, SafeERC20, IERC20, ERC20, ERC721, ERC1155, Pausable. No other imports. Use named imports.
+- Errors: custom errors only (error ZeroTip(); ... if (amount == 0) revert ZeroTip();). Never require(...) and never revert("text"); the build rejects both.
+- Forbidden (the build rejects them): inline assembly, delegatecall, selfdestruct, tx.origin, low-level .call with data.
 - Non-upgradeable. The deployer (msg.sender in the constructor) is the owner. No owner function that can drain user funds; if an admin escape hatch is truly needed, make it explicit and documented.
-- Checks-effects-interactions, nonReentrant on anything that moves value, custom errors, events for every state change the UI shows.
-- Tokens: G$ is an ERC-20 (18 decimals) on Celo. Take token addresses as constructor arguments; never hard-code them.
-- Keep it small and readable for newcomers: clear names, NatSpec on public functions.`;
+- Checks-effects-interactions, nonReentrant on anything that moves value, events for every state change the UI shows.
+- Keep it small and readable for newcomers: clear names, NatSpec on public functions.
+
+G$ (GoodDollar), read carefully:
+- "G$", "GoodDollar" or "good dollar" in a request ALWAYS means the G$ ERC-20 token on Celo. It is NEVER native CELO. Never use msg.value or payable functions for G$ amounts.
+- Take the token as a constructor argument (IERC20 gd_) and store it immutable; never hard-code token addresses. GoodBuild fills in the right G$ address at deploy.
+- Accept G$ in one of two ways, ideally both:
+  1. One transaction (preferred for users): implement the ERC-677 hook
+     function onTokenTransfer(address from, uint256 amount, bytes calldata data) external returns (bool)
+     and FIRST check if (msg.sender != address(gd)) revert NotGoodDollar(); (anyone can call this function directly). The user calls G$.transferAndCall(yourContract, amount, data); decode extra arguments from data with abi.decode.
+  2. Two transactions: the user approves, then your function pulls with gd.safeTransferFrom(msg.sender, address(this), amount).
+- Always use SafeERC20 (using SafeERC20 for IERC20; safeTransfer, safeTransferFrom). Never call transfer/transferFrom on IERC20 directly.
+- Amounts are in the token's smallest unit; the front end reads decimals() from the token instead of assuming.
+- Use native CELO only when the user explicitly asks for CELO.`;
 
 const APP_RULES = `Front end (React 18 + TypeScript in an in-browser bundler):
 - Entry is src/App.tsx (default export). Use RELATIVE imports only (no "@/" aliases).
@@ -52,7 +64,8 @@ const APP_RULES = `Front end (React 18 + TypeScript in an in-browser bundler):
 - Components available: src/components/ui/{button,card,input,label,badge}.tsx and src/components/ConnectButton.tsx. Icons: lucide-react.
 - Chain access: src/lib/chain.ts exports publicClient, chain (Celo Sepolia), connectWallet() and writeContract({address, abi, functionName, args, value}). src/lib/useWallet.ts gives {account, connect, connecting, error}. Use viem types.
 - Contract ABIs and addresses: import { <Name>Abi, <Name>Address } from "./contracts" (folder ${PLATFORM_DIR}). GoodBuild writes these after compiling; the address is undefined until the user deploys, so show a friendly "Deploy the contract to go live" state in that case.
-- Every contract read and write needs loading, empty and error states. Show amounts with token decimals. Never use lorem ipsum; write real, specific copy.
+- Every contract read and write needs loading, empty and error states. Never use lorem ipsum; write real, specific copy.
+- G$ in the UI: read the token address from the contract (e.g. its gd() getter) and decimals() from the token; format with formatUnits/parseUnits. Prefer one-step payments with the token's transferAndCall(to, amount, data) (ABI in src/lib/tokens.ts); otherwise approve then call. Show the user's G$ balance where it helps.
 - Packages: only those in package.json; add allowed ones with add_dependency.`;
 
 export function systemPrompt(mode: "build" | "plan"): string {

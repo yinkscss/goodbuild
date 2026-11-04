@@ -35,6 +35,14 @@ describe("applyTurnEvent", () => {
     expect(t.record).toMatchObject({ chargedMicro: 30, version: 2, status: "ready" });
   });
 
+  it("text_set replaces the text (repeated reply dropped)", () => {
+    const t = [{ type: "text", delta: "Built it." }, { type: "text", delta: "\n\nBuilt it." }, { type: "text_set", text: "Built it." }].reduce(
+      (acc, e) => applyTurnEvent(acc, e as TurnEvent),
+      emptyTurn("build"),
+    );
+    expect(t.text).toBe("Built it.");
+  });
+
   it("records errors and busy", () => {
     expect(applyTurnEvent(emptyTurn("build"), { type: "error", message: "down" })).toMatchObject({ phase: "error", record: { error: "down" } });
     expect(applyTurnEvent(emptyTurn("plan"), { type: "busy" }).phase).toBe("busy");

@@ -143,11 +143,11 @@
 - **Chips:** mockup b's "Streaming G$ payroll" is swapped for "Crowdfund with refund", since Superfluid streaming is post-MVP (CREDITS.md §2).
 - **Not yet built:** Templates, Deployments and Credits pages (shown as "Soon" in the sidebar) and "View all" (the grid shows the latest 8).
 
-## Q34. `deepseek-chat` vs `deepseek-flash`
+## Q34. `deepseek-chat` vs `deepseek-flash` (resolved: D16)
 - On 4 Nov 2026 DeepSeek's pricing page (https://api-docs.deepseek.com/quick_start/pricing) listed only `deepseek-flash` (DeepSeek-V4.1-Flash-1017; $0.30 / $1.20 per MTok input/output at peak, half off-peak) and `deepseek-v4-pro`, and said older names route to the current Flash model. `deepseek-chat` isn't mentioned, so it may stop resolving.
 - Claude's input: use `deepseek/deepseek-flash` for `gb-cheap`. Switching is one line in `litellm/config.yaml`.
 
-## Q35. Is Celo (and Celo Sepolia) Cancun-compatible?
+## Q35. Is Celo (and Celo Sepolia) Cancun-compatible? (resolved: D17)
 - OpenZeppelin 5.6 uses the MCOPY opcode, so contracts compile for EVM `cancun`. Celo's docs say Celo L2 is "fully EVM-compatible" on the OP Stack but don't name an EVM version (UNVERIFIED, checked 4 Nov 2026).
 - Claude's input: M5 simulates every deploy on Celo Sepolia first, which will show it before anyone pays gas. Fallback if Cancun isn't supported: pin an OpenZeppelin release without MCOPY and compile for `shanghai`.
 
@@ -162,3 +162,12 @@
 ## Q38. Editing code by hand
 - The Code tab is read-only in M4, so the agent's files and checkpoints stay the single source of truth.
 - Claude's input: allow manual edits later, saved as their own version.
+
+## Q39. There is no G$ on Celo Sepolia (blocker for testnet G$ apps)
+- Checked 4 Nov 2026 in GoodProtocol's `releases/deployment.json` (https://github.com/GoodDollar/GoodProtocol/blob/master/releases/deployment.json):
+  - `production-celo` (42220): G$ `0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A`, Identity `0xC361A6E67822a0EDc17D899227dd9FC50BD62F42`. Matches the docs (https://docs.gooddollar.org/for-developers/core-contracts).
+  - `staging-celo`, `development-celo` and `pre-production-celo` are also on Celo **mainnet** (42220), with their own G$ addresses.
+  - The only testnet listed is `alfajores` (44787), which Celo retired on 30 Sep 2025. **No Celo Sepolia (11142220) deployment.**
+- So a G$ app deployed to Celo Sepolia has no real G$ to accept, and the M6 credits vault has the same problem on testnet.
+- Claude's input: in M5, GoodBuild deploys one **test G$** on Celo Sepolia: an ERC-20 with ERC-677 `transferAndCall`, 18 decimals, and a rate-limited faucet (for example 1,000 test G$ per wallet per day). M5 prefills it as the G$ address for Celo Sepolia deploys, and the production G$ address for mainnet. Ask GoodDollar whether they plan an official Celo Sepolia deployment, and switch to it if so.
+- Also confirm with GoodDollar that Celo G$ (a Superfluid SuperToken) implements ERC-677 `transferAndCall`. GoodDollar's antseed-integration relies on it, but the core-contracts page doesn't say (UNVERIFIED).

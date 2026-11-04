@@ -4,7 +4,7 @@ import { and, asc, eq } from "drizzle-orm";
 
 import type { Db } from "@/server/db/client";
 import { messages, projects } from "@/server/db/schema";
-import { checkApp, checkContracts, formatIssues, type CheckReport } from "./checks";
+import { checkApp, checkContracts, formatIssues, mentionsGd, mentionsNativeCelo, type CheckIssue, type CheckReport, type ContractCheckOptions } from "./checks";
 import { ModelUnavailableError, type ChatMessage, type ModelClient, type ModelTier, type ToolCall } from "./model";
 import { BUILD_TOOLS, PLAN_TOOLS, contextMessage, systemPrompt } from "./prompt";
 import { checkpoint, claimTurn, loadFiles, recordUsage, releaseTurn } from "./store";
@@ -117,11 +117,17 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     ];
     const tools = input.mode === "plan" ? PLAN_TOOLS : BUILD_TOOLS;
 
+    // G$ anywhere in this project's prompts means the G$ ERC-20, never native CELO.
+    const userText = [request, ...history.filter((m) => m.role === "user").map((m) => String(m.content))].join("\n");
+    const contractOptions: ContractCheckOptions = { gdToken: mentionsGd(userText), allowNative: mentionsNativeCelo(userText) };
+
     let calls = 0;
+    const replies: string[] = [];
     const callModel = async (tier: ModelTier) => {
       if (++calls > MAX_CALLS) throw new Error("This build used too many steps. Try a smaller change.");
       let replyText = "";
       const toolCalls: ToolCall[] = [];
+      const textBefore = text;
       for await (const ev of model.stream({ tier, messages: convo, tools, maxTokens: MAX_TOKENS })) {
         if (ev.type === "text") {
           // Separate replies from different calls with a blank line.
@@ -145,6 +151,14 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
           record.chargedMicro += cost.chargedMicro;
           emit({ type: "usage", chargedMicro: cost.chargedMicro, totalChargedMicro: record.chargedMicro });
         }
+      }
+      // A reply that repeats one already shown in this turn (models often restate the
+      // summary after a fix) is dropped from what the user sees, live and saved.
+      if (replyText.trim() && isRepeat(replyText, replies)) {
+        text = textBefore;
+        emit({ type: "text_set", text });
+      } else if (replyText.trim()) {
+        replies.push(replyText);
       }
       convo.push({
         role: "assistant",
@@ -201,23 +215,42 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     }
 
     // Checks and auto-fix (max 3; cheap model first, then strong). Same errors twice → stop.
-    let report = await runChecks(ws.files, compile, lint, step, log, 0);
+    let report = await runChecks(ws.files, compile, lint, step, log, 0, contractOptions);
     let previous = "";
+    const initialErrors = report.errors.length;
+    let attemptsUsed = 0;
+    let stoppedEarly = false;
     for (let attempt = 1; !report.ok && attempt <= MAX_FIX_ATTEMPTS; attempt++) {
       const issues = formatIssues(report.errors);
       if (issues === previous) {
         log("! the same errors came back after a fix, stopping");
+        stoppedEarly = true;
         break;
       }
       previous = issues;
-      step({ id: `fix:${attempt}`, label: `Fixing errors (attempt ${attempt} of ${MAX_FIX_ATTEMPTS})`, detail: `${report.errors.length} to fix`, status: "running" });
+      attemptsUsed = attempt;
+      step({ id: `fix:${attempt}`, label: `Fixing errors (attempt ${attempt} of ${MAX_FIX_ATTEMPTS})`, detail: `${plural(report.errors.length, "error")} to fix: ${firstIssue(report.errors)}`, status: "running" });
       convo.push({
         role: "user",
         content: `GoodBuild's checks failed. Fix these errors with edit_file, then reply with one sentence on what you changed:\n${issues}`,
       });
       await phase(attempt === 1 ? "cheap" : "strong");
-      report = await runChecks(ws.files, compile, lint, step, log, attempt);
-      step({ id: `fix:${attempt}`, label: `Fixing errors (attempt ${attempt} of ${MAX_FIX_ATTEMPTS})`, detail: report.ok ? "fixed" : `${report.errors.length} left`, status: report.ok ? "done" : "error" });
+      report = await runChecks(ws.files, compile, lint, step, log, attempt, contractOptions);
+      step({
+        id: `fix:${attempt}`,
+        label: `Fixing errors (attempt ${attempt} of ${MAX_FIX_ATTEMPTS})`,
+        detail: report.ok ? "all checks pass" : `${plural(report.errors.length, "error")} left: ${firstIssue(report.errors)}`,
+        status: report.ok ? "done" : "error",
+      });
+    }
+    if (initialErrors > 0) {
+      const detail = report.ok
+        ? `Fixed ${plural(initialErrors, "error")} on attempt ${attemptsUsed} of ${MAX_FIX_ATTEMPTS}`
+        : stoppedEarly
+          ? `Failed after ${plural(attemptsUsed, "attempt")}: the same ${report.errors.length === 1 ? "error" : "errors"} came back`
+          : `Failed after ${plural(attemptsUsed, "attempt")}: ${plural(report.errors.length, "error")} left`;
+      step({ id: "autofix", label: report.ok ? "Auto-fix: fixed" : "Auto-fix: failed", detail, status: report.ok ? "done" : "error" });
+      log(report.ok ? `✓ ${detail.toLowerCase()}` : `✗ ${detail.toLowerCase()}`);
     }
 
     // Platform-owned contract modules: ABIs the front end imports (addresses come in M5).
@@ -261,28 +294,36 @@ async function runChecks(
   step: (s: Step) => void,
   log: (l: string) => void,
   attempt: number,
+  contractOptions: ContractCheckOptions = {},
 ): Promise<CheckReport> {
   const suffix = attempt ? `:${attempt}` : "";
   const hasContracts = Object.keys(files).some((p) => p.startsWith("contracts/") && p.endsWith(".sol"));
   let contracts: CheckReport = { ok: true, errors: [], warnings: [], contracts: [] };
   if (hasContracts) {
     step({ id: `compile${suffix}`, label: "Compiling contracts", status: "running" });
-    contracts = await compile(files);
+    contracts = await compile(files, contractOptions);
     const version = contracts.compilerVersion?.split("+")[0] ?? "";
     for (const c of contracts.contracts) log(`✓ solc ${version} · ${c.name} · ${(c.bytecodeBytes / 1024).toFixed(1)} kB bytecode`);
-    if (!contracts.ok) log(`✗ ${contracts.errors.length} contract error${contracts.errors.length === 1 ? "" : "s"}`);
+    for (const e of contracts.errors.slice(0, 3)) log(`✗ ${e.file.split("/").pop()}${e.line ? `:${e.line}` : ""} ${e.message}`);
     step({
       id: `compile${suffix}`,
       label: `Compiling with solc ${version || "0.8.28"}`,
-      detail: `${contracts.errors.length} errors · ${contracts.warnings.length} warnings`,
+      detail: contracts.ok
+        ? `0 errors · ${plural(contracts.warnings.length, "warning")}`
+        : `${plural(contracts.errors.length, "error")}: ${firstIssue(contracts.errors)}`,
       status: contracts.ok ? "done" : "error",
     });
   }
   step({ id: `app${suffix}`, label: "Checking the app", status: "running" });
   const app = lint(files);
-  if (!app.ok) log(`✗ ${app.errors.length} app error${app.errors.length === 1 ? "" : "s"}`);
-  else log("✓ app checks passed");
-  step({ id: `app${suffix}`, label: "Checking the app", detail: app.ok ? "imports and syntax ok" : `${app.errors.length} errors`, status: app.ok ? "done" : "error" });
+  for (const e of app.errors.slice(0, 3)) log(`✗ ${e.file.split("/").pop()}${e.line ? `:${e.line}` : ""} ${e.message}`);
+  if (app.ok) log("✓ app checks passed");
+  step({
+    id: `app${suffix}`,
+    label: "Checking the app",
+    detail: app.ok ? "imports and syntax ok" : `${plural(app.errors.length, "error")}: ${firstIssue(app.errors)}`,
+    status: app.ok ? "done" : "error",
+  });
   return {
     ok: contracts.ok && app.ok,
     errors: [...contracts.errors, ...app.errors],
@@ -341,4 +382,31 @@ function changeDetail(change?: FileChange): string | undefined {
 
 function firstLine(text: string): string {
   return text.trim().split(/\n+/)[0]?.slice(0, 300) ?? "";
+}
+
+function plural(n: number, word: string): string {
+  return `${n} ${word}${n === 1 ? "" : "s"}`;
+}
+
+/** "TipJar.sol:34 Expected ';'" for step details, kept short. */
+function firstIssue(issues: CheckIssue[]): string {
+  const e = issues[0];
+  if (!e) return "";
+  const where = `${e.file.split("/").pop()}${e.line ? `:${e.line}` : ""}`;
+  const text = e.message.length > 90 ? `${e.message.slice(0, 89)}…` : e.message;
+  return `${where} ${text}`;
+}
+
+function normalise(t: string): string {
+  return t.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+/** Same text as an earlier reply, or contained in one (ignoring case, spacing, punctuation). */
+export function isRepeat(reply: string, earlier: string[]): boolean {
+  const r = normalise(reply);
+  if (r.length < 12) return false;
+  return earlier.some((e) => {
+    const n = normalise(e);
+    return n === r || n.includes(r);
+  });
 }

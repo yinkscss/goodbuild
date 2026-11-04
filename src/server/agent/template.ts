@@ -218,6 +218,27 @@ export function useWallet() {
 }
 `;
 
+const TOKENS = `import { erc20Abi } from "viem";
+
+/** ERC-677: send tokens and call the receiver's onTokenTransfer(from, amount, data) in one transaction. G$ supports it. */
+export const erc677Abi = [
+  {
+    type: "function",
+    name: "transferAndCall",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "to", type: "address" },
+      { name: "value", type: "uint256" },
+      { name: "data", type: "bytes" },
+    ],
+    outputs: [{ name: "", type: "bool" }],
+  },
+] as const;
+
+/** ABI for the G$ token: standard ERC-20 plus transferAndCall. */
+export const gdTokenAbi = [...erc20Abi, ...erc677Abi] as const;
+`;
+
 const CONTRACTS_INDEX = `// Platform-owned. GoodBuild writes one module per compiled contract next to this file
 // (ABI after each build, addresses after you deploy). Don't edit by hand.
 export {};
@@ -331,6 +352,7 @@ export function starterFiles(): Record<string, string> {
     "src/lib/utils.ts": UTILS,
     "src/lib/chain.ts": CHAIN,
     "src/lib/useWallet.ts": USE_WALLET,
+    "src/lib/tokens.ts": TOKENS,
     "src/contracts/index.ts": CONTRACTS_INDEX,
     "src/components/ConnectButton.tsx": CONNECT_BUTTON,
     "src/components/ui/button.tsx": BUTTON,
