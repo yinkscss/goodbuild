@@ -7,10 +7,12 @@ export const BUILD_TOOLS: ToolSpec[] = [
   fn("set_plan", "State the plan before editing: a one-sentence summary and 2-6 short steps the user will see. List in guides the front-end guides this work needs; their text comes back in the result.", {
     summary: { type: "string" },
     steps: { type: "array", items: { type: "string" }, maxItems: 8 },
-    guides: { type: "array", items: { type: "string", enum: guideNames() }, maxItems: 4 },
+    // No enum or maxItems: a provider that validates would fail the whole call; the
+    // workspace dedupes names and reports unknown ones instead.
+    guides: { type: "array", items: { type: "string" }, description: `Any of: ${guideNames().join(", ")}` },
   }, ["summary", "steps"]),
-  fn("read_guide", "Read one front-end guide by name (see the guide list in the instructions).", {
-    name: { type: "string", enum: guideNames() },
+  fn("read_guide", `Read one front-end guide by name: ${guideNames().join(", ")}.`, {
+    name: { type: "string" },
   }, ["name"]),
   fn("list_files", "List all project files with their sizes.", {}, []),
   fn("read_file", "Read a file's current content.", { path: { type: "string" } }, ["path"]),
