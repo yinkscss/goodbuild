@@ -154,6 +154,17 @@ describe("runTurn", { timeout: 120_000 }, () => {
     expect(assistant.content).toBe("Built a tip page.\n\nWant a goal bar?");
   });
 
+  it("a build-mode question on an existing project is answered without checks or a new version", async () => {
+    const first = scriptedModel([{ tools: [{ name: "create_file", args: { path: "src/App.tsx", content: APP } }] }, { text: "Built it." }]);
+    await runTurn({ db, model: first.client }, { projectId, userId, mode: "build", userMessageId: queuedId }, () => {});
+    const { client } = scriptedModel([{ text: "I build dApps on Celo and websites.\n\nWant a landing page?" }]);
+    const record = await runTurn({ db, model: client }, { projectId, userId, mode: "build", prompt: "what can you build?" }, () => {});
+    expect(record.status).toBe("answered");
+    expect(record.version).toBeUndefined();
+    expect(record.steps.some((s) => s.id === "compile" || s.id === "app")).toBe(false);
+    expect(await listVersions(db, projectId)).toHaveLength(1);
+  });
+
   it("reports the auto-fix result clearly in the step rows", async () => {
     const { client } = scriptedModel([
       { tools: [{ name: "create_file", args: { path: "contracts/TipJar.sol", content: BROKEN } }] },
