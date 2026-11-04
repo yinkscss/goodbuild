@@ -9,7 +9,7 @@ import { createProjectFromPrompt } from "@/server/projects";
 import { scriptedModel } from "./fake-model";
 import { runTurn, TurnBusyError, type TurnEvent } from "./runner";
 import { claimTurn, listVersions, loadFiles, revertTo } from "./store";
-import { isRepeat } from "./runner";
+import { fixTier, isRepeat } from "./runner";
 import { DEMO_APP, DEMO_TIP_JAR_DRAFT, demoModel } from "./demo-model";
 
 const HEADER = "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.24;\n";
@@ -48,6 +48,19 @@ describe("isRepeat", () => {
     expect(isRepeat("Built the tip jar!", ["built the  tip jar"])).toBe(true);
     expect(isRepeat("Fixed the semicolon.", ["Built the tip jar."])).toBe(false);
     expect(isRepeat("ok", ["ok"])).toBe(false); // too short to judge
+  });
+});
+
+describe("fixTier (D19 amendment)", () => {
+  const t = { file: "contracts/test/A.t.sol", message: "ATest.testX failed", source: "test" as const };
+  const solc = { file: "contracts/A.sol", message: "bad", source: "solc" as const };
+  it("sends a first attempt with only test failures to the cheap tier", () => {
+    expect(fixTier(1, [t, t])).toBe("cheap");
+  });
+  it("sends mixed failures, a second attempt, or no errors to the strong tier", () => {
+    expect(fixTier(1, [t, solc])).toBe("strong");
+    expect(fixTier(2, [t])).toBe("strong");
+    expect(fixTier(1, [])).toBe("strong");
   });
 });
 
@@ -210,7 +223,7 @@ describe("runTurn", { timeout: 120_000 }, () => {
     expect(record.plan?.steps).toEqual(["Write RTX.sol", "Build the UI"]);
   });
 
-  it("runs contract tests after compiling and sends failures to the fix loop", async () => {
+  it("runs contract tests after compiling and sends failures to the fix loop on the cheap tier", async () => {
     const { readFileSync } = await import("node:fs");
     const run2 = readFileSync(new URL("./fixtures/rtx-run2.sol", import.meta.url), "utf8");
     const fixed = run2.replace("bool ok = transferFrom(from, to, amount);\n        if (!ok) revert TransferFailed();", "_transfer(from, to, amount);");
@@ -218,13 +231,15 @@ describe("runTurn", { timeout: 120_000 }, () => {
       HEADER +
       'import {Test, Actor} from "@goodbuild/Test.sol";\nimport {MockGoodDollar} from "@goodbuild/MockGoodDollar.sol";\nimport {RTX} from "../RTX.sol";\n' +
       "contract RTXTest is Test {\n  function testSupply() public {\n    RTX rtx = new RTX(new MockGoodDollar());\n    assertEq(rtx.totalSupply(), 50_000_001e18, \"supply\");\n  }\n}\n";
-    const { client } = scriptedModel([
+    const { client, requests } = scriptedModel([
       { tools: [{ name: "create_file", args: { path: "contracts/RTX.sol", content: fixed } }, { name: "create_file", args: { path: "contracts/test/RTX.t.sol", content: test } }] },
       { text: "Built RTX." },
       { tools: [{ name: "edit_file", args: { path: "contracts/test/RTX.t.sol", edits: [{ search: "50_000_001e18", replace: "50_000_000e18" }] } }] },
       { text: "Fixed the test." },
     ]);
     const record = await runTurn({ db, model: client }, { projectId, userId, mode: "build", userMessageId: queuedId }, () => {});
+    // Only a test failed, so the first fix attempt ran on the cheap tier.
+    expect(requests.map((r) => r.tier)).toEqual(["cheap", "cheap", "cheap", "cheap"]);
     expect(record.steps.find((s) => s.id === "test")).toMatchObject({ status: "error" });
     expect(record.steps.find((s) => s.id === "test:1")).toMatchObject({ status: "done", detail: "1 test passed in a local EVM" });
     expect(record.status).toBe("ready");

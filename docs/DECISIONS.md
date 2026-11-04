@@ -107,6 +107,7 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - Date: 4 Nov 2026 · Decided by: user (Olayinka) · Refines D14 and D18
 - Routing: `deepseek-flash` for planning and the first build pass; `claude-sonnet-5-5` for every auto-fix attempt (compile errors, guardrail and app-check failures). The fallback wrapper still retries a failed strong call on cheap.
 - Why: the first live runs cost about $0.02 on DeepSeek and $0.10 on Sonnet for a similar small contract, and both compiled clean. Claude is kept for the step where a cheap model has already failed.
+- Amendment (4 Nov 2026, decided by: user, implemented with the model.ts owner): when every failure is a contract test (P16), the first auto-fix attempt uses `TIER_FOR.testFix` (cheap). Mixed failures and any later attempt still use `TIER_FOR.fix` (strong). Why: in the RTX eval run 4, Sonnet's five fix calls cost $0.44 of $0.50, and most were test fixes. See [evals/RTX.md](evals/RTX.md). Runner: `fixTier()` in `runner.ts`.
 - Open: whether follow-up edits (reprompts on an existing project) should use Claude. Claude recommends yes, see AI_AGENT.md. One line in `TIER_FOR` (`src/server/agent/model.ts`).
 
 ### D20. Websites and pages are in scope alongside dApps

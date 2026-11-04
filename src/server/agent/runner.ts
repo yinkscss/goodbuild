@@ -335,7 +335,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
         role: "user",
         content: `GoodBuild's checks failed. Fix these errors with edit_file. If a contract test fails, decide whether the contract or the test is wrong: fix the contract when it misbehaves; change a test only when its expectation is mistaken, and never delete or weaken a check just to make it pass. Then stop with a very short note (the user sees the fix steps, not this note):\n${issues}`,
       });
-      await phase(TIER_FOR.fix, true);
+      await phase(fixTier(attempt, report.errors), true);
       report = await runChecks(ws.files, compile, lint, step, log, attempt, contractOptions);
       step({
         id: `fix:${attempt}`,
@@ -474,6 +474,14 @@ async function finish(db: Db, id: string, text: string, record: TurnRecord) {
     .update(messages)
     .set({ content: text.trim(), status: record.status === "error" ? "error" : "done", meta: record as unknown as Record<string, unknown> })
     .where(eq(messages.id, id));
+}
+
+/**
+ * D19 amendment: when the only failures are contract tests, the cheap model gets the first
+ * fix attempt (TIER_FOR.testFix); anything else, or a later attempt, goes to TIER_FOR.fix.
+ */
+export function fixTier(attempt: number, errors: CheckIssue[]): ModelTier {
+  return attempt === 1 && errors.length > 0 && errors.every((i) => i.source === "test") ? TIER_FOR.testFix : TIER_FOR.fix;
 }
 
 function onlySuggestions(calls: ToolCall[]): boolean {
