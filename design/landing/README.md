@@ -1,11 +1,13 @@
+> **Canonical:** `index.html` is Design B (light bento), adopted as D12. See [docs/DESIGN_SYSTEM.md](../../docs/DESIGN_SYSTEM.md). Design A is archived in `explorations/mockup-a/`.
+
 # GoodBuild landing mockups
 
 Two static mockups, each one self-contained HTML file (Tailwind CDN + Google Fonts). Open them straight in a browser.
 
 | | A — dark "Editeaze" | B — light "neuro-tech bento" |
 |---|---|---|
-| File | `mockup-a.html` | `mockup-b.html` |
-| Screenshots | `mockup-a-hero.png` (1440×900), `mockup-a-full.png` | `mockup-b-hero.png`, `mockup-b-full.png` |
+| File | `explorations/mockup-a/index.html` | `index.html` |
+| Screenshots | `explorations/mockup-a/mockup-a-hero.png`, `-full.png` | `hero.png`, `full.png` |
 | Background | `#121212` | `#F5F5F5`, cards `#FFFFFF` |
 | Primary | royal blue `#1D35FF` | galactic violet `#592E81` |
 | Pop | tangerine `#FF6800` (deploy card, wave glow, wallet dot) | bubblegum pink `#FF85D9` (chart, CTA dot) |
