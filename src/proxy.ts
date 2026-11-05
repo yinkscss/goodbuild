@@ -52,6 +52,11 @@ export function proxy(request: NextRequest) {
     return isFromEdge(request.headers) ? NextResponse.next() : new NextResponse("Not found", { status: 404 });
   }
 
+  // Sign-in only accepts APP_DOMAIN (SIWE), so www has to land on it.
+  if (process.env.APP_DOMAIN && request.headers.get("host") === `www.${process.env.APP_DOMAIN}`) {
+    return NextResponse.redirect(`https://${process.env.APP_DOMAIN}${pathname}${request.nextUrl.search}`, 308);
+  }
+
   const host = classifyHost(request.headers.get("host"), publishedAppsDomain());
   if (host.kind === "unknown") return new NextResponse("Not found", { status: 404 });
   if (host.kind === "app") {

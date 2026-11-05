@@ -46,6 +46,9 @@ Restore into an empty database:
 docker compose --env-file .env.production exec -T goodbuild-postgres pg_restore -U goodbuild -d goodbuild --clean --if-exists < /var/backups/goodbuild/<file>.dump
 ```
 
+## DNS (Cloudflare)
+`goodbuildit.xyz` and `*` are `A` records to the server, `www` is a `CNAME` to the root, all Proxied. SSL/TLS is Full. The `MX` and SPF `TXT` records are Namecheap email forwarding and were left alone.
+
 ## Requirements that are easy to break
 - **Cloudflare must proxy `goodbuildit.xyz` and `*.goodbuildit.xyz`**, with SSL mode **Full**. The US and sanctions block reads `cf-ipcountry`. With no proxy there is no header, and the block lets everyone through.
 - **Firewall (`deploy/firewall.sh`, run at boot by `goodbuild-firewall.service`):** Docker's published ports skip `ufw`, so the rules are in the `DOCKER-USER` chain. Only Cloudflare reaches 80 and 443, and Coolify's ports (8000, 8080, 6001, 6002) are closed to the internet. Without this, a visitor could reach the server directly, fake a country header and skip the block. If Cloudflare publishes new IP ranges, restart the service.

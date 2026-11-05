@@ -88,6 +88,14 @@ describe("published app hosts", () => {
 });
 
 describe("main host", () => {
+  it("sends www to the main domain, which is the only one sign-in accepts", () => {
+    vi.stubEnv("APP_DOMAIN", "goodbuildit.xyz");
+    const res = proxy(request("https://www.goodbuildit.xyz/docs?x=1"));
+    expect(res.status).toBe(308);
+    expect(res.headers.get("location")).toBe("https://goodbuildit.xyz/docs?x=1");
+    vi.unstubAllEnvs();
+  });
+
   describe("API writes from other sites", () => {
     const post = (headers: Record<string, string>) =>
       proxy(new NextRequest("http://localhost:3000/api/projects", { method: "POST", headers: { host: "localhost:3000", ...headers } }));
