@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { relativeTime } from "@/lib/home";
 import type { TurnRecord } from "@/lib/turn-types";
+import { openPreviewChannel, type PreviewChannelMessage } from "@/lib/preview-channel";
 import { cn } from "@/lib/utils";
 import type { WorkspaceState } from "@/server/workspace-state";
 import { ChatPanel } from "./chat-panel";
@@ -41,6 +42,9 @@ export function Workspace({ initial }: { initial: WorkspaceState }) {
   const files = live?.files ?? state.files;
   const assetUrls = useAssetDataUrls(state.project.id, state.assets);
   const latestRecord = [...state.messages].reverse().map((m) => m.meta as TurnRecord | null).find((r) => r?.kind === "turn" && r.contracts?.length);
+
+  const previewVersion = live?.record.version ?? state.project.currentVersion;
+  useBroadcastPreview(state.project.id, files, previewVersion);
 
   const hasContracts = Object.keys(files).some((p) => p.startsWith("contracts/") && p.endsWith(".sol") && !p.startsWith("contracts/test/"));
 
@@ -97,9 +101,10 @@ export function Workspace({ initial }: { initial: WorkspaceState }) {
         </div>
         <div className={cn("min-h-0 flex-col", pane === "preview" ? "flex" : "hidden lg:flex", "[&>*]:flex-1")}>
           <PreviewPanel
+            projectId={state.project.id}
             files={files}
             assetUrls={assetUrls}
-            version={live?.record.version ?? state.project.currentVersion}
+            version={previewVersion}
             contracts={latestRecord?.contracts ?? []}
             onFix={(prompt) => ws.send(prompt, "build")}
             onRuntimeError={(e) => ws.onPreviewError(e, live?.record.version ?? state.project.currentVersion)}
@@ -113,6 +118,31 @@ export function Workspace({ initial }: { initial: WorkspaceState }) {
     </div>
     </DeployProvider>
   );
+}
+
+/** Keeps pop-out preview tabs on what this tab is showing, including live files during a build. */
+function useBroadcastPreview(projectId: string, files: Record<string, string>, version: number) {
+  const channel = React.useRef<BroadcastChannel | null>(null);
+  const latest = React.useRef<PreviewChannelMessage>({ type: "files", files, version });
+
+  React.useEffect(() => {
+    const ch = openPreviewChannel(projectId);
+    if (!ch) return;
+    channel.current = ch;
+    // A pop-out that just opened asks for the current state.
+    ch.onmessage = (e: MessageEvent<PreviewChannelMessage>) => {
+      if (e.data?.type === "hello") ch.postMessage(latest.current);
+    };
+    return () => {
+      channel.current = null;
+      ch.close();
+    };
+  }, [projectId]);
+
+  React.useEffect(() => {
+    latest.current = { type: "files", files, version };
+    channel.current?.postMessage(latest.current);
+  }, [files, version]);
 }
 
 function VersionMenu({ ws }: { ws: ReturnType<typeof useWorkspace> }) {

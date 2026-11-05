@@ -35,7 +35,8 @@ const SECTIONS: Array<{ id: string; title: string; body: ReactNode }> = [
         <p>Each project has a chat on the left and three tabs on the right.</p>
         <ul className="list-disc space-y-2 pl-5">
           <li>
-            <strong className="font-semibold">Preview</strong> runs your app in the browser, in desktop and mobile sizes.
+            <strong className="font-semibold">Preview</strong> runs your app in the browser, in desktop and mobile sizes. The arrow button opens it in its
+            own tab, which follows your build as it happens.
           </li>
           <li>
             <strong className="font-semibold">Code</strong> shows the React front end. It is read-only, so ask for changes in the chat.
@@ -75,17 +76,17 @@ const SECTIONS: Array<{ id: string; title: string; body: ReactNode }> = [
     body: (
       <>
         <p>
-          <strong className="font-semibold">Not live yet.</strong> Both are coming next, and the Deploy button stays disabled until then.
+          <strong className="font-semibold">Deploy</strong> puts your contracts on Celo Sepolia. GoodBuild simulates the deploy first, shows you a summary, and
+          your own wallet signs once per contract. If one fails, try again and finished contracts aren&apos;t signed twice. GoodBuild never holds your keys.
         </p>
-        <ul className="list-disc space-y-2 pl-5">
-          <li>
-            <strong className="font-semibold">Deploy</strong> puts your contract on Celo. You review a summary and sign from your own wallet. GoodBuild
-            never holds your keys.
-          </li>
-          <li>
-            <strong className="font-semibold">Publish</strong> puts your front end on its own address, your-app.goodbuild.app, so you can share it.
-          </li>
-        </ul>
+        <p>
+          On Celo Sepolia, apps use a test G$ with a faucet, so nothing has real value. After deploying, GoodBuild submits the contract for public source
+          verification on Sourcify.
+        </p>
+        <p>
+          <strong className="font-semibold">Publish is coming next.</strong> It will put your front end on its own address, your-app.goodbuild.app, so you can
+          share it.
+        </p>
       </>
     ),
   },

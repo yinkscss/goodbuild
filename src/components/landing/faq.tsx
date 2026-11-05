@@ -17,7 +17,7 @@ const QUESTIONS = [
   },
   {
     q: "Can I deploy and share my app today?",
-    a: "Not yet. You can build, preview and revise now. Wallet-signed deploys and publishing to your-app.goodbuild.app are coming next.",
+    a: "You can deploy to Celo Sepolia by signing from your own wallet. Publishing your app to your-app.goodbuild.app is coming next.",
   },
   {
     q: "Who can use GoodBuild?",
