@@ -219,6 +219,14 @@ export function PlanCard({ intake, actions }: { intake: PlanIntake; actions?: Pl
     moved.current = false;
   }, [index]);
 
+  // The chat scrolls to its end on load. On a phone that can hide the first question's heading.
+  const active = Boolean(actions);
+  React.useEffect(() => {
+    if (!active) return;
+    const timer = setTimeout(() => heading.current?.scrollIntoView?.({ block: "nearest" }), 600);
+    return () => clearTimeout(timer);
+  }, [active]);
+
   if (!actions) {
     if (!intake.questions.some((q) => intake.answers[q.id])) return null;
     return (
@@ -245,7 +253,7 @@ export function PlanCard({ intake, actions }: { intake: PlanIntake; actions?: Pl
     return (
       <div className="mt-3 rounded-block bg-canvas p-4">
         <p className="text-[11px] font-semibold tracking-[.18em] text-violet uppercase">Your plan</p>
-        <h3 ref={heading} tabIndex={-1} className="mt-1 mb-3 text-sm font-medium outline-none">
+        <h3 ref={heading} tabIndex={-1} className="mt-1 mb-3 text-sm font-medium outline-none focus-visible:shadow-none">
           {intake.summary}
         </h3>
         <AnswerList intake={intake} onChange={go} />
@@ -264,7 +272,7 @@ export function PlanCard({ intake, actions }: { intake: PlanIntake; actions?: Pl
       <p className="text-[11px] font-semibold tracking-[.18em] text-violet uppercase">
         Question {index + 1} of {total}
       </p>
-      <h3 ref={heading} tabIndex={-1} className="mt-1 text-sm font-semibold outline-none">
+      <h3 ref={heading} tabIndex={-1} className="mt-1 text-sm font-semibold outline-none focus-visible:shadow-none">
         {question.question}
       </h3>
       <QuestionScreen
