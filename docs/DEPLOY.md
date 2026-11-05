@@ -39,6 +39,7 @@ docker compose --env-file .env.production ps
 docker compose --env-file .env.production logs -f web worker
 docker compose --env-file .env.production restart web worker
 ```
+- Real AI spend so far, against the free budget (D29; `FREE_AI_BUDGET_MICRO`, default 4000000 = $4): `docker compose --env-file .env.production exec -T goodbuild-postgres psql -U goodbuild -d goodbuild -c 'select sum(provider_cost_micro)/1000000.0 as usd from usage_events'`. A changed setting needs `up -d web worker`, because a restart doesn't reread the env file.
 - Take a published app down: `docker compose --env-file .env.production exec web sh -c 'node scripts/takedown.mjs <slug>'`. Add `--restore` to bring it back.
 - `NEXT_PUBLIC_*` values are fixed at build time, so changing one needs a deploy. Other values need a restart with `up -d`.
 
