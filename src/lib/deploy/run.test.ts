@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Abi, Address, Hex } from "viem";
 
+import { classifyDeployError } from "./errors";
 import { newOpcodesUsed } from "./opcodes";
 import { runDeploy, StepFailure, usesGoodDollar, type DeployEnv, type DeployEvent, type DeployProgress, type Plan } from "./run";
 import { chainSupportsOpcode, simulateCreation, UnsupportedOpcodeError } from "./simulate";
@@ -173,6 +174,12 @@ describe("opcode scan and probes", () => {
     expect(await chainSupportsOpcode({ call: vi.fn(async () => ({ data: "0x" as Hex })) }, "MCOPY")).toBe(true);
   });
 
+  it("stops before signing when the wallet can't pay the network fee, and says so", async () => {
+    const client = { call: vi.fn(), estimateGas: vi.fn(async () => BigInt(1234)), getBalance: vi.fn(async () => BigInt(0)), getGasPrice: vi.fn(async () => BigInt(2)) };
+    const error = await simulateCreation(client as never, { account: A, data: "0x60" }).catch((e: unknown) => e);
+    expect(classifyDeployError(error).kind).toBe("insufficient_funds");
+  });
+
   it("simulateCreation throws UnsupportedOpcodeError before estimating gas", async () => {
     const client = { call: vi.fn(async () => Promise.reject(new Error("invalid opcode: opcode 0x5e not defined"))), estimateGas: vi.fn(async () => BigInt(1)) };
     await expect(simulateCreation(client as never, { account: A, data: "0x60", runtimeBytecode: "0x5e00" as Hex })).rejects.toBeInstanceOf(UnsupportedOpcodeError);
@@ -180,7 +187,7 @@ describe("opcode scan and probes", () => {
   });
 
   it("returns gas for a clean bytecode", async () => {
-    const client = { call: vi.fn(async () => ({ data: "0x" as Hex })), estimateGas: vi.fn(async () => BigInt(1234)) };
+    const client = { call: vi.fn(async () => ({ data: "0x" as Hex })), estimateGas: vi.fn(async () => BigInt(1234)), getBalance: vi.fn(async () => BigInt(10_000)), getGasPrice: vi.fn(async () => BigInt(2)) };
     expect(await simulateCreation(client as never, { account: A, data: "0x60", runtimeBytecode: "0x5e00" as Hex })).toEqual({ gas: BigInt(1234) });
   });
 });

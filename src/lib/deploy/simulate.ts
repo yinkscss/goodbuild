@@ -45,12 +45,16 @@ export interface SimulateArgs {
  * 1. Every post-Paris opcode in the runtime code must exist on the chain.
  * 2. The creation transaction must succeed in eth_estimateGas, which also catches constructor
  *    reverts (a bad argument) and returns the gas to show in the summary.
+ * 3. The wallet must hold enough CELO to pay for it.
  */
-export async function simulateCreation(client: Pick<PublicClient, "call" | "estimateGas">, args: SimulateArgs): Promise<{ gas: bigint }> {
+export async function simulateCreation(client: Pick<PublicClient, "call" | "estimateGas" | "getBalance" | "getGasPrice">, args: SimulateArgs): Promise<{ gas: bigint }> {
   const used = args.runtimeBytecode ? newOpcodesUsed(args.runtimeBytecode) : [];
   const missing: string[] = [];
   for (const name of used) if ((await chainSupportsOpcode(client, name)) === false) missing.push(name);
   if (missing.length) throw new UnsupportedOpcodeError(missing);
   const gas = await client.estimateGas({ account: args.account, data: args.data });
+  // Some wallets (Magic's among them) answer an unfunded send with a bare "internal error".
+  const [balance, price] = await Promise.all([client.getBalance({ address: args.account }), client.getGasPrice()]);
+  if (balance < gas * price) throw Object.assign(new Error("insufficient funds for the network fee"), { code: "insufficient_funds" });
   return { gas };
 }
