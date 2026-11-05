@@ -23,7 +23,7 @@ export interface WorkspaceMessage {
 }
 
 export interface WorkspaceState {
-  project: { id: string; name: string; status: string; chainId: number; currentVersion: number; building: boolean };
+  project: { id: string; name: string; status: string; chainId: number; currentVersion: number; building: boolean; upgradeable: boolean };
   files: Record<string, string>;
   messages: WorkspaceMessage[];
   versions: Array<{ number: number; summary: string; createdAt: string; revertedFrom: number | null }>;
@@ -38,6 +38,8 @@ export interface WorkspaceState {
   /** The running turn and queued follow-ups, oldest first (P18). A reload attaches to the first. */
   /** Deployed contracts whose saved code has changed since, so the chain doesn't have the changes. */
   outdatedContracts: string[];
+  /** Of those, the ones behind a proxy: they get the changes at the same address (D33). */
+  upgradableContracts: string[];
   /** Used the free AI and verification would unlock more (D30). */
   offerVerification: boolean;
   jobs: Array<{ id: string; status: "queued" | "running"; userMessageId: string; assistantMessageId: string | null; mode: string }>;
@@ -53,6 +55,7 @@ export async function workspaceState(db: Db, projectId: string, ownerId: string)
   const basis = Object.keys(files).length ? files : starterFiles();
   const contextChars = Object.values(basis).reduce((n, c) => n + c.length, 0) + systemPrompt("build").length + 2_000;
   const firstBuild = Object.keys(files).length === 0;
+  const contracts = await contractState(db, project, files);
   return {
     project: {
       id: project.id,
@@ -61,6 +64,7 @@ export async function workspaceState(db: Db, projectId: string, ownerId: string)
       chainId: project.chainId,
       currentVersion: project.currentVersion,
       building: Boolean(project.turnStartedAt),
+      upgradeable: contracts.upgradeable,
     },
     files,
     messages: owned.messages.map((m) => ({
@@ -72,7 +76,8 @@ export async function workspaceState(db: Db, projectId: string, ownerId: string)
       createdAt: m.createdAt.toISOString(),
     })),
     versions: versions.map((v) => ({ ...v, createdAt: v.createdAt.toISOString(), revertedFrom: v.revertedFrom ?? null })),
-    outdatedContracts: (await contractState(db, project, files)).outdated,
+    outdatedContracts: contracts.outdated,
+    upgradableContracts: contracts.upgradable,
     offerVerification: await shouldOfferVerification(db, ownerId),
     estimate: {
       buildMicro: estimateTurnMicro({ mode: "build", contextChars, firstBuild }),

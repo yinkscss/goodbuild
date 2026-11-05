@@ -165,6 +165,24 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - **A typed message while questions are waiting** builds, with whatever has been answered. The composer's placeholder says so.
 - **Real model check (5 Nov 2026, user approved):** two prompts on `deepseek-flash` with thinking off, a savings circle and a salon booking app. Both called the tool, asked plain questions with no jargon, and cost about $0.001 each. The booking app got no questions about money or wallets. Start building after the answers wasn't run with the real model.
 
+### D33. Upgradeable contracts: a testnet-only trial, per project
+- Date: 5 Nov 2026 · Decided by: user (Olayinka), after hearing the risks; the design choices below are Claude's and can be challenged. Amends P2 and the prompt's "Non-upgradeable" rule for projects that opt in, and nothing else. **Non-upgradeable stays the default.**
+- **Goal:** when a change needs new contract code, keep one address so the app and its data carry on.
+- **Testnet only:** the option is refused on mainnet at the server (toggle, prepare and record, keyed on the chain in the request), even with mainnet deploys switched on.
+- **Transparent proxy, not UUPS.** UUPS keeps the upgrade gate (`_authorizeUpgrade`) in the implementation, which here is AI-written: a later version could weaken it or drop it, and neither the storage check nor the validator would notice. With OpenZeppelin's `TransparentUpgradeableProxy`, authority sits in a stock `ProxyAdmin`, and generated code never touches upgrades. Cost: a bit more gas per call and a bigger first deploy, which don't matter on a testnet.
+- **Authority:** the proxy creates a `ProxyAdmin` owned by the user's wallet. GoodBuild holds no keys. To give it up, the deploy modal offers "Lock it" (`renounceOwnership`, asks twice, can't be undone), and `transferOwnership` works from an explorer. The chain is the record: GoodBuild reads the owner each time and stores nothing about it.
+- **Two wallet confirmations, not one.** The accepted plan said one signature. With stock parts an upgrade is two transactions: deploy the new code (changes nothing), then `upgradeAndCall` (the only one that needs authority). A first deploy is also two per contract. One signature would need either a custom helper contract, which gives up "audited parts", or wallet batching (EIP-5792), whose support in Magic is UNVERIFIED. For the user to decide; see the follow-ups.
+- **Constructors become `initialize`.** The manifest's `args` fill `initialize` by name, and it runs inside the proxy's creation transaction so nobody can get in first. Each implementation has only `constructor() { _disableInitializers(); }`. A contract whose code didn't change skips its upgrade. Changing manifest args later does nothing to a live contract, and there's no `reinitializer` in this trial: new variables start at zero.
+- **Storage check: `@openzeppelin/upgrades-core` 1.48** (`scripts/upgrade-check.cjs`, a child process like solc). Chosen over comparing solc's `storageLayout` by hand: it also sees OpenZeppelin's named (ERC-7201) storage that solc's output leaves out, and it handles structs, enums, mappings and packing. Runs at prepare (before anything is signed), again at record, and in the agent's fix loop. The baseline is the layout saved when the live code was recorded.
+- **Its limits, plainly.** It proves layouts stay compatible, not that the new code is right. It can't catch a variable that keeps its name and type but changes meaning (wei to basis points), or v2 logic that misuses or drains what's stored. It gates GoodBuild's flow only: the wallet owner can call their ProxyAdmin with another tool, and then the next prepare refuses because the live code isn't one GoodBuild recorded.
+- **It trusts notes in the source,** such as `@custom:oz-retyped-from`, and the AI writes the source (tested: a retype with that note passes upgrades-core). So the build refuses every `@custom:oz-` note except the standard one on the sealed constructor.
+- **Guardrails:** generated code still can't delegatecall. `Address.functionDelegateCall`, imports from OpenZeppelin's `proxy/`, and `Multicall` are now refused in every project (the first two were real gaps), and `StorageSlot` in upgradeable ones. The proxy is compiled from OpenZeppelin's source, outside `contracts/`, so its exception comes from where it lives.
+- **A refused upgrade** says why in plain words and offers a normal new deploy at a new address (with the usual "replaces" notice and old-funds card) or asking the builder to keep the data.
+- **No paris fallback to OpenZeppelin 5.1 for these projects:** 5.1 and 5.6 differ (5.6 has no `ReentrancyGuardUpgradeable`), and the check can't vouch for an upgrade across them. `ReentrancyGuard` from 5.6 is allowed by name even though it has a constructor; it's marked stateless, and the EVM test shows re-entry is still blocked through the proxy.
+- **Label:** published apps of these projects show "This contract can be changed" in the GoodBuild bar until the contract is locked. A published app is a snapshot, so locking removes the label only after publishing again. Until then it errs towards warning.
+- **Follow-ups, not built:** a delay before upgrades take effect (OpenZeppelin `TimelockController` as ProxyAdmin owner; skipped because testnet funds aren't real and it adds a third transaction); EIP-5792 batching; an upgrade history view; a way to set new variables during the switch.
+- **UNVERIFIED on Celo Sepolia:** all of it. It's proved in a local EVM only. Steps for the live test are in HANDOFF.md.
+
 ## Recommended decisions (Ego; adopted unless changed)
 
 
@@ -221,6 +239,7 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 
 ### P2. Audited-template-first contracts, non-upgradeable by default (proposed)
 - Date: 4 Nov 2026 · Proposed by: Grok Bot · See CONTRACTS_AND_DEPLOYMENT.md §4. Open: Q1, Q4, Q15.
+- Amended 5 Nov 2026 by D33: projects that opt in on testnet deploy behind a proxy. Non-upgradeable stays the default.
 
 ### D19. DeepSeek builds first, Claude fixes
 - Date: 4 Nov 2026 · Decided by: user (Olayinka) · Refines D14 and D18

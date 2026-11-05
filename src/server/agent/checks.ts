@@ -124,6 +124,20 @@ export interface SolcOptions {
   evmVersion?: "cancun" | "paris";
   /** Resolve @openzeppelin/contracts from the pinned pre-MCOPY release (paris fallback). */
   legacyOpenZeppelin?: boolean;
+  /** An upgradeable project (D33): allow OpenZeppelin's upgradeable imports and output what the safety check reads. */
+  upgradeable?: boolean;
+}
+
+/** Everything @openzeppelin/upgrades-core reads from a compile. None of it changes the bytecode. */
+const UPGRADEABLE_OUTPUT = { "*": { "*": ["abi", "evm.bytecode", "evm.deployedBytecode", "evm.methodIdentifiers", "storageLayout"], "": ["ast"] } };
+
+/** The solc settings a compile really used, so the safety check can repeat it. */
+export function solcSettings(options: SolcOptions = {}) {
+  return {
+    ...SOLC_SETTINGS,
+    ...(options.evmVersion ? { evmVersion: options.evmVersion } : {}),
+    ...(options.upgradeable ? { outputSelection: UPGRADEABLE_OUTPUT } : {}),
+  };
 }
 
 export function runSolc(
@@ -141,8 +155,7 @@ export function runSolc(
         reject(e);
       }
     });
-    const settings = options.evmVersion ? { ...SOLC_SETTINGS, evmVersion: options.evmVersion } : SOLC_SETTINGS;
-    child.stdin?.end(JSON.stringify({ sources, settings, ozPackage: options.legacyOpenZeppelin ? "@openzeppelin/contracts-paris" : undefined }));
+    child.stdin?.end(JSON.stringify({ sources, settings: solcSettings(options), ozPackage: options.legacyOpenZeppelin ? "@openzeppelin/contracts-paris" : undefined, upgradeable: options.upgradeable }));
   });
 }
 
@@ -157,7 +170,7 @@ function lineAt(content: string | undefined, offset: number): number | undefined
  * call with arbitrary data (plain value transfers `call{value: x}("")` are allowed).
  * Plus house style: custom errors only (no require strings, no revert("text")).
  */
-export function guardrailIssues(file: string, ast: Json, content?: string): CheckIssue[] {
+export function guardrailIssues(file: string, ast: Json, content?: string, { upgradeable = false }: { upgradeable?: boolean } = {}): CheckIssue[] {
   const issues: CheckIssue[] = [];
   const at = (node: Json) => {
     const start = Number(String(node.src ?? "").split(":")[0]);
@@ -179,6 +192,11 @@ export function guardrailIssues(file: string, ast: Json, content?: string): Chec
       return;
     }
     switch (n.nodeType) {
+      case "ImportDirective": {
+        const problem = importProblem(String(n.absolutePath ?? n.file ?? ""), upgradeable);
+        if (problem) flag(n, problem);
+        break;
+      }
       case "InlineAssembly":
         flag(n, "Inline assembly isn't allowed in generated contracts.");
         break;
@@ -188,6 +206,8 @@ export function guardrailIssues(file: string, ast: Json, content?: string): Chec
       case "MemberAccess": {
         const expr = n.expression as Json | undefined;
         if (n.memberName === "delegatecall" || n.memberName === "callcode") flag(n, `${n.memberName} isn't allowed.`);
+        // The same instruction through OpenZeppelin's helper, in any of its forms.
+        if (n.memberName === "functionDelegateCall") flag(n, "delegatecall isn't allowed, and that includes Address.functionDelegateCall.");
         if (n.memberName === "origin" && expr?.nodeType === "Identifier" && expr.name === "tx") {
           flag(n, "tx.origin isn't allowed for authorization. Use msg.sender.");
         }
@@ -225,6 +245,82 @@ export function guardrailIssues(file: string, ast: Json, content?: string): Chec
   };
   walk(ast);
   return issues;
+}
+
+/**
+ * Imports that would let generated code delegatecall or rewrite storage slots by hand. The only proxy
+ * in a GoodBuild project is the platform's own, which isn't compiled from generated files (D33).
+ */
+function importProblem(path: string, upgradeable: boolean): string | null {
+  const oz = /^@openzeppelin\/contracts(-upgradeable)?\/(.*)$/.exec(path);
+  if (!oz) return null;
+  const inner = oz[2];
+  if (inner.startsWith("proxy/")) {
+    if (upgradeable && inner === "proxy/utils/Initializable.sol") return null;
+    return `Generated contracts can't import ${path}. ${upgradeable ? "GoodBuild supplies the proxy itself: only import proxy/utils/Initializable.sol from there." : "Contracts here aren't proxies. Keep it a normal contract."}`;
+  }
+  if (/^utils\/Multicall(Upgradeable)?\.sol$/.test(inner)) return `${path} uses delegatecall, which isn't allowed.`;
+  if (upgradeable && /^utils\/(StorageSlot|TransientSlot|SlotDerivation)\.sol$/.test(inner)) {
+    return `${path} can write to any storage slot, which would get past the upgrade safety check. Use normal state variables.`;
+  }
+  return null;
+}
+
+/**
+ * Rules for upgradeable projects (D33), on top of the guardrails. Constructors only run on the
+ * implementation and never reach the proxy, so every setting goes through one `initialize` call,
+ * and the implementation itself is sealed so nobody can initialize it.
+ *
+ * upgrades-core trusts `@custom:oz-*` notes in the source (`@custom:oz-retyped-from` silences the
+ * storage check), and the AI writes the source. So the only note allowed is the standard one on the
+ * sealed constructor below, whose shape is checked here.
+ */
+export function upgradeableIssues(file: string, ast: Json, content?: string): CheckIssue[] {
+  const issues: CheckIssue[] = [];
+  const flag = (node: Json | null, message: string) => issues.push({ file, line: node ? lineAt(content, Number(String(node.src ?? "").split(":")[0])) : undefined, message, source: "guardrail" });
+
+  const notes = (content ?? "").match(/@custom:(oz-|storage-location)[^\n]*/g) ?? [];
+  if (notes.some((n) => n.trim() !== ALLOWED_NOTE) || (content !== undefined && !everyNoteOnAConstructor(content))) {
+    flag(null, `Only one @custom note is allowed in an upgradeable contract: "/// ${ALLOWED_NOTE}" directly above the constructor. Other notes can switch off the upgrade safety check, so remove them.`);
+  }
+
+  for (const contract of ((ast.nodes as Json[]) ?? []).filter((n) => n.nodeType === "ContractDefinition" && n.contractKind === "contract")) {
+    const name = String(contract.name);
+    const members = (contract.nodes as Json[]) ?? [];
+    const functions = members.filter((m) => m.nodeType === "FunctionDefinition");
+    const constructors = functions.filter((f) => f.kind === "constructor");
+    if (contract.abstract) {
+      for (const c of constructors) flag(c, `${name} is an abstract base, so it can't have a constructor in an upgradeable project. Use an internal __${name}_init function with the onlyInitializing modifier.`);
+    } else {
+      if (!constructors.length) flag(contract, `${name} needs the sealed constructor: /// ${ALLOWED_NOTE} then constructor() { _disableInitializers(); }`);
+      for (const c of constructors) if (!sealsItself(c)) flag(c, `${name}'s constructor must do nothing except call _disableInitializers(), with no parameters. Constructors never run on the proxy: move everything else into initialize.`);
+      const init = functions.find((f) => f.name === "initialize" && modifierNames(f).includes("initializer"));
+      if (!init) flag(contract, `${name} needs function initialize(...) external initializer, which takes the settings a constructor would take.`);
+    }
+    for (const f of functions) {
+      if (modifierNames(f).includes("reinitializer")) flag(f, `${name}: reinitializer isn't supported in this trial. New variables start at zero; give them an owner-only setter if they need a value.`);
+    }
+  }
+  return issues;
+}
+
+const ALLOWED_NOTE = "@custom:oz-upgrades-unsafe-allow constructor";
+
+function everyNoteOnAConstructor(content: string): boolean {
+  const lines = content.split("\n");
+  return lines.every((line, i) => !line.includes("@custom:") || !/@custom:(oz-|storage-location)/.test(line) || /^\s*constructor\s*\(/.test(lines[i + 1] ?? ""));
+}
+
+function modifierNames(fn: Json): string[] {
+  return ((fn.modifiers as Json[]) ?? []).map((m) => String((m.modifierName as Json | undefined)?.name ?? ""));
+}
+
+function sealsItself(ctor: Json): boolean {
+  const params = ((ctor.parameters as Json | undefined)?.parameters as unknown[]) ?? [];
+  const body = ((ctor.body as Json | undefined)?.statements as Json[]) ?? [];
+  if (params.length || ((ctor.modifiers as unknown[]) ?? []).length || body.length !== 1) return false;
+  const call = body[0].nodeType === "ExpressionStatement" ? (body[0].expression as Json) : null;
+  return call?.nodeType === "FunctionCall" && (call.expression as Json | undefined)?.name === "_disableInitializers";
 }
 
 /** Walk every node of an AST, calling `visit` on objects with a nodeType. */
@@ -302,6 +398,10 @@ export interface ContractCheckOptions {
   gdToken?: boolean;
   /** The user also explicitly asked for native CELO, so payable functions are allowed. */
   allowNative?: boolean;
+  /** An upgradeable project (D33): `initialize` replaces the constructor and its rules apply. */
+  upgradeable?: boolean;
+  /** Safety and storage checks for an upgradeable project, run after a clean compile. */
+  upgradeChecks?: (files: Record<string, string>) => Promise<CheckIssue[]>;
 }
 
 /** True when a request explicitly asks for native CELO (the word CELO, not "Celo" the network). */
@@ -320,7 +420,7 @@ export async function checkContracts(files: Record<string, string>, options: Con
 
   let result: { version: string; output: SolcOutput };
   try {
-    result = await runSolc(sources);
+    result = await runSolc(sources, undefined, { upgradeable: options.upgradeable });
   } catch (error) {
     return {
       ok: false,
@@ -348,7 +448,8 @@ export async function checkContracts(files: Record<string, string>, options: Con
     // Tests never deploy, so deploy guardrails don't apply to them (and a test touching
     // IERC20 mustn't satisfy the G$ "handles a token" check for the real contracts).
     if (!file.startsWith("contracts/") || isTestFile(file)) continue;
-    errors.push(...guardrailIssues(file, src.ast, files[file]));
+    errors.push(...guardrailIssues(file, src.ast, files[file], { upgradeable: options.upgradeable }));
+    if (options.upgradeable) errors.push(...upgradeableIssues(file, src.ast, files[file]));
     projectAsts.push({ file, ast: src.ast, content: files[file] });
   }
   if (options.gdToken && projectAsts.length) errors.push(...gdTokenIssues(projectAsts, { allowNative: options.allowNative }));
@@ -386,10 +487,12 @@ export async function checkContracts(files: Record<string, string>, options: Con
     if (!parsed.ok) {
       for (const i of parsed.issues) errors.push({ file: MANIFEST_PATH, message: i.message, source: "manifest" });
     } else {
-      const plan = planManifest(parsed.manifest, contracts.map((c) => ({ name: c.name, abi: c.abi as never })));
+      const plan = planManifest(parsed.manifest, contracts.map((c) => ({ name: c.name, abi: c.abi as never })), { upgradeable: options.upgradeable });
       if (!plan.ok) for (const i of plan.issues) errors.push({ file: MANIFEST_PATH, message: i.message, source: "manifest" });
     }
   }
+  // Only worth running on code that compiled and follows the rules: the agent fixes those first.
+  if (options.upgradeChecks && !errors.length && contracts.length) errors.push(...(await options.upgradeChecks(files)));
   return { ok: errors.length === 0, errors, warnings, contracts, tests, abis, compilerVersion: result.version };
 }
 

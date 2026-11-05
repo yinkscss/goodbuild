@@ -48,6 +48,39 @@ const base: DeployState = {
 const STATES: Record<string, DeployState> = {
   ready: base,
   replace: { ...base, plan: { ...plan, replaces: [{ name: "RTXPool", address: B, gdBalance: "1200500000000000000000" }, { name: "RTXToken", address: A, gdBalance: null }] } },
+  // Upgradeable trial (D33)
+  upgradeable: { ...base, plan: { ...plan, upgradeable: true, upgrades: [], proxies: {} } },
+  upgrade: {
+    ...base,
+    plan: { ...plan, upgradeable: true, upgrades: [{ name: "RTXPool", address: B }], proxies: { RTXPool: { address: B, admin: A, implementation: A, authority: "you" } }, alreadyDeployed: { RTXToken: A } },
+    steps: [{ name: "RTXToken", phase: "reused", address: A }, { name: "RTXPool", phase: "waiting" }],
+    needsTestGd: false,
+  },
+  upgrading: {
+    ...base,
+    stage: "running",
+    plan: { ...plan, upgradeable: true, upgrades: [{ name: "RTXPool", address: B }] },
+    steps: [{ name: "RTXPool", phase: "signing", part: "switch" }],
+    needsTestGd: false,
+  },
+  refused: {
+    ...base,
+    stage: "error",
+    steps: [],
+    error: { kind: "unknown", message: 'This change would scramble the data RTXPool has stored, because the stored value "fee" changed type. Nothing was changed. You can ask the builder to keep the stored data as it is, or deploy this as a new contract at a new address. The old contract keeps its funds and data, and nothing moves across.', at: "prepare", logs: ["contracts/RTXPool.sol:8: Upgraded `fee` to an incompatible type", "  - Bad upgrade from uint256 to uint128"], opcodes: [], code: "upgrade_refused" },
+  },
+  "not-ready": {
+    ...base,
+    stage: "error",
+    steps: [],
+    error: { kind: "unknown", message: "These contracts aren't ready to be upgradeable yet. Ask the builder to convert them, or turn upgrades off for this project.", at: "prepare", logs: ["RTXPool needs an external initialize function: in an upgradeable project it replaces the constructor."], opcodes: [], code: "upgradeable_not_ready" },
+  },
+  upgraded: {
+    ...base,
+    stage: "done",
+    plan: { ...plan, upgradeable: true, upgrades: [{ name: "RTXPool", address: B }], proxies: { RTXPool: { address: B, admin: A, implementation: A, authority: "you" } } },
+    steps: [{ name: "RTXPool", phase: "done", address: B, txHash: tx as `0x${string}`, verify: "verified" }],
+  },
   preparing: { ...base, stage: "preparing", plan: null, steps: [] },
   signing: { ...base, stage: "running", steps: [{ name: "RTXToken", phase: "signing" }, { name: "RTXPool", phase: "waiting" }] },
   broadcasting: { ...base, stage: "running", steps: [{ name: "RTXToken", phase: "broadcasting", txHash: tx as `0x${string}` }, { name: "RTXPool", phase: "waiting" }] },
@@ -93,6 +126,8 @@ export function DeployPreview({ state }: { state: string }) {
     reset: () => {},
     retry: () => {},
     claimTestGd: async () => "0x",
+    setUpgradeable: async () => {},
+    lockContract: async () => {},
   } as unknown as React.ComponentProps<typeof DeployModal>["deploy"];
   return (
     <AuthContextProvider value={auth}>

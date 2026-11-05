@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { useAuth } from "@/lib/auth/context";
 import { chainLabel, explorerAddressUrl, explorerTxUrl } from "@/lib/deploy/explorer";
-import type { StepPhase } from "@/lib/deploy/run";
+import type { StepPart, StepPhase } from "@/lib/deploy/run";
+import { CAN_BE_CHANGED_LABEL, isUpgradeableChain } from "@/lib/deploy/upgradeable";
 import { shortAddress } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useDeploy, type DeployState, type StepView } from "./use-deploy";
@@ -24,6 +25,13 @@ const PHASE_COPY: Record<StepPhase, string> = {
   recording: "Saving…",
   done: "Deployed",
   failed: "Failed",
+};
+
+/** A contract behind a proxy takes two transactions (D33), and the first changes nothing anyone uses. */
+const PART_COPY: Record<StepPart, string> = {
+  code: "Step 1 of 2, putting the new code on Celo",
+  proxy: "Step 2 of 2, creating its permanent address",
+  switch: "Step 2 of 2, switching to the new code",
 };
 
 /** Sign → Broadcast → Verified for the contract being deployed (DESIGN_SYSTEM §4). */
@@ -146,12 +154,15 @@ function ErrorCard({ deploy, onFix, chainId }: { deploy: Deploy; onFix: (prompt:
   if (!error) return null;
   const fromBuilder = error.at === "prepare" && ["manifest_missing", "manifest_invalid", "compile_failed"].includes(error.code ?? "");
   const opcode = error.kind === "opcode";
+  const refused = error.code === "upgrade_refused";
+  const notReady = error.code === "upgradeable_not_ready";
+  const heading = refused ? "We can't upgrade this safely" : notReady ? "Not ready to be upgradeable" : opcode ? "Celo can't run this contract yet" : error.at === "prepare" ? "We couldn't prepare the deploy" : `Couldn't deploy ${error.at}`;
   return (
     <div className="mt-5 rounded-block bg-canvas p-4" role="alert">
       <div className="flex items-start gap-3">
         <span className="mt-1.5 size-2 shrink-0 rounded-full bg-danger" aria-hidden />
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold">{opcode ? "Celo can't run this contract yet" : error.at === "prepare" ? "We couldn't prepare the deploy" : `Couldn't deploy ${error.at}`}</p>
+          <p className="text-sm font-semibold">{heading}</p>
           <p className="mt-1 text-sm text-grey-600">{error.message}</p>
           {opcode && (
             <p className="mt-1 text-sm text-grey-600">
@@ -177,7 +188,35 @@ function ErrorCard({ deploy, onFix, chainId }: { deploy: Deploy; onFix: (prompt:
                 Try fix
               </Button>
             )}
-            {!opcode && !fromBuilder && (
+            {refused && (
+              <>
+                <Button variant="chipSelected" size="chip" onClick={() => void deploy.prepare(state.evmVersion, { fresh: true })}>
+                  Deploy as a new contract
+                </Button>
+                <Button
+                  variant="chip"
+                  size="chip"
+                  onClick={() => onFix(`GoodBuild refused to upgrade the live contract: ${error.message}\n${error.logs.join("\n")}\nChange the contract so its existing state variables keep the same name, type and order, and new ones go after them. Follow the upgradeable rules.`)}
+                >
+                  Ask the builder to keep the data
+                </Button>
+              </>
+            )}
+            {notReady && (
+              <>
+                <Button
+                  variant="chipSelected"
+                  size="chip"
+                  onClick={() => onFix(`Make this project's contracts ready to be upgradeable. Follow the upgradeable rules in the project context.\n${error.logs.join("\n")}`)}
+                >
+                  Ask the builder to convert them
+                </Button>
+                <Button variant="chip" size="chip" onClick={() => void deploy.setUpgradeable(false)}>
+                  Turn upgrades off
+                </Button>
+              </>
+            )}
+            {!opcode && !fromBuilder && !refused && !notReady && (
               <Button variant="chipSelected" size="chip" onClick={() => (error.at === "prepare" ? void deploy.prepare(state.evmVersion) : deploy.retry())}>
                 Try again
               </Button>
@@ -228,7 +267,89 @@ function ReplaceNotice({ state }: { state: DeployState }) {
   );
 }
 
-function Success({ state, chainId }: { state: DeployState; chainId: number }) {
+/** The trial option, on testnet only. The server enforces that too (D33). */
+function UpgradeableRow({ deploy }: { deploy: Deploy }) {
+  const { state } = deploy;
+  const on = Boolean(state.plan?.upgradeable);
+  return (
+    <Row label="Can be changed later">
+      <span className="flex flex-wrap items-center justify-end gap-2">
+        <span className="rounded-full bg-tint px-2 py-0.5 text-[11px] font-semibold text-violet">Testnet trial</span>
+        {on ? "On" : "Off"}
+        <Button variant="chip" size="chip" disabled={state.stage !== "ready"} onClick={() => void deploy.setUpgradeable(!on)}>
+          {on ? "Turn off" : "Turn on"}
+        </Button>
+      </span>
+    </Row>
+  );
+}
+
+/** Before an upgradeable deploy: what stays, what changes and what will be asked of the wallet. */
+function UpgradeNotice({ state }: { state: DeployState }) {
+  if (!state.plan?.upgradeable) return null;
+  const upgrades = state.plan.upgrades ?? [];
+  const firsts = state.steps.filter((s) => s.phase !== "reused").length - upgrades.length;
+  if (!upgrades.length && firsts <= 0) return null;
+  return (
+    <div className="mt-3 rounded-block bg-tint p-4 text-sm text-violet-ink" role="status">
+      {upgrades.length > 0 ? (
+        <>
+          <p className="font-semibold">This upgrades {upgrades.map((u) => u.name).join(", ")}. The address stays the same.</p>
+          <ul className="mt-2 space-y-1">
+            {upgrades.map((u) => (
+              <li key={u.address}>
+                {u.name} at <code className="font-mono text-xs">{shortAddress(u.address)}</code> keeps its funds and data.
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2">You&apos;ll confirm twice for each: first to put the new code on Celo, which changes nothing yet, then to switch to it. A published app keeps working at the same address; publish again to show new features.</p>
+        </>
+      ) : (
+        <>
+          <p className="font-semibold">Your wallet will be able to change this contract later, at the same address.</p>
+          <p className="mt-2">You&apos;ll confirm twice for each contract: once for the code and once for its permanent address. Only your wallet can change it, and you can lock it for good. Published apps show &quot;{CAN_BE_CHANGED_LABEL}&quot;.</p>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Give up the right to change a contract. It can't be undone, so it asks twice. */
+function LockContract({ name, deploy }: { name: string; deploy: Deploy }) {
+  const [step, setStep] = React.useState<"idle" | "confirm" | "locking" | "failed">("idle");
+  if (step === "idle") {
+    return (
+      <button type="button" className="mt-1.5 block text-[11px] font-medium text-violet hover:underline" onClick={() => setStep("confirm")}>
+        Lock it so it can never change
+      </button>
+    );
+  }
+  return (
+    <div className="mt-2 rounded-tip bg-warning/10 p-3 text-sm" role="alert">
+      <p>Nobody, including you, will ever be able to change {name} again. This can&apos;t be undone.</p>
+      {step === "failed" && <p className="mt-1 text-grey-600">That didn&apos;t go through. Nothing changed.</p>}
+      <div className="mt-2 flex flex-wrap gap-2">
+        <Button
+          variant="chipSelected"
+          size="chip"
+          disabled={step === "locking"}
+          onClick={() => {
+            setStep("locking");
+            deploy.lockContract(name).catch(() => setStep("failed"));
+          }}
+        >
+          {step === "locking" ? "Check your wallet" : "Lock it for good"}
+        </Button>
+        <Button variant="chip" size="chip" disabled={step === "locking"} onClick={() => setStep("idle")}>
+          Keep it changeable
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function Success({ state, chainId, deploy }: { state: DeployState; chainId: number; deploy: Deploy }) {
+  const upgraded = (state.plan?.upgrades ?? []).length > 0;
   return (
     <div className="mt-5">
       <div className="relative mx-auto grid size-14 place-items-center">
@@ -238,6 +359,7 @@ function Success({ state, chainId }: { state: DeployState; chainId: number }) {
         </span>
       </div>
       <p className="mt-3 text-center text-sm text-grey-600">
+        {upgraded ? "Upgraded. Same address, and its funds and data are where they were. " : ""}
         {state.steps.length > 1 ? "All contracts are live" : "Your contract is live"} on {chainLabel(chainId)}. Your app now uses {state.steps.length > 1 ? "these addresses" : "this address"}.
       </p>
       <ul className="mt-4 space-y-2">
@@ -262,11 +384,17 @@ function Success({ state, chainId }: { state: DeployState; chainId: number }) {
                 </a>
               </div>
             )}
+            {state.plan?.proxies?.[s.name]?.authority === "locked" ? (
+              <p className="mt-1.5 text-[11px] text-grey-600">Locked: nobody can change this contract now.</p>
+            ) : state.plan?.proxies?.[s.name]?.authority === "you" || (state.plan?.upgradeable && s.phase === "done") ? (
+              <p className="mt-1.5 text-[11px] text-grey-600">{CAN_BE_CHANGED_LABEL}, by your wallet only.</p>
+            ) : null}
             {s.txHash && (
               <a href={explorerTxUrl(chainId, s.txHash)} target="_blank" rel="noreferrer" className="mt-1.5 inline-block text-[11px] text-violet hover:underline">
                 Transaction {shortAddress(s.txHash)}
               </a>
             )}
+            {state.plan?.proxies?.[s.name]?.authority === "you" && <LockContract name={s.name} deploy={deploy} />}
           </li>
         ))}
       </ul>
@@ -297,6 +425,7 @@ export function DeployModal({
   const [faucet, setFaucet] = React.useState<"idle" | "claiming" | "claimed" | "failed">("idle");
   const todo = state.steps.filter((s) => s.phase !== "reused" && s.phase !== "done").length;
   const current = state.steps.find((s) => !["waiting", "reused", "done"].includes(s.phase)) ?? [...state.steps].reverse().find((s) => s.phase === "done" || s.phase === "reused") ?? state.steps[0];
+  const upgrading = (state.plan?.upgrades ?? []).length > 0;
 
   function handleOpenChange(next: boolean) {
     if (!next && running) return; // a signature is pending; don't strand it
@@ -307,7 +436,7 @@ export function DeployModal({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:w-[560px]" onInteractOutside={(e) => running && e.preventDefault()}>
         <p className="eyebrow pr-10">{state.stage === "done" ? "Done" : "You sign, we build"}</p>
-        <DialogTitle className="display mt-2 pr-10 text-[28px] font-extrabold">{state.stage === "done" ? "Live on Celo" : "Deploy to Celo"}</DialogTitle>
+        <DialogTitle className="display mt-2 pr-10 text-[28px] font-extrabold">{state.stage === "done" ? "Live on Celo" : upgrading ? "Upgrade on Celo" : "Deploy to Celo"}</DialogTitle>
         <DialogDescription className="mt-2 text-sm text-grey-600">
           {state.stage === "done" ? "Everything is deployed and saved to your project." : "Your own wallet signs and pays the network fee. GoodBuild never holds your keys."}
         </DialogDescription>
@@ -348,8 +477,10 @@ export function DeployModal({
               <Row label="Review">
                 <span className="rounded-full bg-warning/10 px-2 py-0.5 text-[11px] font-semibold text-warning">Unaudited</span>
               </Row>
+              {isUpgradeableChain(state.plan.chainId) && <UpgradeableRow deploy={deploy} />}
             </dl>
 
+            <UpgradeNotice state={state} />
             <ReplaceNotice state={state} />
 
             {state.needsTestGd && (
@@ -377,6 +508,7 @@ export function DeployModal({
               {current && state.stage === "running" && (
                 <p className="mt-2 text-xs text-grey-600" aria-live="polite">
                   {state.steps.length > 1 && `${current.name}: `}
+                  {current.part && `${PART_COPY[current.part]}. `}
                   {PHASE_COPY[current.phase]}
                 </p>
               )}
@@ -384,7 +516,7 @@ export function DeployModal({
           </>
         )}
 
-        {state.stage === "done" && <Success state={state} chainId={state.plan?.chainId ?? chainId} />}
+        {state.stage === "done" && <Success state={state} chainId={state.plan?.chainId ?? chainId} deploy={deploy} />}
         {state.stage === "error" && <ErrorCard deploy={deploy} onFix={onFix} chainId={chainId} />}
 
         {wrongAccount && (
@@ -422,6 +554,8 @@ export function DeployModal({
                 <>
                   <Loader2 className="animate-spin motion-reduce:animate-none" /> Check your wallet
                 </>
+              ) : upgrading ? (
+                "Sign & upgrade"
               ) : todo > 1 ? (
                 `Sign & deploy ${todo} contracts`
               ) : (

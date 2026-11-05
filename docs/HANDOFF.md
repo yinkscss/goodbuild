@@ -25,6 +25,24 @@ Written 4 Nov 2026 at the end of the first build session (claude.ai), for whoeve
 ### Plan first (D32)
 A project's first message now asks questions before building. The chat no longer shows the build log or file chips. Tried with the demo model only: real model question quality is **UNVERIFIED**, because no real provider was called.
 
+### Upgradeable contracts trial (D33): built on a branch, not live-tested
+Proved in a local EVM with real compiled contracts (`src/server/deploy/upgradeable.evm.test.ts`). **Nothing has run on Celo Sepolia.** Modal states: `/dev/preview?deploy=upgradeable|upgrade|upgrading|refused|not-ready|upgraded`.
+
+**Live test, on Celo Sepolia, with your own wallet and test CELO (about 10 minutes):**
+1. Run the migration. Create a project with a small contract that holds G$, for example "a G$ savings jar where people deposit and withdraw". Let it build.
+2. Click Deploy. In the modal set "Can be changed later" to Turn on. It should say the contracts aren't ready; click "Ask the builder to convert them" and wait for the build.
+3. Deploy again. Expect two wallet confirmations per contract. Note the address. Check the chip: if it stays "Not verified yet", open the deployment's `verifyDetail` and record what Sourcify said.
+4. In the app, claim test G$ and deposit some. Note the balance.
+5. On Blockscout (or Celoscan), open the address. Record whether it shows as a proxy and what the code tab shows.
+6. Ask the builder: "add a function that shows the total number of deposits". Expect the chat to say "Upgrade", not "Deploy again", with no "new contract" warning.
+7. Upgrade. Expect two confirmations and the same address. Check your deposit and the G$ balance are still there, and the new feature works.
+8. Publish. Expect "This contract can be changed" in the bar at the top of the published app. Use it there.
+9. Refusal test: ask the builder "rename the deposits variable and change its type to uint128". If it pushes back, that's the agent's check doing its job. To see the deploy refusal, use Revert to go back to the version before step 6's change, then Deploy. If step 6 added a stored variable, expect "We can't upgrade this safely" with nothing sent to your wallet, and "Deploy as a new contract" should show the normal replaces notice. If it added no stored variable, the revert is a safe upgrade and goes through.
+10. Attacker test: from a second wallet on the explorer, try `upgradeAndCall` on the ProxyAdmin. Expect a revert.
+11. Lock: on the success screen use "Lock it so it can never change". Change the contract and try to upgrade. Expect a refusal saying it was locked. Publish again and the label should go.
+
+**Worth recording:** whether Magic email wallets handle a transaction with `to` set (the first such thing GoodBuild sends from them besides the faucet), the real fees, and whether Sourcify matches both contracts.
+
 ### M5 gaps
 **Wrong today:**
 - The deploy success screen says addresses are in the Contract tab, but that tab doesn't show them.

@@ -113,3 +113,60 @@ describe("DeployModal", () => {
     expect(keepsLine("0")).toBe("keeps its history and holds no G$");
   });
 });
+
+describe("DeployModal, upgradeable trial (D33)", () => {
+  const proxy = "0x00000000000000000000000000000000000000aa" as const;
+  const info = { address: proxy, admin: proxy, implementation: proxy, authority: "you" as const };
+  const upgradePlan = { ...plan, upgradeable: true, upgrades: [{ name: "Tip", address: proxy }], proxies: { Tip: info } } as Plan;
+
+  it("says the address stays, and shows no new-contract warning, for an upgrade", () => {
+    renderModal(state({ plan: upgradePlan }));
+    expect(screen.getByText("Upgrade on Celo")).toBeInTheDocument();
+    expect(screen.getByText(/The address stays the same/)).toBeInTheDocument();
+    expect(screen.getByText(/keeps its funds and data/)).toBeInTheDocument();
+    expect(screen.queryByText(/creates a new contract/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sign & upgrade" })).toBeInTheDocument();
+  });
+
+  it("says each confirmation's job while signing", () => {
+    renderModal(state({ plan: upgradePlan, stage: "running", steps: [{ name: "Tip", phase: "signing", part: "code" }] }));
+    expect(screen.getByText(/Step 1 of 2, putting the new code on Celo/)).toBeInTheDocument();
+  });
+
+  it("a refused upgrade offers a normal new deploy and the builder, not Try again", async () => {
+    const user = userEvent.setup();
+    const onFix = vi.fn();
+    const api = renderModal(state({ stage: "error", plan: null, steps: [], error: { kind: "unknown", message: "This change would scramble the data Tip has stored.", at: "prepare", logs: ["Deleted `a`"], opcodes: [], code: "upgrade_refused" } }), {}, onFix);
+    expect(screen.getByText("We can't upgrade this safely")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Try again" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Deploy as a new contract" }));
+    expect(api.prepare).toHaveBeenCalledWith("cancun", { fresh: true });
+    await user.click(screen.getByRole("button", { name: "Ask the builder to keep the data" }));
+    expect(onFix.mock.calls[0][0]).toMatch(/keep the same name, type and order/);
+  });
+
+  it("offers the option on testnet only", async () => {
+    const user = userEvent.setup();
+    const setUpgradeable = vi.fn();
+    renderModal(state({}), { setUpgradeable });
+    await user.click(screen.getByRole("button", { name: "Turn on" }));
+    expect(setUpgradeable).toHaveBeenCalledWith(true);
+  });
+
+  it("hides the option on mainnet", () => {
+    renderModal(state({ plan: { ...plan, chainId: 42220 } as Plan }));
+    expect(screen.queryByRole("button", { name: "Turn on" })).not.toBeInTheDocument();
+  });
+
+  it("labels a live contract and asks twice before locking it", async () => {
+    const user = userEvent.setup();
+    const lockContract = vi.fn().mockResolvedValue(undefined);
+    renderModal(state({ plan: upgradePlan, stage: "done", steps: [{ name: "Tip", phase: "done", address: proxy, verify: "verified" }] }), { lockContract });
+    expect(screen.getByText(/This contract can be changed, by your wallet only/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Lock it so it can never change/ }));
+    expect(lockContract).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toHaveTextContent(/can't be undone/);
+    await user.click(screen.getByRole("button", { name: "Lock it for good" }));
+    expect(lockContract).toHaveBeenCalledWith("Tip");
+  });
+});

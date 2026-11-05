@@ -328,7 +328,7 @@ describe("contractState", () => {
     db.insert(deployments).values({ projectId, userId, version: 1, runId: "r", chainId: 11142220, contractName, address: `0x${sourceHash}`, deployer: WALLET, txHash: `0x${contractName}${sourceHash}`, blockNumber: 1, compilerVersion: "0.8.28", evmVersion: "cancun", sourceHash, abi: [] });
 
   it("is empty for a website with no contracts", async () => {
-    expect(await contractState(db, project(), { "src/App.tsx": "x" })).toEqual({ names: [], live: [], outdated: [] });
+    expect(await contractState(db, project(), { "src/App.tsx": "x" })).toEqual({ names: [], live: [], outdated: [], upgradable: [], upgradeable: false });
   });
 
   it("separates never deployed, up to date and out of date", async () => {

@@ -94,6 +94,13 @@ function constructorInputs(abi: Abi): readonly AbiParameter[] {
   return ctor && ctor.type === "constructor" ? ctor.inputs : [];
 }
 
+/** What the manifest's arguments fill: the constructor, or `initialize` in an upgradeable project (D33). */
+function entryInputs(abi: Abi, upgradeable: boolean): readonly AbiParameter[] | null {
+  if (!upgradeable) return constructorInputs(abi);
+  const init = abi.find((item) => item.type === "function" && item.name === "initialize");
+  return init && init.type === "function" ? init.inputs : null;
+}
+
 /** Topological order that keeps the manifest's own order wherever dependencies allow. */
 export function topoSort(nodes: Array<{ name: string; dependsOn: string[] }>): { order: string[] } | { cycle: string[] } {
   const done = new Set<string>();
@@ -122,9 +129,10 @@ export function topoSort(nodes: Array<{ name: string; dependsOn: string[] }>): {
 
 /**
  * Check a manifest against the compiled contracts and put it in deploy order. Fails on unknown
- * contracts, missing or unknown constructor arguments, bad references and cycles.
+ * contracts, missing or unknown constructor arguments, bad references and cycles. In an upgradeable
+ * project the same arguments fill `initialize` instead.
  */
-export function planManifest(manifest: DeployManifest, contracts: ContractAbi[]): PlanResult {
+export function planManifest(manifest: DeployManifest, contracts: ContractAbi[], { upgradeable = false }: { upgradeable?: boolean } = {}): PlanResult {
   const issues: ManifestIssue[] = [];
   const abis = new Map(contracts.map((c) => [c.name, c.abi]));
   const listed = new Set<string>();
@@ -142,13 +150,18 @@ export function planManifest(manifest: DeployManifest, contracts: ContractAbi[])
   for (const entry of manifest.contracts) {
     const abi = abis.get(entry.name);
     if (!abi) continue;
-    const inputs = constructorInputs(abi);
+    const inputs = entryInputs(abi, upgradeable);
+    if (!inputs) {
+      issues.push({ message: `${entry.name} needs an external initialize function: in an upgradeable project it replaces the constructor.` });
+      continue;
+    }
+    const what = upgradeable ? "initialize" : "constructor";
     const names = inputs.map((i) => i.name ?? "");
     const missing = names.filter((n) => n && !(n in entry.args));
     const unknown = Object.keys(entry.args).filter((k) => !names.includes(k));
-    if (inputs.some((i) => !i.name)) issues.push({ message: `${entry.name} has an unnamed constructor parameter; name every constructor parameter so the manifest can fill it.` });
-    if (missing.length) issues.push({ message: `${entry.name}: constructor argument${missing.length > 1 ? "s" : ""} ${missing.join(", ")} missing in ${MANIFEST_PATH}.` });
-    if (unknown.length) issues.push({ message: `${entry.name}: ${unknown.join(", ")} ${unknown.length > 1 ? "are" : "is"} not a constructor parameter (expected: ${names.join(", ") || "none"}).` });
+    if (inputs.some((i) => !i.name)) issues.push({ message: `${entry.name} has an unnamed ${what} parameter; name every ${what} parameter so the manifest can fill it.` });
+    if (missing.length) issues.push({ message: `${entry.name}: ${what} argument${missing.length > 1 ? "s" : ""} ${missing.join(", ")} missing in ${MANIFEST_PATH}.` });
+    if (unknown.length) issues.push({ message: `${entry.name}: ${unknown.join(", ")} ${unknown.length > 1 ? "are" : "is"} not a ${what} parameter (expected: ${names.join(", ") || "none"}).` });
 
     const dependsOn = new Set<string>();
     for (const value of Object.values(entry.args)) {
@@ -256,9 +269,9 @@ export function coerceArg(param: AbiParameter, value: ArgValue): unknown {
   throw new Error(`${label}: unsupported type ${type}.`);
 }
 
-/** Positional constructor arguments for a step, with references filled and values typed for viem. */
-export function resolveArgs(step: PlannedStep, abi: Abi, ctx: ResolveContext): unknown[] {
-  return constructorInputs(abi).map((input) => {
+/** Positional constructor (or `initialize`) arguments for a step, with references filled and values typed for viem. */
+export function resolveArgs(step: PlannedStep, abi: Abi, ctx: ResolveContext, { upgradeable = false }: { upgradeable?: boolean } = {}): unknown[] {
+  return (entryInputs(abi, upgradeable) ?? []).map((input) => {
     const raw = step.args[input.name ?? ""];
     return coerceArg(input, fill(raw, ctx));
   });

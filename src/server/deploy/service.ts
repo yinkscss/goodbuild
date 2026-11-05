@@ -10,39 +10,32 @@ import { goodDollarAddress, isTestGoodDollar } from "@/config/gooddollar";
 import { isMainnetEnabled } from "@/config/networks";
 import { chainLabel } from "@/lib/deploy/explorer";
 import { MANIFEST_PATH, parseManifest, planManifest, referencesIn, type ArgValue } from "@/lib/deploy/manifest";
+import type { ProxyInfo, UpgradeableStep } from "@/lib/deploy/upgradeable";
 import { loadFiles } from "@/server/agent/store";
 import { PLATFORM_DIR } from "@/server/agent/template";
 import type { Db } from "@/server/db/client";
 import { deployments, type Deployment } from "@/server/db/deploy-schema";
 import { messages, projectFiles, projects } from "@/server/db/schema";
 import { withCurrentAddresses } from "./addresses";
-import { compileForDeploy, type EvmVersion } from "./compile";
+import { compileForDeploy, type DeployCompile, type EvmVersion } from "./compile";
+import { DeployError } from "./deploy-error";
+import {
+  adoptUnchanged,
+  assertUpgradeableChain,
+  buildProblems,
+  existingUpgrade,
+  isUpgradeableProject,
+  latestProxyRows,
+  planProxyUpgrade,
+  readAuthority,
+  readProxy,
+  recordProxyCreation,
+  recordUpgrade,
+  refusalError,
+  type UpgradeRefusal,
+} from "./upgradeable";
 
-export type DeployErrorCode =
-  | "mainnet_disabled"
-  | "unsupported_chain"
-  | "manifest_missing"
-  | "manifest_invalid"
-  | "compile_failed"
-  | "gooddollar_missing"
-  | "source_changed"
-  | "tx_not_found"
-  | "tx_failed"
-  | "not_contract_creation"
-  | "wrong_sender"
-  | "bytecode_mismatch"
-  | "wrong_contract";
-
-export class DeployError extends Error {
-  constructor(
-    readonly code: DeployErrorCode,
-    message: string,
-    readonly details: string[] = [],
-  ) {
-    super(message);
-    this.name = "DeployError";
-  }
-}
+export { DeployError, type DeployErrorCode } from "./deploy-error";
 
 export interface DeployStepPlan {
   name: string;
@@ -54,6 +47,8 @@ export interface DeployStepPlan {
   /** Constructor arguments by parameter name, references still unresolved. */
   args: Record<string, ArgValue>;
   dependsOn: string[];
+  /** Behind a proxy (D33): a first deploy or a live proxy getting new code. */
+  upgradeable?: UpgradeableStep;
 }
 
 export interface DeployPlan {
@@ -75,6 +70,12 @@ export interface DeployPlan {
   alreadyDeployed: Record<string, Address>;
   /** Live contracts this deploy leaves behind. They keep their funds and history. */
   replaces: ReplacedContract[];
+  /** This project opted in to upgradeable contracts (D33). */
+  upgradeable: boolean;
+  /** Live proxies that get new code at the same address. They aren't replaced: nothing is left behind. */
+  upgrades: Array<{ name: string; address: Address }>;
+  /** Live proxies by contract name, with who can still change each one (read from the chain). */
+  proxies: Record<string, ProxyInfo>;
 }
 
 export interface ReplacedContract {
@@ -98,10 +99,21 @@ export function assertChain(chainId: number, mainnetEnabled = isMainnetEnabled(p
  */
 export async function prepareDeploy(
   db: Db,
-  input: { projectId: string; chainId: number; evmVersion?: EvmVersion },
-  deps: { compile?: typeof compileForDeploy; client?: Pick<PublicClient, "readContract"> } = {},
+  input: {
+    projectId: string;
+    chainId: number;
+    evmVersion?: EvmVersion;
+    /** The session wallet: it must hold a proxy's upgrade authority. */
+    wallet?: string;
+    /** After a refused upgrade: deploy what changed as new contracts at new addresses instead. */
+    fresh?: boolean;
+  },
+  deps: { compile?: typeof compileForDeploy; client?: Pick<PublicClient, "readContract" | "getStorageAt"> } = {},
 ): Promise<DeployPlan> {
   assertChain(input.chainId);
+  // Keyed on the chain this request names, not only the project's: this is the rule at the server.
+  const upgradeable = await isUpgradeableProject(db, input.projectId);
+  if (upgradeable) assertUpgradeableChain(input.chainId);
   const files = await loadFiles(db, input.projectId);
   const [project] = await db.select({ version: projects.currentVersion }).from(projects).where(eq(projects.id, input.projectId)).limit(1);
 
@@ -112,11 +124,18 @@ export async function prepareDeploy(
   const parsed = parseManifest(manifestSource);
   if (!parsed.ok) throw new DeployError("manifest_invalid", "The deploy manifest has problems.", parsed.issues.map((i) => i.message));
 
-  const compiled = await (deps.compile ?? compileForDeploy)(files, input.evmVersion ?? "cancun");
+  const compiled = await (deps.compile ?? compileForDeploy)(files, input.evmVersion ?? "cancun", undefined, { upgradeable });
   if (!compiled.ok) throw new DeployError("compile_failed", "The contracts didn't compile.", compiled.errors.slice(0, 8));
 
-  const plan = planManifest(parsed.manifest, compiled.artifacts.map((a) => ({ name: a.name, abi: a.abi })));
-  if (!plan.ok) throw new DeployError("manifest_invalid", "The deploy manifest has problems.", plan.issues.map((i) => i.message));
+  const plan = planManifest(parsed.manifest, compiled.artifacts.map((a) => ({ name: a.name, abi: a.abi })), { upgradeable });
+  if (!plan.ok) {
+    if (upgradeable) throw new DeployError("upgradeable_not_ready", NOT_READY, plan.issues.map((i) => i.message));
+    throw new DeployError("manifest_invalid", "The deploy manifest has problems.", plan.issues.map((i) => i.message));
+  }
+  if (compiled.upgradeable) {
+    const problems = buildProblems(compiled.upgradeable, plan.steps.map((s) => s.name));
+    if (problems.length) throw new DeployError("upgradeable_not_ready", NOT_READY, problems.slice(0, 12));
+  }
 
   const gooddollar = goodDollarAddress(input.chainId);
   const usesGd = plan.steps.some((s) => Object.values(s.args).some((v) => referencesIn(v).some((r) => r.ref?.kind === "gooddollar")));
@@ -140,14 +159,25 @@ export async function prepareDeploy(
     .orderBy(desc(deployments.createdAt));
   const latest = new Map<string, Address>();
   for (const r of replaced) if (!latest.has(r.name)) latest.set(r.name, r.address as Address);
+
+  const routes = compiled.upgradeable ? await routeProxies(db, input, compiled, plan.steps, alreadyDeployed, deps.client) : null;
+  if (routes) Object.assign(alreadyDeployed, routes.unchanged);
+
   const replaces = await Promise.all(
     plan.steps
-      .filter((s) => !alreadyDeployed[s.name] && latest.has(s.name))
+      .filter((s) => !alreadyDeployed[s.name] && latest.has(s.name) && !routes?.upgrades[s.name])
       .map(async (s): Promise<ReplacedContract> => {
         const address = latest.get(s.name)!;
         return { name: s.name, address, gdBalance: gooddollar ? await readGdBalance(deps.client ?? publicClientFor(input.chainId), gooddollar, address) : null };
       }),
   );
+
+  const stepPlan = (s: (typeof plan.steps)[number]): UpgradeableStep | undefined => {
+    if (!compiled.upgradeable) return undefined;
+    const upgrade = routes?.upgrades[s.name];
+    if (upgrade) return { kind: "upgrade", proxy: upgrade.address, admin: upgrade.admin };
+    return { kind: "first", proxyAbi: compiled.upgradeable.proxy.abi, proxyBytecode: compiled.upgradeable.proxy.bytecode };
+  };
 
   return {
     runId: randomUUID(),
@@ -163,11 +193,66 @@ export async function prepareDeploy(
     unaudited: true,
     steps: plan.steps.map((s) => {
       const a = byName.get(s.name)!;
-      return { name: s.name, file: a.file, abi: a.abi, bytecode: a.bytecode, deployedBytecode: a.deployedBytecode, bytecodeBytes: (a.bytecode.length - 2) / 2, args: s.args, dependsOn: s.dependsOn };
+      return { name: s.name, file: a.file, abi: a.abi, bytecode: a.bytecode, deployedBytecode: a.deployedBytecode, bytecodeBytes: (a.bytecode.length - 2) / 2, args: s.args, dependsOn: s.dependsOn, upgradeable: stepPlan(s) };
     }),
     alreadyDeployed,
     replaces,
+    upgradeable,
+    upgrades: Object.values(routes?.upgrades ?? {}).map((u) => ({ name: u.name, address: u.address })),
+    proxies: routes?.proxies ?? {},
   };
+}
+
+const NOT_READY = "These contracts aren't ready to be upgradeable yet. Ask the builder to convert them, or turn upgrades off for this project.";
+
+/**
+ * For each contract with a live proxy: nothing changed, a safe upgrade, or a refusal. A refused
+ * upgrade stops the whole plan unless the user chose a normal new deploy (`fresh`), and that choice
+ * also covers anything built on what becomes a new address.
+ */
+async function routeProxies(
+  db: Db,
+  input: { projectId: string; chainId: number; wallet?: string; fresh?: boolean },
+  compiled: DeployCompile,
+  steps: Array<{ name: string; dependsOn: string[] }>,
+  alreadyDeployed: Record<string, Address>,
+  client: Pick<PublicClient, "readContract" | "getStorageAt"> = publicClientFor(input.chainId),
+) {
+  const proxyRows = await latestProxyRows(db, { id: input.projectId, chainId: input.chainId });
+  const artifacts = new Map(compiled.artifacts.map((a) => [a.name, a]));
+  const unchanged: Record<string, Address> = {};
+  const upgrades: Record<string, { name: string; address: Address; admin: Address }> = {};
+  const proxies: Record<string, ProxyInfo> = {};
+  const refusals: UpgradeRefusal[] = [];
+
+  for (const step of steps) {
+    const row = proxyRows.get(step.name);
+    if (!row?.proxy) continue;
+    const artifact = artifacts.get(step.name)!;
+    if (alreadyDeployed[step.name]) {
+      const live = await readProxy(client, getAddress(row.address)).catch(() => null);
+      if (live) proxies[step.name] = { address: getAddress(row.address), admin: live.admin, implementation: live.implementation, authority: await readAuthority(client, live.admin, input.wallet) };
+      continue;
+    }
+    const outcome = await planProxyUpgrade(client, row, artifact, compiled.upgradeable!, input.wallet);
+    if ("reason" in outcome) {
+      if (!input.fresh) refusals.push(outcome);
+      continue;
+    }
+    proxies[step.name] = outcome.info;
+    if (outcome.kind === "unchanged") unchanged[step.name] = getAddress(row.address);
+    else if (!input.fresh) upgrades[step.name] = { name: step.name, address: getAddress(row.address), admin: outcome.info.admin };
+  }
+  if (refusals.length) throw refusalError(refusals);
+
+  // A contract is built with the addresses it depends on, so a dependency at a new address means it is new too.
+  if (input.fresh) {
+    for (const step of steps) {
+      if (unchanged[step.name] && step.dependsOn.some((d) => !unchanged[d] && !alreadyDeployed[d])) delete unchanged[step.name];
+    }
+  }
+  if (Object.keys(unchanged).length) await adoptUnchanged(db, compiled, { id: input.projectId, chainId: input.chainId }, Object.keys(unchanged));
+  return { unchanged, upgrades, proxies };
 }
 
 /** A warning shouldn't block a deploy, so a failed read just means the balance isn't shown. */
@@ -197,6 +282,8 @@ export interface RecordInput {
   txHash: Hex;
   sourceHash: Hex;
   evmVersion: EvmVersion;
+  /** Behind a proxy (D33): what `txHash` is, and the transaction that deployed the new code. */
+  proxied?: { kind: "proxy" | "upgrade"; implementationTxHash: Hex };
 }
 
 /**
@@ -220,6 +307,20 @@ export async function recordDeployment(
   if (existing[0]) {
     if (existing[0].userId !== input.userId || existing[0].projectId !== input.projectId) throw new DeployError("wrong_sender", "That transaction belongs to another project.");
     return existing[0]; // idempotent: a retried request returns the same row
+  }
+
+  const upgradeable = await isUpgradeableProject(db, input.projectId);
+  if (upgradeable || input.proxied) {
+    assertUpgradeableChain(input.chainId);
+    if (!upgradeable) throw new DeployError("wrong_upgrade", "This project isn't upgradeable, so GoodBuild won't record a proxy for it.");
+    if (!input.proxied) throw new DeployError("wrong_upgrade", "This project's contracts deploy behind a proxy. Start the deploy again.");
+    const proxiedInput = { ...input, implementationTxHash: input.proxied.implementationTxHash };
+    const retried = await existingUpgrade(db, input);
+    if (retried) return retried;
+    const row = input.proxied.kind === "upgrade" ? await recordUpgrade(db, proxiedInput, { client, compile: deps.compile }) : await recordProxyCreation(db, proxiedInput, { client, compile: deps.compile });
+    await syncContractModules(db, input.projectId);
+    await db.update(projects).set({ status: "deployed" }).where(eq(projects.id, input.projectId));
+    return row;
   }
 
   const [receipt, tx] = await Promise.all([
@@ -298,6 +399,7 @@ export function publicDeployment(d: Deployment) {
     verifyStatus: d.verifyStatus,
     verifyProvider: d.verifyProvider,
     verifyDetail: d.verifyDetail,
+    upgradeable: Boolean(d.proxy),
     createdAt: d.createdAt,
   };
 }

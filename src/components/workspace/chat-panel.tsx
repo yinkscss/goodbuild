@@ -20,6 +20,8 @@ import { VerifyCard } from "./verify-card";
 /** Left pane of the workspace (mockup c): the conversation and the composer. */
 export function ChatPanel({ ws, assetUrls = {} }: { ws: UseWorkspace; assetUrls?: Record<string, string> }) {
   const { state, live, running, send } = ws;
+  // Behind a proxy (D33), new code arrives at the same address: no "new contract" warning belongs here.
+  const sameAddress = state.outdatedContracts.length > 0 && state.outdatedContracts.every((name) => state.upgradableContracts.includes(name));
   const endRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
@@ -123,9 +125,9 @@ export function ChatPanel({ ws, assetUrls = {} }: { ws: UseWorkspace; assetUrls?
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-block bg-warning/10 p-4 text-sm" role="status">
             <p className="min-w-0 flex-1">
               <span className="font-semibold">{state.outdatedContracts.join(", ")} {state.outdatedContracts.length > 1 ? "don't" : "doesn't"} have your latest contract changes yet.</span>{" "}
-              <span className="text-grey-600">Your app keeps using the live version until you deploy again.</span>
+              <span className="text-grey-600">{sameAddress ? "Upgrade from your wallet to apply them. The address, funds and data stay the same." : "Your app keeps using the live version until you deploy again."}</span>
             </p>
-            <DeployButton label="Deploy again" size="sm" />
+            <DeployButton label={sameAddress ? "Upgrade" : "Deploy again"} size="sm" />
           </div>
         )}
         <OldFundsCard projectId={state.project.id} chainId={state.project.chainId} refreshKey={state.project.currentVersion} busy={running} onAsk={suggest} />
