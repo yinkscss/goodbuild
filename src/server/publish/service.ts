@@ -1,9 +1,13 @@
 import "server-only";
 
+import { randomBytes } from "node:crypto";
+
 import { and, eq, ne } from "drizzle-orm";
 
+import { DATA_RULES_PATH, parseDataRules } from "@/lib/app-data";
 import { slugFromName, slugProblem } from "@/lib/published-host";
 import { dbAssetStore } from "@/server/agent/asset-store";
+import { hideRecordsNoLongerPublic } from "@/server/app-data/store";
 import { loadFiles } from "@/server/agent/store";
 import type { Db } from "@/server/db/client";
 import { publicationFiles, publications, type Publication } from "@/server/db/publish-schema";
@@ -105,6 +109,10 @@ export async function publishApp(db: Db, project: Project, slug: string, deps: {
   if (!(await slugAvailable(db, slug, project.id))) throw new PublishError("slug_taken", "That address is taken. Try another.");
 
   const saved = await loadFiles(db, project.id);
+  const { rules: dataRules, issues: ruleIssues } = parseDataRules(saved[DATA_RULES_PATH]);
+  if (ruleIssues.length) throw new PublishError("build_failed", "The app's data rules aren't valid.", ruleIssues);
+  // Public (docs/APP_DATA.md). Keeps its value across republishing, so a built page never goes stale.
+  const clientId = existing?.clientId ?? `gbc_${randomBytes(16).toString("hex")}`;
   const undeployed = await undeployedContracts(db, project, saved);
   const files = await withCurrentAddresses(db, project.id, saved);
 
@@ -118,7 +126,7 @@ export async function publishApp(db: Db, project: Project, slug: string, deps: {
 
   let built: PublishedFile[];
   try {
-    built = await (deps.build ?? buildPublishedApp)({ files, assets, title: project.name, reportUrl: reportUrl(slug), hasUndeployedContracts: undeployed.length > 0 });
+    built = await (deps.build ?? buildPublishedApp)({ files, assets, title: project.name, reportUrl: reportUrl(slug), hasUndeployedContracts: undeployed.length > 0, dataClientId: clientId });
   } catch (error) {
     if (error instanceof PublishBuildError) throw new PublishError("build_failed", error.message, error.details);
     throw error;
@@ -126,14 +134,15 @@ export async function publishApp(db: Db, project: Project, slug: string, deps: {
 
   try {
     await db.transaction(async (tx) => {
-      const values = { slug, versionNumber: project.currentVersion, hasUndeployedContracts: undeployed.length > 0, publishedAt: new Date(), unpublishedAt: null };
+      const values = { slug, versionNumber: project.currentVersion, hasUndeployedContracts: undeployed.length > 0, publishedAt: new Date(), unpublishedAt: null, dataRules };
       const [row] = await tx
         .insert(publications)
-        .values({ projectId: project.id, ...values })
+        .values({ projectId: project.id, clientId, ...values })
         .onConflictDoUpdate({ target: publications.projectId, set: values })
         .returning({ id: publications.id });
       await tx.delete(publicationFiles).where(eq(publicationFiles.publicationId, row.id));
       await tx.insert(publicationFiles).values(built.map((f) => ({ publicationId: row.id, path: f.path, mime: f.mime, bytes: f.bytes })));
+      await hideRecordsNoLongerPublic(tx, project.id, dataRules);
     });
   } catch (error) {
     if (isUniqueViolation(error)) throw new PublishError("slug_taken", "That address is taken. Try another.");

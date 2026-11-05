@@ -1,4 +1,5 @@
-import { boolean, customType, integer, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { boolean, customType, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 
 import { projects } from "./schema";
 
@@ -25,8 +26,14 @@ export const publications = pgTable(
     unpublishedAt: timestamp("unpublished_at", { withTimezone: true }),
     /** Admin takedown. The owner can't publish again while this is set. */
     disabledAt: timestamp("disabled_at", { withTimezone: true }),
+    /** Public id the built app sends with data requests. Not a secret and never grants access (docs/APP_DATA.md). */
+    clientId: text("client_id")
+      .notNull()
+      .default(sql`'gbc_' || replace(gen_random_uuid()::text, '-', '')`),
+    /** Access rule per collection, snapshotted from the app's rules file when it is published. */
+    dataRules: jsonb("data_rules").$type<Record<string, string>>().notNull().default({}),
   },
-  (t) => [uniqueIndex("publications_project_idx").on(t.projectId), uniqueIndex("publications_slug_idx").on(t.slug)],
+  (t) => [uniqueIndex("publications_project_idx").on(t.projectId), uniqueIndex("publications_slug_idx").on(t.slug), uniqueIndex("publications_client_idx").on(t.clientId)],
 );
 
 /** The immutable built snapshot: later builds or deleted assets can't change a live app. */
