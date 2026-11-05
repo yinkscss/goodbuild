@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Abi, Address, Hex } from "viem";
 
-import { classifyDeployError } from "./errors";
+import { classifyDeployError, errorDetail } from "./errors";
 import { newOpcodesUsed } from "./opcodes";
 import { runDeploy, StepFailure, usesGoodDollar, type DeployEnv, type DeployEvent, type DeployProgress, type Plan } from "./run";
 import { chainSupportsOpcode, simulateCreation, UnsupportedOpcodeError } from "./simulate";
@@ -128,6 +128,24 @@ describe("runDeploy", () => {
     await runDeploy(plan({ steps: plan().steps.slice(0, 1) }), e, undefined, progress);
     expect(e.send).not.toHaveBeenCalled();
     expect(e.record).toHaveBeenCalledTimes(1);
+  });
+
+  it("hands the wallet the simulation's gas estimate", async () => {
+    const { e } = env();
+    await runDeploy(plan({ steps: plan().steps.slice(0, 1) }), e);
+    expect(e.send).toHaveBeenCalledWith(expect.any(String), BigInt(100));
+  });
+
+  it("logs the wallet's real reason, which viem puts past the long transaction data", () => {
+    const raw = Object.assign(new Error(`An internal error was received.\n\nRequest Arguments:\n  data: 0x${"ab".repeat(4000)}`), {
+      shortMessage: "An internal error was received.",
+      code: -32603,
+      details: "Magic RPC Error: [-32603] Error forwarded from node: transaction underpriced",
+    });
+    const detail = errorDetail(Object.assign(new Error("Failed"), { cause: raw }));
+    expect(detail).toContain("transaction underpriced");
+    expect(detail).toContain("-32603");
+    expect(detail.length).toBeLessThan(800);
   });
 
   it("knows whether a plan uses G$", () => {
