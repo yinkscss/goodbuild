@@ -1,12 +1,21 @@
 "use client";
 
+import * as React from "react";
+
 import { useSendGate } from "@/components/auth/send-gate";
-import { PromptBox } from "@/components/prompt/prompt-box";
+import { PromptBox, type PromptBoxHandle } from "@/components/prompt/prompt-box";
 import { SAMPLE_CREDITS_LABEL } from "@/config/landing-stats";
 import { isMainnetEnabled } from "@/config/networks";
 import { LANDING_CHIP_IDS, getTemplate } from "@/config/templates";
 
 const chips = LANDING_CHIP_IDS.map((id) => getTemplate(id)).filter((t) => t !== undefined);
+
+const FILL_EVENT = "gb:fill-prompt";
+
+/** Fill the landing prompt from a template elsewhere on the page and bring it into view. */
+export function fillLandingPrompt(templateId: string) {
+  window.dispatchEvent(new CustomEvent<string>(FILL_EVENT, { detail: templateId }));
+}
 
 /**
  * Landing prompt box. Typing is always allowed; Send goes through the gate, which
@@ -14,8 +23,20 @@ const chips = LANDING_CHIP_IDS.map((id) => getTemplate(id)).filter((t) => t !== 
  */
 export function LandingPrompt() {
   const { send, sendError } = useSendGate();
+  const box = React.useRef<PromptBoxHandle>(null);
+
+  React.useEffect(() => {
+    const onFill = (e: Event) => {
+      const template = getTemplate((e as CustomEvent<string>).detail);
+      if (template) box.current?.fill(template);
+    };
+    window.addEventListener(FILL_EVENT, onFill);
+    return () => window.removeEventListener(FILL_EVENT, onFill);
+  }, []);
+
   return (
     <PromptBox
+      ref={box}
       chips={chips}
       creditsLabel={SAMPLE_CREDITS_LABEL}
       mainnetEnabled={isMainnetEnabled()}
