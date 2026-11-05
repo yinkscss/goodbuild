@@ -29,8 +29,8 @@ export interface DeployEnv {
   account: Address;
   /** Throws on a rejected bytecode or a reverting constructor. */
   simulate(args: { data: Hex; runtimeBytecode?: Hex }): Promise<{ gas: bigint }>;
-  /** Asks the wallet to sign and broadcast the creation transaction; returns its hash. */
-  send(data: Hex): Promise<Hex>;
+  /** Asks the wallet to sign and broadcast the creation transaction; returns its hash. `gas` is the simulation's estimate. */
+  send(data: Hex, gas: bigint): Promise<Hex>;
   /** Waits until the transaction is mined. */
   waitForReceipt(hash: Hex): Promise<{ status: "success" | "reverted" }>;
   /** Server-side: reads the chain, verifies the transaction, stores it, returns the deployed address. */
@@ -96,10 +96,10 @@ export async function runDeploy(
       let txHash = progress.sent[step.name];
       if (!txHash) {
         phase("simulating");
-        await env.simulate({ data, runtimeBytecode: step.deployedBytecode });
+        const { gas } = await env.simulate({ data, runtimeBytecode: step.deployedBytecode });
 
         phase("signing");
-        txHash = await env.send(data);
+        txHash = await env.send(data, gas);
         progress.sent[step.name] = txHash;
         onEvent({ type: "sent", step: step.name, txHash });
       }

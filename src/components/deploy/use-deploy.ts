@@ -5,7 +5,7 @@ import { createPublicClient, formatEther, http, type Address, type Hex } from "v
 
 import { useAuth } from "@/lib/auth/context";
 import { celoChainFor } from "@/lib/auth/wallet-client";
-import { classifyDeployError, type ClassifiedError } from "@/lib/deploy/errors";
+import { classifyDeployError, errorDetail, type ClassifiedError } from "@/lib/deploy/errors";
 import { loadSent, pendingKey, saveSent } from "@/lib/deploy/pending";
 import { runDeploy, StepFailure, usesGoodDollar, type DeployEvent, type DeployProgress, type Plan, type PlanStep, type StepPhase } from "@/lib/deploy/run";
 import { simulateCreation } from "@/lib/deploy/simulate";
@@ -141,7 +141,11 @@ export function useDeploy({ projectId, chainId, onDeployed }: { projectId: strin
         {
           account,
           simulate: ({ data, runtimeBytecode }) => simulateCreation(publicClient, { account, data, runtimeBytecode }),
-          send: (data) => walletClient.sendTransaction({ account, chain: celoChainFor(plan.chainId), data, to: undefined }),
+          send: async (data, gas) => {
+            // Email wallets get explicit gas and fees: left to itself, Magic can fail on a custom network.
+            const fees = wallet.kind === "embedded" ? { gas: (gas * BigInt(13)) / BigInt(10), ...(await publicClient.estimateFeesPerGas()) } : {};
+            return walletClient.sendTransaction({ account, chain: celoChainFor(plan.chainId), data, to: undefined, ...fees });
+          },
           waitForReceipt: (hash) => publicClient.waitForTransactionReceipt({ hash, timeout: 120_000 }),
           record: async (step, txHash) => {
             const res = await fetch(`/api/projects/${projectId}/deployments`, {
@@ -170,7 +174,7 @@ export function useDeploy({ projectId, chainId, onDeployed }: { projectId: strin
       // Finished contracts are saved and their addresses are in the project files, so refresh those.
       if (Object.keys(progressRef.current.deployed).length) onDeployed([]);
       if (e instanceof StepFailure) {
-        log(`${e.step}: ${e.error.kind} ${String((e.raw as Error | undefined)?.message ?? e.message).slice(0, 300)}`);
+        log(`${e.step}: ${e.error.kind} ${errorDetail(e.raw ?? e)}`);
         setState((s) => ({ ...s, stage: "error", error: { ...e.error, at: e.step, logs: logsRef.current, opcodes: e.opcodes } }));
       } else {
         const err = classifyDeployError(e);

@@ -19,6 +19,19 @@ function textOf(error: unknown): string {
  */
 export const OPCODE_ERROR = /invalid opcode|opcode 0x[0-9a-f]+ not defined|undefined instruction|InvalidFEOpcode|invalid instruction/i;
 
+/**
+ * What to log for a failed step. A wallet's real reason is in `details` or further down the cause
+ * chain, and viem's message puts the long transaction data first, so a cut-off message loses it.
+ */
+export function errorDetail(error: unknown, limit = 800): string {
+  const parts: string[] = [];
+  for (let e = error as { shortMessage?: string; details?: string; message?: string; code?: number; cause?: unknown } | null | undefined, depth = 0; e && depth < 6; e = e.cause as typeof e, depth++) {
+    const line = [e.code !== undefined ? `[${e.code}]` : "", e.shortMessage ?? e.message?.split("\n")[0] ?? "", e.details ?? ""].filter(Boolean).join(" ");
+    if (line && !parts.includes(line)) parts.push(line);
+  }
+  return parts.join(" <- ").slice(0, limit);
+}
+
 export function classifyDeployError(error: unknown): ClassifiedError {
   const text = textOf(error);
   const code = (error as { code?: number } | null)?.code;
