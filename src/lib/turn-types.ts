@@ -20,6 +20,39 @@ export interface Step {
   status: "running" | "done" | "error";
 }
 
+/** One answer choice on a plan question. For a palette question the id is the palette's id. */
+export interface PlanOption {
+  id: string;
+  label: string;
+  detail?: string;
+  recommended?: boolean;
+}
+
+export interface PlanQuestion {
+  id: string;
+  kind: "choice" | "palette";
+  question: string;
+  /** One to three words, for the summary list. */
+  label: string;
+  /** Several options can apply together. */
+  multiple: boolean;
+  options: PlanOption[];
+}
+
+export interface PlanAnswer {
+  /** Ids of the options picked. */
+  picks: string[];
+  /** Their own words, from "Other". */
+  other?: string;
+}
+
+/** The plan-first questions (D32), stored on the turn that asked them, with answers as they come. */
+export interface PlanIntake {
+  summary: string;
+  questions: PlanQuestion[];
+  answers: Record<string, PlanAnswer>;
+}
+
 export type TurnEvent =
   | { type: "start"; messageId: string; mode: TurnMode }
   | { type: "text"; delta: string }
@@ -28,6 +61,8 @@ export type TurnEvent =
   | { type: "plan"; summary: string; steps: string[] }
   /** Next steps the user can click (Lovable-style chips), from the suggest_next tool. */
   | { type: "suggestions"; items: string[] }
+  /** Plan-first questions for the person to answer; the turn ends after this (D32). */
+  | { type: "questions"; intake: PlanIntake }
   | { type: "step"; step: Step }
   | { type: "log"; line: string }
   | { type: "file"; change: FileChange }
@@ -59,6 +94,8 @@ export interface TurnRecord {
   plan?: { summary: string; steps: string[] };
   /** Clickable next steps shown under the reply. */
   suggestions?: string[];
+  /** Plan-first questions and their answers (D32). */
+  intake?: PlanIntake;
   steps: Step[];
   log: string[];
   changes: FileChange[];

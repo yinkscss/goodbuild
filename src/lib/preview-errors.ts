@@ -28,3 +28,6 @@ export function previewFixPrompt(e: PreviewError, automatic: boolean): string {
 export function shouldAutoFix(args: { error: PreviewError; version: number; eligibleVersion: number | null; running: boolean }): boolean {
   return !args.running && args.eligibleVersion !== null && args.eligibleVersion === args.version && !isInfraError(args.error);
 }
+
+/** What "Try fix" sends after a build with errors left. */
+export const FIX_PROMPT = "Fix the remaining errors from the last build.";

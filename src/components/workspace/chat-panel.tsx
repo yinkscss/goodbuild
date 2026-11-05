@@ -5,6 +5,8 @@ import { ArrowUp, Loader2, Square } from "lucide-react";
 
 import { formatMicroUsd } from "@/lib/pricing";
 import type { AssetInfo, AssetKind } from "@/server/agent/assets";
+import { START_BUILDING_TEXT } from "@/lib/plan";
+import { FIX_PROMPT } from "@/lib/preview-errors";
 import { isSubmitShortcut } from "@/lib/prompt";
 import type { TurnMode, TurnRecord } from "@/lib/turn-types";
 import { cn } from "@/lib/utils";
@@ -14,8 +16,6 @@ import { OldFundsCard } from "./old-funds-card";
 import { TurnView } from "./turn-view";
 import type { UseWorkspace } from "./use-workspace";
 import { VerifyCard } from "./verify-card";
-
-const FIX_PROMPT = "Fix the remaining errors from the last build.";
 
 /** Left pane of the workspace (mockup c): the conversation and the composer. */
 export function ChatPanel({ ws, assetUrls = {} }: { ws: UseWorkspace; assetUrls?: Record<string, string> }) {
@@ -31,6 +31,9 @@ export function ChatPanel({ ws, assetUrls = {} }: { ws: UseWorkspace; assetUrls?
   const lastAssistantId = [...state.messages].reverse().find((m) => m.role === "assistant")?.id;
   const suggest = (prompt: string) => send(prompt, "build");
   const canSuggest = !running;
+  // The running turn is writing the plan's questions: "Skip" is offered there too.
+  const planning = (state.messages.find((m) => m.id === state.jobs[0]?.userMessageId)?.meta as { intake?: boolean } | null)?.intake === true;
+  const lastRecord = state.messages.find((m) => m.id === lastAssistantId)?.meta as TurnRecord | null | undefined;
   // The prompt the newest turn answered, for "Try again" on a failed or interrupted build.
   const lastUserPrompt = [...state.messages].reverse().find((m) => m.role === "user" && m.status !== "queued" && m.status !== "cancelled")?.content;
   return (
@@ -71,7 +74,7 @@ export function ChatPanel({ ws, assetUrls = {} }: { ws: UseWorkspace; assetUrls?
             // The live view replaces this as soon as the job's events stream in.
             return (
               <p key={m.id} className="flex items-center gap-2 text-sm text-grey-600">
-                <Loader2 className="size-4 animate-spin" aria-hidden /> Building…
+                <Loader2 className="size-4 animate-spin" aria-hidden /> Working…
               </p>
             );
           }
@@ -86,6 +89,11 @@ export function ChatPanel({ ws, assetUrls = {} }: { ws: UseWorkspace; assetUrls?
               onSuggest={!live && canSuggest && m.id === lastAssistantId ? suggest : undefined}
               checking={m.id === lastAssistantId && ws.checking}
               checkFailed={m.id === lastAssistantId && ws.checkFailed}
+              plan={
+                m.id === lastAssistantId && !running
+                  ? { answer: (q, a) => ws.answerPlan(m.id, q, a), start: () => send(START_BUILDING_TEXT, "build"), skip: ws.skipPlan }
+                  : undefined
+              }
             />
           );
         })}
@@ -97,11 +105,12 @@ export function ChatPanel({ ws, assetUrls = {} }: { ws: UseWorkspace; assetUrls?
             onFix={() => send(FIX_PROMPT, "build")}
             fixDisabled={live.phase === "running"}
             onSuggest={live.phase === "done" && state.jobs.length <= 1 ? suggest : undefined}
+            onSkipPlan={live.phase === "running" && !live.record.intake && planning ? ws.skipPlan : undefined}
           />
         )}
         {!live && !ws.error && state.messages.at(-1)?.role === "user" && (
           <p className="flex items-center gap-2 text-sm text-grey-600" role="status">
-            <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden /> Starting your build…
+            <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden /> Getting started…
           </p>
         )}
         {ws.error && (
@@ -135,7 +144,11 @@ export function ChatPanel({ ws, assetUrls = {} }: { ws: UseWorkspace; assetUrls?
         onSend={send}
         onStop={ws.stop}
         placeholder={
-          state.messages.length ? 'Ask for a change… e.g. "let members vote to skip a week"' : "Describe the dApp you want to build…"
+          lastRecord?.intake && !state.project.currentVersion
+            ? "Or type what you want here. Sending starts the build."
+            : state.messages.length
+              ? 'Ask for a change… e.g. "let members vote to skip a week"'
+              : "Describe the dApp you want to build…"
         }
       />
     </section>

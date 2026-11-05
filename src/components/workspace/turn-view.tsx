@@ -1,13 +1,13 @@
 "use client";
 
 import * as React from "react";
-import { ArrowUpRight, Check, ChevronRight, Eye, Hexagon, RotateCw, Wrench } from "lucide-react";
+import { ArrowUpRight, Check, Eye, Hexagon, RotateCw, Wrench } from "lucide-react";
 
 import { DeployButton, useDeployAction } from "@/components/deploy/deploy-trigger";
 import { Button } from "@/components/ui/button";
 import { formatMicroUsd } from "@/lib/pricing";
-import type { FileChange, Step, TurnRecord } from "@/lib/turn-types";
-import { cn } from "@/lib/utils";
+import type { Step, TurnRecord } from "@/lib/turn-types";
+import { PlanCard, type PlanActions } from "./plan-card";
 
 /** Status dot for a step row: violet check, pink spinner, or danger dot. */
 function StepDot({ status }: { status: Step["status"] }) {
@@ -33,9 +33,10 @@ function StepDot({ status }: { status: Step["status"] }) {
   );
 }
 
-export function StepRows({ steps }: { steps: Step[] }) {
+/** Step rows (DESIGN_SYSTEM §4). They fold away once a turn has ended well. */
+export function StepRows({ steps, open = true }: { steps: Step[]; open?: boolean }) {
   if (!steps.length) return null;
-  return (
+  const rows = (
     <ol className="mt-3 rounded-block bg-[#FAFAFA] px-4 py-1" aria-label="Build steps">
       {steps.map((s) => (
         <li key={s.id} className="flex items-start gap-3 py-2">
@@ -48,82 +49,14 @@ export function StepRows({ steps }: { steps: Step[] }) {
       ))}
     </ol>
   );
-}
-
-/** Dark, mono build log (mockup c). Shows the tail; the full log is in the record. */
-export function BuildLog({ lines, live }: { lines: string[]; live: boolean }) {
-  if (!lines.length) return null;
-  const tail = lines.slice(-8);
+  if (open) return rows;
   return (
-    <div className="mt-3 rounded-block bg-ink p-4 font-mono text-[11.5px] leading-[1.7] text-white/80" aria-label="Build log">
-      <p className="text-white/40">build log</p>
-      {tail.map((l, i) => (
-        <p key={i} className={cn("break-all", l.startsWith("✗") && "text-[#ff9aa8]", l.startsWith("!") && "text-[#ffc46b]")}>
-          {l}
-          {live && i === tail.length - 1 && <span className="ml-0.5 animate-caret motion-reduce:animate-none">▍</span>}
-        </p>
-      ))}
-    </div>
-  );
-}
-
-/** Collapsed file diffs: chips that expand to a unified diff. */
-export function DiffChips({ changes }: { changes: FileChange[] }) {
-  const [open, setOpen] = React.useState<string | null>(null);
-  const [showAll, setShowAll] = React.useState(false);
-  if (!changes.length) return null;
-  const visible = showAll ? changes : changes.slice(0, 2);
-  const active = changes.find((c) => c.path === open);
-  return (
-    <div className="mt-3">
-      <div className="flex flex-wrap gap-2 text-xs">
-        {visible.map((c) => (
-          <button
-            key={c.path}
-            type="button"
-            onClick={() => setOpen(open === c.path ? null : c.path)}
-            aria-expanded={open === c.path}
-            className={cn(
-              "inline-flex items-center gap-1 rounded-full px-3 py-1.5 outline-none hover:bg-tint focus-visible:shadow-focus",
-              open === c.path ? "bg-tint" : "bg-canvas",
-            )}
-          >
-            <ChevronRight className={cn("size-3 transition-transform duration-200 ease-gb", open === c.path && "rotate-90")} />
-            <span className="font-mono">{c.path}</span>
-            {c.op === "delete" ? (
-              <b className="font-semibold text-danger">deleted</b>
-            ) : (
-              <>
-                {c.added > 0 && <b className="font-semibold text-success">+{c.added}</b>}
-                {c.removed > 0 && <b className="font-semibold text-danger">−{c.removed}</b>}
-              </>
-            )}
-          </button>
-        ))}
-        {!showAll && changes.length > 2 && (
-          <button type="button" onClick={() => setShowAll(true)} className="rounded-full bg-canvas px-3 py-1.5 hover:bg-tint">
-            +{changes.length - 2} files
-          </button>
-        )}
-      </div>
-      {active?.diff && (
-        <pre className="mt-2 max-h-72 overflow-auto rounded-block bg-canvas p-3 font-mono text-[12px] leading-5">
-          {active.diff.split("\n").map((line, i) => (
-            <span
-              key={i}
-              className={cn(
-                "block whitespace-pre",
-                line.startsWith("+") && "bg-success/10 text-success",
-                line.startsWith("-") && "bg-danger/10 text-danger",
-                line.startsWith("@@") && "text-grey-400",
-              )}
-            >
-              {line || " "}
-            </span>
-          ))}
-        </pre>
-      )}
-    </div>
+    <details className="mt-3 text-xs text-grey-600">
+      <summary className="w-fit cursor-pointer rounded-full outline-none select-none focus-visible:shadow-focus">
+        {steps.length} {steps.length === 1 ? "step" : "steps"} done
+      </summary>
+      {rows}
+    </details>
   );
 }
 
@@ -254,7 +187,11 @@ export function VisualCheckNote({ record, checking, failed, onFix, disabled }: {
   );
 }
 
-/** An assistant turn: text, steps, log, diffs, then the deploy card or an error card. */
+/**
+ * An assistant turn: text, steps, then the plan's questions, the deploy card or an error card. The
+ * build log and file changes stay on the record (the error card's Logs, the Code tab) but aren't
+ * shown here: people found them confusing, and they say nothing someone building an app needs.
+ */
 export function TurnView({
   text,
   record,
@@ -264,6 +201,8 @@ export function TurnView({
   onSuggest,
   checking,
   checkFailed,
+  plan,
+  onSkipPlan,
 }: {
   text: string;
   record: TurnRecord;
@@ -276,6 +215,10 @@ export function TurnView({
   checking?: boolean;
   /** The visual check of this turn's preview couldn't produce a result. */
   checkFailed?: boolean;
+  /** Set while this turn's questions can still be answered. Without it they show read-only. */
+  plan?: PlanActions;
+  /** Set while the questions are still being written. */
+  onSkipPlan?: () => void;
 }) {
   const showError = !live && (record.status === "needs_fix" || record.status === "error");
   return (
@@ -285,12 +228,16 @@ export function TurnView({
       ) : live ? (
         <p className="text-sm text-grey-600">Thinking…</p>
       ) : null}
-      <StepRows steps={record.steps} />
-      <BuildLog lines={record.log} live={live} />
-      {!live && <DiffChips changes={record.changes} />}
+      {onSkipPlan && (
+        <Button variant="ghost" size="sm" className="mt-2 -ml-3.5" onClick={onSkipPlan}>
+          Skip, just build it
+        </Button>
+      )}
+      <StepRows steps={record.steps} open={live || record.status === "needs_fix" || record.status === "error" || record.status === "stopped"} />
+      {record.intake && <PlanCard intake={record.intake} actions={plan} />}
       {!live && record.status === "ready" && <DeployCard record={record} />}
       {showError && <TurnError record={record} onFix={onFix} disabled={fixDisabled} />}
-      {!live && record.status === "stopped" && (
+      {!live && record.status === "stopped" && record.mode === "build" && (
         <p className="mt-3 flex items-center gap-2 text-xs text-grey-600" role="status">
           <span className="size-2 shrink-0 rounded-full bg-grey-400" aria-hidden />
           Stopped. This build&apos;s edits were discarded; your files are as they were.

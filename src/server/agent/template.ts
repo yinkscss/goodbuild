@@ -64,6 +64,11 @@ const INDEX_HTML = `<!doctype html>
         --font-sans: Inter, ui-sans-serif, system-ui, sans-serif;
         --font-display: Inter, ui-sans-serif, system-ui, sans-serif;
       }
+      @layer base {
+        body {
+          @apply bg-muted text-foreground;
+        }
+      }
     </style>
   </head>
   <body class="bg-muted text-foreground antialiased">

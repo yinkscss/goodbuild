@@ -5,7 +5,8 @@ import * as React from "react";
 import { applyTurnEvent, emptyTurn, type LiveTurn } from "@/lib/live-turn";
 import { AUTO_FIX_LEAD, previewFixPrompt, shouldAutoFix, type PreviewError } from "@/lib/preview-errors";
 import { backoffMs, createJobStreamParser } from "@/lib/job-stream";
-import type { TurnMode } from "@/lib/turn-types";
+import { SKIP_PLAN_TEXT } from "@/lib/plan";
+import type { PlanAnswer, TurnMode, TurnRecord } from "@/lib/turn-types";
 import type { AssetInfo, AssetKind } from "@/server/agent/assets";
 import type { WorkspaceState } from "@/server/workspace-state";
 
@@ -18,6 +19,10 @@ export interface UseWorkspace {
   send: (prompt: string, mode: TurnMode) => void;
   /** Stop the running turn and cancel queued follow-ups. */
   stop: () => Promise<void>;
+  /** Save one answer to the plan's questions (D32). */
+  answerPlan: (messageId: string, questionId: string, answer: PlanAnswer) => void;
+  /** Leave the plan and build now, with whatever has been answered so far. */
+  skipPlan: () => void;
   revert: (version: number) => Promise<void>;
   /** Reload from the server. Returns the new state, or null if the request failed. */
   refresh: () => Promise<WorkspaceState | null>;
@@ -108,7 +113,7 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
    * queue behind a running turn on the server, so they survive a reload or a closed tab.
    */
   const enqueue = React.useCallback(
-    async (body: { mode: TurnMode; prompt?: string; userMessageId?: string }) => {
+    async (body: { mode: TurnMode; prompt?: string; userMessageId?: string; skipPlan?: boolean }) => {
       setError(null);
       setCheckFailed(false);
       if (body.prompt) {
@@ -224,6 +229,39 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
     await refresh();
   }, [projectId, refresh, state.jobs]);
 
+  /** Shown at once and saved in the background, one at a time, so a reload resumes from here. */
+  const answerPlan = React.useCallback(
+    (messageId: string, questionId: string, answer: PlanAnswer) => {
+      setError(null);
+      setState((s) => ({
+        ...s,
+        messages: s.messages.map((m) => {
+          const record = m.meta as TurnRecord | null;
+          if (m.id !== messageId || !record?.intake) return m;
+          return { ...m, meta: { ...record, intake: { ...record.intake, answers: { ...record.intake.answers, [questionId]: answer } } } };
+        }),
+      }));
+      sending.current = sending.current.then(async () => {
+        const res = await fetch(`/api/projects/${projectId}/plan`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messageId, questionId, answer }),
+        }).catch(() => null);
+        if (!res?.ok) setError("Couldn't save that answer. It still counts for now, but check your connection.");
+      });
+    },
+    [projectId],
+  );
+
+  const skipPlan = React.useCallback(() => {
+    sending.current = sending.current.then(async () => {
+      // While the questions are still being written: stop that turn first. Nothing is lost.
+      const job = state.jobs[0];
+      if (job) await fetch(`/api/projects/${projectId}/turns/${job.id}/stop`, { method: "POST" }).catch(() => null);
+      await enqueue({ mode: "build", prompt: SKIP_PLAN_TEXT, skipPlan: true });
+    });
+  }, [enqueue, projectId, state.jobs]);
+
   const revert = React.useCallback(
     async (version: number) => {
       const res = await fetch(`/api/projects/${projectId}/revert`, {
@@ -337,6 +375,8 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
     running: (Boolean(live) && live?.phase === "running") || state.jobs.length > 0,
     send,
     stop,
+    answerPlan,
+    skipPlan,
     revert,
     refresh,
     error,
