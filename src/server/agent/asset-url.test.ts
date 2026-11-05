@@ -18,11 +18,11 @@ describe("signed asset URLs", () => {
     expect(verifyAssetToken("garbage")).toBeNull();
   });
   it("is only used on a public https deployment", () => {
-    expect(publicAssetOrigin({ NODE_ENV: "production", APP_DOMAIN: "goodbuild.app" } as NodeJS.ProcessEnv)).toBe("https://goodbuild.app");
-    expect(publicAssetOrigin({ NODE_ENV: "development", APP_DOMAIN: "goodbuild.app" } as NodeJS.ProcessEnv)).toBeNull();
+    expect(publicAssetOrigin({ NODE_ENV: "production", APP_DOMAIN: "goodbuildit.xyz" } as NodeJS.ProcessEnv)).toBe("https://goodbuildit.xyz");
+    expect(publicAssetOrigin({ NODE_ENV: "development", APP_DOMAIN: "goodbuildit.xyz" } as NodeJS.ProcessEnv)).toBeNull();
     expect(publicAssetOrigin({ NODE_ENV: "production", APP_DOMAIN: "localhost:3000" } as NodeJS.ProcessEnv)).toBeNull();
     expect(publicAssetOrigin({ NODE_ENV: "production", PUBLIC_ASSET_ORIGIN: "http://cdn.example" } as NodeJS.ProcessEnv)).toBeNull();
     expect(publicAssetOrigin({ NODE_ENV: "production", PUBLIC_ASSET_ORIGIN: "https://cdn.example/" } as NodeJS.ProcessEnv)).toBe("https://cdn.example");
-    expect(publicAssetUrl("https://goodbuild.app", P, A)).toMatch(/^https:\/\/goodbuild\.app\/a\/[\w-]+\.[\w-]+$/);
+    expect(publicAssetUrl("https://goodbuildit.xyz", P, A)).toMatch(/^https:\/\/goodbuildit\.xyz\/a\/[\w-]+\.[\w-]+$/);
   });
 });

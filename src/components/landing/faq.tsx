@@ -17,7 +17,7 @@ const QUESTIONS = [
   },
   {
     q: "Can I deploy and share my app today?",
-    a: "You can deploy to Celo Sepolia by signing from your own wallet. Then publish the front end to its own address, your-app.goodbuild.app, and share the link.",
+    a: "You can deploy to Celo Sepolia by signing from your own wallet. Then publish the front end to its own address, your-app.goodbuildit.xyz, and share the link.",
   },
   {
     q: "What does publishing do?",

@@ -32,7 +32,7 @@ export function slugFromName(name: string): string {
 }
 
 export function publishedAppsDomain(env: Record<string, string | undefined> = process.env): string {
-  return (env.PUBLISHED_APPS_DOMAIN ?? (env.NODE_ENV === "production" ? "goodbuild.app" : "localhost")).toLowerCase();
+  return (env.PUBLISHED_APPS_DOMAIN ?? (env.NODE_ENV === "production" ? "goodbuildit.xyz" : "localhost")).toLowerCase();
 }
 
 export type HostKind = { kind: "main" } | { kind: "app"; slug: string } | { kind: "unknown" };

@@ -84,7 +84,7 @@ const SECTIONS: Array<{ id: string; title: string; body: ReactNode }> = [
           verification on Sourcify.
         </p>
         <p>
-          <strong className="font-semibold">Publish</strong> builds your latest saved version into a website on its own address, your-app.goodbuild.app. Anyone with
+          <strong className="font-semibold">Publish</strong> builds your latest saved version into a website on its own address, your-app.goodbuildit.xyz. Anyone with
           the link can open it and connect their own wallet. Publishing doesn&apos;t update on its own: publish again after a change, including after a new deploy.
         </p>
         <p>

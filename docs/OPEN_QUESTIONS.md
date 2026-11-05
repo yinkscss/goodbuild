@@ -67,7 +67,7 @@
 - Claude's input: _TBD_
 
 ## Q16. Publishing / hosting of generated apps
-- Resolved for hosting by P19: GoodBuild serves each app at `<slug>.goodbuild.app` from a stored build.
+- Resolved for hosting by P19: GoodBuild serves each app at `<slug>.goodbuildit.xyz` from a stored build.
 - Still open: wildcard DNS on the real host, moderation, and a real contact address. Takedown is `scripts/takedown.mjs`, and `/report` takes reports once `NEXT_PUBLIC_CONTACT_EMAIL` is set. `/terms` and `/privacy` are unreviewed drafts.
 
 ## Q17. How does GoodBuild spend users' GoodDollar AI credits? (superseded by D11; kept for a future AntSeed provider)

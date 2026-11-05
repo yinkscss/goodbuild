@@ -124,7 +124,8 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - Rationale: GoodDollar ToS §6.2 (18+) and §8 "NO U.S. PERSONS MAY USE THE SERVICES". Gemini API also requires 18+. Also exclude sanctioned jurisdictions.
 
 ### P19. Publishing: own subdomain, server build, immutable snapshots (address and build approach decided by the user; the rest proposed)
-- Date: 5 Nov 2026 · Decided by: user (`<app>.goodbuild.app`, a real server build, a /docs page), as passed on by the session that built it. Claude proposed the rest.
+- Date: 5 Nov 2026 · Decided by: user (`<app>.goodbuildit.xyz`, a real server build, a /docs page), as passed on by the session that built it. Claude proposed the rest.
+- **Domain (5 Nov 2026, user):** GoodBuild's domain is `goodbuildit.xyz`, so apps default to `<slug>.goodbuildit.xyz`. Claude took this to be the main site's domain too (`APP_DOMAIN`), which keeps apps same-site with it.
 - **Subdomain isolation:** generated JS must never be served from the main origin, where it could call the API as whoever is signed in. `src/proxy.ts` sends a published app's host only to `/published-app/<slug>`, that route exists on no other host, and the route repeats the Host check. Each app also gets its own wallet permissions.
 - **API writes:** the proxy refuses API writes from another site or subdomain (`Sec-Fetch-Site`, then `Origin`). A subdomain is same-site, so the browser still sends the session cookie with its requests; `SameSite` and `__Host-` don't stop that. A separate registrable domain for published apps (as GitHub does with github.io) would be stronger, and the user may want to weigh it.
 - **Cookies:** `__Host-` session and nonce cookies in production, so a subdomain can neither read nor overwrite them. Plain names in development, because the prefix needs a secure context.

@@ -20,7 +20,7 @@ const STEPS = [
   {
     n: "04",
     title: "Publish",
-    body: "Put the app on its own address, your-app.goodbuild.app, and share the link.",
+    body: "Put the app on its own address, your-app.goodbuildit.xyz, and share the link.",
     emphasis: true,
   },
 ];

@@ -108,7 +108,7 @@ erDiagram
 - **Interaction panel auto-generated from the ABI:** view/pure functions as read cards (auto-refresh), non-payable/payable as forms with typed inputs (address, uint with decimals helper, bool), each write going through simulate → summary → sign. Events feed via `getLogs`/`watchContractEvent`. (Similar to Etherscan "Read/Write Contract" or thirdweb's dashboard.)
 - **Front end wiring:** generated app imports `src/contracts/<name>.ts` (`{address per chainId, abi}`), written by the platform after deploy (not by the AI) so it can't be wrong. Uses wagmi hooks.
 - **Redeploy / versioning:** each deploy links to a `version`; new deploy = new address, old stays listed ("v2 active, v1 archived"). Contract state does **not** migrate; warn users.
-- **Public link:** Publish builds the saved version and serves it at `<slug>.goodbuild.app` with deployed addresses baked in, as an immutable snapshot until the user publishes again (P19). If a contract isn't deployed, the app goes live with a demo notice. Published apps are labelled "Built with GoodBuild · Unaudited". An explorer link is not added yet.
+- **Public link:** Publish builds the saved version and serves it at `<slug>.goodbuildit.xyz` with deployed addresses baked in, as an immutable snapshot until the user publishes again (P19). If a contract isn't deployed, the app goes live with a demo notice. Published apps are labelled "Built with GoodBuild · Unaudited". An explorer link is not added yet.
 
 ## Open choices (Claude's input invited)
 Q2 (updated), Q4, Q10–Q13 in [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md).

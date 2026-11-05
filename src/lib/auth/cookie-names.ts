@@ -1,6 +1,6 @@
 /**
  * `__Host-` cookies can't be set by a subdomain. Published apps run generated code on
- * <slug>.goodbuild.app, so in production this stops one overwriting the session on the main site.
+ * <slug>.goodbuildit.xyz, so in production this stops one overwriting the session on the main site.
  * The prefix needs a secure context, so development keeps the plain names.
  */
 const prefix = process.env.NODE_ENV === "production" ? "__Host-" : "";

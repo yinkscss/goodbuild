@@ -90,7 +90,7 @@ Publish code lives in `src/server/publish/`, `src/server/db/publish-schema.ts` (
 **Not verified:**
 - Publishing an app whose contract is deployed (address baked in, no demo notice), and "Publish app" in the deploy success modal.
 - Magic email sign-in on `__Host-` cookies.
-- A real host: `*.goodbuild.app` needs wildcard DNS. Q16 and Q31 stay open.
+- A real host: `*.goodbuildit.xyz` needs wildcard DNS. Q16 and Q31 stay open.
 
 **Deploying it:** file tracing skips `node_modules` and pnpm's symlinks, so `pnpm build` first packs the runtime packages and Tailwind's stylesheets into `publish-runtime.pack.gz` (`scripts/build-publish-runtime.mjs`, about 22 MB), and the first publish unpacks it to the temp folder (`src/server/publish/runtime.ts`). Checked with `NEXT_OUTPUT=standalone pnpm build`, run outside the repo on Postgres. `PGlite` doesn't start in standalone output, and production doesn't use it. Don't set `HOSTNAME` to `127.0.0.1` on a standalone server: the route then sees the wrong Host and refuses to serve apps (`0.0.0.0` is fine).
 
