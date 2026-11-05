@@ -1,14 +1,68 @@
 // @vitest-environment node
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 import { proxy } from "./proxy";
+import { effectiveHost } from "./server/edge";
 
 function request(url: string, headers: Record<string, string> = {}) {
   const { host } = new URL(url);
   return new NextRequest(url, { headers: { host, ...headers } });
 }
 const rewrittenTo = (res: Response) => res.headers.get("x-middleware-rewrite");
+
+describe("edge and backend (D26)", () => {
+  const SECRET = "s3cret";
+  afterEach(() => vi.unstubAllEnvs());
+  const forwardedHeader = (res: Response, name: string) => res.headers.get(`x-middleware-request-${name}`);
+
+  describe("on the edge", () => {
+    beforeEach(() => {
+      vi.stubEnv("BACKEND_ORIGIN", "https://api.example");
+      vi.stubEnv("EDGE_SECRET", SECRET);
+    });
+
+    it("forwards API calls with the secret, overwriting anything the visitor sent", () => {
+      const res = proxy(request("https://goodbuildit.xyz/api/projects?x=1", { "x-gb-edge": "fake", "x-gb-host": "fake.example" }));
+      expect(rewrittenTo(res)).toBe("https://api.example/api/projects?x=1");
+      expect(forwardedHeader(res, "x-gb-edge")).toBe(SECRET);
+      expect(forwardedHeader(res, "x-gb-host")).toBe("goodbuildit.xyz");
+    });
+
+    it("forwards published apps and assets, and applies the gates first", () => {
+      vi.stubEnv("PUBLISHED_APPS_DOMAIN", "goodbuildit.xyz");
+      const app = proxy(request("https://tip-jar.goodbuildit.xyz/app.js"));
+      expect(rewrittenTo(app)).toBe("https://api.example/published-app/tip-jar/app.js");
+      expect(forwardedHeader(app, "x-gb-host")).toBe("tip-jar.goodbuildit.xyz");
+      expect(rewrittenTo(proxy(request("https://goodbuildit.xyz/a/token")))).toBe("https://api.example/a/token");
+
+      expect(proxy(request("https://tip-jar.goodbuildit.xyz/", { "x-vercel-ip-country": "US" })).status).toBe(451);
+      expect(proxy(request("https://goodbuildit.xyz/api/projects", { "x-vercel-ip-country": "US" })).status).toBe(451);
+      expect(proxy(new NextRequest("https://goodbuildit.xyz/api/projects", { method: "POST", headers: { host: "goodbuildit.xyz", origin: "https://tip-jar.goodbuildit.xyz" } })).status).toBe(403);
+    });
+
+    it("keeps pages on the edge", () => {
+      expect(rewrittenTo(proxy(request("https://goodbuildit.xyz/")))).toBeNull();
+      expect(proxy(request("https://goodbuildit.xyz/published-app/tip-jar")).status).toBe(404);
+    });
+  });
+
+  describe("on the backend", () => {
+    beforeEach(() => vi.stubEnv("EDGE_SECRET", SECRET));
+
+    it("refuses anyone but the edge, so nobody can skip the region gate", () => {
+      expect(proxy(request("https://api.example/api/projects")).status).toBe(404);
+      expect(proxy(request("https://api.example/api/projects", { "x-gb-edge": "wrong-secret" })).status).toBe(404);
+      expect(proxy(request("https://api.example/published-app/tip-jar")).status).toBe(404);
+    });
+
+    it("trusts the edge, and only then its host header", () => {
+      expect(proxy(request("https://api.example/published-app/tip-jar", { "x-gb-edge": SECRET, "x-gb-host": "tip-jar.goodbuildit.xyz" })).status).toBe(200);
+      expect(effectiveHost(new Headers({ host: "api.example", "x-gb-edge": SECRET, "x-gb-host": "tip-jar.goodbuildit.xyz" }))).toBe("tip-jar.goodbuildit.xyz");
+      expect(effectiveHost(new Headers({ host: "api.example", "x-gb-edge": "nope", "x-gb-host": "evil.example" }))).toBe("api.example");
+    });
+  });
+});
 
 describe("published app hosts", () => {
   it("rewrites every path into that app's files", () => {
@@ -34,11 +88,6 @@ describe("published app hosts", () => {
 });
 
 describe("main host", () => {
-  it("trusts Cloudflare's country over a visitor's fake Vercel header", () => {
-    expect(proxy(request("http://localhost:3000/api/projects", { "cf-ipcountry": "US", "x-vercel-ip-country": "GB" })).status).toBe(451);
-    expect(proxy(request("http://localhost:3000/api/projects", { "cf-ipcountry": "GB", "x-vercel-ip-country": "US" })).status).toBe(200);
-  });
-
   describe("API writes from other sites", () => {
     const post = (headers: Record<string, string>) =>
       proxy(new NextRequest("http://localhost:3000/api/projects", { method: "POST", headers: { host: "localhost:3000", ...headers } }));

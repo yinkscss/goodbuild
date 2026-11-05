@@ -93,13 +93,19 @@ Publish code lives in `src/server/publish/`, `src/server/db/publish-schema.ts` (
 - Magic email sign-in, on any cookies: the fix for `ERROR_INCORRECT_SIGNER_ADDR` hasn't had a live sign-in.
 - A real host: `*.goodbuildit.xyz` needs wildcard DNS. Q16 and Q31 stay open.
 
-**Hosting (D25):** one `Dockerfile` for both processes on Railway or Fly.io, with Postgres alongside and Cloudflare proxying in front.
-- Web: the image's default command, with `GOODBUILD_INLINE_WORKER=0`.
-- Worker: `pnpm worker`, with the same variables.
-- Release: `pnpm db:migrate`, before each deploy.
-- Runtime variables: `DATABASE_URL`, `SESSION_SECRET`, `APP_DOMAIN=goodbuildit.xyz`, `PUBLISHED_APPS_DOMAIN=goodbuildit.xyz`, `MAGIC_SECRET_KEY`, `ANTHROPIC_API_KEY`, `DEEPSEEK_API_KEY`, `NEXT_PUBLIC_TEST_GD_ADDRESS`.
-- Build arguments: the `NEXT_PUBLIC_*` values, which are fixed into the browser code when the image is built.
-- Without Cloudflare there's no country header and the geo-block lets everyone through.
+**Hosting (D26, amends D25):** Vercel serves pages and forwards `/api/*`, `/a/*` and published apps to Railway, which runs the `Dockerfile`, with Postgres alongside.
+
+| | Vercel (edge) | Railway (backend) |
+|---|---|---|
+| Required | `BACKEND_ORIGIN`, `EDGE_SECRET`, `DATABASE_URL` (public), `DATABASE_POOL_MAX=2`, `SESSION_SECRET`, `APP_DOMAIN`, `PUBLISHED_APPS_DOMAIN` | `EDGE_SECRET`, `DATABASE_URL`, `SESSION_SECRET`, `APP_DOMAIN`, `PUBLISHED_APPS_DOMAIN`, `MAGIC_SECRET_KEY`, `ANTHROPIC_API_KEY`, `DEEPSEEK_API_KEY`, `NEXT_PUBLIC_TEST_GD_ADDRESS` |
+| Build-time | every `NEXT_PUBLIC_*` value | the same, as Docker build arguments |
+
+- `APP_DOMAIN=goodbuildit.xyz` and `PUBLISHED_APPS_DOMAIN=goodbuildit.xyz` on both, with the same `SESSION_SECRET`.
+- Trial: one Railway service, using the inline worker. After upgrading: add a `pnpm worker` service and set `GOODBUILD_INLINE_WORKER=0` on web.
+- Migrations: `pnpm db:migrate` before each deploy.
+- `*.goodbuildit.xyz` needs Vercel's nameservers.
+- Serverless and `output: standalone` can't compile contracts, because solc, OpenZeppelin imports and contract tests run in child processes that read `node_modules` directly. That's why this work is on Railway.
+- Rehearsed locally (5 Nov 2026): the backend image capped at 1 GB behind a separate edge server. Sign-in, pages, compiling, publishing, the app host, the 451, the secret check and turn events all worked through the edge. Peak memory was 657 MiB with a first publish and compiles running together, with no out-of-memory kill. A full AI turn with contract tests wasn't part of that, and Vercel's own forwarding is still to be checked on the first deploy.
 - Checked locally with Docker (5 Nov 2026): migrations, web and worker as separate containers, compiling with OpenZeppelin, publishing and serving an app, and the worker claiming a job (it then stopped at the AI call, because that test had no keys). Not yet run on Railway or Fly.
 - Serverless and `output: standalone` can't compile contracts, because solc, OpenZeppelin imports and contract tests run in child processes that read `node_modules` directly.
 

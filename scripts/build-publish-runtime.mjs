@@ -6,6 +6,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { gzipSync } from "node:zlib";
 
+if (process.env.BACKEND_ORIGIN) process.exit(0); // the edge never publishes (D26)
+
 const out = mkdtempSync(path.join(tmpdir(), "goodbuild-runtime-"));
 const root = path.join(out, "node_modules");
 const skip = /\.(map|d\.ts|d\.cts|d\.mts|md|tsbuildinfo)$/i;

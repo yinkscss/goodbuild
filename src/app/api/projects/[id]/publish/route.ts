@@ -4,6 +4,7 @@ import { z } from "zod";
 import { publishedAppUrl, publishedAppsDomain, slugProblem } from "@/lib/published-host";
 import { errorResponse, requireSession } from "@/server/auth/http";
 import { getDb } from "@/server/db/client";
+import { effectiveHost } from "@/server/edge";
 import type { Project } from "@/server/db/schema";
 import { getOwnedProject } from "@/server/projects";
 import { PublishError, publishApp, publishStatus, slugAvailable, unpublishApp, type PublishStatus } from "@/server/publish/service";
@@ -25,7 +26,7 @@ const STATUS: Record<PublishError["code"], number> = {
 function respond(status: PublishStatus, request: Request) {
   const domain = publishedAppsDomain();
   return NextResponse.json(
-    { ...status, url: publishedAppUrl(status.slug, request.headers.get("host"), domain), domain },
+    { ...status, url: publishedAppUrl(status.slug, effectiveHost(request.headers), domain), domain },
     { headers: { "Cache-Control": "no-store" } },
   );
 }

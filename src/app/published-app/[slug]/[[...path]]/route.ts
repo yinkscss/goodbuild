@@ -2,6 +2,7 @@ import { connection } from "next/server";
 
 import { classifyHost, publishedAppsDomain } from "@/lib/published-host";
 import { getDb } from "@/server/db/client";
+import { effectiveHost } from "@/server/edge";
 import { publishedFile, publishedHeaders } from "@/server/publish/service";
 
 const GONE = `<!doctype html><meta charset="utf-8"><title>Not available</title><p style="font:16px system-ui;text-align:center;margin-top:20vh">This app isn't available.</p>`;
@@ -13,7 +14,7 @@ const GONE = `<!doctype html><meta charset="utf-8"><title>Not available</title><
 export async function GET(request: Request, ctx: RouteContext<"/published-app/[slug]/[[...path]]">) {
   await connection();
   const { slug, path } = await ctx.params;
-  const host = classifyHost(request.headers.get("host"), publishedAppsDomain());
+  const host = classifyHost(effectiveHost(request.headers), publishedAppsDomain());
   if (host.kind !== "app" || host.slug !== slug) return new Response("Not found", { status: 404 });
 
   const filePath = path?.length ? path.join("/") : "index.html";

@@ -55,6 +55,11 @@ describe("geo", () => {
     expect(isBlockedRegion(h({ "cf-ipcountry": "ir" }))).toBe(true);
     expect(isBlockedRegion(h({ "x-vercel-ip-country": "NG" }))).toBe(false);
   });
+  it("on Vercel, ignores a fake Cloudflare header; elsewhere, uses the configured header", () => {
+    expect(countryFrom(h({ "cf-ipcountry": "GB", "x-vercel-ip-country": "US" }), { VERCEL: "1" })).toBe("US");
+    expect(countryFrom(h({ "cf-ipcountry": "GB" }), { VERCEL: "1" })).toBeNull();
+    expect(countryFrom(h({ "x-real-country": "US", "cf-ipcountry": "GB" }), { GEO_COUNTRY_HEADER: "x-real-country" })).toBe("US");
+  });
   it("does nothing without a header", () => {
     expect(isBlockedRegion(h({}))).toBe(false);
     expect(countryFrom(h({ "cf-ipcountry": "XX1" }))).toBeNull();
