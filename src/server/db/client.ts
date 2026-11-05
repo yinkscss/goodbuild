@@ -12,8 +12,9 @@ import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import * as coreSchema from "./schema";
 import * as deploySchema from "./deploy-schema";
 import * as publishSchema from "./publish-schema";
+import * as appDataSchema from "./app-data-schema";
 
-const schema = { ...coreSchema, ...deploySchema, ...publishSchema };
+const schema = { ...coreSchema, ...deploySchema, ...publishSchema, ...appDataSchema };
 
 /** Driver-agnostic handle: postgres-js in production, PGlite in dev and tests. */
 export type Db = PgDatabase<PgQueryResultHKT, typeof schema>;

@@ -28,7 +28,7 @@ describe("guides", () => {
     expect(plan.result).toContain("HashRouter");
     const read = ws.execute("read_guide", JSON.stringify({ name: "forms-and-signup" }), "plan");
     expect(read.ok).toBe(true);
-    expect(read.result).toContain("no backend");
+    expect(read.result).toContain("app-data guide");
     expect(PLAN_TOOLS.map((t) => t.function.name)).toContain("read_guide");
     expect(BUILD_TOOLS.map((t) => t.function.name)).toContain("read_guide");
   });

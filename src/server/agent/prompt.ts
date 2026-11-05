@@ -98,6 +98,7 @@ const APP_RULES = `Front end (React 18 + TypeScript in an in-browser bundler):
 - Contract ABIs and addresses: import { <Name>Abi, <Name>Address } from "./contracts" (folder ${PLATFORM_DIR}). GoodBuild writes these after compiling. <Name>Address is a MAP from chain id to address, NOT an address. Always index it: const address = <Name>Address[chain.id]; and pass that variable to viem. Never pass <Name>Address itself (the build rejects it). address is undefined until the user deploys: then show a friendly "Deploy the contract to go live" Notice, keep the rest of the page visible (disabled form, placeholder stats) and make no contract calls.
 - Every contract read and write needs loading (Skeleton), empty and error (Notice tone="danger") states, and a success Notice after a write, then refresh the reads.
 - G$ in the UI: read the token address from the contract (e.g. its gd() getter) and decimals() from the token; format with formatAmount or formatUnits/parseUnits. Prefer one-step payments with the token's transferAndCall(to, amount, data) (gdTokenAbi in src/lib/tokens.ts); otherwise approve then call. Show the user's G$ balance where it helps.
+- Saved data: src/lib/useDb.ts gives useDbSession() (wallet sign-in) and useCollection(name, options); src/lib/dataRules.json sets who can read each collection, private by default. Load the app-data guide before using them. Never fetch your own "/api/..." routes, third-party databases or form services.
 - Packages: only those in package.json; add allowed ones with add_dependency.`;
 
 const DESIGN_RULES = `Design: make each app look made for its purpose, not like a template.
@@ -117,7 +118,7 @@ const CONVERSATION = `Reading the user's message:
 - Finding code: the context has the files most relevant to this request in full, and a one-line summary of every other file. To change something that isn't shown, call find_symbol (a component, hook, function or route name) or search_code (visible text, a class name) first, then read_file (a line range for long files). Never edit a file from memory: edit_file needs text copied from the file.
 - Images the user attached in this message are design references or their own assets: follow them closely (layout, colours, type, mood).
 
-What users build: mostly dApps on Celo (a contract plus its app; Celo Sepolia testnet for now, other chains are not supported), and also plain websites and pages (landing pages, event or shop sites, portfolios, about or signup pages for their dApp). Write a contract only when the app needs on-chain state or payments; a website needs none. There is no backend or database: anything that must be stored goes on-chain or waits for a later GoodBuild feature (say so when it matters).
+What users build: mostly dApps on Celo (a contract plus its app; Celo Sepolia testnet for now, other chains are not supported), and also plain websites and pages (landing pages, event or shop sites, portfolios, about or signup pages for their dApp). Write a contract only when the app needs on-chain state or payments; a website needs none. Data that must be saved but needn't be on-chain (profiles, notes, comments, form entries) goes in GoodBuild's app data store through src/lib/db.ts, with wallet sign-in (load the app-data guide). Never invent a backend, API route or third-party database: there is no other server.
 
 Front-end guides (load the ones you need via set_plan's guides field, or read_guide; they hold the detailed rules):
 ${guideCatalog()}`;
@@ -175,6 +176,8 @@ export function contextMessage(args: {
   memory?: string;
   /** Live contracts and their addresses (deploymentsBlock). */
   deployments?: string;
+  /** The person's answers to the plan-first questions (planBrief, D32). */
+  plan?: string;
 }): string {
   return contextWithPicks(args).text;
 }
@@ -187,7 +190,7 @@ export function contextWithPicks(args: Parameters<typeof contextMessage>[0]): { 
   const chips = args.lastSuggestions?.length
     ? `\n\nYour previous reply offered these next steps as buttons (the user may be answering them):\n${args.lastSuggestions.map((c, i) => `${i + 1}. ${c}`).join("\n")}`
     : "";
-  const extra = [args.memory, args.deployments, args.assets].filter(Boolean).map((s) => `\n\n${s}`).join("");
+  const extra = [args.plan, args.memory, args.deployments, args.assets].filter(Boolean).map((s) => `\n\n${s}`).join("");
   const text = `Project files (path, size, summary):\n${manifest(args.files)}\n\nFiles picked for this request, in full${hidden ? ` (${hidden} others not shown: find them with find_symbol or search_code, then read_file)` : ""}:\n${blocks.join("\n\n")}${extra}${chips}\n\nUser request:\n${args.request}`;
   return { text, picks };
 }

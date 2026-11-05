@@ -7,6 +7,8 @@ Written 4 Nov 2026 at the end of the first build session (claude.ai), for whoeve
 
 **Working live:** email sign-in (Magic), a real AI build, deploying from an email wallet on Celo Sepolia with a Sourcify match (the fix was Magic's content security policy, see DEPLOY.md; the explicit gas in PR #11 wasn't what solved it), publishing to `<slug>.goodbuildit.xyz`, the firewall, and auto-deploy. Testnet only; mainnet is off.
 
+**App data (D31, in review, not live):** published apps can save data for visitors who sign in with their wallet. Design, limits and what isn't verified: [APP_DATA.md](APP_DATA.md).
+
 **Next: M6**, in this order, with design in [CREDITS.md](CREDITS.md) and [TOPUPS.md](TOPUPS.md):
 1. GoodDollar face verification. Read `getWhitelistedRoot` on Celo mainnet (`0xC361…2F42`) with plain viem on the server, even for testnet apps, because the SDK has no Celo Sepolia. Key allowances by root, not wallet. Don't trust the callback: re-read the chain. Verification expires. Use redirect mode on phones. No testnet exists, so a real verified wallet is needed for the live test.
 2. Ledger and balances, and the credits pill. The $0.20 cap (D28, `src/server/credits/cap.ts`) currently sums `usage_events`.
@@ -19,6 +21,9 @@ Written 4 Nov 2026 at the end of the first build session (claude.ai), for whoeve
 - TOPUPS.md §10 points 3 to 7, including the refund policy. Paystack test keys.
 - Whether the owner's wallet is exempt from the cap, and a wallet already verified with GoodDollar for testing.
 - Whether GoodDollar requires approval for third-party use of face verification. Its docs don't say.
+
+### Plan first (D32)
+A project's first message now asks questions before building. The chat no longer shows the build log or file chips. Tried with the demo model only: real model question quality is **UNVERIFIED**, because no real provider was called.
 
 ### Upgradeable contracts trial (D33): built on a branch, not live-tested
 Proved in a local EVM with real compiled contracts (`src/server/deploy/upgradeable.evm.test.ts`). **Nothing has run on Celo Sepolia.** Modal states: `/dev/preview?deploy=upgradeable|upgrade|upgrading|refused|not-ready|upgraded`.
@@ -184,7 +189,7 @@ Throwaway wallet for live deploy tests, kept on purpose: `0x80fB54faA246dd4E75A0
 - Commit trailers used so far: `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 
 ## Testing without real accounts
-- `GOODBUILD_DEMO_MODEL=1` replays a scripted G$ tip-jar build (development only).
+- `GOODBUILD_DEMO_MODEL=1` asks plan-first questions, then replays a scripted G$ tip-jar build, or a one-page site for a website prompt (development only).
 - `node scripts/demo-session.mjs [--seed]` signs in a throwaway wallet against a running server and prints the session cookie, so you can test without Magic.
 - `pnpm smoke:auth` runs 14 end-to-end sign-in checks against a running server (`BASE_URL`).
 - Production-mode local runs need `SESSION_SECRET`, `APP_DOMAIN` and `ALLOW_PGLITE=true` (or a `DATABASE_URL`).

@@ -30,7 +30,7 @@ function rowsOf<T>(result: unknown): T[] {
  */
 export async function enqueueTurn(
   db: Db,
-  args: { projectId: string; userId: string; mode: TurnMode; prompt?: string; userMessageId?: string },
+  args: { projectId: string; userId: string; mode: TurnMode; prompt?: string; userMessageId?: string; intake?: boolean },
 ): Promise<TurnJob> {
   return db.transaction(async (tx) => {
     let messageId = args.userMessageId;
@@ -54,7 +54,7 @@ export async function enqueueTurn(
       messageId = m.id;
     }
     const [job] = await tx.insert(turnJobs).values({ projectId: args.projectId, userId: args.userId, mode: args.mode, prompt, userMessageId: messageId }).returning();
-    await tx.update(messages).set({ meta: sql`coalesce(${messages.meta}, '{}'::jsonb) || ${JSON.stringify({ mode: args.mode, jobId: job.id })}::jsonb` }).where(eq(messages.id, messageId));
+    await tx.update(messages).set({ meta: sql`coalesce(${messages.meta}, '{}'::jsonb) || ${JSON.stringify({ mode: args.mode, jobId: job.id, ...(args.intake ? { intake: true } : {}) })}::jsonb` }).where(eq(messages.id, messageId));
     return job;
   });
 }

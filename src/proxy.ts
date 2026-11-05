@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
+import { DATA_PATH_PREFIX, DATA_ROUTE_PREFIX } from "@/lib/app-data";
 import { SESSION_COOKIE } from "@/lib/auth/cookie-names";
 import { classifyHost, publishedAppsDomain } from "@/lib/published-host";
 import { EDGE_HEADER, EDGE_HOST_HEADER, isFromEdge } from "@/server/edge";
@@ -39,7 +40,8 @@ function toBackend(request: NextRequest, backend: string, path: string) {
  *   already applied every rule below, and a direct caller would skip the region gate.
  * - Published app hosts: serve that app's files and nothing else, so generated code can't reach the
  *   API or any page of the main site. Blocked regions get a 451, because these pages transact (D10).
- * - The route that serves those files doesn't exist on the main host.
+ *   The one exception is the app's data API at /__gb/data/, after the same region check (docs/APP_DATA.md).
+ * - The routes that serve those files and that data don't exist on the main host.
  * - API: region gate (D10). Sign-in, building and credits return 451 from blocked regions.
  * - App pages (/home, /p/*): without a session cookie, go to the landing page before
  *   rendering anything. The page itself still verifies the session properly.
@@ -60,14 +62,23 @@ export function proxy(request: NextRequest) {
   const host = classifyHost(request.headers.get("host"), publishedAppsDomain());
   if (host.kind === "unknown") return new NextResponse("Not found", { status: 404 });
   if (host.kind === "app") {
+    const isData = pathname.startsWith(DATA_PATH_PREFIX);
     if (isBlockedRegion(request.headers)) {
+      if (isData) return NextResponse.json({ error: "region_blocked", message: "This app isn't available in your region." }, { status: 451 });
       return new NextResponse(UNAVAILABLE, { status: 451, headers: { "Content-Type": "text/html; charset=utf-8" } });
+    }
+    if (isData) {
+      // The data API is the one thing on an app host that isn't its files. Encoded paths are refused, so nothing can climb out of it.
+      const rest = pathname.slice(DATA_PATH_PREFIX.length);
+      if (!/^[A-Za-z0-9_.:/-]*$/.test(rest)) return NextResponse.json({ error: "not_found", message: "There's nothing here." }, { status: 404 });
+      const dataPath = `${DATA_ROUTE_PREFIX}/${host.slug}/${rest}`;
+      return backend ? toBackend(request, backend, dataPath) : NextResponse.rewrite(new URL(`${dataPath}${request.nextUrl.search}`, request.url));
     }
     const appPath = `/published-app/${host.slug}${pathname === "/" ? "" : pathname}`;
     return backend ? toBackend(request, backend, appPath) : NextResponse.rewrite(new URL(appPath, request.url));
   }
 
-  if (pathname.startsWith("/published-app")) return new NextResponse("Not found", { status: 404 });
+  if (pathname.startsWith("/published-app") || pathname.startsWith(DATA_ROUTE_PREFIX)) return new NextResponse("Not found", { status: 404 });
   if (pathname.startsWith("/api/")) {
     if (isForeignWrite(request)) return NextResponse.json({ error: "forbidden_origin" }, { status: 403 });
     if (isBlockedRegion(request.headers)) {

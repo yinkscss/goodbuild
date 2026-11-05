@@ -64,6 +64,11 @@ const INDEX_HTML = `<!doctype html>
         --font-sans: Inter, ui-sans-serif, system-ui, sans-serif;
         --font-display: Inter, ui-sans-serif, system-ui, sans-serif;
       }
+      @layer base {
+        body {
+          @apply bg-muted text-foreground;
+        }
+      }
     </style>
   </head>
   <body class="bg-muted text-foreground antialiased">
@@ -325,6 +330,309 @@ export const erc677Abi = [
 export const gdTokenAbi = [...erc20Abi, ...erc677Abi] as const;
 `;
 
+const DATA_RULES = `{
+  "collections": {}
+}
+`;
+
+/** Written by GoodBuild. Talks to the published app's own host, and to a stand-in in the preview. */
+const DB = `import { createWalletClient, custom, getAddress, type EIP1193Provider } from "viem";
+import { chain, connectWallet } from "./chain";
+import rules from "./dataRules.json";
+
+/**
+ * Saved data for this app: each visitor's own records, kept on GoodBuild's servers once the app is
+ * published. Visitors sign in with their wallet (a signature, no transaction and no gas).
+ * Collections are private to each wallet unless src/lib/dataRules.json says "public-read".
+ * In the preview nothing reaches a server: records stay in this browser and sign-in needs no signature.
+ */
+export interface DbRecord<T = unknown> {
+  key: string;
+  /** The wallet that wrote it. Only that wallet can change or delete it. */
+  owner: string;
+  value: T;
+  public: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DbPage<T = unknown> {
+  records: DbRecord<T>[];
+  nextCursor: string | null;
+}
+
+export class DbError extends Error {
+  code: string;
+  status: number;
+  constructor(code: string, message: string, status = 0) {
+    super(message);
+    this.code = code;
+    this.status = status;
+  }
+}
+
+const BASE = "/__gb/data/v1";
+const clientId = typeof document === "undefined" ? null : document.querySelector('meta[name="goodbuild-data"]')?.getAttribute("content") ?? null;
+
+/** True in the GoodBuild preview, where saved data stays in this browser. */
+export const isPreview = !clientId;
+
+async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(BASE + path, {
+      ...init,
+      headers: { "x-gb-client": clientId ?? "", ...(init.body ? { "content-type": "application/json" } : {}) },
+    });
+  } catch {
+    throw new DbError("network", "Couldn't reach the server. Check your connection and try again.");
+  }
+  const body = (await res.json().catch(() => null)) as { error?: string; message?: string } | null;
+  if (!res.ok) throw new DbError(body?.error ?? "error", body?.message ?? "Something went wrong. Try again.", res.status);
+  return body as T;
+}
+
+const provider = () => (window as unknown as { ethereum?: EIP1193Provider }).ethereum;
+
+function signInMessage(a: { domain: string; address: string; uri: string; nonce: string }) {
+  return [
+    a.domain + " wants you to sign in with your Ethereum account:",
+    a.address,
+    "",
+    "Sign in to this app. This isn't a transaction and costs no gas.",
+    "",
+    "URI: " + a.uri,
+    "Version: 1",
+    "Chain ID: " + chain.id,
+    "Nonce: " + a.nonce,
+    "Issued At: " + new Date().toISOString(),
+  ].join("\\n");
+}
+
+// --- The preview's stand-in: same behaviour, in this browser only -------------------------------
+
+type Stored = DbRecord & { collection: string };
+const PREVIEW_KEY = "goodbuild-preview-data";
+const PREVIEW_VISITOR = "0x000000000000000000000000000000000000dead";
+let previewWallet: string | null = null;
+const previewRecords = (): Stored[] => {
+  try {
+    return JSON.parse(localStorage.getItem(PREVIEW_KEY) ?? "[]") as Stored[];
+  } catch {
+    return [];
+  }
+};
+const savePreview = (records: Stored[]) => {
+  try {
+    localStorage.setItem(PREVIEW_KEY, JSON.stringify(records));
+  } catch {
+    // Private windows may refuse. Nothing else depends on it.
+  }
+};
+const isPublicCollection = (name: string) => (rules as { collections?: Record<string, string> }).collections?.[name] === "public-read";
+
+function showPreviewNote() {
+  if (document.querySelector("[data-goodbuild-preview-note]")) return;
+  const note = document.createElement("div");
+  note.setAttribute("data-goodbuild-preview-note", "");
+  note.setAttribute("role", "note");
+  note.textContent = "Preview: saved data stays in this browser. It's stored for real once you publish.";
+  note.style.cssText = "position:fixed;left:8px;bottom:8px;z-index:9999;max-width:calc(100vw - 16px);padding:6px 10px;border-radius:8px;font:500 12px/1.4 system-ui,sans-serif;background:#1a0d26;color:#fff";
+  document.body.appendChild(note);
+}
+
+function requirePreviewWallet(): string {
+  if (!previewWallet) throw new DbError("unauthenticated", "Connect your wallet and sign in first.", 401);
+  return previewWallet;
+}
+
+function previewPut<T>(collection: string, key: string, value: T): DbRecord<T> {
+  const owner = requirePreviewWallet();
+  showPreviewNote();
+  const now = new Date().toISOString();
+  const all = previewRecords();
+  const found = all.find((r) => r.key === key && r.owner === owner && r.collection === collection);
+  const record: DbRecord<T> & { collection: string } = { key, owner, value, public: isPublicCollection(collection), createdAt: found?.createdAt ?? now, updatedAt: now, collection };
+  savePreview([record, ...all.filter((r) => r !== found)]);
+  return record;
+}
+
+function previewVisible(collection: string, owner?: string) {
+  if (!previewWallet && !isPublicCollection(collection)) throw new DbError("unauthenticated", "Connect your wallet and sign in first.", 401);
+  return previewRecords().filter((r) => r.collection === collection && (r.public || r.owner === previewWallet) && (!owner || r.owner === owner.toLowerCase()));
+}
+
+// --- The API ------------------------------------------------------------------------------------
+
+/** The wallet signed in to this app, or null. */
+export async function currentWallet(): Promise<string | null> {
+  if (isPreview) return previewWallet;
+  return (await api<{ wallet: string | null }>("/session")).wallet;
+}
+
+/** Connect the wallet if needed and sign in to this app. Returns the wallet address. */
+export async function signIn(): Promise<string> {
+  if (isPreview) {
+    showPreviewNote();
+    previewWallet = (provider() ? await connectWallet().catch(() => PREVIEW_VISITOR) : PREVIEW_VISITOR).toLowerCase();
+    return previewWallet;
+  }
+  const account = getAddress(await connectWallet());
+  const { nonce, domain, uri } = await api<{ nonce: string; domain: string; uri: string }>("/session/nonce");
+  const message = signInMessage({ domain, address: account, uri, nonce });
+  const wallet = createWalletClient({ account, chain, transport: custom(provider()!) });
+  const signature = await wallet.signMessage({ message });
+  return (await api<{ wallet: string }>("/session", { method: "POST", body: JSON.stringify({ message, signature }) })).wallet;
+}
+
+export async function signOut(): Promise<void> {
+  if (isPreview) {
+    previewWallet = null;
+    return;
+  }
+  await api("/session", { method: "DELETE" });
+}
+
+/** Delete everything this wallet saved in this app, and sign out. */
+export async function deleteMyData(): Promise<void> {
+  if (isPreview) {
+    const owner = requirePreviewWallet();
+    savePreview(previewRecords().filter((r) => r.owner !== owner));
+    previewWallet = null;
+    return;
+  }
+  await api("/me", { method: "DELETE" });
+}
+
+/** One named collection. Names use lowercase letters, numbers, - and _, and start with a letter. */
+export function collection<T = unknown>(name: string) {
+  const path = "/c/" + encodeURIComponent(name);
+  return {
+    /** Newest first. Your own records, plus everyone's if the collection is public-read. */
+    async list(options: { owner?: string; limit?: number; cursor?: string } = {}): Promise<DbPage<T>> {
+      if (isPreview) {
+        showPreviewNote();
+        return { records: previewVisible(name, options.owner).slice(0, options.limit ?? 50) as DbRecord<T>[], nextCursor: null };
+      }
+      const query = new URLSearchParams();
+      if (options.owner) query.set("owner", options.owner);
+      if (options.limit) query.set("limit", String(options.limit));
+      if (options.cursor) query.set("cursor", options.cursor);
+      const text = query.toString();
+      return api<DbPage<T>>(path + (text ? "?" + text : ""));
+    },
+    /** One record, or null. Without owner, your own. */
+    async get(key: string, options: { owner?: string } = {}): Promise<DbRecord<T> | null> {
+      if (isPreview) {
+        showPreviewNote();
+        const owner = options.owner?.toLowerCase() ?? previewWallet;
+        return (previewVisible(name).find((r) => r.key === key && r.owner === owner) as DbRecord<T> | undefined) ?? null;
+      }
+      try {
+        return await api<DbRecord<T>>(path + "/" + encodeURIComponent(key) + (options.owner ? "?owner=" + options.owner : ""));
+      } catch (e) {
+        if (e instanceof DbError && e.status === 404) return null;
+        throw e;
+      }
+    },
+    /** Save under a key you choose, replacing your earlier record with that key. Other wallets' records with the same key are separate. */
+    async put(key: string, value: T): Promise<DbRecord<T>> {
+      if (isPreview) return previewPut(name, key, value);
+      return api<DbRecord<T>>(path + "/" + encodeURIComponent(key), { method: "PUT", body: JSON.stringify({ value }) });
+    },
+    /** Save a new record with a generated key. */
+    async add(value: T): Promise<DbRecord<T>> {
+      if (isPreview) return previewPut(name, crypto.randomUUID(), value);
+      return api<DbRecord<T>>(path, { method: "POST", body: JSON.stringify({ value }) });
+    },
+    /** Delete your own record. */
+    async remove(key: string): Promise<void> {
+      if (isPreview) {
+        const owner = requirePreviewWallet();
+        savePreview(previewRecords().filter((r) => !(r.key === key && r.owner === owner && r.collection === name)));
+        return;
+      }
+      await api(path + "/" + encodeURIComponent(key), { method: "DELETE" });
+    },
+  };
+}
+`;
+
+const USE_DB = `import { useCallback, useEffect, useState } from "react";
+import { collection, currentWallet, isPreview, signIn as dbSignIn, signOut as dbSignOut, type DbRecord } from "./db";
+import { errorMessage } from "./format";
+import { useRead } from "./hooks";
+
+/**
+ * Who is signed in to this app's saved data. Separate from useWallet: connecting a wallet only shows
+ * its address, signing in proves it. If the visitor switches account, they must sign in again.
+ */
+export function useDbSession() {
+  const [wallet, setWallet] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [signingIn, setSigningIn] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    currentWallet().then(setWallet).catch(() => setWallet(null)).finally(() => setLoading(false));
+    const eth = (window as unknown as { ethereum?: { on?: (e: string, f: (a: string[]) => void) => void; removeListener?: (e: string, f: (a: string[]) => void) => void } }).ethereum;
+    const onChange = (accounts: string[]) => setWallet((w) => (w && w !== (accounts[0] ?? "").toLowerCase() ? null : w));
+    eth?.on?.("accountsChanged", onChange);
+    return () => eth?.removeListener?.("accountsChanged", onChange);
+  }, []);
+
+  const signIn = useCallback(async () => {
+    setSigningIn(true);
+    setError(null);
+    try {
+      setWallet(await dbSignIn());
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setSigningIn(false);
+    }
+  }, []);
+
+  const signOut = useCallback(async () => {
+    setError(null);
+    await dbSignOut().catch(() => {});
+    setWallet(null);
+  }, []);
+
+  return { wallet, loading, signingIn, error, signIn, signOut, isPreview };
+}
+
+/**
+ * The records of one collection, newest first, with loading and error state. Pass enabled=false to
+ * wait (a private collection needs a signed-in wallet). Writes refresh the list; they throw on
+ * failure, so wrap them in try/catch and show errorMessage(e).
+ *   const notes = useCollection<Note>("notes", { enabled: !!session.wallet, wallet: session.wallet });
+ *   await notes.add({ text });
+ */
+export function useCollection<T>(name: string, options: { owner?: string; limit?: number; enabled?: boolean; wallet?: string | null } = {}) {
+  const { owner, limit, enabled = true, wallet } = options;
+  const store = collection<T>(name);
+  const read = useRead(() => store.list({ owner, limit }), [name, owner, limit, wallet], enabled);
+  // Not while disabled, so one visitor's records don't stay on screen after they sign out.
+  const records: DbRecord<T>[] = enabled ? read.data?.records ?? [] : [];
+
+  async function after<R>(write: Promise<R>): Promise<R> {
+    const result = await write;
+    await read.refresh();
+    return result;
+  }
+  return {
+    records,
+    loading: read.loading,
+    error: read.error,
+    refresh: read.refresh,
+    add: (value: T) => after(store.add(value)),
+    put: (key: string, value: T) => after(store.put(key, value)),
+    remove: (key: string) => after(store.remove(key)),
+  };
+}
+`;
+
 const CONTRACTS_INDEX = `// Platform-owned. GoodBuild writes one module per compiled contract next to this file
 // (ABI after each build, addresses after you deploy). Don't edit by hand.
 export {};
@@ -503,6 +811,9 @@ export function starterFiles(): Record<string, string> {
     "src/lib/tokens.ts": TOKENS,
     "src/lib/format.ts": FORMAT,
     "src/lib/hooks.ts": HOOKS,
+    "src/lib/db.ts": DB,
+    "src/lib/useDb.ts": USE_DB,
+    "src/lib/dataRules.json": DATA_RULES,
     "src/contracts/index.ts": CONTRACTS_INDEX,
     "src/components/ConnectButton.tsx": CONNECT_BUTTON,
     "src/components/ui/button.tsx": BUTTON,

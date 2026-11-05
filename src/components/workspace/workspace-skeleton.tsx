@@ -12,7 +12,7 @@ export function WorkspaceSkeleton({ prompt, className }: { prompt?: string; clas
           <div className="min-h-0 overflow-hidden rounded-card bg-surface p-5" role="status">
             <p className="ml-auto w-fit max-w-[85%] rounded-block bg-tint px-4 py-3 text-sm whitespace-pre-wrap">{prompt}</p>
             <p className="mt-4 flex items-center gap-2 text-sm text-grey-600">
-              <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden /> Starting your build…
+              <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden /> Getting started…
             </p>
           </div>
         ) : (

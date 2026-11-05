@@ -10,6 +10,7 @@ import { dbAssetStore, type AssetStore } from "./asset-store";
 import { ASSETS_MODULE, assetManifest, assetsModule, visionImage } from "./assets";
 import { HISTORY_WINDOW, memoryBlock, updateMemory, type Memory, type MemoryMessage } from "./memory";
 import { TIER_FOR, ModelUnavailableError, type ChatMessage, type ModelClient, type ModelEvent, type ModelTier, type ToolCall, type UserPart } from "./model";
+import { INTAKE_MAX_TOKENS, INTAKE_PROMPT, INTAKE_TOOLS, fallbackIntake, intakeContext, latestIntake, parseIntake, planBrief } from "./plan-intake";
 import { BUILD_TOOLS, PLAN_TOOLS, contextWithPicks, systemPrompt } from "./prompt";
 import { checkpoint, claimTurn, loadFiles, recordUsage, releaseTurn } from "./store";
 import { deploymentsBlock, loadDeployedAddresses } from "@/server/deploy/addresses";
@@ -29,6 +30,7 @@ import {
 } from "./turn-progress";
 import { Workspace, type FileChange } from "./workspace";
 
+import { applyPalette, ensureReadable, paletteById } from "@/lib/palettes";
 import type { Step, TurnEvent, TurnMode, TurnRecord } from "@/lib/turn-types";
 
 export type { Step, TurnEvent, TurnMode, TurnRecord };
@@ -56,6 +58,8 @@ export interface TurnInput {
   userMessageId?: string;
   /** Or a new prompt (direct runs: tests, scripts). */
   prompt?: string;
+  /** Direct runs: ask the plan-first questions. Queued turns carry this on their message (D32). */
+  intake?: boolean;
 }
 
 export const MAX_FIX_ATTEMPTS = 3;
@@ -142,8 +146,9 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     const contractOptions = setup.contractOptions;
     if (saved) log(`↻ resumed after an interruption (attempt ${job.resume?.attempt ?? 2}), replaying ${replayLog.length} saved ${replayLog.length === 1 ? "response" : "responses"}`);
 
-    const convo: ChatMessage[] = [{ role: "system", content: systemPrompt(input.mode) }, ...rehydrate(setup.prefix, images)];
-    const tools = input.mode === "plan" ? PLAN_TOOLS : BUILD_TOOLS;
+    const intake = setup.intake === true;
+    const convo: ChatMessage[] = [{ role: "system", content: intake ? INTAKE_PROMPT : systemPrompt(input.mode) }, ...rehydrate(setup.prefix, images)];
+    const tools = intake ? INTAKE_TOOLS : input.mode === "plan" ? PLAN_TOOLS : BUILD_TOOLS;
 
     let calls = 0;
     let callIdx = 0;
@@ -213,7 +218,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
         // nothing from the failed attempt has been executed, so drop its partial text and calls.
         for (let attempt = 0; ; attempt++) {
           try {
-            for await (const ev of model.stream({ tier, messages: convo, tools, maxTokens: MAX_TOKENS, signal: job.signal })) {
+            for await (const ev of model.stream({ tier, messages: convo, tools, maxTokens: intake ? INTAKE_MAX_TOKENS : MAX_TOKENS, signal: job.signal, ...(intake ? { noThinking: true } : {}) })) {
               if (ev.type === "text") {
                 deltas.push(ev.delta);
                 onText(ev.delta);
@@ -357,7 +362,23 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       return false;
     };
 
-    const finished = await phase(input.mode === "plan" ? TIER_FOR.plan : TIER_FOR.build);
+    // Plan first (D32): one call and no tool rounds. The answers start the next turn, so nothing
+    // waits on a job or a worker. An unusable reply gets fixed questions, not a paid second try.
+    if (intake) {
+      const replied = await callModel(TIER_FOR.plan);
+      const asked = replied.find((c) => c.name === "ask_questions");
+      const parsed = asked ? parseIntake(asked.arguments, setup.request) : null;
+      // Plain words with no tool call are the model answering a question or refusing: leave those be.
+      if (parsed || asked || cutOff || !text.trim()) {
+        record.intake = parsed ?? fallbackIntake(setup.request);
+        if (!text.trim()) {
+          text = "A few quick questions so I build the right thing.";
+          out({ type: "text_set", text });
+        }
+        out({ type: "questions", intake: record.intake });
+      }
+    }
+    const finished = intake || (await phase(input.mode === "plan" ? TIER_FOR.plan : TIER_FOR.build));
     if (!finished || !text.trim()) {
       // Out of tool rounds, or the pass ended with nothing shown (its reply came with a tool
       // call and was dropped as narration): ask once for the reply, so the user gets a
@@ -403,6 +424,15 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       return record;
     }
 
+    // The person's colours stay, whatever the model wrote to the page (D32).
+    const keepTheme = () => {
+      const html = ws.files["public/index.html"];
+      if (html === undefined) return;
+      const palette = paletteById(setup.paletteId);
+      if (palette) ws.files["public/index.html"] = applyPalette(html, palette);
+      else if (setup.customColours) ws.files["public/index.html"] = ensureReadable(html);
+    };
+    keepTheme();
     // Checks and auto-fix (max 3, all on the fix tier). Same errors twice → stop.
     let report = await runChecks(ws.files, compile, lint, step, log, 0, contractOptions, runContractTests, stopIfRequested);
     let previous = "";
@@ -432,6 +462,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
         status: report.ok ? "done" : "error",
       });
     }
+    keepTheme();
     // Replayed everything without reaching a new model call (a crash during the last checks).
     goLive();
     if (initialErrors > 0) {
@@ -531,6 +562,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     // The user's message: answer a queued one, or record the new prompt.
     let request = input.prompt?.trim() ?? "";
     let userMessageId = input.userMessageId;
+    let isIntake = input.intake === true;
     if (userMessageId) {
       const [m] = await db
         .select()
@@ -538,6 +570,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
         .where(and(eq(messages.id, userMessageId), eq(messages.projectId, input.projectId)))
         .limit(1);
       request = m?.content ?? request;
+      isIntake = isIntake || (m?.meta as { intake?: boolean } | null)?.intake === true;
       // The chat is ordered by time: a prompt queued behind other turns moves to the moment
       // its own turn starts, so its reply sits right under it (seen live with 3 queued prompts).
       await db.update(messages).set({ status: "done", createdAt: new Date() }).where(eq(messages.id, userMessageId));
@@ -576,6 +609,35 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     const names = assets.filter((a) => a.kind !== "reference").map((a) => a.name);
     if (assets.length) files[ASSETS_MODULE] = assetsModule(assets);
     else delete files[ASSETS_MODULE];
+
+    // Plan first (D32): the request and nothing else. No project files, history or images, so the
+    // questions stay cheap; the images wait, unattached, for the build.
+    if (isIntake) {
+      const result: TurnSetup = {
+        v: TURN_SETUP_VERSION,
+        assistantId,
+        userMessageId,
+        request,
+        firstBuild,
+        intake: true,
+        priorStatus: finalStatus,
+        assetNames: names,
+        contractOptions: {},
+        baseFiles: files,
+        prefix: [{ role: "user", content: intakeContext(request, assets) }],
+        imageAssetIds: [],
+        recordAtStart: structuredClone(record),
+        text,
+      };
+      await job.commit((tx) => job.saveSetup(tx, result));
+      return result;
+    }
+
+    // The plan's answers carry into every later turn. The first build also gets the palette, in
+    // place before the model reads the page.
+    const brief = planBrief(latestIntake(await db.select({ role: messages.role, meta: messages.meta }).from(messages).where(eq(messages.projectId, input.projectId)).orderBy(asc(messages.createdAt))), firstBuild);
+    const chosenPalette = firstBuild ? paletteById(brief.paletteId) : undefined;
+    if (chosenPalette && files["public/index.html"] !== undefined) files["public/index.html"] = applyPalette(files["public/index.html"], chosenPalette);
 
     const all = await conversation(db, input.projectId, [userMessageId, assistantId]);
     const history: ChatMessage[] = all.slice(-HISTORY_WINDOW).map((m) => ({ role: m.role, content: m.content.slice(0, 4000) }));
@@ -621,6 +683,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       assets: assetManifest(assets),
       memory: memoryBlock(memory),
       deployments: [upgradeable ? upgradeableRules(await liveStorage(db, project)) : "", deploymentsBlock(await loadDeployedAddresses(db, input.projectId), { upgradeable })].filter(Boolean).join("\n\n"),
+      plan: brief.text,
     });
     log(`context: ${ctx.picks.length} of ${Object.keys(files).length} files in full (${ctx.picks.map((p) => p.path.split("/").pop()).join(", ")})`);
     // Design references the model hasn't seen yet go in as images, once; the manifest keeps
@@ -632,7 +695,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     const imageAssetIds = images.length ? fresh.map((a) => a.id) : [];
 
     // G$ anywhere in this project's prompts means the G$ ERC-20, never native CELO.
-    const userText = [request, ...history.filter((m) => m.role === "user").map((m) => String(m.content))].join("\n");
+    const userText = [request, brief.answerWords, ...history.filter((m) => m.role === "user").map((m) => String(m.content))].join("\n");
     const prefix: SavedMessage[] = [
       // History messages are plain text (built above from message content).
       ...(history as SavedMessage[]),
@@ -644,6 +707,8 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       userMessageId,
       request,
       firstBuild,
+      ...(input.mode === "build" && chosenPalette ? { paletteId: chosenPalette.id } : {}),
+      ...(input.mode === "build" && firstBuild && brief.customColours ? { customColours: true } : {}),
       priorStatus: finalStatus,
       assetNames: names,
       contractOptions: { gdToken: mentionsGd(userText), allowNative: mentionsNativeCelo(userText), ...(upgradeable ? { upgradeable } : {}) },

@@ -61,13 +61,13 @@ describe("prompt gating", () => {
     vi.stubGlobal("fetch", fetchMock);
     render(<Harness auth={makeAuth({ user: { id: "u1", wallet: "0xabc", walletKind: "external" } as never })} />);
     await userEvent.click(screen.getByText("send"));
-    expect(await screen.findByText(/Starting your build/)).toBeInTheDocument();
+    expect(await screen.findByText(/Getting started/)).toBeInTheDocument();
     expect(screen.getByText("A tip jar")).toBeInTheDocument();
     await userEvent.click(screen.getByText("send"));
     expect(fetchMock.mock.calls.filter(([u]) => String(u) === "/api/projects")).toHaveLength(1);
     finish(new Response(JSON.stringify({ id: "p1", name: "Tip" }), { status: 201 }));
     await vi.waitFor(() => expect(push).toHaveBeenCalledWith("/p/p1"));
-    await vi.waitFor(() => expect(screen.queryByText(/Starting your build/)).not.toBeInTheDocument());
+    await vi.waitFor(() => expect(screen.queryByText(/Getting started/)).not.toBeInTheDocument());
   });
 
   it("logged-out Send saves the prompt and opens the connect modal", async () => {

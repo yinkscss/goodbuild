@@ -124,6 +124,21 @@ export async function checkAiAllowance(
   return { allowed: true };
 }
 
+/**
+ * Room needed to plan before building (D32). It's more than a plan can cost at worst (see
+ * plan-first.test.ts), so a plan can never be what puts someone over the cap with nothing built.
+ * Below it they go straight to a build, which D28 lets finish.
+ */
+export const PLAN_HEADROOM_MICRO = 10_000;
+
+/** Is there room to plan and still start the build afterwards? Only the per-person caps matter here. */
+export async function hasPlanHeadroom(db: Db, userId: string, env: Record<string, string | undefined> = process.env): Promise<boolean> {
+  const [user] = await db.select({ wallet: users.wallet, verifiedAt: users.verifiedAt, goodidRoot: users.goodidRoot }).from(users).where(eq(users.id, userId)).limit(1);
+  if (!user || isExempt(user.wallet, env)) return true;
+  const spent = user.verifiedAt && user.goodidRoot ? await identitySpentMicro(db, user.goodidRoot) : await spentMicro(db, userId);
+  return spent + PLAN_HEADROOM_MICRO < (user.verifiedAt ? verifiedCapMicro(env) : capMicro(env));
+}
+
 /** Should the workspace ask this account to verify? Only when that would actually unlock more AI. */
 export async function shouldOfferVerification(db: Db, userId: string, env: Record<string, string | undefined> = process.env): Promise<boolean> {
   const [user] = await db.select({ wallet: users.wallet, verifiedAt: users.verifiedAt }).from(users).where(eq(users.id, userId)).limit(1);

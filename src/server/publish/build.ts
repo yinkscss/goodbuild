@@ -29,6 +29,8 @@ export interface BuildInput {
   changeableContract?: boolean;
   /** A link for visitors to report this app, on the main site. */
   reportUrl?: string;
+  /** The public id src/lib/db.ts reads from the page. Its presence is also how the helper knows it isn't in the preview. */
+  dataClientId?: string;
   /** Where the allowed packages are installed. */
   runtimeDir?: string;
 }
@@ -176,7 +178,8 @@ export async function buildPublishedApp(input: BuildInput): Promise<PublishedFil
   const jsName = hashed("app", "js", js);
   const cssName = hashed("app", "css", css);
   let page = html.replace(THEME_BLOCK, "").replace(/<title>[\s\S]*?<\/title>/, () => `<title>${escapeHtml(input.title)}</title>`);
-  page = page.replace("</head>", () => `<link rel="stylesheet" href="/${cssName}" />\n</head>`);
+  const dataMeta = input.dataClientId ? `<meta name="goodbuild-data" content="${escapeHtml(input.dataClientId)}" />\n` : "";
+  page = page.replace("</head>", () => `${dataMeta}<link rel="stylesheet" href="/${cssName}" />\n</head>`);
   page = page.replace(/<body[^>]*>/, (open) => `${open}\n${bar(input.hasUndeployedContracts, input.reportUrl, input.changeableContract)}`);
   page = page.replace("</body>", () => `<script type="module" src="/${jsName}"></script>\n</body>`);
 
