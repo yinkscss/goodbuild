@@ -223,7 +223,7 @@ function ReplaceNotice({ state }: { state: DeployState }) {
           </li>
         ))}
       </ul>
-      <p className="mt-2 text-grey-600">Your project switches to the new {many ? "contracts" : "contract"}. A published app stays on the old {many ? "ones" : "one"} until you publish again.</p>
+      <p className="mt-2 text-grey-600">Your project switches to the new {many ? "contracts" : "contract"}. A published app stays on the old {many ? "ones" : "one"} until you publish again. If the old {many ? "ones hold" : "one holds"} funds, the chat will show what you can do next.</p>
     </div>
   );
 }
