@@ -1,7 +1,7 @@
 import "server-only";
 
 import { getDb } from "@/server/db/client";
-import { modelClient } from "@/server/agent";
+import { modelClient, visionClient } from "@/server/agent";
 import { currentWorker, ensureWorker, type TurnWorker } from "./worker";
 
 /**
@@ -11,7 +11,7 @@ import { currentWorker, ensureWorker, type TurnWorker } from "./worker";
  */
 export function inlineWorker(): TurnWorker | undefined {
   if (process.env.GOODBUILD_INLINE_WORKER === "0") return currentWorker();
-  return ensureWorker({ getDb, model: modelClient });
+  return ensureWorker({ getDb, model: modelClient, namer: visionClient });
 }
 
 /** A job was queued or a stop was requested: let a local worker look now. */

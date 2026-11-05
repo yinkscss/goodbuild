@@ -100,3 +100,6 @@ Q13–Q16 in [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md).
   - `POST /api/projects/[id]/turns/[jobId]/stop` stops the turn.
   - The turn runs and persists whether or not any browser is watching.
 - **Offline demo:** `GOODBUILD_DEMO_MODEL=1` replays a scripted tip-jar build (development only).
+
+## Project names
+On a project's first build, a cheap call with no thinking (`nameProject`, `src/server/agent/project-name.ts`) gives it a short name, numbered if the owner already has one like it. It runs beside the build and counts as usage. If it fails or the reply isn't a name, the name made from the prompt stays.

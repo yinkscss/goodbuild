@@ -2,7 +2,7 @@
 // builds (Q31). Run with `pnpm worker`; set GOODBUILD_INLINE_WORKER=0 on the web server so only
 // this process claims jobs. Needs DATABASE_URL (Postgres): PGlite is single-process.
 import { getDb } from "../src/server/db/client";
-import { modelClient } from "../src/server/agent";
+import { modelClient, visionClient } from "../src/server/agent";
 import { TurnWorker } from "../src/server/jobs/worker";
 
 if (!process.env.DATABASE_URL) {
@@ -10,7 +10,7 @@ if (!process.env.DATABASE_URL) {
   process.exit(1);
 }
 
-const worker = new TurnWorker({ getDb, model: modelClient }).start();
+const worker = new TurnWorker({ getDb, model: modelClient, namer: visionClient }).start();
 console.log(`[worker] ${worker.id} waiting for turn jobs`);
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {

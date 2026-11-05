@@ -3,12 +3,15 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { hostname } from "node:os";
 
+import { eq } from "drizzle-orm";
+
 import type { Db } from "@/server/db/client";
-import type { TurnJob } from "@/server/db/schema";
+import { turnJobs, type TurnJob } from "@/server/db/schema";
 import type { ModelClient } from "@/server/agent/model";
 import { runTurn } from "@/server/agent/runner";
 import { LeaseLostError } from "@/server/agent/turn-progress";
 import type { TurnEvent, TurnMode } from "@/lib/turn-types";
+import { nameProject } from "@/server/agent/project-name";
 import { checkAiAllowance } from "@/server/credits/cap";
 import { MAX_ATTEMPTS, RENEW_MS, appendEvents, claimJob, failJob, jobContext, renewLease, sweep } from "./jobs";
 
@@ -59,6 +62,8 @@ export class EventSink {
 export interface WorkerOptions {
   getDb: () => Promise<Db>;
   model: () => ModelClient;
+  /** Cheap model with no thinking, to name a project on its first build. Without it, none is named. */
+  namer?: () => ModelClient;
   concurrency?: number;
   /** Turn checks (tests). */
   deps?: Partial<Parameters<typeof runTurn>[0]>;
@@ -132,6 +137,17 @@ export class TurnWorker {
     while (this.running.size) await new Promise((r) => setTimeout(r, 20));
   }
 
+  /** Best effort, beside the build: it must never hold up or fail the turn. */
+  private async nameIfFirstBuild(db: Db, job: TurnJob, model: ModelClient) {
+    try {
+      const jobs = await db.select({ id: turnJobs.id }).from(turnJobs).where(eq(turnJobs.projectId, job.projectId)).limit(2);
+      if (jobs.length > 1) return;
+      await nameProject(db, model, { projectId: job.projectId, userId: job.userId, prompt: job.prompt, messageId: job.userMessageId });
+    } catch (e) {
+      console.warn(`[worker] couldn't name project ${job.projectId}: ${(e as Error).message}`);
+    }
+  }
+
   private async run() {
     while (!this.stopped) {
       try {
@@ -172,6 +188,7 @@ export class TurnWorker {
         return;
       }
     }
+    if (job.attempt === 1 && this.opts.namer) void this.nameIfFirstBuild(db, job, this.opts.namer());
     const controller = new AbortController();
     let lost = false;
     const lease = setInterval(() => {
