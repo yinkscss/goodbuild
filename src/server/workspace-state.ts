@@ -10,6 +10,7 @@ import { listVersions, loadFiles } from "@/server/agent/store";
 import { starterFiles } from "@/server/agent/template";
 import { activeJobs } from "@/server/jobs/jobs";
 import { shouldOfferVerification } from "@/server/credits/cap";
+import { contractState } from "@/server/deploy/contract-state";
 import { getOwnedProject } from "@/server/projects";
 
 export interface WorkspaceMessage {
@@ -35,6 +36,8 @@ export interface WorkspaceState {
    */
   assets: Array<AssetInfo & { url?: string }>;
   /** The running turn and queued follow-ups, oldest first (P18). A reload attaches to the first. */
+  /** Deployed contracts whose saved code has changed since, so the chain doesn't have the changes. */
+  outdatedContracts: string[];
   /** Used the free AI and verification would unlock more (D30). */
   offerVerification: boolean;
   jobs: Array<{ id: string; status: "queued" | "running"; userMessageId: string; assistantMessageId: string | null; mode: string }>;
@@ -69,6 +72,7 @@ export async function workspaceState(db: Db, projectId: string, ownerId: string)
       createdAt: m.createdAt.toISOString(),
     })),
     versions: versions.map((v) => ({ ...v, createdAt: v.createdAt.toISOString(), revertedFrom: v.revertedFrom ?? null })),
+    outdatedContracts: (await contractState(db, project, files)).outdated,
     offerVerification: await shouldOfferVerification(db, ownerId),
     estimate: {
       buildMicro: estimateTurnMicro({ mode: "build", contextChars, firstBuild }),

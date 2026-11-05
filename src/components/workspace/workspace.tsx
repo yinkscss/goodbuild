@@ -61,7 +61,7 @@ export function Workspace({ initial }: { initial: WorkspaceState }) {
       projectId={state.project.id}
       chainId={state.project.chainId}
       hasContracts={hasContracts}
-      deployed={deployed}
+      deployed={deployed.filter((name) => !state.outdatedContracts.includes(name))}
       busy={running}
       onDeployed={(deployed) => {
         void ws.refresh().then((next) => {

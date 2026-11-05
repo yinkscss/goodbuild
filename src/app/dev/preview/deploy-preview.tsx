@@ -16,6 +16,9 @@ const auth = {
   wallet: { address: wallet, chainId: 11142220, kind: "embedded" as const, label: "Email wallet" },
 };
 
+const A = "0x2222222222222222222222222222222222222222";
+const B = "0x3333333333333333333333333333333333333333";
+
 const plan: Plan & { sourceHash: string } = {
   runId: "run-preview",
   chainId: 11142220,
@@ -23,11 +26,10 @@ const plan: Plan & { sourceHash: string } = {
   openZeppelin: "5.6.1",
   gooddollar: "0x00000000000000000000000000000000000000d1",
   alreadyDeployed: {},
+  replaces: [],
   sourceHash: "0x",
   steps: [],
 };
-const A = "0x2222222222222222222222222222222222222222";
-const B = "0x3333333333333333333333333333333333333333";
 const tx = "0x" + "ab".repeat(32);
 
 const base: DeployState = {
@@ -45,6 +47,7 @@ const base: DeployState = {
 
 const STATES: Record<string, DeployState> = {
   ready: base,
+  replace: { ...base, plan: { ...plan, replaces: [{ name: "RTXPool", address: B, gdBalance: "1200500000000000000000" }, { name: "RTXToken", address: A, gdBalance: null }] } },
   preparing: { ...base, stage: "preparing", plan: null, steps: [] },
   signing: { ...base, stage: "running", steps: [{ name: "RTXToken", phase: "signing" }, { name: "RTXPool", phase: "waiting" }] },
   broadcasting: { ...base, stage: "running", steps: [{ name: "RTXToken", phase: "broadcasting", txHash: tx as `0x${string}` }, { name: "RTXPool", phase: "waiting" }] },

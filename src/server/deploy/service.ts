@@ -3,7 +3,7 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 
 import { and, desc, eq } from "drizzle-orm";
-import { createPublicClient, getAddress, http, type Abi, type Address, type Hex, type PublicClient } from "viem";
+import { createPublicClient, erc20Abi, getAddress, http, type Abi, type Address, type Hex, type PublicClient } from "viem";
 import { celo, celoSepolia } from "viem/chains";
 
 import { goodDollarAddress, isTestGoodDollar } from "@/config/gooddollar";
@@ -73,6 +73,15 @@ export interface DeployPlan {
   steps: DeployStepPlan[];
   /** Steps already deployed from this exact source on this chain, so a retry resumes. */
   alreadyDeployed: Record<string, Address>;
+  /** Live contracts this deploy leaves behind. They keep their funds and history. */
+  replaces: ReplacedContract[];
+}
+
+export interface ReplacedContract {
+  name: string;
+  address: Address;
+  /** G$ the old contract holds, in wei as a string, or null if there's no G$ here or the read failed. */
+  gdBalance: string | null;
 }
 
 export function assertChain(chainId: number, mainnetEnabled = isMainnetEnabled(process.env.NEXT_PUBLIC_ENABLE_MAINNET)) {
@@ -90,7 +99,7 @@ export function assertChain(chainId: number, mainnetEnabled = isMainnetEnabled(p
 export async function prepareDeploy(
   db: Db,
   input: { projectId: string; chainId: number; evmVersion?: EvmVersion },
-  deps: { compile?: typeof compileForDeploy } = {},
+  deps: { compile?: typeof compileForDeploy; client?: Pick<PublicClient, "readContract"> } = {},
 ): Promise<DeployPlan> {
   assertChain(input.chainId);
   const files = await loadFiles(db, input.projectId);
@@ -124,6 +133,22 @@ export async function prepareDeploy(
   const alreadyDeployed: Record<string, Address> = {};
   for (const r of rows) alreadyDeployed[r.contractName] ??= r.address as Address;
 
+  const replaced = await db
+    .select({ name: deployments.contractName, address: deployments.address })
+    .from(deployments)
+    .where(and(eq(deployments.projectId, input.projectId), eq(deployments.chainId, input.chainId)))
+    .orderBy(desc(deployments.createdAt));
+  const latest = new Map<string, Address>();
+  for (const r of replaced) if (!latest.has(r.name)) latest.set(r.name, r.address as Address);
+  const replaces = await Promise.all(
+    plan.steps
+      .filter((s) => !alreadyDeployed[s.name] && latest.has(s.name))
+      .map(async (s): Promise<ReplacedContract> => {
+        const address = latest.get(s.name)!;
+        return { name: s.name, address, gdBalance: gooddollar ? await readGdBalance(deps.client ?? publicClientFor(input.chainId), gooddollar, address) : null };
+      }),
+  );
+
   return {
     runId: randomUUID(),
     projectId: input.projectId,
@@ -141,7 +166,17 @@ export async function prepareDeploy(
       return { name: s.name, file: a.file, abi: a.abi, bytecode: a.bytecode, deployedBytecode: a.deployedBytecode, bytecodeBytes: (a.bytecode.length - 2) / 2, args: s.args, dependsOn: s.dependsOn };
     }),
     alreadyDeployed,
+    replaces,
   };
+}
+
+/** A warning shouldn't block a deploy, so a failed read just means the balance isn't shown. */
+async function readGdBalance(client: Pick<PublicClient, "readContract">, token: Address, holder: Address): Promise<string | null> {
+  try {
+    return String(await client.readContract({ address: token, abi: erc20Abi, functionName: "balanceOf", args: [holder] }));
+  } catch {
+    return null;
+  }
 }
 
 /** Public client for a Celo chain. RPC overridable with CELO_RPC_URL / CELO_SEPOLIA_RPC_URL. */
