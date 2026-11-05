@@ -1,0 +1,166 @@
+{
+  "scenario": "E3c: five new single-file edits on the E3 project (36+ files, over budget), run through the P18 background runner",
+  "base": "http://127.0.0.1:3002",
+  "projectId": "b9e834f8-0622-447d-933d-d704ae841a04",
+  "uploads": [],
+  "turns": [
+    {
+      "prompt": "On the About page, reword the first FAQ answer so it sounds friendlier.",
+      "status": "ready",
+      "error": null,
+      "seconds": 38,
+      "firstTryClean": true,
+      "fixAttempts": 0,
+      "reads": 0,
+      "searches": 0,
+      "access": [],
+      "context": "context: 11 of 39 files in full (App.tsx, index.html, TipJar.sol, index.ts, About.tsx, Events.tsx, Layout.tsx, TipJar.t.sol, Home.tsx, TipFeed.tsx, NotFound.tsx)",
+      "guides": [],
+      "memory": "memory: 20 older messages summarised, 15 decisions kept",
+      "byModel": {
+        "deepseek-flash": {
+          "calls": 2,
+          "in": 36494,
+          "out": 695,
+          "usd": 0.0063560000000000005
+        }
+      },
+      "reply": "The first FAQ answer on the About page now reads more warmly: G$ is described as a friendly digital currency made for small everyday payments, with a \"pocket money for the club\" comparison, while keeping the note that the app only moves G$ and never CELO. The other questions and answers are untouched.",
+      "changes": [
+        "About.tsx"
+      ],
+      "checks": [
+        "compile:done:0 errors · 0 warnings",
+        "test:done:6 tests passed in a local EVM",
+        "app:done:imports and syntax ok"
+      ]
+    },
+    {
+      "prompt": "In the stats row, rename the 'Tippers' label to 'Supporters'.",
+      "status": "ready",
+      "error": null,
+      "seconds": 18,
+      "firstTryClean": true,
+      "fixAttempts": 0,
+      "reads": 0,
+      "searches": 1,
+      "access": [
+        "· search_code \"Tippers\""
+      ],
+      "context": "context: 18 of 39 files in full (App.tsx, index.html, TipJar.sol, index.ts, StatsRow.tsx, useTipJar.ts, label.tsx, Home.tsx, Tip.tsx, Leaderboard.tsx, TipJar.t.sol, About.tsx, TipFeed.tsx, useNow.ts, main.tsx, utils.ts, skeleton.tsx, input.tsx)",
+      "guides": [],
+      "memory": "memory: 22 older messages summarised, 15 decisions kept",
+      "byModel": {
+        "deepseek-flash": {
+          "calls": 4,
+          "in": 74859,
+          "out": 669,
+          "usd": 0.006925
+        }
+      },
+      "reply": "The third stat card now reads \"Supporters\" instead of \"Tippers\", and since both pages share that component, it updates on Home and Tip at once. On the leaderboard they are still called tippers, where the board is specifically about tipping.",
+      "changes": [
+        "StatsRow.tsx"
+      ],
+      "checks": [
+        "compile:done:0 errors · 0 warnings",
+        "test:done:6 tests passed in a local EVM",
+        "app:done:imports and syntax ok"
+      ]
+    },
+    {
+      "prompt": "On the Events page, show each meetup's time in bold.",
+      "status": "ready",
+      "error": null,
+      "seconds": 16,
+      "firstTryClean": true,
+      "fixAttempts": 0,
+      "reads": 0,
+      "searches": 0,
+      "access": [],
+      "context": "context: 11 of 39 files in full (App.tsx, index.html, TipJar.sol, index.ts, Events.tsx, StatsRow.tsx, About.tsx, TipFeed.tsx, TipForm.tsx, Layout.tsx, useTipJar.ts)",
+      "guides": [],
+      "memory": "memory: 24 older messages summarised, 15 decisions kept",
+      "byModel": {
+        "deepseek-flash": {
+          "calls": 2,
+          "in": 36036,
+          "out": 508,
+          "usd": 0.0059499999999999996
+        }
+      },
+      "reply": "Each meetup's time on the Events page now shows in bold and in the darker text colour, so it stands out from the place and \"bring\" details beside it. Nothing else on the page changed.",
+      "changes": [
+        "Events.tsx"
+      ],
+      "checks": [
+        "compile:done:0 errors · 0 warnings",
+        "test:done:6 tests passed in a local EVM",
+        "app:done:imports and syntax ok"
+      ]
+    },
+    {
+      "prompt": "In the tip form, change the message placeholder to 'Say thanks to the club'.",
+      "status": "ready",
+      "error": null,
+      "seconds": 13,
+      "firstTryClean": true,
+      "fixAttempts": 0,
+      "reads": 0,
+      "searches": 0,
+      "access": [],
+      "context": "context: 12 of 39 files in full (App.tsx, index.html, TipJar.sol, index.ts, TipForm.tsx, TipJar.t.sol, TipFeed.tsx, Tip.tsx, useTipJar.ts, Events.tsx, About.tsx, ConnectButton.tsx)",
+      "guides": [],
+      "memory": "memory: 26 older messages summarised, 15 decisions kept",
+      "byModel": {
+        "deepseek-flash": {
+          "calls": 2,
+          "in": 36362,
+          "out": 203,
+          "usd": 0.00557
+        }
+      },
+      "reply": "The message box on the tip form now shows \"Say thanks to the club\" as its placeholder. Everything else in the form is unchanged.",
+      "changes": [
+        "TipForm.tsx"
+      ],
+      "checks": [
+        "compile:done:0 errors · 0 warnings",
+        "test:done:6 tests passed in a local EVM",
+        "app:done:imports and syntax ok"
+      ]
+    },
+    {
+      "prompt": "On the 404 page, change the headline to 'This page wandered off'.",
+      "status": "ready",
+      "error": null,
+      "seconds": 15,
+      "firstTryClean": true,
+      "fixAttempts": 0,
+      "reads": 0,
+      "searches": 0,
+      "access": [],
+      "context": "context: 13 of 39 files in full (App.tsx, index.html, TipJar.sol, index.ts, NotFound.tsx, Hero.tsx, TipForm.tsx, TipJar.t.sol, Home.tsx, StatsRow.tsx, useTipJar.ts, TipFeed.tsx, About.tsx)",
+      "guides": [],
+      "memory": "memory: 28 older messages summarised, 15 decisions kept",
+      "byModel": {
+        "deepseek-flash": {
+          "calls": 3,
+          "in": 54977,
+          "out": 457,
+          "usd": 0.006206
+        }
+      },
+      "reply": "The 404 page headline now reads \"This page wandered off\". The rest of the page, including the buttons back to the tip page and home, is unchanged.",
+      "changes": [
+        "NotFound.tsx"
+      ],
+      "checks": [
+        "compile:done:0 errors · 0 warnings",
+        "test:done:6 tests passed in a local EVM",
+        "app:done:imports and syntax ok"
+      ]
+    }
+  ],
+  "at": "2026-11-05T00:26:49.822Z"
+}

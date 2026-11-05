@@ -8,6 +8,7 @@ import type { AssetInfo } from "@/server/agent/assets";
 import { systemPrompt } from "@/server/agent/prompt";
 import { listVersions, loadFiles } from "@/server/agent/store";
 import { starterFiles } from "@/server/agent/template";
+import { activeJobs } from "@/server/jobs/jobs";
 import { getOwnedProject } from "@/server/projects";
 
 export interface WorkspaceMessage {
@@ -32,6 +33,8 @@ export interface WorkspaceState {
    * inlines data URLs.
    */
   assets: Array<AssetInfo & { url?: string }>;
+  /** The running turn and queued follow-ups, oldest first (P18). A reload attaches to the first. */
+  jobs: Array<{ id: string; status: "queued" | "running"; userMessageId: string; assistantMessageId: string | null; mode: string }>;
 }
 
 /** Everything the workspace needs to render, for the page and for reloads after a turn. */
@@ -71,5 +74,12 @@ export async function workspaceState(db: Db, projectId: string, ownerId: string)
       const origin = publicAssetOrigin();
       return origin ? { ...a, url: publicAssetUrl(origin, projectId, a.id) } : a;
     }),
+    jobs: (await activeJobs(db, projectId)).map((j) => ({
+      id: j.id,
+      status: j.status as "queued" | "running",
+      userMessageId: j.userMessageId,
+      assistantMessageId: j.assistantMessageId,
+      mode: j.mode,
+    })),
   };
 }

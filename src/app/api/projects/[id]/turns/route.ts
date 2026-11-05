@@ -2,12 +2,11 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { PROMPT_MAX_LENGTH } from "@/lib/prompt";
-import { modelClient, runTurn, TurnBusyError, type TurnEvent } from "@/server/agent";
 import { errorResponse, requireSession } from "@/server/auth/http";
 import { getDb } from "@/server/db/client";
+import { kickWorker } from "@/server/jobs";
+import { enqueueTurn } from "@/server/jobs/jobs";
 import { getOwnedProject } from "@/server/projects";
-
-export const maxDuration = 300;
 
 const body = z
   .object({
@@ -18,8 +17,9 @@ const body = z
   .refine((b) => b.prompt || b.userMessageId, { message: "prompt or userMessageId is required" });
 
 /**
- * Run one agent turn and stream its events as Server-Sent Events. The turn keeps
- * running (and persists) even if the browser disconnects; the workspace then reloads it.
+ * Queue an agent turn (P18). The prompt is saved as a queued user message and a job is created;
+ * a background worker runs it. The response carries the job id; stream its events from
+ * GET /api/projects/[id]/turns/[jobId]/events. Follow-ups queue behind a running turn.
  */
 export async function POST(request: Request, ctx: RouteContext<"/api/projects/[id]/turns">) {
   try {
@@ -31,45 +31,12 @@ export async function POST(request: Request, ctx: RouteContext<"/api/projects/[i
     const db = await getDb();
     const owned = await getOwnedProject(db, id, session.user.id);
     if (!owned) return NextResponse.json({ error: "not_found" }, { status: 404 });
-    if (parsed.data.userMessageId && !owned.messages.some((m) => m.id === parsed.data.userMessageId && m.status === "queued")) {
-      return NextResponse.json({ error: "message_not_queued" }, { status: 409 });
+    if (parsed.data.userMessageId && !owned.messages.some((m) => m.id === parsed.data.userMessageId && m.role === "user")) {
+      return NextResponse.json({ error: "message_not_found" }, { status: 404 });
     }
-
-    const model = modelClient();
-    const encoder = new TextEncoder();
-    let open = true;
-    const stream = new ReadableStream<Uint8Array>({
-      async start(controller) {
-        const send = (e: TurnEvent) => {
-          if (!open) return;
-          try {
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify(e)}\n\n`));
-          } catch {
-            open = false; // client went away; the turn continues and persists
-          }
-        };
-        try {
-          await runTurn({ db, model }, { projectId: id, userId: session.user.id, ...parsed.data }, send);
-        } catch (error) {
-          if (error instanceof TurnBusyError) send({ type: "busy" });
-          else send({ type: "error", message: "The build failed to start." });
-        } finally {
-          if (open) controller.close();
-        }
-      },
-      cancel() {
-        open = false;
-      },
-    });
-
-    return new Response(stream, {
-      headers: {
-        "Content-Type": "text/event-stream; charset=utf-8",
-        "Cache-Control": "no-store, no-transform",
-        Connection: "keep-alive",
-        "X-Accel-Buffering": "no",
-      },
-    });
+    const job = await enqueueTurn(db, { projectId: id, userId: session.user.id, ...parsed.data });
+    kickWorker();
+    return NextResponse.json({ jobId: job.id, messageId: job.userMessageId, status: job.status }, { status: 202 });
   } catch (error) {
     return errorResponse(error);
   }

@@ -1,0 +1,73 @@
+{
+  "scenario": "E1 logo and brand colours",
+  "base": "http://127.0.0.1:3002",
+  "projectId": "289c7d8d-bd6d-416f-8ce9-402898c3b366",
+  "uploads": [
+    {
+      "file": "docs/evals/harness/kola-logo.svg",
+      "status": 201,
+      "ms": 14276,
+      "asset": {
+        "id": "ce9f8ba3-d876-44b6-aaa6-8337c1e0abd5",
+        "name": "kola-logo.svg",
+        "kind": "logo",
+        "mime": "image/svg+xml",
+        "size": 604,
+        "width": 480,
+        "height": 160,
+        "palette": [
+          "#e4572e",
+          "#1a4232",
+          "#fff4e6",
+          "#f5bca5",
+          "#ef9577"
+        ],
+        "description": "The mark shows a minimalist cream coffee cup icon within a rounded orange square alongside the wordmark \"KOLA\" in dark green and the text \"COFFEE · LAGOS\" below. It is a modern, flat design intended for a light background."
+      }
+    }
+  ],
+  "turns": [
+    {
+      "prompt": "Build a landing page for Kola Coffee, a coffee kiosk in Yaba, Lagos, that opens at 7am and sells cold brew and zobo. Use my logo and brand colours.",
+      "status": "ready",
+      "error": null,
+      "seconds": 68,
+      "firstTryClean": true,
+      "fixAttempts": 0,
+      "reads": 1,
+      "searches": 0,
+      "access": [
+        "· read_file src/App.tsx"
+      ],
+      "context": "context: 22 of 22 files in full (App.tsx, index.html, index.ts, index.ts, package.json, chain.ts, ConnectButton.tsx, badge.tsx, button.tsx, card.tsx, input.tsx, label.tsx, notice.tsx, skeleton.tsx, textarea.tsx, format.ts, hooks.ts, tokens.ts, useWallet.ts, utils.ts, main.tsx, styles.css)",
+      "guides": [
+        "guides: landing-page, brand-and-assets, design-tokens"
+      ],
+      "byModel": {
+        "deepseek-flash": {
+          "calls": 8,
+          "in": 118493,
+          "out": 11939,
+          "usd": 0.023499
+        }
+      },
+      "reply": "Your Kola Coffee landing page is built as a shop/menu page: a hero with the logo on a dark green card and \"opens 7am\" details, a menu section for cold brew and zobo, a three-step \"made a day ahead\" section, opening hours and a Yaba location card with a Maps link, and a closing call to visit. Brand colours come straight from your logo (cream background, orange accent, dark green primary) with Fraunces headings, and the logo is used in the header, hero and footer. I kept prices out and left a marked placeholder for your exact street address and closing time, send those over and I'll fill them in.",
+      "changes": [
+        "index.html",
+        "AnchorButton.tsx",
+        "Header.tsx",
+        "Hero.tsx",
+        "Menu.tsx",
+        "HowItsMade.tsx",
+        "FindUs.tsx",
+        "VisitBand.tsx",
+        "Footer.tsx",
+        "App.tsx"
+      ],
+      "checks": [
+        "app:done:imports and syntax ok"
+      ]
+    }
+  ],
+  "at": "2026-11-05T00:28:56.374Z"
+}

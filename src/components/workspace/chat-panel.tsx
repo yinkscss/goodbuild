@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ArrowUp, Loader2 } from "lucide-react";
+import { ArrowUp, Loader2, Square } from "lucide-react";
 
 import { formatMicroUsd } from "@/lib/pricing";
 import type { AssetInfo, AssetKind } from "@/server/agent/assets";
@@ -16,7 +16,7 @@ const FIX_PROMPT = "Fix the remaining errors from the last build.";
 
 /** Left pane of the workspace (mockup c): the conversation and the composer. */
 export function ChatPanel({ ws, assetUrls = {} }: { ws: UseWorkspace; assetUrls?: Record<string, string> }) {
-  const { state, live, queue, running, send } = ws;
+  const { state, live, running, send } = ws;
   const endRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
@@ -27,17 +27,31 @@ export function ChatPanel({ ws, assetUrls = {} }: { ws: UseWorkspace; assetUrls?
   // Chips only on the newest assistant turn, and not while another turn runs or waits.
   const lastAssistantId = [...state.messages].reverse().find((m) => m.role === "assistant")?.id;
   const suggest = (prompt: string) => send(prompt, "build");
-  const canSuggest = !running && queue.length === 0;
+  const canSuggest = !running;
+  // The prompt the newest turn answered, for "Try again" on a failed or interrupted build.
+  const lastUserPrompt = [...state.messages].reverse().find((m) => m.role === "user" && m.status !== "queued" && m.status !== "cancelled")?.content;
   return (
     <section aria-label="Chat" className="flex min-h-0 flex-col rounded-card bg-surface shadow-card">
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5" aria-live="polite">
         {state.messages.map((m) => {
           if (m.id === liveMessageId) return null;
           if (m.role === "user") {
+            const mode = (m.meta as { mode?: TurnMode } | null)?.mode ?? "build";
+            const waiting = m.status === "queued" && state.jobs.findIndex((j) => j.userMessageId === m.id) !== 0;
+            const cancelled = m.status === "cancelled";
             return (
-              <div key={m.id} className="flex flex-col items-end gap-1">
+              <div key={m.id} className={cn("flex flex-col items-end gap-1", (waiting || cancelled) && "opacity-60")}>
                 <p className="max-w-[85%] rounded-block rounded-br-md bg-tint px-4 py-3 text-sm whitespace-pre-wrap">{m.content}</p>
-                {(m.meta as { mode?: TurnMode } | null)?.mode === "plan" && <span className="text-[11px] text-grey-400">Plan mode</span>}
+                {mode === "plan" && <span className="text-[11px] text-grey-400">Plan mode</span>}
+                {waiting && <span className="text-[11px] text-grey-400">Queued, runs after the current build</span>}
+                {cancelled && (
+                  <span className="flex items-center gap-2 text-[11px] text-grey-400">
+                    Cancelled
+                    <button type="button" className="font-medium text-violet hover:underline" onClick={() => send(m.content, mode)}>
+                      Resend
+                    </button>
+                  </span>
+                )}
               </div>
             );
           }
@@ -51,9 +65,10 @@ export function ChatPanel({ ws, assetUrls = {} }: { ws: UseWorkspace; assetUrls?
           const record = m.meta as TurnRecord | null;
           if (!record || record.kind !== "turn") return <p key={m.id} className="text-sm">{m.content}</p>;
           if (m.status === "streaming") {
+            // The live view replaces this as soon as the job's events stream in.
             return (
               <p key={m.id} className="flex items-center gap-2 text-sm text-grey-600">
-                <Loader2 className="size-4 animate-spin" aria-hidden /> Building in another tab… this updates when it finishes.
+                <Loader2 className="size-4 animate-spin" aria-hidden /> Building…
               </p>
             );
           }
@@ -63,7 +78,7 @@ export function ChatPanel({ ws, assetUrls = {} }: { ws: UseWorkspace; assetUrls?
               text={m.content}
               record={record}
               live={false}
-              onFix={() => send(FIX_PROMPT, "build")}
+              onFix={() => send(record.status === "error" && lastUserPrompt && m.id === lastAssistantId ? lastUserPrompt : FIX_PROMPT, "build")}
               fixDisabled={running}
               onSuggest={!live && canSuggest && m.id === lastAssistantId ? suggest : undefined}
               checking={m.id === lastAssistantId && ws.checking}
@@ -78,15 +93,9 @@ export function ChatPanel({ ws, assetUrls = {} }: { ws: UseWorkspace; assetUrls?
             live={live.phase === "running"}
             onFix={() => send(FIX_PROMPT, "build")}
             fixDisabled={live.phase === "running"}
-            onSuggest={live.phase === "done" && queue.length === 0 ? suggest : undefined}
+            onSuggest={live.phase === "done" && state.jobs.length <= 1 ? suggest : undefined}
           />
         )}
-        {queue.map((q) => (
-          <div key={q.id} className="flex flex-col items-end gap-1 opacity-60">
-            <p className="max-w-[85%] rounded-block rounded-br-md bg-tint px-4 py-3 text-sm whitespace-pre-wrap">{q.prompt}</p>
-            <span className="text-[11px] text-grey-400">Queued, runs after the current build</span>
-          </div>
-        ))}
         {ws.error && (
           <p className="flex items-start gap-2 rounded-block bg-canvas px-4 py-3 text-sm" role="alert">
             <span className="mt-1.5 size-2 shrink-0 rounded-full bg-danger" aria-hidden />
@@ -105,6 +114,7 @@ export function ChatPanel({ ws, assetUrls = {} }: { ws: UseWorkspace; assetUrls?
         running={running}
         estimate={state.estimate}
         onSend={send}
+        onStop={ws.stop}
         placeholder={
           state.messages.length ? 'Ask for a change… e.g. "let members vote to skip a week"' : "Describe the dApp you want to build…"
         }
@@ -123,6 +133,7 @@ export function Composer({
   running,
   estimate,
   onSend,
+  onStop,
   placeholder,
 }: {
   assets: AssetInfo[];
@@ -134,6 +145,7 @@ export function Composer({
   running: boolean;
   estimate: { buildMicro: number; planMicro: number };
   onSend: (prompt: string, mode: TurnMode) => void;
+  onStop?: () => Promise<void>;
   placeholder: string;
 }) {
   const [value, setValue] = React.useState("");
@@ -228,6 +240,19 @@ export function Composer({
           <span className="text-xs text-grey-400" title="Estimated charge for this request: AI cost + 25% (free during the testnet beta)">
             ≈ {formatMicroUsd(est)} {running ? "· runs after this build" : ""}
           </span>
+          {running && onStop && (
+            // Secondary pill (DESIGN_SYSTEM §3): white, shadow-card, no border.
+            <button
+              type="button"
+              onClick={() => void onStop()}
+              aria-label="Stop the build"
+              title="Stop this build (its edits are discarded) and cancel queued messages"
+              className="inline-flex h-9 items-center gap-1.5 rounded-full bg-surface px-3.5 text-xs font-medium text-ink shadow-card outline-none hover:text-violet focus-visible:shadow-focus"
+            >
+              <Square className="size-3 fill-current" aria-hidden />
+              Stop
+            </button>
+          )}
           <button
             type="submit"
             disabled={!value.trim()}
