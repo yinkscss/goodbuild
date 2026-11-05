@@ -58,6 +58,7 @@ docker compose --env-file .env.production exec -T goodbuild-postgres pg_restore 
 - **Firewall (`deploy/firewall.sh`, run at boot by `goodbuild-firewall.service`):** Docker's published ports skip `ufw`, so the rules are in the `DOCKER-USER` chain. Only Cloudflare reaches 80 and 443, and Coolify's ports (8000, 8080, 6001, 6002) are closed to the internet. Without this, a visitor could reach the server directly, fake a country header and skip the block. If Cloudflare publishes new IP ranges, restart the service.
 - Don't set `BACKEND_ORIGIN` or `EDGE_SECRET` here. They're for the Vercel setup (D26), and `EDGE_SECRET` alone makes the server refuse everything.
 - **Keep the database's service name unique.** `web` joins Coolify's network, where `postgres` is Coolify's own database. With that name, web connected to the wrong server and got a password error.
+- **Magic's content security policy** (Magic dashboard, Settings) must list `https://forno.celo-sepolia.celo-testnet.org` and `https://forno.celo.org`. Without them, email wallets can sign in but deploys fail with `[-32603] Failed to fetch`. Changing the RPC URL or the Magic app means updating this too.
 - Solidity compiling reads `node_modules` at runtime, so the image can't be pruned or made standalone.
 
 ## Known issues

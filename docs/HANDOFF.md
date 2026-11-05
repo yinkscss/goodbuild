@@ -2,6 +2,42 @@
 
 Written 4 Nov 2026 at the end of the first build session (claude.ai), for whoever continues in Claude Code. Read CLAUDE.md and docs/BUILD_PROMPT_STAGE1.md first; this file only covers where things stand.
 
+## Start here (5 Nov 2026)
+**Live:** https://goodbuildit.xyz, on one VPS with Cloudflare in front. How it runs, how to reach it and what not to break: [DEPLOY.md](DEPLOY.md). Merging a PR to `main` deploys it, so every merge is a release.
+
+**Working live:** email sign-in (Magic), a real AI build, deploying from an email wallet on Celo Sepolia with a Sourcify match (the fix was Magic's content security policy, see DEPLOY.md; the explicit gas in PR #11 wasn't what solved it), publishing to `<slug>.goodbuildit.xyz`, the firewall, and auto-deploy. Testnet only; mainnet is off.
+
+**Next: M6**, in this order, with design in [CREDITS.md](CREDITS.md) and [TOPUPS.md](TOPUPS.md):
+1. GoodDollar face verification. Read `getWhitelistedRoot` on Celo mainnet (`0xC361…2F42`) with plain viem on the server, even for testnet apps, because the SDK has no Celo Sepolia. Key allowances by root, not wallet. Don't trust the callback: re-read the chain. Verification expires. Use redirect mode on phones. No testnet exists, so a real verified wallet is needed for the live test.
+2. Ledger and balances, and the credits pill. The $0.20 cap (D28, `src/server/credits/cap.ts`) currently sums `usage_events`.
+3. Paystack in test mode, then the admin treasury page. Exempt the signed webhook from the region block.
+
+**Waiting on the owner before M6 can finish:**
+- The verified allowance (Claude suggested $2 once).
+- A daily budget for free usage and a per-IP sign-up limit (Claude suggested $5 a day and 3 accounts a day). New wallets are free, so the cap alone doesn't limit total spend.
+- Whether M6 is prepaid credits or subscriptions. It's designed as prepaid.
+- TOPUPS.md §10 points 3 to 7, including the refund policy. Paystack test keys.
+- Whether the owner's wallet is exempt from the cap, and a wallet already verified with GoodDollar for testing.
+- Whether GoodDollar requires approval for third-party use of face verification. Its docs don't say.
+
+### M5 gaps
+**Wrong today:**
+- The deploy success screen says addresses are in the Contract tab, but that tab doesn't show them.
+- The ABI interaction panel (CONTRACTS_AND_DEPLOYMENT.md §5) isn't built.
+- There's no deployment history in the UI (which version is active, older addresses).
+
+**Built, not tested live:** MetaMask on the production site (it worked on a local build), WalletConnect, MiniPay, a multi-contract deploy, the `paris` rebuild, the test G$ faucet button, a transaction through a published app, and more than one build at a time.
+
+**Left for later on purpose:** Celoscan verification (Sourcify works), paying fees in stablecoins, sponsored gas, a fee estimate that's only exact for the first argument-free contract, and mainnet.
+
+**Launch and operations:**
+- Auto-deploy doesn't run the tests first, and has no staging or rollback.
+- Backups live on the same server.
+- The preview depends on CodeSandbox, which sometimes fails until Try again (Q36).
+- New email wallets start with no CELO, so a newcomer has to find the faucet (Q12).
+- The landing page shows sample metrics.
+- `/terms` and `/privacy` are unreviewed drafts, and `NEXT_PUBLIC_CONTACT_EMAIL` isn't set.
+
 ## Done (all on `main`)
 | Milestone | Commit | Notes |
 |---|---|---|
