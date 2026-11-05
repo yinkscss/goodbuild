@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { DATA_RULES_PATH, accessFor, parseDataRules } from "@/lib/app-data";
 import { checkApp, dataIssues, namingProblem, pathProblem } from "@/server/agent/checks";
 import { guideNames, loadGuides } from "@/server/agent/guides";
-import { systemPrompt } from "@/server/agent/prompt";
+import { contextMessage, systemPrompt } from "@/server/agent/prompt";
 import { starterFiles, withStarterHelpers } from "@/server/agent/template";
 import { buildPublishedApp } from "@/server/publish/build";
 
@@ -71,6 +71,14 @@ describe("what the agent is held to", () => {
     expect(prompt).toContain("src/lib/db.ts");
     expect(prompt).not.toContain("There is no backend or database");
     expect(loadGuides("forms-and-signup").text).not.toContain("no backend or database yet");
+  });
+
+  it("the data helpers don't cost context on turns, though the manifest still lists them", () => {
+    const text = contextMessage({ files: starterFiles(), request: "save notes to the db" });
+    expect(text).toContain("src/lib/db.ts");
+    expect(text).not.toContain('<file path="src/lib/db.ts">');
+    expect(text).not.toContain('<file path="src/lib/useDb.ts">');
+    expect(text).toContain('<file path="src/lib/format.ts">');
   });
 
   it("no helper or guide text uses an em dash", () => {
