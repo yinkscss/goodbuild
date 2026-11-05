@@ -22,6 +22,8 @@ export interface Plan {
   gooddollar: Address | null;
   steps: PlanStep[];
   alreadyDeployed: Record<string, Address>;
+  /** Live contracts this deploy leaves behind, which keep their funds and history. */
+  replaces: Array<{ name: string; address: Address; gdBalance: string | null }>;
 }
 
 /** Everything that touches the wallet or the network, injected so the order logic is testable. */

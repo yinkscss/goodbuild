@@ -11,6 +11,7 @@ import { messages } from "@/server/db/schema";
 import { createProjectFromPrompt } from "@/server/projects";
 import { abisInModules, deploymentsBlock, loadDeployedAddresses, withDeployedAddresses } from "./addresses";
 import { compileForDeploy, sourceKey } from "./compile";
+import { contractState } from "./contract-state";
 import { DeployError, prepareDeploy, recordDeployment } from "./service";
 import { verifyOnSourcify } from "./verify";
 import { contractModule } from "@/server/agent/template";
@@ -290,3 +291,58 @@ describe("verifyOnSourcify", () => {
   });
 });
 
+describe("replacing a live contract", () => {
+  const OLD: Address = "0x00000000000000000000000000000000000000aa";
+  const old = (contractName: string, sourceHash: string, chainId = 11142220) =>
+    db.insert(deployments).values({ projectId, userId, version: 1, runId: "r", chainId, contractName, address: OLD, deployer: WALLET, txHash: `0x${contractName}${chainId}`, blockNumber: 1, compilerVersion: "0.8.28", evmVersion: "cancun", sourceHash, abi: [] });
+
+  it("says what the old contract still holds, and reads G$ from the right token", async () => {
+    await old("RTXToken", "0xolder");
+    const readContract = async (args: { address: string; args: readonly unknown[] }) => {
+      expect(args.address).toBe(TEST_GD);
+      expect(args.args).toEqual([OLD]);
+      return BigInt(5);
+    };
+    const plan = await prepareDeploy(db, { projectId, chainId: 11142220 }, { client: { readContract } as never });
+    expect(plan.replaces).toEqual([{ name: "RTXToken", address: OLD, gdBalance: "5" }]);
+  }, 60_000);
+
+  it("still prepares the deploy if the balance can't be read", async () => {
+    await old("RTXToken", "0xolder");
+    const client = { readContract: async () => { throw new Error("rpc down"); } } as never;
+    const plan = await prepareDeploy(db, { projectId, chainId: 11142220 }, { client });
+    expect(plan.replaces[0].gdBalance).toBeNull();
+  }, 60_000);
+
+  it("is empty on a first deploy, and ignores another chain", async () => {
+    await old("RTXToken", "0xolder", 42220);
+    const plan = await prepareDeploy(db, { projectId, chainId: 11142220 }, { client: { readContract: async () => { throw new Error("shouldn't read"); } } as never });
+    expect(plan.replaces).toEqual([]);
+  }, 60_000);
+});
+
+describe("contractState", () => {
+  const project = () => ({ id: projectId, chainId: 11142220 });
+  const row = (contractName: string, sourceHash: string) =>
+    db.insert(deployments).values({ projectId, userId, version: 1, runId: "r", chainId: 11142220, contractName, address: `0x${sourceHash}`, deployer: WALLET, txHash: `0x${contractName}${sourceHash}`, blockNumber: 1, compilerVersion: "0.8.28", evmVersion: "cancun", sourceHash, abi: [] });
+
+  it("is empty for a website with no contracts", async () => {
+    expect(await contractState(db, project(), { "src/App.tsx": "x" })).toEqual({ names: [], live: [], outdated: [] });
+  });
+
+  it("separates never deployed, up to date and out of date", async () => {
+    const files = await loadFiles(db, projectId);
+    expect((await contractState(db, project(), files)).outdated).toEqual([]);
+    await row("RTXToken", "0xolder");
+    expect(await contractState(db, project(), files)).toMatchObject({ live: [], outdated: ["RTXToken"] });
+    await row("RTXToken", sourceKey(files, "cancun"));
+    expect(await contractState(db, project(), files)).toMatchObject({ live: ["RTXToken"], outdated: [] });
+  });
+
+  it("flags a contract whose code changed even with the same functions", async () => {
+    const files = await loadFiles(db, projectId);
+    await row("RTXToken", sourceKey(files, "cancun"));
+    const changed = { ...files, "contracts/RTXToken.sol": files["contracts/RTXToken.sol"] + "\n// changed\n" };
+    expect((await contractState(db, project(), changed)).outdated).toEqual(["RTXToken"]);
+  });
+});

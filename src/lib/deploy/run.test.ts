@@ -17,6 +17,7 @@ const plan = (over: Partial<Plan> = {}): Plan => ({
   openZeppelin: "5.6.1",
   gooddollar: GD,
   alreadyDeployed: {},
+  replaces: [],
   steps: [
     { name: "Token", abi: [ctor()] as unknown as Abi, bytecode: "0x6001", args: {}, dependsOn: [] },
     { name: "Pool", abi: [ctor(["gd_", "address"], ["token_", "address"])] as unknown as Abi, bytecode: "0x6002", args: { gd_: "${GOODDOLLAR}", token_: "${Token.address}" }, dependsOn: ["Token"] },

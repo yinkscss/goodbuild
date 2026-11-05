@@ -8,6 +8,7 @@ import type { AssetInfo, AssetKind } from "@/server/agent/assets";
 import { isSubmitShortcut } from "@/lib/prompt";
 import type { TurnMode, TurnRecord } from "@/lib/turn-types";
 import { cn } from "@/lib/utils";
+import { DeployButton } from "@/components/deploy/deploy-trigger";
 import { AssetBar, AttachMenu, imageFiles } from "./asset-bar";
 import { TurnView } from "./turn-view";
 import type { UseWorkspace } from "./use-workspace";
@@ -107,6 +108,15 @@ export function ChatPanel({ ws, assetUrls = {} }: { ws: UseWorkspace; assetUrls?
             <span className="mt-1.5 size-2 shrink-0 rounded-full bg-danger" aria-hidden />
             {ws.error}
           </p>
+        )}
+        {state.outdatedContracts.length > 0 && !running && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-block bg-warning/10 p-4 text-sm" role="status">
+            <p className="min-w-0 flex-1">
+              <span className="font-semibold">{state.outdatedContracts.join(", ")} {state.outdatedContracts.length > 1 ? "don't" : "doesn't"} have your latest contract changes yet.</span>{" "}
+              <span className="text-grey-600">Your app keeps using the live version until you deploy again.</span>
+            </p>
+            <DeployButton label="Deploy again" size="sm" />
+          </div>
         )}
         {state.offerVerification && !running && <VerifyCard onVerified={ws.refresh} />}
         <div ref={endRef} />

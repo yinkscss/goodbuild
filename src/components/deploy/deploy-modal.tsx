@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { AlertTriangle, Check, ChevronDown, Copy, ExternalLink, Loader2 } from "lucide-react";
+import { formatUnits } from "viem";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -197,6 +198,36 @@ function ErrorCard({ deploy, onFix, chainId }: { deploy: Deploy; onFix: (prompt:
   );
 }
 
+/** What a contract left behind still holds, in words. Null balance: we couldn't read it. */
+export function keepsLine(gdBalance: string | null): string {
+  if (gdBalance === null) return "keeps any funds it holds and its history";
+  if (BigInt(gdBalance) === BigInt(0)) return "keeps its history and holds no G$";
+  const amount = Number(formatUnits(BigInt(gdBalance), 18)).toLocaleString("en-US", { maximumFractionDigits: 2 });
+  return `keeps its ${amount} G$ and its history`;
+}
+
+function ReplaceNotice({ state }: { state: DeployState }) {
+  const replaces = state.plan?.replaces ?? [];
+  if (!replaces.length) return null;
+  const many = replaces.length > 1;
+  return (
+    <div className="mt-3 rounded-block bg-warning/10 p-4 text-sm" role="status">
+      <p className="flex items-start gap-2 font-semibold">
+        <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden />
+        This creates {many ? "new contracts" : "a new contract"}. Deployed contracts can&apos;t be changed.
+      </p>
+      <ul className="mt-2 space-y-1 text-grey-600">
+        {replaces.map((r) => (
+          <li key={r.address}>
+            The old {r.name} at <code className="font-mono text-xs">{shortAddress(r.address)}</code> {keepsLine(r.gdBalance)}. Nothing moves across.
+          </li>
+        ))}
+      </ul>
+      <p className="mt-2 text-grey-600">Your project switches to the new {many ? "contracts" : "contract"}. A published app stays on the old {many ? "ones" : "one"} until you publish again.</p>
+    </div>
+  );
+}
+
 function Success({ state, chainId }: { state: DeployState; chainId: number }) {
   return (
     <div className="mt-5">
@@ -318,6 +349,8 @@ export function DeployModal({
                 <span className="rounded-full bg-warning/10 px-2 py-0.5 text-[11px] font-semibold text-warning">Unaudited</span>
               </Row>
             </dl>
+
+            <ReplaceNotice state={state} />
 
             {state.needsTestGd && (
               <div className="mt-3 flex items-center justify-between gap-3 rounded-block bg-tint px-4 py-3 text-sm">
