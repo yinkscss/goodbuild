@@ -178,6 +178,8 @@ export default function App() {
 }
 `;
 
+const DEMO_MANIFEST = `${JSON.stringify({ contracts: [{ name: "TipJar", args: { gd_: "${GOODDOLLAR}", coach_: "${DEPLOYER}", kitFund_: "${DEPLOYER}", coachShare_: 70 } }] }, null, 2)}\n`;
+
 export function demoModel(): ModelClient {
   if (process.env.NODE_ENV === "production" && process.env.GOODBUILD_DEMO_MODEL_IN_PROD !== "true") {
     throw new Error("The demo model is for development only.");
@@ -223,6 +225,7 @@ export function demoModel(): ModelClient {
           tools: [
             { name: "set_plan", args: { summary: "1 contract, 1 page", steps: ["Write TipJar.sol (G$, ERC-677 + approve)", "Build the tip page", "Compile and check"] } },
             { name: "create_file", args: { path: "contracts/TipJar.sol", content: DEMO_TIP_JAR_DRAFT } },
+            { name: "create_file", args: { path: "contracts/deploy.json", content: DEMO_MANIFEST } },
             { name: "create_file", args: { path: "src/App.tsx", content: DEMO_APP } },
           ],
           usage: { input: 11_000, output: 2_600 },
