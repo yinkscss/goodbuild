@@ -7,7 +7,7 @@ import { ChevronDown, History } from "lucide-react";
 import { WalletButton } from "@/components/auth/wallet-button";
 import { Logo } from "@/components/brand/logo";
 import { DeployButton, DeployProvider } from "@/components/deploy/deploy-trigger";
-import { contractsToWire, wirePrompt } from "@/lib/deploy/wiring";
+import { contractAddressKey, contractsToWire, deployedContracts, wirePrompt } from "@/lib/deploy/wiring";
 import { CreditsPill } from "@/components/home/credits-pill";
 import { NetworkBadge } from "@/components/home/top-bar";
 import {
@@ -52,11 +52,16 @@ export function Workspace({ initial }: { initial: WorkspaceState }) {
 
   const hasContracts = Object.keys(files).some((p) => p.startsWith("contracts/") && p.endsWith(".sol") && !p.startsWith("contracts/test/"));
 
+  const addressKey = contractAddressKey(files);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- files change on every keystroke of a live turn; addresses rarely do
+  const deployed = React.useMemo(() => deployedContracts(files, state.project.chainId), [addressKey, state.project.chainId]);
+
   return (
     <DeployProvider
       projectId={state.project.id}
       chainId={state.project.chainId}
       hasContracts={hasContracts}
+      deployed={deployed}
       busy={running}
       onDeployed={(deployed) => {
         void ws.refresh().then((next) => {

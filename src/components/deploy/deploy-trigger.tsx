@@ -11,6 +11,8 @@ interface DeployContext {
   open: () => void;
   /** Why deploying isn't possible right now, or null. */
   blocked: string | null;
+  /** Contracts already live on this project's chain. */
+  deployed: string[];
 }
 
 const Ctx = React.createContext<DeployContext | null>(null);
@@ -23,6 +25,7 @@ export function DeployProvider({
   projectId,
   chainId,
   hasContracts,
+  deployed,
   busy,
   onDeployed,
   onFix,
@@ -32,6 +35,7 @@ export function DeployProvider({
   projectId: string;
   chainId: number;
   hasContracts: boolean;
+  deployed: string[];
   busy: boolean;
   /** Everything landed: the contract names. Empty after a partial failure (files still changed). */
   onDeployed: (deployed: string[]) => void;
@@ -50,9 +54,10 @@ export function DeployProvider({
         setOpen(true);
         void prepare();
       },
+      deployed,
       blocked: !hasContracts ? "This project has no contract to deploy." : busy ? "Wait for the build to finish." : null,
     }),
-    [prepare, hasContracts, busy],
+    [prepare, hasContracts, busy, deployed],
   );
 
   return (
@@ -85,7 +90,7 @@ export function DeployProvider({
 }
 
 export function useDeployAction(): DeployContext {
-  return React.useContext(Ctx) ?? { open: () => undefined, blocked: "Deploys aren't available here." };
+  return React.useContext(Ctx) ?? { open: () => undefined, blocked: "Deploys aren't available here.", deployed: [] };
 }
 
 /** The Deploy button for the workspace header and the chat's deploy card. */

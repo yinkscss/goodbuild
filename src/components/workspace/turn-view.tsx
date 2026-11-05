@@ -3,7 +3,7 @@
 import * as React from "react";
 import { ArrowUpRight, Check, ChevronRight, Eye, Hexagon, RotateCw, Wrench } from "lucide-react";
 
-import { DeployButton } from "@/components/deploy/deploy-trigger";
+import { DeployButton, useDeployAction } from "@/components/deploy/deploy-trigger";
 import { Button } from "@/components/ui/button";
 import { formatMicroUsd } from "@/lib/pricing";
 import type { FileChange, Step, TurnRecord } from "@/lib/turn-types";
@@ -129,9 +129,17 @@ export function DiffChips({ changes }: { changes: FileChange[] }) {
 
 /** "Ready to deploy contract" card; the button opens the deploy modal (M5). */
 export function DeployCard({ record }: { record: TurnRecord }) {
+  const { deployed } = useDeployAction();
   const contracts = record.contracts ?? [];
   const main = contracts[0];
   if (!main) return null;
+  if (contracts.every((c) => deployed.includes(c.name))) {
+    return (
+      <p className="mt-4 flex items-center gap-2 rounded-[20px] bg-tint p-4 text-sm font-semibold">
+        <Check className="size-4 text-success" aria-hidden /> {contracts.map((c) => c.name).join(", ")} {contracts.length > 1 ? "are" : "is"} live on Celo Sepolia
+      </p>
+    );
+  }
   return (
     <div className="mt-4 flex flex-wrap items-center gap-4 rounded-[20px] bg-tint p-4">
       <span className="grid size-11 place-items-center rounded-block bg-violet text-white" aria-hidden>

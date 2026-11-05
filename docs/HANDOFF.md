@@ -87,9 +87,10 @@ Publish code lives in `src/server/publish/`, `src/server/db/publish-schema.ts` (
 
 **To run it locally:** production mode with `PUBLISHED_APPS_DOMAIN=localhost`, `ALLOW_PGLITE=true`, `SESSION_SECRET` and `APP_DOMAIN`.
 
+**Verified with a real deploy (5 Nov 2026):** a throwaway wallet deployed `TipJar` on Celo Sepolia at `0xAC81a96393eF4306E3885aC7868EBd6a0aAa7BEA` through the deploy modal on a production build on Postgres, with an exact Sourcify match. The preview went live with no reload, the chat got its "live at" note, and "Publish app" on the success screen published it with the address baked in and no demo notice. The test signer stood in for a browser wallet, so MetaMask's own UI wasn't part of this.
+
 **Not verified:**
-- Publishing an app whose contract is deployed (address baked in, no demo notice), and "Publish app" in the deploy success modal.
-- Magic email sign-in on `__Host-` cookies.
+- Magic email sign-in, on any cookies: the fix for `ERROR_INCORRECT_SIGNER_ADDR` hasn't had a live sign-in.
 - A real host: `*.goodbuildit.xyz` needs wildcard DNS. Q16 and Q31 stay open.
 
 **Where it can run:** a long-running Node server with a full install, using `next start`. Serverless and `output: standalone` can't compile contracts, because solc, OpenZeppelin imports and contract tests run in child processes that read `node_modules` directly (`scripts/solc-compile.cjs`, `scripts/evm-test.mjs`). A deploy on the standalone build failed with `Cannot find module 'solc'`. So Q31's host has to be a VM or a container.
