@@ -9,6 +9,7 @@ import type { ModelClient } from "@/server/agent/model";
 import { runTurn } from "@/server/agent/runner";
 import { LeaseLostError } from "@/server/agent/turn-progress";
 import type { TurnEvent, TurnMode } from "@/lib/turn-types";
+import { checkAiAllowance } from "@/server/credits/cap";
 import { MAX_ATTEMPTS, RENEW_MS, appendEvents, claimJob, failJob, jobContext, renewLease, sweep } from "./jobs";
 
 /** Jobs one worker runs at once (different projects; one per project is enforced by the DB). */
@@ -159,6 +160,17 @@ export class TurnWorker {
       sink.push({ type: "end" });
       await sink.flush();
       return;
+    }
+    // A queued follow-up may have been overtaken by the build ahead of it. A resumed build may finish.
+    if (job.attempt === 1) {
+      const allowance = await checkAiAllowance(db, { userId: job.userId });
+      if (!allowance.allowed) {
+        await failJob(db, job, allowance.message);
+        sink.push({ type: "error", message: allowance.message });
+        sink.push({ type: "end" });
+        await sink.flush();
+        return;
+      }
     }
     const controller = new AbortController();
     let lost = false;
