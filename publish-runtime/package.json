@@ -1,0 +1,19 @@
+{
+  "name": "goodbuild-publish-runtime",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The packages generated apps may use, resolved when publishing. Versions must match ALLOWED_DEPENDENCIES in src/server/agent/template.ts.",
+  "dependencies": {
+    "canvas-confetti": "1.9.3",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "date-fns": "4.1.0",
+    "lucide-react": "1.68.0",
+    "qrcode.react": "4.2.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "react-router-dom": "6.30.6",
+    "tailwind-merge": "3.7.0",
+    "viem": "2.57.16"
+  }
+}

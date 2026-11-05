@@ -47,6 +47,7 @@ flowchart LR
 | Web app | Next.js (App Router), TypeScript |
 | Generated apps | React + Vite template, shadcn/ui + React Bits (D7) |
 | Preview | Sandpack |
+| Published apps | Server build (esbuild + Tailwind), snapshot in Postgres, served by Host at `<slug>.goodbuild.app`, never on the main origin (P19) |
 | Contracts | solc-js in browser; OpenZeppelin imports |
 | Wallet / auth | Magic (email embedded wallet) plus MetaMask, MiniPay/Valora and WalletConnect, one viem wallet client for deploys, SIWE session cookie. See [AUTH.md](AUTH.md) (D22) |
 | Identity | `@goodsdks/citizen-sdk` |

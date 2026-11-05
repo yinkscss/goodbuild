@@ -4,7 +4,8 @@ import * as React from "react";
 import { SandpackPreview, SandpackProvider } from "@codesandbox/sandpack-react";
 
 import { Logo, LogoMark } from "@/components/brand/logo";
-import { isNewerSavedVersion, openPreviewChannel, type PreviewChannelMessage } from "@/lib/preview-channel";
+import { contractAddressKey } from "@/lib/deploy/wiring";
+import { openPreviewChannel, shouldShowSaved, type PreviewChannelMessage } from "@/lib/preview-channel";
 import { cn } from "@/lib/utils";
 import type { WorkspaceState } from "@/server/workspace-state";
 import { dependencies, PreviewControls, PreviewCover, theme, toAppFiles } from "./preview-panel";
@@ -20,11 +21,11 @@ export function PreviewPopout({ initial }: { initial: WorkspaceState }) {
   const [version, setVersion] = React.useState(initial.project.currentVersion);
   const [assets, setAssets] = React.useState(initial.assets);
   const [device, setDevice] = React.useState<"desktop" | "mobile">("desktop");
-  const showing = React.useRef(version);
+  const showing = React.useRef({ version, addresses: contractAddressKey(initial.files) });
   const assetUrls = useAssetDataUrls(projectId, assets);
 
   const show = React.useCallback((next: Record<string, string>, nextVersion: number) => {
-    showing.current = nextVersion;
+    showing.current = { version: nextVersion, addresses: contractAddressKey(next) };
     setFiles(next);
     setVersion(nextVersion);
   }, []);
@@ -46,7 +47,8 @@ export function PreviewPopout({ initial }: { initial: WorkspaceState }) {
       if (!res?.ok) return;
       const state = (await res.json()) as WorkspaceState;
       setAssets(state.assets);
-      if (isNewerSavedVersion(state.project.currentVersion, showing.current)) show(state.files, state.project.currentVersion);
+      const saved = { version: state.project.currentVersion, addresses: contractAddressKey(state.files) };
+      if (shouldShowSaved(saved, showing.current)) show(state.files, saved.version);
     };
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
@@ -67,7 +69,7 @@ export function PreviewPopout({ initial }: { initial: WorkspaceState }) {
   return (
     <section aria-label="Preview" className="gb-sp-section flex h-dvh flex-col gap-2 p-2">
       <SandpackProvider
-        key={version}
+        key={`${version}:${contractAddressKey(files)}`}
         template="react-ts"
         theme={theme}
         files={sandpackFiles}

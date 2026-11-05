@@ -229,12 +229,14 @@ export function DeployModal({
   deploy,
   chainId,
   onFix,
+  onPublish,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   deploy: Deploy;
   chainId: number;
   onFix: (prompt: string) => void;
+  onPublish?: () => void;
 }) {
   const auth = useAuth();
   const { state } = deploy;
@@ -346,9 +348,16 @@ export function DeployModal({
             {state.stage === "done" ? "You can find these addresses in the Contract tab." : (state.plan?.chainId ?? chainId) === 42220 ? "This deploy spends real CELO." : "Testnet deploys are free of real money."}
           </p>
           {state.stage === "done" ? (
-            <Button variant="primary" onClick={() => onOpenChange(false)}>
-              Done
-            </Button>
+            <div className="flex gap-2">
+              {onPublish && (
+                <Button variant="secondary" onClick={onPublish}>
+                  Publish app
+                </Button>
+              )}
+              <Button variant="primary" onClick={() => onOpenChange(false)}>
+                Done
+              </Button>
+            </div>
           ) : (
             <Button
               variant="primary"

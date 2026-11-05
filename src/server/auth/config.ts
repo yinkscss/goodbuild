@@ -6,8 +6,7 @@ import { celo, celoSepolia } from "viem/chains";
 export const SIGN_IN_CHAINS = [celoSepolia, celo] as const;
 export const SIGN_IN_CHAIN_IDS: readonly number[] = SIGN_IN_CHAINS.map((c) => c.id);
 
-export const SESSION_COOKIE = "gb_session";
-export const NONCE_COOKIE = "gb_siwe_nonce";
+export { NONCE_COOKIE, SESSION_COOKIE } from "@/lib/auth/cookie-names";
 
 export const SESSION_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days
 /** Re-issue the session cookie once it's older than this (rotating sessions). */

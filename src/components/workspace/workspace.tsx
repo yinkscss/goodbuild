@@ -24,6 +24,8 @@ import { openPreviewChannel, type PreviewChannelMessage } from "@/lib/preview-ch
 import { cn } from "@/lib/utils";
 import type { WorkspaceState } from "@/server/workspace-state";
 import { ChatPanel } from "./chat-panel";
+import { PublishButton, PublishModal } from "./publish-modal";
+import { usePublish } from "./use-publish";
 import { useAssetDataUrls, useWorkspace } from "./use-workspace";
 
 // Sandpack is browser-only and heavy: load it on the client.
@@ -45,6 +47,8 @@ export function Workspace({ initial }: { initial: WorkspaceState }) {
 
   const previewVersion = live?.record.version ?? state.project.currentVersion;
   useBroadcastPreview(state.project.id, files, previewVersion);
+  const [publishOpen, setPublishOpen] = React.useState(false);
+  const publish = usePublish(state.project.id, state.project.currentVersion, publishOpen);
 
   const hasContracts = Object.keys(files).some((p) => p.startsWith("contracts/") && p.endsWith(".sol") && !p.startsWith("contracts/test/"));
 
@@ -61,6 +65,7 @@ export function Workspace({ initial }: { initial: WorkspaceState }) {
         });
       }}
       onFix={(prompt) => ws.send(prompt, "build")}
+      onPublish={() => setPublishOpen(true)}
     >
     <div className="flex h-dvh flex-col gap-4 p-4">
       <header className="flex h-12 shrink-0 items-center justify-between gap-3 px-2">
@@ -75,6 +80,7 @@ export function Workspace({ initial }: { initial: WorkspaceState }) {
         <div className="flex items-center gap-3">
           <CreditsPill balanceGd={null} usdPerGd={null} className="hidden xl:flex" />
           <NetworkBadge />
+          <PublishButton publish={publish} onOpen={() => setPublishOpen(true)} disabled={running} className="hidden px-5 py-2.5 md:inline-flex" />
           <DeployButton className="hidden px-5 py-2.5 md:inline-flex" />
           <WalletButton showNetwork={false} />
         </div>
@@ -115,6 +121,7 @@ export function Workspace({ initial }: { initial: WorkspaceState }) {
           />
         </div>
       </div>
+      <PublishModal open={publishOpen} onOpenChange={setPublishOpen} publish={publish} projectBusy={running} onFix={(prompt) => ws.send(prompt, "build")} />
     </div>
     </DeployProvider>
   );

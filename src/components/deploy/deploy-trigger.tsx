@@ -26,6 +26,7 @@ export function DeployProvider({
   busy,
   onDeployed,
   onFix,
+  onPublish,
   children,
 }: {
   projectId: string;
@@ -35,6 +36,8 @@ export function DeployProvider({
   /** Everything landed: the contract names. Empty after a partial failure (files still changed). */
   onDeployed: (deployed: string[]) => void;
   onFix: (prompt: string) => void;
+  /** Offered once deployed: republishing is what puts the new addresses in the public app. */
+  onPublish?: () => void;
   children: React.ReactNode;
 }) {
   const [open, setOpen] = React.useState(false);
@@ -68,6 +71,14 @@ export function DeployProvider({
           reset();
           onFix(prompt);
         }}
+        onPublish={
+          onPublish &&
+          (() => {
+            setOpen(false);
+            reset();
+            onPublish();
+          })
+        }
       />
     </Ctx.Provider>
   );

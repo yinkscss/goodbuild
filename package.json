@@ -29,6 +29,7 @@
     "@magic-sdk/admin": "^2.8.4",
     "@openzeppelin/contracts": "5.6.1",
     "@openzeppelin/contracts-paris": "npm:@openzeppelin/contracts@5.1.0",
+    "@tailwindcss/oxide": "4.3.4",
     "@walletconnect/ethereum-provider": "^2.26.0",
     "ai": "^7.0.162",
     "class-variance-authority": "^0.7.1",
@@ -36,6 +37,7 @@
     "diff": "^9.0.0",
     "dompurify": "3.4.17",
     "drizzle-orm": "^0.45.4",
+    "esbuild": "0.28.2",
     "jose": "^6.2.15",
     "jsdom": "^30.1.3",
     "lucide-react": "^1.68.0",
@@ -50,6 +52,7 @@
     "sharp": "0.35.5",
     "solc": "0.8.28",
     "tailwind-merge": "^3.7.0",
+    "tailwindcss": "^4",
     "typescript": "^5",
     "viem": "^2.57.16",
     "zod": "^4.6.7"
@@ -66,7 +69,6 @@
     "drizzle-kit": "^0.31.11",
     "eslint": "^9",
     "eslint-config-next": "16.4.5",
-    "tailwindcss": "^4",
     "tsx": "4.23.15",
     "vitest": "^5.1.0"
   },

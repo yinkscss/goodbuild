@@ -72,9 +72,27 @@ What exists:
 2. Magic dashboard: create the app, set `NEXT_PUBLIC_MAGIC_PUBLISHABLE_KEY` and `MAGIC_SECRET_KEY`, and allow `https://forno.celo.org` and `https://forno.celo-sepolia.celo-testnet.org` in its content security policy.
 3. One real end-to-end deploy (email wallet, then MetaMask) on Sepolia. **Not verified live yet:** Magic's Celo Sepolia behaviour and confirmation UI, WalletConnect/MiniPay connection, whether Celo's RPC accepts state overrides (if not, only the creation estimate runs), and a real Sourcify match.
 
-Known gaps: no "Share app" button (no published URL yet); the fee estimate is exact for the first argument-free contract and scaled by size for the rest; mainnet deploys stay behind `NEXT_PUBLIC_ENABLE_MAINNET`.
+Known gaps: the fee estimate is exact for the first argument-free contract and scaled by size for the rest; mainnet deploys stay behind `NEXT_PUBLIC_ENABLE_MAINNET`.
 
 `main` (through the background runner, P18) is merged into this branch. The M5 migration is now `0004`, after main's `0003`. A local `.data/` database that ran the old M5 `0003` needs resetting: it would try to create `deployments` again.
+
+## Publish (P19), landing sections, /docs and preview pop-out
+Publish code lives in `src/server/publish/`, `src/server/db/publish-schema.ts` (migration `0005`), `src/proxy.ts`, `src/lib/published-host.ts`, `src/app/published-app/` and `src/components/workspace/publish-modal.tsx`.
+
+**Verified on a production build (5 Nov 2026), on `<slug>.localhost`, with a demo tip jar and no contract deployed:**
+- API: publish (4s), update, unpublish (app returns 404), reserved and taken slugs refused, 451 on a blocked region.
+- Isolation: no main API or `/home` on an app host, a session cookie gets nothing there, the main host can't reach `/published-app`, and a request from the app page to the main API fails.
+- Browser: the app runs under its CSP with the demo notice, the modal publishes and unpublishes, and the pop-out preview loads.
+- Sign-in with `__Host-` cookies, using an external wallet.
+
+**To run it locally:** production mode with `PUBLISHED_APPS_DOMAIN=localhost`, `ALLOW_PGLITE=true`, `SESSION_SECRET` and `APP_DOMAIN`.
+
+**Not verified:**
+- Publishing an app whose contract is deployed (address baked in, no demo notice), and "Publish app" in the deploy success modal.
+- Magic email sign-in on `__Host-` cookies.
+- A real host: `*.goodbuild.app` needs wildcard DNS, and file tracing for `publish-runtime` is untested. Q16 and Q31 stay open.
+
+**Other gaps:** the Publish button is hidden below `md`, like Deploy. Under `next dev`, `/home` and the workspace reload themselves when signed in (reported by the session that built this; cause unknown, not checked against the base branch). No Terms, Privacy or abuse contact exists yet. The Unpublish button uses `window.confirm`, which blocks browser automation. A session cookie's name differs between development and production, so `scripts/demo-session.mjs` prints `gb_session` only in development.
 
 Then M6 (credits, D13: USD primary, cost + 25%; usage is already recorded in `usage_events`). **Top-ups (D21) are designed in [TOPUPS.md](TOPUPS.md), waiting for your review: no code until then.**
 

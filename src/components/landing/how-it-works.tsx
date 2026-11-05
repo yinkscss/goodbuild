@@ -21,7 +21,6 @@ const STEPS = [
     n: "04",
     title: "Publish",
     body: "Put the app on its own address, your-app.goodbuild.app, and share the link.",
-    soon: true,
     emphasis: true,
   },
 ];
@@ -42,14 +41,7 @@ export function HowItWorks() {
             <span className={cn("display text-2xl", s.emphasis ? "text-pink" : "text-violet")} aria-hidden>
               {s.n}
             </span>
-            <h3 className="mt-5 flex flex-wrap items-center gap-2 text-lg font-semibold">
-              {s.title}
-              {s.soon && (
-                <span className={cn("rounded-full px-2.5 py-0.5 text-[11px] font-semibold", s.emphasis ? "bg-white/15 text-white" : "bg-tint text-violet")}>
-                  Coming next
-                </span>
-              )}
-            </h3>
+            <h3 className="mt-5 text-lg font-semibold">{s.title}</h3>
             <p className={cn("mt-2 text-sm", s.emphasis ? "text-white/70" : "text-grey-600")}>{s.body}</p>
           </li>
         ))}

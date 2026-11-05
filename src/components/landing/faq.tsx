@@ -17,7 +17,11 @@ const QUESTIONS = [
   },
   {
     q: "Can I deploy and share my app today?",
-    a: "You can deploy to Celo Sepolia by signing from your own wallet. Publishing your app to your-app.goodbuild.app is coming next.",
+    a: "You can deploy to Celo Sepolia by signing from your own wallet. Then publish the front end to its own address, your-app.goodbuild.app, and share the link.",
+  },
+  {
+    q: "What does publishing do?",
+    a: "GoodBuild builds your latest saved version into a website on its own address. Anyone with the link can open it and connect their own wallet. You can update or unpublish it at any time.",
   },
   {
     q: "Who can use GoodBuild?",

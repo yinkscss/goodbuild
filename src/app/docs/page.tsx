@@ -84,8 +84,12 @@ const SECTIONS: Array<{ id: string; title: string; body: ReactNode }> = [
           verification on Sourcify.
         </p>
         <p>
-          <strong className="font-semibold">Publish is coming next.</strong> It will put your front end on its own address, your-app.goodbuild.app, so you can
-          share it.
+          <strong className="font-semibold">Publish</strong> builds your latest saved version into a website on its own address, your-app.goodbuild.app. Anyone with
+          the link can open it and connect their own wallet. Publishing doesn&apos;t update on its own: publish again after a change, including after a new deploy.
+        </p>
+        <p>
+          If an app&apos;s contracts aren&apos;t deployed for the version you publish, it goes live as a demo with a notice, and on-chain actions won&apos;t work. Every
+          published app carries a &quot;Built with GoodBuild · Unaudited&quot; bar.
         </p>
       </>
     ),

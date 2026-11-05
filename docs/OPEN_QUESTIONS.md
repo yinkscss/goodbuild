@@ -67,8 +67,8 @@
 - Claude's input: _TBD_
 
 ## Q16. Publishing / hosting of generated apps
-- Ideas so far: static hosting at `<slug>.goodbuild.app` (provider TBD), or IPFS. Moderation of published apps?
-- Claude's input: _TBD_
+- Resolved for hosting by P19: GoodBuild serves each app at `<slug>.goodbuild.app` from a stored build.
+- Still open: wildcard DNS and whether file tracing works on the real host (untested), moderation, and an abuse contact. Admin takedown exists only as a `disabled` state. No Terms or Privacy page exists yet.
 
 ## Q17. How does GoodBuild spend users' GoodDollar AI credits? (superseded by D11; kept for a future AntSeed provider)
 - Ideas so far: (A) hold user's derived AntSeed buyer key in a server-side AntSeed gateway; (B) wait for GoodDollar's `gd_live_` keys + Worker proxy (not yet implemented). See [GOODDOLLAR_AI_CREDITS.md](GOODDOLLAR_AI_CREDITS.md) §4–6.
@@ -131,6 +131,7 @@
 
 ## Q31. Hosting and the geo-block
 - The API returns 451 for US and comprehensively sanctioned regions (CU, IR, KP, SY; list UNVERIFIED, confirm with counsel), read from the host's country header (`x-vercel-ip-country` or `cf-ipcountry`). With neither header (other hosts, local dev) only the attestation applies.
+- Published app hosts also return 451 for these regions (P19), so a public link isn't viewable there.
 - Claude's input: confirm the host (Vercel or Cloudflare work as-is). Pages stay viewable everywhere; only sign-in, building and credits are blocked.
 
 ## Q32. MiniPay / Valora detection

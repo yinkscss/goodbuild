@@ -123,6 +123,16 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - Date: 4 Nov 2026 · Recommended by: Ego
 - Rationale: GoodDollar ToS §6.2 (18+) and §8 "NO U.S. PERSONS MAY USE THE SERVICES". Gemini API also requires 18+. Also exclude sanctioned jurisdictions.
 
+### P19. Publishing: own subdomain, server build, immutable snapshots (address and build approach decided by the user; the rest proposed)
+- Date: 5 Nov 2026 · Decided by: user (`<app>.goodbuild.app`, a real server build, a /docs page), as passed on by the session that built it. Claude proposed the rest.
+- **Subdomain isolation:** generated JS must never be served from the main origin, where it could call the API as whoever is signed in. `src/proxy.ts` sends a published app's host only to `/published-app/<slug>`, that route exists on no other host, and the route repeats the Host check. Each app also gets its own wallet permissions.
+- **Cookies:** `__Host-` session and nonce cookies in production, so a subdomain can neither read nor overwrite them. Plain names in development, because the prefix needs a secure context.
+- **Server build:** esbuild plus a Tailwind compile. Project code gets no filesystem access, and only `ALLOWED_DEPENDENCIES` resolve, from `publish-runtime/`.
+- **Immutable snapshots:** publishing stores built files in the database, so later edits don't change a live app until the user publishes again. If a build fails, the old files stay live.
+- **Undeployed contracts:** an app can go live before its contracts are deployed, with a demo notice, using `deployments.sourceHash` and `sourceKey` to tell.
+- **Region block:** published app hosts return 451 for blocked regions (Q31), the same list as the API.
+- **Verified on a production build, 5 Nov 2026:** see HANDOFF.md. Not verified on a real host.
+
 ## Proposed decisions (not adopted; Claude and the user may change them)
 
 ### P1. Testnet is Celo Sepolia, not Alfajores (proposed)
