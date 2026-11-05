@@ -126,8 +126,8 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
           body: JSON.stringify(body),
         });
         if (!res.ok) {
-          const code = await res.json().then((b: { error?: string }) => b.error).catch(() => undefined);
-          setError(code === "unauthenticated" ? "Your session ended. Sign in again." : "The build couldn't be queued. Try again.");
+          const failure = await res.json().then((b: { error?: string; message?: string }) => b).catch(() => null);
+          setError(failure?.error === "unauthenticated" ? "Your session ended. Sign in again." : res.status === 402 && failure?.message ? failure.message : "The build couldn't be queued. Try again.");
         }
       } catch {
         setError("Couldn't reach GoodBuild. Check your connection and try again.");

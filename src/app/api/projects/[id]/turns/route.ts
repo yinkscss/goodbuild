@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { PROMPT_MAX_LENGTH } from "@/lib/prompt";
 import { errorResponse, requireSession } from "@/server/auth/http";
+import { checkAiAllowance } from "@/server/credits/cap";
 import { getDb } from "@/server/db/client";
 import { kickWorker } from "@/server/jobs";
 import { enqueueTurn } from "@/server/jobs/jobs";
@@ -34,6 +35,8 @@ export async function POST(request: Request, ctx: RouteContext<"/api/projects/[i
     if (parsed.data.userMessageId && !owned.messages.some((m) => m.id === parsed.data.userMessageId && m.role === "user")) {
       return NextResponse.json({ error: "message_not_found" }, { status: 404 });
     }
+    const allowance = await checkAiAllowance(db, { userId: session.user.id, projectId: id });
+    if (!allowance.allowed) return NextResponse.json({ error: allowance.reason, message: allowance.message }, { status: 402 });
     const job = await enqueueTurn(db, { projectId: id, userId: session.user.id, ...parsed.data });
     kickWorker();
     return NextResponse.json({ jobId: job.id, messageId: job.userMessageId, status: job.status }, { status: 202 });

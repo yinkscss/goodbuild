@@ -117,6 +117,13 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - Vercel (D26) and Railway (D25) are on hold. The edge code stays, switched off without `BACKEND_ORIGIN`.
 - **Trade-offs:** no failover, and backups live on the same server until copied off. Acceptable while credits are free; revisit before M6 takes money.
 
+### D28. Free AI is capped at $0.20 for unverified accounts
+- Date: 5 Nov 2026 · Decided by: user (Olayinka). Overrides CREDITS.md §6's "free credits never go to an unverified wallet".
+- Each email and each wallet gets $0.20 of AI until it verifies with GoodDollar. One account is one wallet and Magic gives each email one wallet, so a single per-account check covers both. It counts the charged amount (cost + 25%, D13).
+- Checked when a build starts and again when the worker picks it up. A build that starts under the cap may finish, so a project is never left half-written, which means an account can go over by up to one build. Live builds so far cost from about $0.02 to $0.35.
+- Unverified accounts can only build on one project at a time, so parallel builds can't overrun the cap. Uploads and visual checks are stopped at the cap too.
+- **Weakness Claude flagged:** new wallets are free to create, so this doesn't limit total spending by itself. Proposed: a global daily budget and a per-IP sign-up limit, waiting on the user.
+
 ## Recommended decisions (Ego; adopted unless changed)
 
 ### D5. In-browser preview via Sandpack

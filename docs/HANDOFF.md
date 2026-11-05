@@ -90,10 +90,10 @@ Publish code lives in `src/server/publish/`, `src/server/db/publish-schema.ts` (
 **Verified with a real deploy (5 Nov 2026):** a throwaway wallet deployed `TipJar` on Celo Sepolia at `0xAC81a96393eF4306E3885aC7868EBd6a0aAa7BEA` through the deploy modal on a production build on Postgres, with an exact Sourcify match. The preview went live with no reload, the chat got its "live at" note, and "Publish app" on the success screen published it with the address baked in and no demo notice. The test signer stood in for a browser wallet, so MetaMask's own UI wasn't part of this.
 
 **Not verified:**
-- Magic email sign-in, on any cookies: the fix for `ERROR_INCORRECT_SIGNER_ADDR` hasn't had a live sign-in.
+- A contract deploy from a Magic email wallet.
 - A real host: `*.goodbuildit.xyz` needs wildcard DNS. Q16 and Q31 stay open.
 
-**Running now (D27):** live at https://goodbuildit.xyz on one VPS, see [DEPLOY.md](DEPLOY.md). Tested live on 5 Nov 2026: a real AI build, a Celo Sepolia deploy with a Sourcify match, publishing, the firewall, and the workspace and preview in a browser. A test signer stood in for the wallet. Not tested live: Magic email sign-in, and more than one build at a time. The rest of this section describes the Vercel and Railway setup (D26), which is on hold.
+**Running now (D27):** live at https://goodbuildit.xyz on one VPS, see [DEPLOY.md](DEPLOY.md). Tested live on 5 Nov 2026: a real AI build, a Celo Sepolia deploy with a Sourcify match, publishing, the firewall, and the workspace and preview in a browser. A test signer stood in for the wallet. Email sign-in with Magic works live (the owner signed in on 5 Nov 2026). Not tested live: a deploy from an email wallet (the first attempt had no CELO), and more than one build at a time. The rest of this section describes the Vercel and Railway setup (D26), which is on hold.
 
 **Hosting (D26, amends D25):** Vercel serves pages and forwards `/api/*`, `/a/*` and published apps to Railway, which runs the `Dockerfile`, with Postgres alongside.
 
