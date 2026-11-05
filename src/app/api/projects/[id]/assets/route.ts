@@ -4,6 +4,7 @@ import { visionClient } from "@/server/agent";
 import { AssetRejected, dbAssetStore, ingestAsset } from "@/server/agent/asset-store";
 import { ASSET_KINDS, MAX_ASSET_BYTES, type AssetKind } from "@/server/agent/assets";
 import { errorResponse, requireSession } from "@/server/auth/http";
+import { checkAiAllowance } from "@/server/credits/cap";
 import { getDb } from "@/server/db/client";
 import { getOwnedProject } from "@/server/projects";
 
@@ -30,6 +31,8 @@ export async function POST(request: Request, ctx: RouteContext<"/api/projects/[i
     const { id } = await ctx.params;
     const db = await getDb();
     if (!(await getOwnedProject(db, id, session.user.id))) return NextResponse.json({ error: "not_found" }, { status: 404 });
+    const allowance = await checkAiAllowance(db, { userId: session.user.id });
+    if (!allowance.allowed) return NextResponse.json({ error: allowance.reason, message: allowance.message }, { status: 402 });
 
     const declared = Number(request.headers.get("content-length") ?? 0);
     if (declared > MAX_ASSET_BYTES + 64_000) return NextResponse.json({ error: "too_large", message: `Files can be up to ${MAX_ASSET_BYTES / 1_000_000} MB.` }, { status: 413 });
