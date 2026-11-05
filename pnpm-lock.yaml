@@ -77,6 +77,9 @@ importers:
       lucide-react:
         specifier: ^1.68.0
         version: 1.68.0(@types/react@19.3.0)(react@19.3.0)
+      lz-string:
+        specifier: 1.5.0
+        version: 1.5.0
       magic-sdk:
         specifier: ^33.13.0
         version: 33.13.0

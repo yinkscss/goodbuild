@@ -7,7 +7,7 @@ import { turnJobs, usageEvents, users } from "@/server/db/schema";
 import { enqueueTurn } from "@/server/jobs/jobs";
 import { createProjectFromPrompt } from "@/server/projects";
 import { eq } from "drizzle-orm";
-import { BUDGET_MESSAGE, checkAiAllowance, spentMicro } from "./cap";
+import { BUDGET_MESSAGE, checkAiAllowance, shouldOfferVerification, spentMicro } from "./cap";
 
 const WALLET = "0x7a3000000000000000000000000000000000e41c";
 let db: Db;
@@ -102,5 +102,51 @@ describe("the total free budget", () => {
     expect(await checkAiAllowance(db, { userId }, { FREE_AI_BUDGET_MICRO: "0" })).toMatchObject({ reason: "budget_full" });
     await otherAccount("0x7a3000000000000000000000000000000000e41d", 4_000_000);
     expect(await checkAiAllowance(db, { userId }, {})).toMatchObject({ reason: "budget_full" });
+  });
+});
+
+describe("verified accounts", () => {
+  const ROOT = "0x7a3000000000000000000000000000000000aaaa";
+  const verify = (id: string) => db.update(users).set({ verifiedAt: new Date(), goodidRoot: ROOT }).where(eq(users.id, id));
+
+  it("get $0.50 more after the free $0.20, and tell them when it's used", async () => {
+    await spend(200_000, "a");
+    expect(await checkAiAllowance(db, { userId }, {})).toMatchObject({ reason: "free_limit" });
+    await verify(userId);
+    expect(await checkAiAllowance(db, { userId }, {})).toEqual({ allowed: true });
+    await spend(500_000, "b");
+    expect(await checkAiAllowance(db, { userId }, {})).toMatchObject({ reason: "verified_limit" });
+  });
+
+  it("share one allowance across wallets linked to the same person", async () => {
+    await verify(userId);
+    await spend(700_000, "a");
+    const second = await signInUser(db, { wallet: "0x7a3000000000000000000000000000000000e41d", walletKind: "external", attestation: { ageOk: true, notUsPerson: true } });
+    await verify(second.id);
+    expect(await checkAiAllowance(db, { userId: second.id }, {})).toMatchObject({ reason: "verified_limit" });
+  });
+
+  it("are still limited to one project's build at a time", async () => {
+    await verify(userId);
+    await enqueueTurn(db, { projectId, userId, mode: "build", prompt: "first" });
+    const other = await createProjectFromPrompt(db, userId, { prompt: "Another", network: "celo-sepolia" });
+    expect(await checkAiAllowance(db, { userId, projectId: other.id }, {})).toMatchObject({ reason: "one_build_at_a_time" });
+  });
+});
+
+describe("offering verification", () => {
+  it("waits until the free credit is used", async () => {
+    await spend(199_999, "a");
+    expect(await shouldOfferVerification(db, userId, {})).toBe(false);
+    await spend(1, "b");
+    expect(await shouldOfferVerification(db, userId, {})).toBe(true);
+  });
+
+  it("doesn't offer it to verified or exempt accounts, or when the trial is full", async () => {
+    await spend(200_000, "a");
+    expect(await shouldOfferVerification(db, userId, { UNCAPPED_WALLETS: WALLET })).toBe(false);
+    expect(await shouldOfferVerification(db, userId, { FREE_AI_BUDGET_MICRO: "200000" })).toBe(false);
+    await db.update(users).set({ verifiedAt: new Date() }).where(eq(users.id, userId));
+    expect(await shouldOfferVerification(db, userId, {})).toBe(false);
   });
 });

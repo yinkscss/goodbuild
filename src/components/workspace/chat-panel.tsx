@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { AssetBar, AttachMenu, imageFiles } from "./asset-bar";
 import { TurnView } from "./turn-view";
 import type { UseWorkspace } from "./use-workspace";
+import { VerifyCard } from "./verify-card";
 
 const FIX_PROMPT = "Fix the remaining errors from the last build.";
 
@@ -107,6 +108,7 @@ export function ChatPanel({ ws, assetUrls = {} }: { ws: UseWorkspace; assetUrls?
             {ws.error}
           </p>
         )}
+        {state.offerVerification && !running && <VerifyCard onVerified={ws.refresh} />}
         <div ref={endRef} />
       </div>
       <Composer
