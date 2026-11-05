@@ -55,6 +55,21 @@ beforeEach(() => {
 });
 
 describe("prompt gating", () => {
+  it("shows the prompt at once while sending, and a repeat Send doesn't create a second project", async () => {
+    let finish: (r: Response) => void = () => undefined;
+    const fetchMock = vi.fn<(url: string) => Promise<Response>>(() => new Promise((r) => (finish = r)));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<Harness auth={makeAuth({ user: { id: "u1", wallet: "0xabc", walletKind: "external" } as never })} />);
+    await userEvent.click(screen.getByText("send"));
+    expect(await screen.findByText(/Starting your build/)).toBeInTheDocument();
+    expect(screen.getByText("A tip jar")).toBeInTheDocument();
+    await userEvent.click(screen.getByText("send"));
+    expect(fetchMock.mock.calls.filter(([u]) => String(u) === "/api/projects")).toHaveLength(1);
+    finish(new Response(JSON.stringify({ id: "p1", name: "Tip" }), { status: 201 }));
+    await vi.waitFor(() => expect(push).toHaveBeenCalledWith("/p/p1"));
+    await vi.waitFor(() => expect(screen.queryByText(/Starting your build/)).not.toBeInTheDocument());
+  });
+
   it("logged-out Send saves the prompt and opens the connect modal", async () => {
     render(<Harness auth={makeAuth()} />);
     await userEvent.click(screen.getByText("send"));

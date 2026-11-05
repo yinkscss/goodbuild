@@ -96,6 +96,11 @@ export function ChatPanel({ ws, assetUrls = {} }: { ws: UseWorkspace; assetUrls?
             onSuggest={live.phase === "done" && state.jobs.length <= 1 ? suggest : undefined}
           />
         )}
+        {!live && !ws.error && state.messages.at(-1)?.role === "user" && (
+          <p className="flex items-center gap-2 text-sm text-grey-600" role="status">
+            <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden /> Starting your build…
+          </p>
+        )}
         {ws.error && (
           <p className="flex items-start gap-2 rounded-block bg-canvas px-4 py-3 text-sm" role="alert">
             <span className="mt-1.5 size-2 shrink-0 rounded-full bg-danger" aria-hidden />

@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { notFound, redirect } from "next/navigation";
 
 import { Workspace } from "@/components/workspace/workspace";
+import { WorkspaceSkeleton } from "@/components/workspace/workspace-skeleton";
 import { currentSession } from "@/server/auth/http";
 import { getDb } from "@/server/db/client";
 import { workspaceState } from "@/server/workspace-state";
@@ -24,16 +25,4 @@ async function ProjectView({ params }: { params: Promise<{ id: string }> }) {
   const state = await workspaceState(await getDb(), id, session.user.id);
   if (!state) notFound();
   return <Workspace initial={state} />;
-}
-
-function WorkspaceSkeleton() {
-  return (
-    <div className="flex h-dvh flex-col gap-4 p-4" aria-busy="true" aria-label="Loading project">
-      <div className="h-12" />
-      <div className="grid flex-1 gap-4 lg:grid-cols-[420px_1fr]">
-        <div className="skeleton rounded-card motion-reduce:animate-none" />
-        <div className="skeleton hidden rounded-card motion-reduce:animate-none lg:block" />
-      </div>
-    </div>
-  );
 }

@@ -98,8 +98,8 @@ The server refuses a live key (`sk_live_…`) unless `PAYSTACK_ALLOW_LIVE=true`,
 - D10 still applies: 18+, no US persons.
 
 ## 10. Open points for the user
-1. **G$ in the UI (conflict with D13).** D13 shows G$ next to USD in the credits pill; D21 says never show G$. Proposal: the credits pill and top-up modal show USD (and NGN on top-up) only, everywhere; the G$ vault deposit of CREDITS.md §2 becomes optional or is dropped. Is that right, or does D21 cover only the top-up flow?
-2. **Why convert to G$?** Credits are USD liabilities and LLM bills are paid in USD. Holding treasury in G$ adds price risk. Proposal: keep an operating USD/USDT buffer for provider bills (1 month, CREDITS.md §6) and convert only the surplus.
+1. **G$ in the UI: decided (D24).** "Never show G$" covers the top-up flow only: no conversion, batching or treasury details. The top-up modal shows NGN and USD credits. The credits pill keeps G$ beside USD (D13), and the G$ vault deposit stays.
+2. **What the batch converts: decided (D24).** Keep about one month of provider bills in USDT (CREDITS.md §6) and convert only the surplus to G$.
 3. **Rate source and spread (§4).** Which source, and what starting spread (proposal: 200 bps)?
 4. **Fees:** merchant-bears (credit net of fee, as written) or customer-bears (user pays the fee on top)? The brief says minus fees.
 5. **Email at top-up** for wallet-only users (§2): collect it on the top-up row, OK?

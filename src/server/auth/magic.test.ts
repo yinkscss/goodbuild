@@ -1,14 +1,14 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { keccak256, toHex } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 
+import { attachmentFor } from "@/lib/auth/session-client";
 import { AuthError } from "./errors";
 import { assertMagicLogin } from "./magic";
 
 const user = privateKeyToAccount(generatePrivateKey());
 const other = privateKeyToAccount(generatePrivateKey());
 const message = "Sign in to GoodBuild. nonce abc";
-const attachment = keccak256(toHex(message));
+const attachment = attachmentFor(message);
 
 /** A DID token the way Magic builds it: [proof, claim] where proof signs the claim. */
 async function didToken(opts: { signer?: typeof user; issuer?: string; attachmentFor?: string; ext?: number } = {}) {
@@ -41,6 +41,12 @@ const code = (fn: () => unknown) => {
   }
   return "ok";
 };
+
+describe("attachmentFor", () => {
+  it("can't be mistaken for hex, which signers would sign as raw bytes", () => {
+    expect(attachment).toMatch(/^siwe:[0-9a-f]{64}$/);
+  });
+});
 
 describe("assertMagicLogin", () => {
   it("accepts a token bound to this message for the same address", async () => {

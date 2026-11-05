@@ -43,7 +43,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="en"
       className={`${unbounded.variable} ${inter.variable} ${jetbrains.variable} antialiased`}
     >
-      <body className="min-h-dvh">
+      <body className="min-h-dvh" suppressHydrationWarning>
         <Providers>
           <SendGateProvider>{children}</SendGateProvider>
         </Providers>

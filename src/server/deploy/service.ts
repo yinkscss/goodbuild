@@ -8,12 +8,13 @@ import { celo, celoSepolia } from "viem/chains";
 
 import { goodDollarAddress, isTestGoodDollar } from "@/config/gooddollar";
 import { isMainnetEnabled } from "@/config/networks";
+import { chainLabel } from "@/lib/deploy/explorer";
 import { MANIFEST_PATH, parseManifest, planManifest, referencesIn, type ArgValue } from "@/lib/deploy/manifest";
 import { loadFiles } from "@/server/agent/store";
 import { PLATFORM_DIR } from "@/server/agent/template";
 import type { Db } from "@/server/db/client";
 import { deployments, type Deployment } from "@/server/db/deploy-schema";
-import { projectFiles, projects } from "@/server/db/schema";
+import { messages, projectFiles, projects } from "@/server/db/schema";
 import { loadDeployedAddresses, withDeployedAddresses } from "./addresses";
 import { compileForDeploy, type EvmVersion } from "./compile";
 
@@ -234,6 +235,7 @@ export async function recordDeployment(
     .returning();
 
   await syncContractModules(db, input.projectId);
+  await db.insert(messages).values({ projectId: input.projectId, role: "system", content: `${input.contractName} is live on ${chainLabel(input.chainId)} at ${address}` });
   await db.update(projects).set({ status: "deployed" }).where(eq(projects.id, input.projectId));
   return row;
 }

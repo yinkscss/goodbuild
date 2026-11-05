@@ -10,6 +10,7 @@ import {
   useSandpackNavigation,
   type SandpackTheme,
 } from "@codesandbox/sandpack-react";
+import { contractAddressKey } from "@/lib/deploy/wiring";
 import { Monitor, RotateCw, ShieldAlert, Smartphone, Wrench } from "lucide-react";
 
 import { LogoMark } from "@/components/brand/logo";
@@ -152,8 +153,9 @@ export function PreviewPanel({
     // Tailwind's layered utilities); `.gb-sp-section` in globals.css makes it fill the card.
     <section aria-label="Preview" className="gb-sp-section flex min-h-0 flex-col rounded-card bg-surface p-3 shadow-card">
       <SandpackProvider
-        // Remount the bundler on each new version so the preview always matches the saved files.
-        key={version}
+        // Remount the bundler on each new version, and when a deploy lands (which adds no version),
+        // so the preview always matches the saved files.
+        key={`${version}:${contractAddressKey(files)}`}
         template="react-ts"
         theme={theme}
         files={sandpackFiles}

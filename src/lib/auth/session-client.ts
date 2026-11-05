@@ -52,7 +52,9 @@ export function signInChainFor(walletChainId: number | null): number {
 
 /** Binds a Magic DID token to one SIWE message (the server recomputes this). */
 export function attachmentFor(message: string): string {
-  return keccak256(toHex(message));
+  // Must not look like hex. Signers treat a 0x string as raw bytes, but Magic's admin SDK checks the
+  // attachment as UTF-8 text, so a 0x hash fails with ERROR_INCORRECT_SIGNER_ADDR.
+  return `siwe:${keccak256(toHex(message)).slice(2)}`;
 }
 
 export function isUserRejection(error: unknown): boolean {

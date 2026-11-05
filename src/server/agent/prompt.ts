@@ -172,6 +172,8 @@ export function contextMessage(args: {
   assets?: string;
   /** Rolling memory of older messages (memoryBlock). */
   memory?: string;
+  /** Live contracts and their addresses (deploymentsBlock). */
+  deployments?: string;
 }): string {
   return contextWithPicks(args).text;
 }
@@ -184,7 +186,7 @@ export function contextWithPicks(args: Parameters<typeof contextMessage>[0]): { 
   const chips = args.lastSuggestions?.length
     ? `\n\nYour previous reply offered these next steps as buttons (the user may be answering them):\n${args.lastSuggestions.map((c, i) => `${i + 1}. ${c}`).join("\n")}`
     : "";
-  const extra = [args.memory, args.assets].filter(Boolean).map((s) => `\n\n${s}`).join("");
+  const extra = [args.memory, args.deployments, args.assets].filter(Boolean).map((s) => `\n\n${s}`).join("");
   const text = `Project files (path, size, summary):\n${manifest(args.files)}\n\nFiles picked for this request, in full${hidden ? ` (${hidden} others not shown: find them with find_symbol or search_code, then read_file)` : ""}:\n${blocks.join("\n\n")}${extra}${chips}\n\nUser request:\n${args.request}`;
   return { text, picks };
 }

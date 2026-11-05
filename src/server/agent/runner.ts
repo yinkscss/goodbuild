@@ -12,7 +12,7 @@ import { HISTORY_WINDOW, memoryBlock, updateMemory, type Memory, type MemoryMess
 import { TIER_FOR, ModelUnavailableError, type ChatMessage, type ModelClient, type ModelEvent, type ModelTier, type ToolCall, type UserPart } from "./model";
 import { BUILD_TOOLS, PLAN_TOOLS, contextWithPicks, systemPrompt } from "./prompt";
 import { checkpoint, claimTurn, loadFiles, recordUsage, releaseTurn } from "./store";
-import { loadDeployedAddresses } from "@/server/deploy/addresses";
+import { deploymentsBlock, loadDeployedAddresses } from "@/server/deploy/addresses";
 import { PLATFORM_DIR, contractModule, contractsIndex, starterFiles, withStarterHelpers } from "./template";
 import {
   LeaseLostError,
@@ -444,7 +444,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     if (report.contracts.length) {
       const names = report.contracts.map((c) => c.name);
       // Deployed addresses live in the deployments table (P3), so a rebuild never wipes them (M5).
-      const deployed = await loadDeployedAddresses(db, input.projectId);
+      const deployed = await loadDeployedAddresses(db, input.projectId, Object.fromEntries(report.contracts.map((c) => [c.name, c.abi])));
       for (const c of report.contracts) ws.files[`${PLATFORM_DIR}${c.name}.ts`] = contractModule(c.name, c.abi, deployed[c.name] ?? {});
       ws.files[`${PLATFORM_DIR}index.ts`] = contractsIndex(names);
       record.contracts = report.contracts.map(({ name, file, bytecodeBytes }) => ({ name, file, bytecodeBytes }));
@@ -615,6 +615,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       lastSuggestions: await lastSuggestions(db, input.projectId, assistantId),
       assets: assetManifest(assets),
       memory: memoryBlock(memory),
+      deployments: deploymentsBlock(await loadDeployedAddresses(db, input.projectId)),
     });
     log(`context: ${ctx.picks.length} of ${Object.keys(files).length} files in full (${ctx.picks.map((p) => p.path.split("/").pop()).join(", ")})`);
     // Design references the model hasn't seen yet go in as images, once; the manifest keeps

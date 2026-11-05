@@ -19,7 +19,8 @@ export interface UseWorkspace {
   /** Stop the running turn and cancel queued follow-ups. */
   stop: () => Promise<void>;
   revert: (version: number) => Promise<void>;
-  refresh: () => Promise<void>;
+  /** Reload from the server. Returns the new state, or null if the request failed. */
+  refresh: () => Promise<WorkspaceState | null>;
   error: string | null;
   /** Upload a logo, image or design reference to the project. */
   upload: (file: File, kind: AssetKind) => Promise<void>;
@@ -96,7 +97,10 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
 
   const refresh = React.useCallback(async () => {
     const res = await fetch(`/api/projects/${projectId}`, { cache: "no-store" });
-    if (res.ok) setState((await res.json()) as WorkspaceState);
+    if (!res.ok) return null;
+    const next = (await res.json()) as WorkspaceState;
+    setState(next);
+    return next;
   }, [projectId]);
 
   /**

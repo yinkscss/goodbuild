@@ -113,6 +113,22 @@ describe("runDeploy", () => {
     expect(e.send).toHaveBeenCalledTimes(2);
   });
 
+  it("a transaction that never mines is dropped, so the retry isn't stuck waiting on it", async () => {
+    const progress: DeployProgress = { deployed: {}, sent: {} };
+    const timeout = Object.assign(new Error("timed out"), { name: "WaitForTransactionReceiptTimeoutError" });
+    const { e } = env({ waitForReceipt: vi.fn(async () => Promise.reject(timeout)) });
+    await expect(runDeploy(plan({ steps: plan().steps.slice(0, 1) }), e, undefined, progress)).rejects.toBeInstanceOf(StepFailure);
+    expect(progress.sent).toEqual({});
+  });
+
+  it("resumes a transaction remembered from before a reload, without a new signature", async () => {
+    const progress: DeployProgress = { deployed: {}, sent: { Token: `0x${"09".repeat(32)}` } };
+    const { e } = env();
+    await runDeploy(plan({ steps: plan().steps.slice(0, 1) }), e, undefined, progress);
+    expect(e.send).not.toHaveBeenCalled();
+    expect(e.record).toHaveBeenCalledTimes(1);
+  });
+
   it("knows whether a plan uses G$", () => {
     expect(usesGoodDollar(plan())).toBe(true);
     expect(usesGoodDollar({ steps: plan().steps.slice(0, 1) })).toBe(false);
