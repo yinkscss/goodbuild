@@ -1,0 +1,57 @@
+# Deploys to the production server whenever a pull request is merged to main (docs/DEPLOY.md).
+# Run it by hand from the Actions tab to redeploy.
+name: Deploy
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+  workflow_dispatch:
+
+# Deploys run one at a time, and a running one is never cancelled, so a merge can't interrupt a migration.
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+
+      - name: Set up SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          umask 077
+          mkdir -p .data
+          printf '%s\n' "$DEPLOY_SSH_KEY" > .data/goodbuild-deploy
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > .data/known_hosts
+
+      - name: Deploy
+        run: deploy/deploy.sh
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+
+      - name: Check the live site
+        run: |
+          for attempt in $(seq 1 12); do
+            status=$(curl -s -m 15 -o /dev/null -w '%{http_code}' https://goodbuildit.xyz/ || true)
+            echo "attempt $attempt: $status"
+            [ "$status" = "200" ] && exit 0
+            sleep 10
+          done
+          echo "The site didn't come back after the deploy." >&2
+          exit 1
+
+      - name: Remove the key
+        if: always()
+        run: rm -f .data/goodbuild-deploy

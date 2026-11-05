@@ -114,6 +114,7 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - Date: 5 Nov 2026 · Decided by: user (Olayinka).
 - For about 50 users and a one-month, paid-per-month start: everything on one VPS (iHostio; the owner holds written permission for blockchain and testnet work), with Postgres on the same box and Cloudflare in front. How it runs: [DEPLOY.md](DEPLOY.md).
 - Contabo declined the owner's card, and iHostio is run by a friend and takes naira. Coolify stays installed for now by the owner's choice; only its proxy is used.
+- Merging a pull request to `main` deploys to this server (user's request, 5 Nov 2026). The deploy key is stored as a GitHub secret.
 - Vercel (D26) and Railway (D25) are on hold. The edge code stays, switched off without `BACKEND_ORIGIN`.
 - **Trade-offs:** no failover, and backups live on the same server until copied off. Acceptable while credits are free; revisit before M6 takes money.
 

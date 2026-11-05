@@ -23,11 +23,15 @@ ssh -i .data/goodbuild-deploy -o IdentitiesOnly=yes -o UserKnownHostsFile=.data/
 ```
 
 ## Deploy
-From the repo root, with your changes committed:
+**Automatic:** merging a pull request to `main` deploys it (`.github/workflows/deploy.yml`). Check the result in the repo's Actions tab. Merging is therefore a production release, so CI must pass and the migration must be safe before you merge. To redeploy without a merge, run the Deploy workflow by hand from that tab.
+
+**By hand:** from the repo root, with your changes committed:
 ```bash
 deploy/deploy.sh
 ```
-It copies HEAD, rebuilds the image on the server, runs migrations and restarts. The build takes several minutes.
+It copies HEAD, rebuilds the image on the server, runs migrations and restarts. The build takes several minutes. Deploying a branch by hand leaves the server ahead of `main`, and the next merge replaces it.
+
+The workflow's GitHub secrets are `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS` (the server's pinned host key) and `DEPLOY_HOST`. If you change the key on the server, update them too.
 
 ## Everyday commands (on the server, in /opt/goodbuild/deploy)
 ```bash

@@ -4,6 +4,7 @@ import { visionClient } from "@/server/agent";
 import { dbAssetStore, reclassifyAsset } from "@/server/agent/asset-store";
 import { ASSET_KINDS, type AssetKind } from "@/server/agent/assets";
 import { errorResponse, requireSession } from "@/server/auth/http";
+import { checkAiAllowance } from "@/server/credits/cap";
 import { getDb } from "@/server/db/client";
 import { getOwnedProject } from "@/server/projects";
 
@@ -49,6 +50,8 @@ export async function PATCH(request: Request, ctx: RouteContext<"/api/projects/[
     }
     const body = (await request.json().catch(() => null)) as { kind?: string } | null;
     if (!body?.kind || !(ASSET_KINDS as string[]).includes(body.kind)) return NextResponse.json({ error: "invalid_body" }, { status: 400 });
+    const allowance = await checkAiAllowance(db, { userId: session.user.id });
+    if (!allowance.allowed) return NextResponse.json({ error: allowance.reason, message: allowance.message }, { status: 402 });
     const asset = await reclassifyAsset({ store: dbAssetStore(db), db, model: visionClient(), projectId: id, userId: session.user.id, id: assetId, kind: body.kind as AssetKind });
     return asset ? NextResponse.json({ asset }) : NextResponse.json({ error: "not_found" }, { status: 404 });
   } catch (error) {
