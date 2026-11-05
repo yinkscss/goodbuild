@@ -132,6 +132,14 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - It covers verified accounts, which are on free credit too. `UNCAPPED_WALLETS` stays exempt, but its spending still counts towards the total.
 - **It counts all recorded spend, including before this decision.** After a top-up, or if earlier spend came from a different balance, raise the setting: new total = spend so far + what the new money should allow. Query: [DEPLOY.md](DEPLOY.md).
 
+### D30. GoodDollar verification unlocks $0.50 more free AI, once per person
+- Date: 5 Nov 2026 · Decided by: user (Olayinka). The amount is from CREDITS.md §5's proposal, raised from $0.50 total to $0.50 on top of the $0.20. Replaces D28's "no cap once verified".
+- When an account has used its $0.20, the workspace asks it to verify. Total free AI for a verified person is then $0.70 (`VERIFIED_CAP_MICRO`), counted across every account with the same GoodDollar root, so linked wallets share it. D29's total budget still applies, and the prompt isn't shown when the trial is full.
+- **Only the chain decides:** the server reads `getWhitelistedRoot` on GoodDollar's production Identity contract on Celo mainnet (`0xC361…2F42`). The result in GoodDollar's redirect is treated as a hint.
+- Verification stays recorded after GoodDollar's own expiry, because it unlocks one fixed allowance, not ongoing access.
+- **No SDK:** `@goodsdks/citizen-sdk` 1.2.7 needs wagmi and installs tsup at runtime. `src/lib/goodid.ts` rebuilds its short link code on `lz-string`, so the signed message must be kept in step with GoodDollar.
+- **UNVERIFIED:** a real face check end to end, signing with Magic email wallets, and how GoodDollar reports a "Twin" (a face already verified on another wallet). The card links GoodDollar's guide to linking wallets for that case.
+
 ## Recommended decisions (Ego; adopted unless changed)
 
 

@@ -91,7 +91,7 @@ export default function HomePage() {
           <div className="mt-4 rounded-card bg-surface p-4 shadow-card">
             <p className="text-xs font-semibold tracking-[.14em] text-violet uppercase">Testnet mode</p>
             <p className="mt-1.5 text-xs text-grey-600">
-              Deploys go to Celo Sepolia. Mainnet unlocks after GoodDollar face verification.
+              Deploys go to Celo Sepolia. Mainnet unlocks later in Stage 1.
             </p>
           </div>
         </aside>

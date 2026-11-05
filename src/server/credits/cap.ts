@@ -13,7 +13,15 @@ import { turnJobs, usageEvents, users } from "@/server/db/schema";
  */
 export const UNVERIFIED_CAP_MICRO = 200_000;
 
-export const CAP_MESSAGE = "You've used your free $0.20 of AI. Verifying your account with GoodDollar will unlock more; that's coming soon.";
+export const CAP_MESSAGE = "You've used your free $0.20 of AI. Verify with GoodDollar to get $0.50 more.";
+
+/**
+ * Total free AI for one verified person: the $0.20 plus $0.50 more (D30). Counted across every
+ * account linked to the same GoodDollar identity, so one face can't claim it through several wallets.
+ */
+export const VERIFIED_CAP_MICRO = 700_000;
+
+export const VERIFIED_CAP_MESSAGE = "You've used all your free AI. Top-ups are coming soon.";
 
 /**
  * Total real provider spend the free trial may reach, across every account (D29). Set below the
@@ -27,10 +35,14 @@ export const RESERVED_PER_BUILD_MICRO = 350_000;
 
 export const BUDGET_MESSAGE = "The free trial is full right now. Please check back soon.";
 
-export type CapDecision = { allowed: true } | { allowed: false; reason: "free_limit" | "one_build_at_a_time" | "budget_full"; message: string };
+export type CapDecision = { allowed: true } | { allowed: false; reason: "free_limit" | "verified_limit" | "one_build_at_a_time" | "budget_full"; message: string };
 
 function capMicro(env: Record<string, string | undefined>) {
   return Number(env.UNVERIFIED_CAP_MICRO) || UNVERIFIED_CAP_MICRO;
+}
+
+function verifiedCapMicro(env: Record<string, string | undefined>) {
+  return Number(env.VERIFIED_CAP_MICRO) || VERIFIED_CAP_MICRO;
 }
 
 function budgetMicro(env: Record<string, string | undefined>) {
@@ -56,6 +68,16 @@ export async function spentMicro(db: Db, userId: string): Promise<number> {
   return Number(row?.total ?? 0);
 }
 
+/** What this person has used: every account sharing their GoodDollar identity. */
+async function identitySpentMicro(db: Db, goodidRoot: string): Promise<number> {
+  const [row] = await db
+    .select({ total: sql<string>`coalesce(sum(${usageEvents.chargedMicro}), 0)` })
+    .from(usageEvents)
+    .innerJoin(users, eq(usageEvents.userId, users.id))
+    .where(eq(users.goodidRoot, goodidRoot));
+  return Number(row?.total ?? 0);
+}
+
 /**
  * Is there room left in the total budget? New requests also count queued builds. The worker starts
  * builds one by one, so it counts only the others already running: two queued builds near the limit
@@ -77,14 +99,18 @@ export async function checkAiAllowance(
   input: { userId: string; projectId?: string; startingJobId?: string },
   env: Record<string, string | undefined> = process.env,
 ): Promise<CapDecision> {
-  const [user] = await db.select({ wallet: users.wallet, verifiedAt: users.verifiedAt }).from(users).where(eq(users.id, input.userId)).limit(1);
+  const [user] = await db.select({ wallet: users.wallet, verifiedAt: users.verifiedAt, goodidRoot: users.goodidRoot }).from(users).where(eq(users.id, input.userId)).limit(1);
   if (!user || isExempt(user.wallet, env)) return { allowed: true };
 
-  if (!user.verifiedAt && (await spentMicro(db, input.userId)) >= capMicro(env)) return { allowed: false, reason: "free_limit", message: CAP_MESSAGE };
+  if (user.verifiedAt) {
+    const spent = user.goodidRoot ? await identitySpentMicro(db, user.goodidRoot) : await spentMicro(db, input.userId);
+    if (spent >= verifiedCapMicro(env)) return { allowed: false, reason: "verified_limit", message: VERIFIED_CAP_MESSAGE };
+  } else if ((await spentMicro(db, input.userId)) >= capMicro(env)) {
+    return { allowed: false, reason: "free_limit", message: CAP_MESSAGE };
+  }
 
   // Verified accounts are on free credit too, so the total applies to them as well.
   if (!(await budgetHasRoom(db, input.startingJobId, env))) return { allowed: false, reason: "budget_full", message: BUDGET_MESSAGE };
-  if (user.verifiedAt) return { allowed: true };
 
   // Otherwise builds running at once on several projects could each pass the check and overrun it.
   if (input.projectId) {
@@ -96,4 +122,12 @@ export async function checkAiAllowance(
     if (other) return { allowed: false, reason: "one_build_at_a_time", message: "You have a build running on another project. Wait for it to finish, then try again." };
   }
   return { allowed: true };
+}
+
+/** Should the workspace ask this account to verify? Only when that would actually unlock more AI. */
+export async function shouldOfferVerification(db: Db, userId: string, env: Record<string, string | undefined> = process.env): Promise<boolean> {
+  const [user] = await db.select({ wallet: users.wallet, verifiedAt: users.verifiedAt }).from(users).where(eq(users.id, userId)).limit(1);
+  if (!user || user.verifiedAt || isExempt(user.wallet, env)) return false;
+  if ((await spentMicro(db, userId)) < capMicro(env)) return false;
+  return budgetHasRoom(db, undefined, env);
 }
