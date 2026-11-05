@@ -163,7 +163,7 @@
 - The Code tab is read-only in M4, so the agent's files and checkpoints stay the single source of truth.
 - Claude's input: allow manual edits later, saved as their own version.
 
-## Q39. There is no G$ on Celo Sepolia (blocker for testnet G$ apps)
+## Q39. There is no G$ on Celo Sepolia (resolved: D23, deploy a test G$)
 - Checked 4 Nov 2026 in GoodProtocol's `releases/deployment.json` (https://github.com/GoodDollar/GoodProtocol/blob/master/releases/deployment.json):
   - `production-celo` (42220): G$ `0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A`, Identity `0xC361A6E67822a0EDc17D899227dd9FC50BD62F42`. Matches the docs (https://docs.gooddollar.org/for-developers/core-contracts).
   - `staging-celo`, `development-celo` and `pre-production-celo` are also on Celo **mainnet** (42220), with their own G$ addresses.
@@ -171,3 +171,9 @@
 - So a G$ app deployed to Celo Sepolia has no real G$ to accept, and the M6 credits vault has the same problem on testnet.
 - Claude's input: in M5, GoodBuild deploys one **test G$** on Celo Sepolia: an ERC-20 with ERC-677 `transferAndCall`, 18 decimals, and a rate-limited faucet (for example 1,000 test G$ per wallet per day). M5 prefills it as the G$ address for Celo Sepolia deploys, and the production G$ address for mainnet. Ask GoodDollar whether they plan an official Celo Sepolia deployment, and switch to it if so.
 - Also confirm with GoodDollar that Celo G$ (a Superfluid SuperToken) implements ERC-677 `transferAndCall`. GoodDollar's antseed-integration relies on it, but the core-contracts page doesn't say (UNVERIFIED).
+
+## Q40. Top-ups (D21): G$ in the UI, treasury design, rate source
+- See [TOPUPS.md](TOPUPS.md) §10: D13 vs D21 on showing G$, why convert to G$ at all, the NGN→USD rate source and spread, fee bearer, email at top-up, admin identity, refund policy. Waiting for the user's review.
+
+## Q41. Magic (D22): wallet list and pricing
+- Coinbase Wallet is dropped from the connect modal (not in the user's list). Magic's pricing tier and key-export story were not compared; check before launch (UNVERIFIED).
