@@ -16,6 +16,12 @@ ssh -i .data/goodbuild-deploy -o IdentitiesOnly=yes -o UserKnownHostsFile=.data/
 ```
 `.data/` is in the `landing-publish` worktree. If that worktree is removed, move the key first, or have the owner add a new one.
 
+## Reaching Coolify
+Its ports aren't public. From a machine with the deploy key, open a tunnel, then browse to http://localhost:8000:
+```bash
+ssh -i .data/goodbuild-deploy -o IdentitiesOnly=yes -o UserKnownHostsFile=.data/known_hosts -L 8000:localhost:8000 -L 6001:localhost:6001 -L 6002:localhost:6002 root@193.181.221.210
+```
+
 ## Deploy
 From the repo root, with your changes committed:
 ```bash
@@ -42,7 +48,7 @@ docker compose --env-file .env.production exec -T goodbuild-postgres pg_restore 
 
 ## Requirements that are easy to break
 - **Cloudflare must proxy `goodbuildit.xyz` and `*.goodbuildit.xyz`**, with SSL mode **Full**. The US and sanctions block reads `cf-ipcountry`. With no proxy there is no header, and the block lets everyone through.
-- **Firewall:** Docker's published ports skip `ufw`, so the rules that restrict 80 and 443 to Cloudflare's IPs are in the `DOCKER-USER` chain. Without them, a visitor could reach the server directly, fake a country header and skip the block.
+- **Firewall (`deploy/firewall.sh`, run at boot by `goodbuild-firewall.service`):** Docker's published ports skip `ufw`, so the rules are in the `DOCKER-USER` chain. Only Cloudflare reaches 80 and 443, and Coolify's ports (8000, 8080, 6001, 6002) are closed to the internet. Without this, a visitor could reach the server directly, fake a country header and skip the block. If Cloudflare publishes new IP ranges, restart the service.
 - Don't set `BACKEND_ORIGIN` or `EDGE_SECRET` here. They're for the Vercel setup (D26), and `EDGE_SECRET` alone makes the server refuse everything.
 - **Keep the database's service name unique.** `web` joins Coolify's network, where `postgres` is Coolify's own database. With that name, web connected to the wrong server and got a password error.
 - Solidity compiling reads `node_modules` at runtime, so the image can't be pruned or made standalone.
