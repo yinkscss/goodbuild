@@ -118,15 +118,18 @@ Prompt: "Build a G$ tip jar dApp for the Lagos Coders club: a landing page, plus
 
 From the review after the first evals. "Live" means driven in a real browser or against the real providers; "unit" means automated tests only.
 
-- [ ] Re-run E3b after keeping contract ABI files out of large projects' context. Unit only so far; live re-run pending (see E3b re-run when recorded).
+- [x] Keep contract ABI files out of large projects' context. Live in E3c (5 Nov): over budget (39 files), no `src/contracts/` ABI module was picked in any of the five turns. The ABI's `index.ts` re-export was picked, but that file is small.
 - [x] Attach menu items. Live: the Logo item opened the file dialog, the file was supplied from JS, and the upload stored it as a logo. Unit: all three items. The Playwright `setInputFiles` test isn't written.
-- [x] Memory keeps when a decision was made (turn tags in `memory.ts`). Unit only; the live E4 probe is pending.
-- [x] Request words that don't match file names: synonym list in the context ranking (404 and NotFound, home and index, nav and Layout or Header). Unit only.
+- [x] Memory keeps when a decision was made (turn tags in `memory.ts`). Live in E4 run 2 (5 Nov): every first-message rule was tagged `[t1]`, and the probe attributed all five to the first message, fixing the earlier slip.
+- [x] Request words that don't match file names: synonym list in the context ranking (404 and NotFound, home and index, nav and Layout or Header). Live in E3c: `NotFound.tsx` was in context for the 404 edit, with 0 reads.
+- [x] Memory call with thinking on (the empty-reply risk): measured live in E4 run 2. 6 calls returned 763 to 1,431 chars of usable JSON (289 to 508 output tokens), with no fallback. Left as it is; the runner now logs output tokens and any fallback.
+- [x] Upload descriptions through `visionClient()` (thinking off): live E1 run 3 (5 Nov). The logo got an accurate two-sentence description; the upload took 14.3 s including a cold compile.
 - [x] Test compile errors no longer go to Sonnet first: `fixTier()` in `runner.ts`, no change to `TIER_FOR`. Unit only. D19 second amendment, awaiting the user's approval.
 - [x] Em dashes in model replies: a prompt line plus `plainDashes` in the runner. Unit only.
 - [x] Assets in production: signed public URLs at `/a/<token>`; data URLs stay for local development. Unit only, because it needs a public https origin. Object storage isn't built; `AssetStore` is the seam.
 - [x] SVG sanitising with a real parser (DOMPurify on jsdom). Unit, plus live uploads of a normal logo.
 - [x] Visual check (vision self-review). Live, see below.
+- [x] Background runner (P18). Live in Chrome on 5 Nov: reload mid-build, Stop with queued follow-ups, two and three prompts on one project, and the server stopped mid-build then restarted (resumed with no repeated tool calls or double billing). Details in P18 and the PR.
 
 ### Visual check, measured live (4 Nov 2026)
 
@@ -139,7 +142,46 @@ Driven in headless Chrome with Playwright on the running dev server, real DeepSe
 - **Weak spot:** v2's check still listed four issues, and at least one was wrong: it treated the original "white on white" instruction as a requirement and also complained about CSS pattern tiles standing in for photos. The check advises and never edits, so this costs only attention. Its prompt needs tuning against more builds.
 - **Not tested live:** the "couldn't run" line (it replaces the failure that used to be silent). Its failure path ran live before the fix, but the line itself wasn't looked at.
 
+## Re-runs on the background runner (P18), 5 Nov 2026
+
+Setup:
+- Dev server on 127.0.0.1:3002 from branch `claude/background-runner`, with every turn run as a background job.
+- E3c, E4 and E1 ran on the worktree's PGlite, so the E3 project from 4 Nov was still there.
+- The runner tests ran on a scratch local Postgres (see P18 in DECISIONS).
+
+### E3c: five new single-file edits on the E3 project (39 files, over budget)
+[Scenario](harness/e3c-find.json). Re-running E3b's own prompts was not a fair test: its edits were already in the project, so the first one only answered "already done", and that run was stopped.
+
+| Edit | Target | In context | Reads | Searches | Cost |
+|---|---|---|---|---|---|
+| Friendlier first FAQ answer | About.tsx | yes | 0 | 0 | $0.0064 |
+| "Tippers" to "Supporters" | StatsRow.tsx | yes | 0 | 1 (`Tippers`) | $0.0069 |
+| Meetup times in bold | Events.tsx | yes | 0 | 0 | $0.0059 |
+| New message placeholder | TipForm.tsx | yes | 0 | 0 | $0.0056 |
+| New 404 headline | NotFound.tsx | yes (the synonym fix) | 0 | 0 | $0.0062 |
+
+All five were first-try clean and DeepSeek only, $0.031 in all, 13 to 38 s each. That is 5 of 5 targets in context, 0 reads and 1 search across the run. E3b had 4 of 5, 7 reads and 2 searches.
+
+### E4 run 2: the 10-turn conversation, all prompts queued at once
+The same [scenario](harness/e4-long.json), with `queueAll`: all 10 prompts were sent first, and the server ran them one after another in send order.
+
+- 10 of 10 first-try clean with no fix attempts. $0.148 in all, all DeepSeek; run 1 cost $0.30, including a $0.13 Sonnet fix.
+- Turn 1 took 160 s and turn 10 took 143 s, both contract builds. Edits took 11 to 21 s.
+- **Rules at turn 10:**
+  - Mrs Funke Adebayo is credited in the shared `Layout.tsx`, so on every page, and on About.
+  - "donation" appears in no file.
+  - Both contracts, the choir jar and the Robes Fund, enforce 20 G$.
+  - "Bless the choir" is on the home page and About.
+- **Memory:** 6 calls, every reply usable (763 to 1,431 chars, 289 to 508 output tokens). After turn 10 the memory held 10 decisions: the five `[t1]` rules first, then `[t2]` to `[t6]` in order.
+- **Probe** ("what rules did I give you in my very first message?"), answered without edits: it named the five turn-1 rules, the tip jar itself, the 20 G$ minimum, "Bless the choir", crediting Mrs Funke Adebayo and never saying "donation", all as first-message rules. Run 1 had misplaced one.
+  - The probe was queued straight into the database (`turn_jobs` plus a queued message), because the session cookie for that project wasn't kept. The worker ran it like any other job.
+
+### E1 run 3: logo upload, described with thinking off
+- **Upload:** 201, 480x160, palette `#e4572e #1a4232 #fff4e6 #f5bca5 #ef9577` as before. Description: "a minimalist cream coffee cup icon within a rounded orange square alongside the wordmark KOLA in dark green and the text COFFEE · LAGOS below... intended for a light background", which is accurate.
+- **Build:** ready first try, $0.024, 68 s, guides `landing-page`, `brand-and-assets` and `design-tokens`.
+- The preview wasn't opened this run; run 2 above has the screenshots.
+
 ## Not covered yet
-- L2: a vision self-review of the preview after each build (not built; offered).
-- L3: a nightly runner that scores this battery automatically. `scripts/eval-harness.mjs` is most of it.
-- Not re-run live: the last fix (ABI modules out of over-budget selection) is covered by `codebase.test.ts` only. The NavLink guide line was confirmed by E3b turn 2 as an edit, but no new multi-page build was run after it.
+- L3: a nightly runner that scores this battery automatically. `scripts/eval-harness.mjs` (now on the job flow, with `queueAll`) is most of it.
+- The NavLink guide line was confirmed by E3b turn 2 as an edit, but no new multi-page build was run after it.
+- The visual check's prompt still needs tuning: after "Fix these" it listed four issues, and at least one was wrong.

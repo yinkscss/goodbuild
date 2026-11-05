@@ -568,6 +568,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
 
     const all = await conversation(db, input.projectId, [userMessageId, assistantId]);
     const history: ChatMessage[] = all.slice(-HISTORY_WINDOW).map((m) => ({ role: m.role, content: m.content.slice(0, 4000) }));
+    let memoryResult: { fallback: boolean; outputTokens: number; chars: number } | null = null;
     const memory = await updateMemory(model, (project.memory as Memory | null) ?? null, all, async (ev) => {
       const cost = await recordUsage(db, {
         userId: input.userId,
@@ -580,10 +581,14 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
         cachedInputTokens: ev.cachedInputTokens,
       });
       record.chargedMicro += cost.chargedMicro;
-    });
+    }, (r) => (memoryResult = r));
     if (memory.upTo > ((project.memory as Memory | null)?.upTo ?? 0)) {
       await db.update(projects).set({ memory }).where(eq(projects.id, input.projectId));
-      log(`memory: ${memory.upTo} older messages summarised, ${memory.decisions.length} decisions kept`);
+      // Output tokens and fallback are logged so empty replies (thinking on) can be measured.
+      // Assigned in the callback above, which TypeScript can't see.
+      const r = memoryResult as { fallback: boolean; outputTokens: number; chars: number } | null;
+      const how = r ? `; model reply ${r.chars} chars, ${r.outputTokens} output tokens${r.fallback ? ", unusable: kept the user's words instead" : ""}` : "";
+      log(`memory: ${memory.upTo} older messages summarised, ${memory.decisions.length} decisions kept${how}`);
     }
 
     const ctx = contextWithPicks({

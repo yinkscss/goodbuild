@@ -35,6 +35,8 @@ export async function updateMemory(
   memory: Memory | null,
   all: MemoryMessage[],
   onUsage: (ev: Extract<ModelEvent, { type: "usage" }>) => Promise<void> | void,
+  /** For the build log: whether the model's reply was usable, and its output tokens. */
+  onResult?: (r: { fallback: boolean; outputTokens: number; chars: number }) => void,
 ): Promise<Memory> {
   const current = memory ?? EMPTY_MEMORY;
   const older = all.slice(0, Math.max(0, all.length - HISTORY_WINDOW));
@@ -48,8 +50,9 @@ export async function updateMemory(
   }
   const fresh = older.slice(current.upTo);
   const freshTurns = turnOf.slice(current.upTo, older.length);
+  let outputTokens = 0;
+  let text = "";
   try {
-    let text = "";
     for await (const ev of model.stream({
       tier: TIER_FOR.build,
       maxTokens: 900,
@@ -64,13 +67,20 @@ export async function updateMemory(
       ],
     })) {
       if (ev.type === "text") text += ev.delta;
-      else if (ev.type === "usage") await onUsage(ev);
+      else if (ev.type === "usage") {
+        outputTokens += ev.outputTokens;
+        await onUsage(ev);
+      }
     }
     const parsed = parseMemory(text);
-    if (parsed) return { ...parsed, upTo: older.length };
+    if (parsed) {
+      onResult?.({ fallback: false, outputTokens, chars: text.length });
+      return { ...parsed, upTo: older.length };
+    }
   } catch {
     /* fall through to the digest */
   }
+  onResult?.({ fallback: true, outputTokens, chars: text.length });
   return { ...digest(current, fresh, freshTurns), upTo: older.length };
 }
 
