@@ -48,6 +48,13 @@ describe("project cards", () => {
     expect(screen.getByText("Custom dApp")).toBeInTheDocument();
   });
 
+  it("keeps every project reachable past the first eight", () => {
+    const many = Array.from({ length: 11 }, (_, i) => ({ ...projects[0], id: `p${i}`, name: `Project ${i}` }));
+    render(<ProjectGrid projects={many} now={now} />);
+    expect(screen.getAllByRole("link")).toHaveLength(11);
+    expect(screen.getByText("Show all 11 projects")).toBeInTheDocument();
+  });
+
   it("sidebar shows a hint when there are no builds", () => {
     render(<RecentBuilds projects={[]} />);
     expect(screen.getByText(/will show up here/i)).toBeInTheDocument();

@@ -31,7 +31,7 @@ const loadSession = cache(async () => {
 const loadProjects = cache(async (): Promise<{ projects: ProjectSummary[] } | { error: string }> => {
   const session = await loadSession();
   try {
-    const rows = await listProjects(await getDb(), session.user.id, 8);
+    const rows = await listProjects(await getDb(), session.user.id, 500);
     return {
       projects: rows.map((p) => ({
         id: p.id,
