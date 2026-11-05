@@ -12,7 +12,7 @@ const rewrittenTo = (res: Response) => res.headers.get("x-middleware-rewrite");
 
 describe("published app hosts", () => {
   it("rewrites every path into that app's files", () => {
-    expect(rewrittenTo(proxy(request("http://tip-jar.localhost:3000/")))).toContain("/published-app/tip-jar/");
+    expect(rewrittenTo(proxy(request("http://tip-jar.localhost:3000/")))).toMatch(/\/published-app\/tip-jar$/);
     expect(rewrittenTo(proxy(request("http://tip-jar.localhost:3000/app.abc.js")))).toContain("/published-app/tip-jar/app.abc.js");
   });
 

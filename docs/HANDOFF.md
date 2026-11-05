@@ -90,9 +90,11 @@ Publish code lives in `src/server/publish/`, `src/server/db/publish-schema.ts` (
 **Not verified:**
 - Publishing an app whose contract is deployed (address baked in, no demo notice), and "Publish app" in the deploy success modal.
 - Magic email sign-in on `__Host-` cookies.
-- A real host: `*.goodbuild.app` needs wildcard DNS, and file tracing for `publish-runtime` is untested. Q16 and Q31 stay open.
+- A real host: `*.goodbuild.app` needs wildcard DNS. Q16 and Q31 stay open.
 
-**Other gaps:** the Publish button is hidden below `md`, like Deploy. Under `next dev`, `/home` and the workspace reload themselves when signed in (reported by the session that built this; cause unknown, not checked against the base branch). No Terms, Privacy or abuse contact exists yet. The Unpublish button uses `window.confirm`, which blocks browser automation. A session cookie's name differs between development and production, so `scripts/demo-session.mjs` prints `gb_session` only in development.
+**Deploying it:** file tracing skips `node_modules` and pnpm's symlinks, so `pnpm build` first packs the runtime packages and Tailwind's stylesheets into `publish-runtime.pack.gz` (`scripts/build-publish-runtime.mjs`, about 22 MB), and the first publish unpacks it to the temp folder (`src/server/publish/runtime.ts`). Checked with `NEXT_OUTPUT=standalone pnpm build`, run outside the repo on Postgres. `PGlite` doesn't start in standalone output, and production doesn't use it. Don't set `HOSTNAME` to `127.0.0.1` on a standalone server: the route then sees the wrong Host and refuses to serve apps (`0.0.0.0` is fine).
+
+**Other gaps:** `/terms` and `/privacy` are drafts that no lawyer has reviewed, and legal pages and `/report` need `NEXT_PUBLIC_CONTACT_EMAIL`. `scripts/takedown.mjs` takes a published app down. The Unpublish button uses `window.confirm`, which blocks browser automation. A self-reload of `/home` and the workspace under `next dev` was reported by the session that built this, and didn't reproduce here over 30s on each page without a Magic key.
 
 Then M6 (credits, D13: USD primary, cost + 25%; usage is already recorded in `usage_events`). **Top-ups (D21) are designed in [TOPUPS.md](TOPUPS.md), waiting for your review: no code until then.**
 

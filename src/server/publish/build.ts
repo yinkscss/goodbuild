@@ -1,10 +1,13 @@
 import "server-only";
 
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 import type { Message, Plugin } from "esbuild";
+
+import { publishRuntimeDir } from "./runtime";
 
 import { ALLOWED_DEPENDENCIES } from "@/server/agent/template";
 
@@ -115,9 +118,11 @@ const TAILWIND_STYLESHEETS: Record<string, string> = {
   "./utilities.css": "utilities.css",
 };
 
-async function compileTailwind(files: Record<string, string>, theme: string) {
+async function compileTailwind(files: Record<string, string>, theme: string, runtimeDir: string) {
   const [{ compile }, { Scanner }] = await Promise.all([import("tailwindcss"), import("@tailwindcss/oxide")]);
-  const dir = path.join(process.cwd(), "node_modules", "tailwindcss");
+  // In the deployed runtime pack, or the app's own install in development.
+  const packed = path.join(runtimeDir, "node_modules", "tailwindcss");
+  const dir = existsSync(path.join(packed, "index.css")) ? packed : path.join(process.cwd(), "node_modules", "tailwindcss");
   try {
     const compiler = await compile(`@import "tailwindcss";\n${theme}`, {
       base: dir,
@@ -160,8 +165,9 @@ export async function buildPublishedApp(input: BuildInput): Promise<PublishedFil
   if (!html || !(ENTRY in files)) throw new PublishBuildError("This project has no app to publish yet.");
 
   const theme = [...html.matchAll(THEME_BLOCK)].map((m) => m[1]).join("\n");
-  const { js, css: bundledCss } = await bundle(files, input.runtimeDir ?? path.join(process.cwd(), "publish-runtime"));
-  const css = (await compileTailwind(files, theme)) + bundledCss;
+  const runtimeDir = input.runtimeDir ?? (await publishRuntimeDir());
+  const { js, css: bundledCss } = await bundle(files, runtimeDir);
+  const css = (await compileTailwind(files, theme, runtimeDir)) + bundledCss;
 
   const jsName = hashed("app", "js", js);
   const cssName = hashed("app", "css", css);

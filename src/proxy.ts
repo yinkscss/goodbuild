@@ -42,7 +42,7 @@ export function proxy(request: NextRequest) {
     if (isBlockedRegion(request.headers)) {
       return new NextResponse(UNAVAILABLE, { status: 451, headers: { "Content-Type": "text/html; charset=utf-8" } });
     }
-    return NextResponse.rewrite(new URL(`/published-app/${host.slug}${pathname}`, request.url));
+    return NextResponse.rewrite(new URL(`/published-app/${host.slug}${pathname === "/" ? "" : pathname}`, request.url));
   }
 
   if (pathname.startsWith("/published-app")) return new NextResponse("Not found", { status: 404 });

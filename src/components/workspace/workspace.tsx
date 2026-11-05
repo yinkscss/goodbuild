@@ -70,7 +70,7 @@ export function Workspace({ initial }: { initial: WorkspaceState }) {
     <div className="flex h-dvh flex-col gap-4 p-4">
       <header className="flex h-12 shrink-0 items-center justify-between gap-3 px-2">
         <div className="flex min-w-0 items-center gap-3">
-          <Logo href="/home" />
+          <Logo href="/home" wordmarkClassName="hidden sm:inline" />
           <span className="hidden text-grey-400 sm:inline" aria-hidden>
             /
           </span>
@@ -107,7 +107,7 @@ export function Workspace({ initial }: { initial: WorkspaceState }) {
         ))}
       </div>
 
-      <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[420px_minmax(0,1fr)] xl:grid-cols-[460px_minmax(0,1fr)]">
+      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-[420px_minmax(0,1fr)] xl:grid-cols-[460px_minmax(0,1fr)]">
         <div className={cn("min-h-0 flex-col", pane === "chat" ? "flex" : "hidden lg:flex", "[&>*]:flex-1")}>
           <ChatPanel ws={ws} assetUrls={assetUrls} />
         </div>
