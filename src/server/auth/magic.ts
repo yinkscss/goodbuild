@@ -29,7 +29,8 @@ export const validateDidToken: DidTokenValidator = (didToken, attachment) => {
   try {
     magic.token.validate(didToken, attachment);
     return { address: magic.token.getPublicAddress(didToken) };
-  } catch {
+  } catch (error) {
+    console.warn("[auth] Magic DID token rejected:", (error as Error).message);
     throw new AuthError("magic_invalid");
   }
 };

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { ConnectModal } from "@/components/auth/connect-modal";
 import type { PromptSubmission } from "@/components/prompt/prompt-box";
+import { WorkspaceSkeleton } from "@/components/workspace/workspace-skeleton";
 import { useAuth } from "@/lib/auth/context";
 import { readPendingPrompt, savePendingPrompt, takePendingPrompt, type PendingPrompt } from "@/lib/pending-prompt";
 import { ProjectRequestError, createProject } from "@/lib/projects-client";
@@ -42,16 +43,22 @@ export function SendGateProvider({ children }: { children: React.ReactNode }) {
   const [hasPending, setHasPending] = React.useState(false);
   const [sendError, setSendError] = React.useState<string | null>(null);
   const sendingRef = React.useRef(false);
+  // From Send until the workspace has rendered, which can take seconds on a slow network.
+  const [sentPrompt, setSentPrompt] = React.useState<string | null>(null);
+  const [posting, setPosting] = React.useState(false);
+  const [navigating, startNavigation] = React.useTransition();
 
   const deliver = React.useCallback(
     async (pending: Pick<PendingPrompt, "prompt" | "templateId" | "network">) => {
-      if (sendingRef.current) return;
+      if (sendingRef.current || navigating) return; // a repeat Send must not create a second project
       sendingRef.current = true;
+      setSentPrompt(pending.prompt);
+      setPosting(true);
       try {
         const project = await createProject({ prompt: pending.prompt, templateId: pending.templateId, network: pending.network });
         setSendError(null);
         setHasPending(false);
-        router.push(`/p/${project.id}`);
+        startNavigation(() => router.push(`/p/${project.id}`));
       } catch (error) {
         if (error instanceof ProjectRequestError && error.status === 401) {
           // Session gone (expired or revoked): keep the prompt and ask to sign in again.
@@ -65,9 +72,10 @@ export function SendGateProvider({ children }: { children: React.ReactNode }) {
         }
       } finally {
         sendingRef.current = false;
+        setPosting(false);
       }
     },
-    [router],
+    [router, navigating],
   );
 
   const send = React.useCallback(
@@ -102,6 +110,7 @@ export function SendGateProvider({ children }: { children: React.ReactNode }) {
   return (
     <GateContext.Provider value={value}>
       {children}
+      {(posting || navigating) && sentPrompt && <WorkspaceSkeleton prompt={sentPrompt} className="fixed inset-0 z-50 bg-canvas" />}
       <ConnectModal open={open} onOpenChange={setOpen} hasPendingPrompt={hasPending} />
     </GateContext.Provider>
   );
