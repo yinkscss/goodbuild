@@ -49,7 +49,12 @@ export function AppDataRow({ projectId }: { projectId: string }) {
         <span className="font-medium">
           {plural(stats.records, "record")} from {plural(stats.wallets, "wallet")}
         </span>
-        {failed && <span className="text-xs text-danger">Couldn&apos;t delete it. Try again.</span>}
+        {failed && (
+          <span className="flex items-center gap-1.5 text-xs" role="alert">
+            <span className="size-2 rounded-full bg-danger" aria-hidden />
+            Couldn&apos;t delete it. Try again.
+          </span>
+        )}
         <Button variant="ghost" size="sm" disabled={deleting} onClick={() => void remove()}>
           {deleting && <Loader2 className="animate-spin motion-reduce:animate-none" />} Delete all
         </Button>

@@ -68,6 +68,7 @@ export function pathProblem(p: string): string | null {
   }
   if (p === "package.json") return "package.json is managed by GoodBuild. Use add_dependency.";
   if (p.startsWith(PLATFORM_DIR)) return `${PLATFORM_DIR} is written by GoodBuild from the compiled contracts. Import from it instead.`;
+  if (p === "src/lib/db.ts" || p === "src/lib/useDb.ts") return `${p} is written by GoodBuild, so an app can't quietly send visitors' data elsewhere. Use it as it is (see the app-data guide). Who can read what goes in ${DATA_RULES_PATH}.`;
   if (p.startsWith("src/assets/")) return "src/assets/ is written by GoodBuild from the user's uploads. Import { assets } from it, or use the /assets/<name> path.";
   if (/^contracts\/[A-Za-z0-9_]+\.sol$/.test(p) || p === MANIFEST_PATH) return null;
   if (/^contracts\/test\/[A-Za-z0-9_]+\.t\.sol$/.test(p)) return null;
