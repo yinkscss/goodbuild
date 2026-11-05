@@ -125,6 +125,13 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - Unverified accounts can only build on one project at a time, so parallel builds can't overrun the cap. Uploads and visual checks are stopped at the cap too.
 - **Weakness Claude flagged:** new wallets are free to create, so this doesn't limit total spending by itself. Proposed: a global daily budget and a per-IP sign-up limit, waiting on the user.
 
+### D29. Free AI stops at a total budget of $4
+- Date: 5 Nov 2026 · Decided by: user (Olayinka), with $5 of AI credit in the provider account. Answers the weakness flagged in D28.
+- Free AI stops for everyone once real provider cost across all accounts reaches `FREE_AI_BUDGET_MICRO` (default $4). The rest stays in the account so builds already running can finish. People see "The free trial is full right now." Set it to 0 to turn free AI off.
+- Each build in progress holds back $0.35, about the dearest seen, so many builds at once can't overrun it. Queued builds count for new requests; the worker counts only the others running.
+- It covers verified accounts, which are on free credit too. `UNCAPPED_WALLETS` stays exempt, but its spending still counts towards the total.
+- **It counts all recorded spend, including before this decision.** After a top-up, or if earlier spend came from a different balance, raise the setting: new total = spend so far + what the new money should allow. Query: [DEPLOY.md](DEPLOY.md).
+
 ## Recommended decisions (Ego; adopted unless changed)
 
 

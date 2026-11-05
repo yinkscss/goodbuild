@@ -15,10 +15,28 @@ export const UNVERIFIED_CAP_MICRO = 200_000;
 
 export const CAP_MESSAGE = "You've used your free $0.20 of AI. Verifying your account with GoodDollar will unlock more; that's coming soon.";
 
-export type CapDecision = { allowed: true } | { allowed: false; reason: "free_limit" | "one_build_at_a_time"; message: string };
+/**
+ * Total real provider spend the free trial may reach, across every account (D29). Set below the
+ * provider balance, so builds already running can finish before the money runs out. A top-up means
+ * raising FREE_AI_BUDGET_MICRO, because this counts all recorded spend.
+ */
+export const FREE_BUDGET_MICRO = 4_000_000;
+
+/** Held back for each build in progress, whose cost isn't known yet: about the dearest seen so far. */
+export const RESERVED_PER_BUILD_MICRO = 350_000;
+
+export const BUDGET_MESSAGE = "The free trial is full right now. Please check back soon.";
+
+export type CapDecision = { allowed: true } | { allowed: false; reason: "free_limit" | "one_build_at_a_time" | "budget_full"; message: string };
 
 function capMicro(env: Record<string, string | undefined>) {
   return Number(env.UNVERIFIED_CAP_MICRO) || UNVERIFIED_CAP_MICRO;
+}
+
+function budgetMicro(env: Record<string, string | undefined>) {
+  const raw = env.FREE_AI_BUDGET_MICRO?.trim();
+  const value = raw ? Number(raw) : NaN;
+  return Number.isFinite(value) && value >= 0 ? value : FREE_BUDGET_MICRO;
 }
 
 /** Wallets exempt from the cap, for the people running the service. */
@@ -38,16 +56,35 @@ export async function spentMicro(db: Db, userId: string): Promise<number> {
   return Number(row?.total ?? 0);
 }
 
-/** May this user spend more AI? `projectId` is the build they're starting, if any. */
+/**
+ * Is there room left in the total budget? New requests also count queued builds. The worker starts
+ * builds one by one, so it counts only the others already running: two queued builds near the limit
+ * would otherwise each see the other's reservation and both fail.
+ */
+async function budgetHasRoom(db: Db, startingJobId: string | undefined, env: Record<string, string | undefined>): Promise<boolean> {
+  const [spent] = await db.select({ total: sql<string>`coalesce(sum(${usageEvents.providerCostMicro}), 0)` }).from(usageEvents);
+  const active = startingJobId ? and(eq(turnJobs.status, "running"), ne(turnJobs.id, startingJobId)) : inArray(turnJobs.status, ["queued", "running"]);
+  const [builds] = await db.select({ count: sql<string>`count(*)` }).from(turnJobs).where(active);
+  return Number(spent?.total ?? 0) + Number(builds?.count ?? 0) * RESERVED_PER_BUILD_MICRO < budgetMicro(env);
+}
+
+/**
+ * May this user spend more AI? `projectId` is the build they're starting, if any. `startingJobId`
+ * is set by the worker for the job it has just claimed.
+ */
 export async function checkAiAllowance(
   db: Db,
-  input: { userId: string; projectId?: string },
+  input: { userId: string; projectId?: string; startingJobId?: string },
   env: Record<string, string | undefined> = process.env,
 ): Promise<CapDecision> {
   const [user] = await db.select({ wallet: users.wallet, verifiedAt: users.verifiedAt }).from(users).where(eq(users.id, input.userId)).limit(1);
-  if (!user || user.verifiedAt || isExempt(user.wallet, env)) return { allowed: true };
+  if (!user || isExempt(user.wallet, env)) return { allowed: true };
 
-  if ((await spentMicro(db, input.userId)) >= capMicro(env)) return { allowed: false, reason: "free_limit", message: CAP_MESSAGE };
+  if (!user.verifiedAt && (await spentMicro(db, input.userId)) >= capMicro(env)) return { allowed: false, reason: "free_limit", message: CAP_MESSAGE };
+
+  // Verified accounts are on free credit too, so the total applies to them as well.
+  if (!(await budgetHasRoom(db, input.startingJobId, env))) return { allowed: false, reason: "budget_full", message: BUDGET_MESSAGE };
+  if (user.verifiedAt) return { allowed: true };
 
   // Otherwise builds running at once on several projects could each pass the check and overrun it.
   if (input.projectId) {
