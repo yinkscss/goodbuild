@@ -34,6 +34,11 @@ describe("published app hosts", () => {
 });
 
 describe("main host", () => {
+  it("trusts Cloudflare's country over a visitor's fake Vercel header", () => {
+    expect(proxy(request("http://localhost:3000/api/projects", { "cf-ipcountry": "US", "x-vercel-ip-country": "GB" })).status).toBe(451);
+    expect(proxy(request("http://localhost:3000/api/projects", { "cf-ipcountry": "GB", "x-vercel-ip-country": "US" })).status).toBe(200);
+  });
+
   describe("API writes from other sites", () => {
     const post = (headers: Record<string, string>) =>
       proxy(new NextRequest("http://localhost:3000/api/projects", { method: "POST", headers: { host: "localhost:3000", ...headers } }));

@@ -93,7 +93,15 @@ Publish code lives in `src/server/publish/`, `src/server/db/publish-schema.ts` (
 - Magic email sign-in, on any cookies: the fix for `ERROR_INCORRECT_SIGNER_ADDR` hasn't had a live sign-in.
 - A real host: `*.goodbuildit.xyz` needs wildcard DNS. Q16 and Q31 stay open.
 
-**Where it can run:** a long-running Node server with a full install, using `next start`. Serverless and `output: standalone` can't compile contracts, because solc, OpenZeppelin imports and contract tests run in child processes that read `node_modules` directly (`scripts/solc-compile.cjs`, `scripts/evm-test.mjs`). A deploy on the standalone build failed with `Cannot find module 'solc'`. So Q31's host has to be a VM or a container.
+**Hosting (D25):** one `Dockerfile` for both processes on Railway or Fly.io, with Postgres alongside and Cloudflare proxying in front.
+- Web: the image's default command, with `GOODBUILD_INLINE_WORKER=0`.
+- Worker: `pnpm worker`, with the same variables.
+- Release: `pnpm db:migrate`, before each deploy.
+- Runtime variables: `DATABASE_URL`, `SESSION_SECRET`, `APP_DOMAIN=goodbuildit.xyz`, `PUBLISHED_APPS_DOMAIN=goodbuildit.xyz`, `MAGIC_SECRET_KEY`, `ANTHROPIC_API_KEY`, `DEEPSEEK_API_KEY`, `NEXT_PUBLIC_TEST_GD_ADDRESS`.
+- Build arguments: the `NEXT_PUBLIC_*` values, which are fixed into the browser code when the image is built.
+- Without Cloudflare there's no country header and the geo-block lets everyone through.
+- Checked locally with Docker (5 Nov 2026): migrations, web and worker as separate containers, compiling with OpenZeppelin, publishing and serving an app, and the worker claiming a job (it then stopped at the AI call, because that test had no keys). Not yet run on Railway or Fly.
+- Serverless and `output: standalone` can't compile contracts, because solc, OpenZeppelin imports and contract tests run in child processes that read `node_modules` directly.
 
 **Publish's packages:** file tracing skips `node_modules` and pnpm's symlinks, so `pnpm build` first packs the runtime packages and Tailwind's stylesheets into `publish-runtime.pack.gz` (`scripts/build-publish-runtime.mjs`, about 22 MB), and the first publish unpacks it to the temp folder (`src/server/publish/runtime.ts`). Checked with `NEXT_OUTPUT=standalone pnpm build`, run outside the repo on Postgres. `PGlite` doesn't start in standalone output, and production doesn't use it. Don't set `HOSTNAME` to `127.0.0.1` on a standalone server: the route then sees the wrong Host and refuses to serve apps (`0.0.0.0` is fine).
 
@@ -103,6 +111,9 @@ Then M6 (credits, D13: USD primary, cost + 25%; usage is already recorded in `us
 
 ## Open questions worth reading
 Q36 (preview depends on CodeSandbox and the Tailwind CDN), Q37 (chat width), Q38 (read-only code tab), Q40 (top-ups) and Q41 (Magic) in OPEN_QUESTIONS.md. Q39 is resolved (D23).
+
+## Test wallet
+Throwaway wallet for live deploy tests, kept on purpose: `0x80fB54faA246dd4E75A000D88eC9BF2aBD7407AD` on Celo Sepolia (about 0.97 test CELO on 5 Nov 2026). Its key is in `.data/throwaway-wallet.key` in the `landing-publish` worktree (gitignored). Never use it on mainnet or for anything of value.
 
 ## Working conventions used so far
 - Post a short plan before each milestone; commit after each; stop when the user asks for a review.

@@ -1,0 +1,13 @@
+.git
+.claude
+.data
+.next
+.env*
+!.env.example
+node_modules
+publish-runtime/node_modules
+publish-runtime.pack.gz
+docs
+design
+*.log
+tsconfig.tsbuildinfo

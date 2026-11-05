@@ -95,6 +95,12 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - **Treasury:** the weekly batch keeps about one month of provider bills in USDT and converts only the surplus to G$, because credits are USD liabilities and provider bills are paid in USD.
 - **Live test:** both the Magic email wallet and MetaMask, on Celo Sepolia.
 
+### D25. Hosting: one Docker image on Railway or Fly.io
+- Date: 5 Nov 2026 · Decided by: user (Olayinka) · Resolves Q31's host question.
+- A container running `next start` with a full install, plus `pnpm worker` as a second process, from one `Dockerfile`, with Postgres alongside. Nothing planned is serverless, because compiling contracts reads `node_modules` from child processes (HANDOFF.md).
+- The publish packaging stays. The app host doesn't need it, but it keeps publishing generated apps independent of how the host installs packages.
+- **Requirement Claude flagged:** neither Railway nor Fly sets a country header, and with none the geo-block lets everyone through (D10). Put Cloudflare in front, proxied, so it sets `cf-ipcountry`. Its proxy can also handle `*.goodbuildit.xyz`. The origin should only accept traffic from Cloudflare, or a visitor could reach it directly and skip the block. **UNVERIFIED:** each provider's current features; check before choosing between them.
+
 ## Recommended decisions (Ego; adopted unless changed)
 
 ### D5. In-browser preview via Sandpack
