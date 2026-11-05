@@ -3,6 +3,7 @@
 import * as React from "react";
 import { ArrowUpRight, Check, ChevronRight, Eye, Hexagon, RotateCw, Wrench } from "lucide-react";
 
+import { DeployButton } from "@/components/deploy/deploy-trigger";
 import { Button } from "@/components/ui/button";
 import { formatMicroUsd } from "@/lib/pricing";
 import type { FileChange, Step, TurnRecord } from "@/lib/turn-types";
@@ -126,7 +127,7 @@ export function DiffChips({ changes }: { changes: FileChange[] }) {
   );
 }
 
-/** "Ready to deploy contract" card. The wallet-signed deploy itself arrives in M5. */
+/** "Ready to deploy contract" card; the button opens the deploy modal (M5). */
 export function DeployCard({ record }: { record: TurnRecord }) {
   const main = record.contracts?.[0];
   if (!main) return null;
@@ -141,9 +142,7 @@ export function DeployCard({ record }: { record: TurnRecord }) {
           Celo Sepolia · {(main.bytecodeBytes / 1024).toFixed(1)} kB · you sign from your own wallet
         </p>
       </div>
-      <Button variant="primary" size="sm" className="w-full px-4 py-2.5 text-sm sm:w-auto" disabled title="Wallet-signed deploys are coming in the next update">
-        Deploy contract
-      </Button>
+      <DeployButton label="Deploy contract" size="sm" className="w-full px-4 py-2.5 text-sm sm:w-auto" />
     </div>
   );
 }

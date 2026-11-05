@@ -12,6 +12,7 @@ import { HISTORY_WINDOW, memoryBlock, updateMemory, type Memory, type MemoryMess
 import { TIER_FOR, ModelUnavailableError, type ChatMessage, type ModelClient, type ModelEvent, type ModelTier, type ToolCall, type UserPart } from "./model";
 import { BUILD_TOOLS, PLAN_TOOLS, contextWithPicks, systemPrompt } from "./prompt";
 import { checkpoint, claimTurn, loadFiles, recordUsage, releaseTurn } from "./store";
+import { loadDeployedAddresses } from "@/server/deploy/addresses";
 import { PLATFORM_DIR, contractModule, contractsIndex, starterFiles, withStarterHelpers } from "./template";
 import {
   LeaseLostError,
@@ -442,7 +443,9 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     // Platform-owned contract modules: ABIs the front end imports (addresses come in M5).
     if (report.contracts.length) {
       const names = report.contracts.map((c) => c.name);
-      for (const c of report.contracts) ws.files[`${PLATFORM_DIR}${c.name}.ts`] = contractModule(c.name, c.abi);
+      // Deployed addresses live in the deployments table (P3), so a rebuild never wipes them (M5).
+      const deployed = await loadDeployedAddresses(db, input.projectId);
+      for (const c of report.contracts) ws.files[`${PLATFORM_DIR}${c.name}.ts`] = contractModule(c.name, c.abi, deployed[c.name] ?? {});
       ws.files[`${PLATFORM_DIR}index.ts`] = contractsIndex(names);
       record.contracts = report.contracts.map(({ name, file, bytecodeBytes }) => ({ name, file, bytecodeBytes }));
     }

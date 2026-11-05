@@ -2,16 +2,16 @@
 
 import * as React from "react";
 
-import { PrivyAuthProvider } from "@/lib/auth/privy/privy-auth";
+import { MagicAuthProvider } from "@/lib/auth/magic/magic-auth";
 import { SessionOnlyAuthProvider } from "@/lib/auth/session-only";
 
 /**
- * App-wide client providers. With NEXT_PUBLIC_PRIVY_APP_ID unset the app still runs:
+ * App-wide client providers. With NEXT_PUBLIC_MAGIC_PUBLISHABLE_KEY unset the app still runs:
  * prompts can be typed and saved, existing sessions are recognised, and the connect
  * modal explains that new sign-ins are off.
  */
 export function Providers({ children }: { children: React.ReactNode }) {
-  const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
-  if (!appId) return <SessionOnlyAuthProvider>{children}</SessionOnlyAuthProvider>;
-  return <PrivyAuthProvider appId={appId}>{children}</PrivyAuthProvider>;
+  const key = process.env.NEXT_PUBLIC_MAGIC_PUBLISHABLE_KEY;
+  if (!key) return <SessionOnlyAuthProvider>{children}</SessionOnlyAuthProvider>;
+  return <MagicAuthProvider publishableKey={key}>{children}</MagicAuthProvider>;
 }

@@ -6,7 +6,7 @@ Written 4 Nov 2026 at the end of the first build session (claude.ai), for whoeve
 | Milestone | Commit | Notes |
 |---|---|---|
 | M1 Scaffold + landing | 37a5941 … 7e85449 | Tailwind v4 tokens (P6), self-hosted fonts (P7), hero uses `hero-b.jpg` with float/glow/tilt |
-| M2 Privy auth + gating | f1122d8 | Own SIWE session (P9), Drizzle + PGlite dev DB (P8), geo-block 451 |
+| M2 Auth + gating (Privy then; Magic since D22 on `m5-deploy`) | f1122d8 | Own SIWE session (P9), Drizzle + PGlite dev DB (P8), geo-block 451 |
 | M3 Logged-in home | 37f17b1, 36307f4 | Contract-type tiles on cards; credits pill says "Testnet beta · free" until M6 |
 | M4 Workspace + agent | 1d8d9bc | Vercel AI SDK (D14, D16, D18; LiteLLM removed), runner/checks/auto-fix/checkpoints, Sandpack (P12) |
 | Pre-M5 fixes | 6efeeb9 | G$ = ERC-20 guardrails (D15), custom errors only, deduped summary, auto-fix step rows |
@@ -52,21 +52,33 @@ Scope:
 10. Docs: README "AI builds" (no pip or proxy, just keys plus `pnpm dev`), AI_AGENT.md "Implementation (M4)" models line, ARCHITECTURE.md Models row and diagram, CREDITS.md §4 (option B now lives in our code), the Q34 note in OPEN_QUESTIONS.md, and the M4 row in this file.
 11. `pnpm check` green, then commit (`D18: Vercel AI SDK replaces the LiteLLM proxy`) and push.
 
-## Then: M5 (compile + wallet-signed deploy)
-After D18, the user does **one real build with their own keys** (`.env.local`: `ANTHROPIC_API_KEY`, `DEEPSEEK_API_KEY`, then `pnpm dev`). Start M5 after they report back.
+## M5 (compile + wallet-signed deploy): built on branch `m5-deploy`, awaiting review
+Not merged. Code lives in its own modules so it doesn't collide with workspace work on `main`: `src/lib/deploy/`, `src/server/deploy/`, `src/components/deploy/`, `src/server/db/deploy-schema.ts`, and `src/app/api/projects/[id]/deploy*`.
 
-Agreed requirements:
-- Deploy modal (DESIGN_SYSTEM §4): summary, then the Sign → Broadcast → Verified stepper; the user signs on Celo Sepolia from their own wallet.
-- **Pre-deploy simulation must fail loudly** if Celo rejects the bytecode (for example an unsupported opcode), then offer a rebuild for `evmVersion: paris`, which needs a pinned older OpenZeppelin release (D17).
-- Verification: **Sourcify first**, Celoscan later (D17).
-- After deploy: write addresses into the platform-owned `src/contracts/<Name>.ts`, record the deployment row, and show the success state.
+What exists:
+- **Deploy manifest (D23)**: the agent writes `contracts/deploy.json` (constructor args by parameter name, refs `${Name.address}`, `${GOODDOLLAR}`, `${DEPLOYER}`). `checkContracts` validates it in the normal auto-fix loop; `planManifest` sorts it topologically and fails on a cycle.
+- **Compile for deploy** (`src/server/deploy/compile.ts`): cancun by default; `paris` fallback (D17) first with the current OpenZeppelin, then with the pinned **5.1.0** (`@openzeppelin/contracts-paris`, the newest 5.x without MCOPY) if a dependency needs Cancun. Returns bytecode, ABI and a Sourcify-ready standard JSON.
+- **Simulation** (`src/lib/deploy/simulate.ts`): scans runtime code for post-Paris opcodes and asks the chain whether each exists (an `eth_call` with a state override), then `eth_estimateGas` on the creation. An opcode failure shows "Rebuild for older Celo", which re-runs prepare with `paris`.
+- **Deploy run** (`src/lib/deploy/run.ts`): one wallet signature per contract in order, references filled from real addresses. Partial failure keeps finished contracts and "Try again" resumes: it never re-signs a finished contract, and a transaction already sent is picked up again rather than sent twice. A browser reload mid-transaction loses that memory (see known gaps).
+- **Reuse rule:** a contract counts as already deployed only for the same `.sol` sources, `contracts/deploy.json` and EVM target (`sourceKey`). When nothing is left to sign, the modal shows the live addresses.
+- **Server record** (`recordDeployment`): reads the receipt and transaction itself (sender must be the session wallet, creation input must start with GoodBuild's compiled bytecode), then writes the `deployments` row (migration `0004_m5_deployments`) and the addresses into `src/contracts/<Name>.ts`. Rebuilds and reverts re-apply those addresses.
+- **Verification**: Sourcify v2 (both Celo chains are in its live chain list), polled after the response; Celoscan later.
+- **Deploy modal** per DESIGN_SYSTEM §4 (preview states at `/dev/preview?deploy=ready|signing|second|opcode|failed|manifest|done`).
+- **Test G$** (`scripts/solidity/goodbuild/TestGoodDollar.sol`, 18 decimals, ERC-677 `transferAndCall`, 1,000 per wallet per day faucet) plus `pnpm deploy:test-gd`.
 
-Open blocker, needs the user's answer (Q39): **there is no G$ on Celo Sepolia.** The proposal is that M5 deploys one test G$ (an ERC-20 with ERC-677 `transferAndCall` and a rate-limited faucet) and prefills it for testnet deploys.
+**Needs you (nothing below could be done from this session):**
+1. Run `DEPLOYER_PRIVATE_KEY=0x… pnpm deploy:test-gd` (fund the address from the Celo Sepolia faucet), then set `NEXT_PUBLIC_TEST_GD_ADDRESS`. Until then testnet deploys that use `${GOODDOLLAR}` stop with "no test G$ yet".
+2. Magic dashboard: create the app, set `NEXT_PUBLIC_MAGIC_PUBLISHABLE_KEY` and `MAGIC_SECRET_KEY`, and allow `https://forno.celo.org` and `https://forno.celo-sepolia.celo-testnet.org` in its content security policy.
+3. One real end-to-end deploy (email wallet, then MetaMask) on Sepolia. **Not verified live yet:** Magic's Celo Sepolia behaviour and confirmation UI, WalletConnect/MiniPay connection, whether Celo's RPC accepts state overrides (if not, only the creation estimate runs), and a real Sourcify match.
 
-Then M6 (credits, D13: USD primary, cost + 25%; usage is already recorded in `usage_events`).
+Known gaps: a reload between sending a transaction and recording it leaves the contract live on-chain but unknown to GoodBuild, so the next deploy creates a new one; no "Share app" button (no published URL yet); the fee estimate is exact for the first argument-free contract and scaled by size for the rest; mainnet deploys stay behind `NEXT_PUBLIC_ENABLE_MAINNET`.
+
+`main` (through the background runner, P18) is merged into this branch. The M5 migration is now `0004`, after main's `0003`. A local `.data/` database that ran the old M5 `0003` needs resetting: it would try to create `deployments` again.
+
+Then M6 (credits, D13: USD primary, cost + 25%; usage is already recorded in `usage_events`). **Top-ups (D21) are designed in [TOPUPS.md](TOPUPS.md), waiting for your review: no code until then.**
 
 ## Open questions worth reading
-Q36 (preview depends on CodeSandbox and the Tailwind CDN), Q37 (chat width), Q38 (read-only code tab) and Q39 in OPEN_QUESTIONS.md.
+Q36 (preview depends on CodeSandbox and the Tailwind CDN), Q37 (chat width), Q38 (read-only code tab), Q40 (top-ups) and Q41 (Magic) in OPEN_QUESTIONS.md. Q39 is resolved (D23).
 
 ## Working conventions used so far
 - Post a short plan before each milestone; commit after each; stop when the user asks for a review.
@@ -76,7 +88,7 @@ Q36 (preview depends on CodeSandbox and the Tailwind CDN), Q37 (chat width), Q38
 
 ## Testing without real accounts
 - `GOODBUILD_DEMO_MODEL=1` replays a scripted G$ tip-jar build (development only).
-- `node scripts/demo-session.mjs [--seed]` signs in a throwaway wallet against a running server and prints the session cookie, so you can test without Privy.
+- `node scripts/demo-session.mjs [--seed]` signs in a throwaway wallet against a running server and prints the session cookie, so you can test without Magic.
 - `pnpm smoke:auth` runs 14 end-to-end sign-in checks against a running server (`BASE_URL`).
 - Production-mode local runs need `SESSION_SECRET`, `APP_DOMAIN` and `ALLOW_PGLITE=true` (or a `DATABASE_URL`).
 

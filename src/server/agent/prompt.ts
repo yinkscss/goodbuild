@@ -71,11 +71,12 @@ const CONTRACT_RULES = `Smart contracts (contracts/Name.sol, one main contract p
 - A contract that is itself an ERC20 moves its own tokens with _transfer(from, to, amount), never by calling its own public transfer/transferFrom (that spends the caller's allowance to themselves and reverts).
 - Design for the front end: public getters or view functions for every number and list the UI shows (totals, counts, per-user balances, the last N items via a bounded view like recent(uint256 limit)). Never return or loop over an unbounded array in a state-changing function.
 - For every contract that holds, moves, sells or swaps tokens, also write contracts/test/<Name>.t.sol (load the contract-tests guide). GoodBuild runs it in a local EVM after compiling; failing tests come back to you to fix.
+- Deploy manifest: for any app with a contract, write contracts/deploy.json listing every contract to deploy and its constructor arguments BY PARAMETER NAME: {"contracts":[{"name":"RTXToken","args":{}},{"name":"RTXPool","args":{"gd_":"\${GOODDOLLAR}","rtx_":"\${RTXToken.address}","feeBps_":"30"}}]}. References: "\${Name.address}" (a contract in the same manifest, deployed first), "\${GOODDOLLAR}" (G$ on the network) and "\${DEPLOYER}" (the user's wallet). Numbers are whole-number strings in the token's smallest unit ("1000000000000000000" for 1 token with 18 decimals). Every constructor parameter needs a name and a value; keep the manifest in step with the contracts (the build checks it). GoodBuild sorts the order itself and fails on a circular reference, so avoid contracts that need each other's address in their constructors (deploy one, then give the other its address through an owner-only setter).
 - Keep constructor arguments few and obvious (the G$ token plus at most one or two recipients or limits); default the beneficiary or owner to msg.sender unless the user asked otherwise.
 
 G$ (GoodDollar), read carefully:
 - "G$", "GoodDollar" or "good dollar" in a request ALWAYS means the G$ ERC-20 token on Celo. It is NEVER native CELO. Never use msg.value or payable functions for G$ amounts.
-- Take the token as a constructor argument (IERC20 gd_) and store it immutable; never hard-code token addresses. GoodBuild fills in the right G$ address at deploy.
+- Take the token as a constructor argument (IERC20 gd_) and store it immutable; never hard-code token addresses. In the deploy manifest set that argument to "\${GOODDOLLAR}" and GoodBuild fills in the right G$ address for the network.
 - Accept G$ in one of two ways, ideally both:
   1. One transaction (preferred for users): implement the ERC-677 hook
      function onTokenTransfer(address from, uint256 amount, bytes calldata data) external returns (bool)

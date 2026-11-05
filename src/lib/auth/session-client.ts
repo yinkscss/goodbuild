@@ -1,3 +1,4 @@
+import { keccak256, toHex } from "viem";
 import { createSiweMessage } from "viem/siwe";
 
 import type { Attestation, SessionUser, WalletKind } from "./types";
@@ -19,6 +20,8 @@ export const AUTH_ERROR_COPY: Record<string, string> = {
   domain_mismatch: "This sign-in request was for a different site.",
   chain_unsupported: "Switch your wallet to Celo and try again.",
   user_rejected: "You cancelled the signature in your wallet.",
+  magic_invalid: "We couldn't confirm your email login. Try again.",
+  magic_unconfigured: "Email sign-in isn't set up on this deployment yet.",
 };
 
 export class SignInError extends Error {
@@ -47,6 +50,11 @@ export function signInChainFor(walletChainId: number | null): number {
   return walletChainId !== null && SIGN_IN_CHAIN_IDS.includes(walletChainId) ? walletChainId : DEFAULT_SIGN_IN_CHAIN_ID;
 }
 
+/** Binds a Magic DID token to one SIWE message (the server recomputes this). */
+export function attachmentFor(message: string): string {
+  return keccak256(toHex(message));
+}
+
 export function isUserRejection(error: unknown): boolean {
   const e = error as { code?: number; message?: string } | null;
   return e?.code === 4001 || /reject|denied|cancel/i.test(e?.message ?? "");
@@ -59,6 +67,8 @@ export interface SignInArgs {
   attestation: Attestation;
   /** Signs a plain-text message with the wallet and returns the hex signature. */
   sign: (message: string) => Promise<`0x${string}`>;
+  /** Magic only (D22): mints a DID token carrying `attachment`, so it can't be replayed for another sign-in. */
+  didToken?: (attachment: string) => Promise<string>;
   /** Defaults to window.location. */
   location?: { host: string; origin: string };
   fetchImpl?: Fetch;
@@ -88,8 +98,11 @@ export async function signInWithEthereum(args: SignInArgs): Promise<SessionUser>
   });
 
   let signature: `0x${string}`;
+  let didToken: string | undefined;
   try {
     signature = await args.sign(message);
+    // Email wallets also prove the Magic login: a DID token bound to this exact message.
+    didToken = args.didToken ? await args.didToken(attachmentFor(message)) : undefined;
   } catch (error) {
     throw new SignInError(isUserRejection(error) ? "user_rejected" : "sign_failed");
   }
@@ -98,7 +111,7 @@ export async function signInWithEthereum(args: SignInArgs): Promise<SessionUser>
     method: "POST",
     credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message, signature, walletKind: args.walletKind, attestation: args.attestation }),
+    body: JSON.stringify({ message, signature, walletKind: args.walletKind, attestation: args.attestation, didToken }),
   });
   if (!verifyRes.ok) throw new SignInError(await errorCode(verifyRes));
   const { user } = (await verifyRes.json()) as { user: SessionUser };

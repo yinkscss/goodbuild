@@ -37,7 +37,7 @@ You are building **GoodBuild**, a Lovable-style AI dApp builder for GoodDollar (
 - **STOP for user review.**
 
 **M2. Auth and prompt gating.**
-- Privy (email embedded wallet plus external wallets) on wagmi/viem, configured for Celo and Celo Sepolia. Keep the provider behind a `useAuth`/`useWallet` adapter (fallback: thirdweb).
+- Magic (email embedded wallet, D22) plus external wallets, configured for Celo and Celo Sepolia, with one viem wallet client for signing. Keep the provider behind a `useAuth`/`useWallet` adapter.
 - Logged-out Send saves the prompt and opens the connect modal (mockup a).
 - SIWE nonce, verify and an httpOnly session.
 - After sign-in, restore the prompt and auto-send it.
@@ -55,10 +55,10 @@ You are building **GoodBuild**, a Lovable-style AI dApp builder for GoodDollar (
 - Chat wired to the agent via LiteLLM with streaming, per AI_AGENT.md: tool-based diff edits, checks with auto-fix (max 3) and a checkpoint per prompt.
 - Persist projects, versions and chat (D8).
 
-**M5. Compile and deploy.**
-- solc in a Web Worker (or server worker), then simulate, then show a human-readable summary.
-- Deploy modal with the Sign → Broadcast → Verified stepper. The user signs the deploy on Celo Sepolia.
-- Save the address, verify on Celoscan, and add the success state.
+**M5. Compile and deploy.** *(built on branch `m5-deploy`, awaiting review; see HANDOFF.md)*
+- Compile for deploy on the server (solc in a child process), a deploy manifest (`contracts/deploy.json`) sorted topologically, then simulate, then a human-readable summary.
+- Deploy modal with the Sign → Broadcast → Verified stepper, one signature per contract. The user signs on Celo Sepolia.
+- Save the address (server-verified from the receipt), verify on Sourcify (Celoscan later, D17), and add the success state.
 
 **M6. Credits** (CREDITS.md).
 - G$ vault contract plus an off-chain ledger. Top up by signing a G$ transfer.

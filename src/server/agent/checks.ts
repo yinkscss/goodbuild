@@ -6,6 +6,8 @@ import ts from "typescript";
 
 import * as Lucide from "lucide-react";
 
+import { MANIFEST_PATH, parseManifest, planManifest } from "@/lib/deploy/manifest";
+
 import { assetRefs } from "./assets";
 import { ALLOWED_DEPENDENCIES, PLATFORM_DIR, dependenciesOf } from "./template";
 
@@ -22,7 +24,7 @@ export interface CheckIssue {
   file: string;
   line?: number;
   message: string;
-  source: "solc" | "guardrail" | "syntax" | "imports" | "paths" | "test";
+  source: "solc" | "guardrail" | "syntax" | "imports" | "paths" | "test" | "manifest";
 }
 
 export interface CompiledContract {
@@ -66,7 +68,7 @@ export function pathProblem(p: string): string | null {
   if (p === "package.json") return "package.json is managed by GoodBuild. Use add_dependency.";
   if (p.startsWith(PLATFORM_DIR)) return `${PLATFORM_DIR} is written by GoodBuild from the compiled contracts. Import from it instead.`;
   if (p.startsWith("src/assets/")) return "src/assets/ is written by GoodBuild from the user's uploads. Import { assets } from it, or use the /assets/<name> path.";
-  if (/^contracts\/[A-Za-z0-9_]+\.sol$/.test(p)) return null;
+  if (/^contracts\/[A-Za-z0-9_]+\.sol$/.test(p) || p === MANIFEST_PATH) return null;
   if (/^contracts\/test\/[A-Za-z0-9_]+\.t\.sol$/.test(p)) return null;
   if (/^src\/[A-Za-z0-9_\-/.]+\.(tsx?|css|json)$/.test(p)) return null;
   if (p === "public/index.html") return null;
@@ -87,7 +89,7 @@ export function namingProblem(p: string): string | null {
   if (parts[0] === "src" && parts.length > 2 && moved[parts[1]]) {
     return `Put ${parts[1]} files in ${moved[parts[1]]}/ instead of src/${parts[1]}/ (see the file-structure guide).`;
   }
-  if (p.startsWith("contracts/") && !/^[A-Z][A-Za-z0-9]*$/.test(stem)) {
+  if (p.startsWith("contracts/") && p !== MANIFEST_PATH && !/^[A-Z][A-Za-z0-9]*$/.test(stem)) {
     return `Contract files are PascalCase and named after the contract: ${parts.slice(0, -1).join("/")}/${pascal(stem)}${p.endsWith(".t.sol") ? ".t.sol" : ".sol"}.`;
   }
   if (/^src\/pages\/.+\.tsx$/.test(p) && !/^[A-Z][A-Za-z0-9]*$/.test(stem)) {
@@ -115,7 +117,18 @@ interface SolcOutput {
 }
 
 /** Run solc in a child process (scripts/solc-compile.cjs). */
-export function runSolc(sources: Record<string, string>, timeoutMs = 60_000): Promise<{ version: string; output: SolcOutput }> {
+export interface SolcOptions {
+  /** Overrides SOLC_SETTINGS.evmVersion (D17 paris fallback). */
+  evmVersion?: "cancun" | "paris";
+  /** Resolve @openzeppelin/contracts from the pinned pre-MCOPY release (paris fallback). */
+  legacyOpenZeppelin?: boolean;
+}
+
+export function runSolc(
+  sources: Record<string, string>,
+  timeoutMs = 60_000,
+  options: SolcOptions = {},
+): Promise<{ version: string; output: SolcOutput; imports?: Record<string, string> }> {
   const script = path.join(process.cwd(), "scripts", "solc-compile.cjs");
   return new Promise((resolve, reject) => {
     const child = execFile(process.execPath, [script], { timeout: timeoutMs, maxBuffer: 64 * 1024 * 1024 }, (err, stdout) => {
@@ -126,7 +139,8 @@ export function runSolc(sources: Record<string, string>, timeoutMs = 60_000): Pr
         reject(e);
       }
     });
-    child.stdin?.end(JSON.stringify({ sources, settings: SOLC_SETTINGS }));
+    const settings = options.evmVersion ? { ...SOLC_SETTINGS, evmVersion: options.evmVersion } : SOLC_SETTINGS;
+    child.stdin?.end(JSON.stringify({ sources, settings, ozPackage: options.legacyOpenZeppelin ? "@openzeppelin/contracts-paris" : undefined }));
   });
 }
 
@@ -360,6 +374,18 @@ export async function checkContracts(files: Record<string, string>, options: Con
           source: "solc",
         });
       }
+    }
+  }
+  // The deploy manifest (D23) is checked against what compiled, so a rename or a bad reference
+  // is fixed in the same auto-fix loop as a compile error.
+  const manifestSource = files[MANIFEST_PATH];
+  if (manifestSource !== undefined && contracts.length) {
+    const parsed = parseManifest(manifestSource);
+    if (!parsed.ok) {
+      for (const i of parsed.issues) errors.push({ file: MANIFEST_PATH, message: i.message, source: "manifest" });
+    } else {
+      const plan = planManifest(parsed.manifest, contracts.map((c) => ({ name: c.name, abi: c.abi as never })));
+      if (!plan.ok) for (const i of plan.issues) errors.push({ file: MANIFEST_PATH, message: i.message, source: "manifest" });
     }
   }
   return { ok: errors.length === 0, errors, warnings, contracts, tests, abis, compilerVersion: result.version };

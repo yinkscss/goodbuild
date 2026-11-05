@@ -48,7 +48,7 @@ flowchart LR
 | Generated apps | React + Vite template, shadcn/ui + React Bits (D7) |
 | Preview | Sandpack |
 | Contracts | solc-js in browser; OpenZeppelin imports |
-| Wallet / auth | Privy (email embedded wallet + external wallets) on wagmi/viem, SIWE session cookie; fallback thirdweb. See [AUTH.md](AUTH.md) (P5) |
+| Wallet / auth | Magic (email embedded wallet) plus MetaMask, MiniPay/Valora and WalletConnect, one viem wallet client for deploys, SIWE session cookie. See [AUTH.md](AUTH.md) (D22) |
 | Identity | `@goodsdks/citizen-sdk` |
 | DB | Postgres |
 | Models | Vercel AI SDK in the Next.js server (Anthropic + DeepSeek, D18), or GoodDollar AI credits |
