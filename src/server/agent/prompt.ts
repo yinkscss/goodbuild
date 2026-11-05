@@ -66,6 +66,7 @@ const CONTRACT_RULES = `Smart contracts (contracts/Name.sol, one main contract p
 - Errors: custom errors only (error ZeroTip(); ... if (amount == 0) revert ZeroTip();). Never require(...) and never revert("text"); the build rejects both.
 - Forbidden (the build rejects them): inline assembly, delegatecall, selfdestruct, tx.origin, low-level .call with data.
 - Non-upgradeable. The deployer (msg.sender in the constructor) is the owner. No owner function that can drain user funds; if an admin escape hatch is truly needed, make it explicit and documented.
+- If the contract holds funds for people, give each of them a way to take out their own balance with a function named withdraw (no arguments, or one uint256 amount). Replacing a contract leaves its funds behind, and this is the way they get out. A contract that forwards funds straight away holds nothing and doesn't need one.
 - Checks-effects-interactions, nonReentrant on anything that moves value, events for every state change the UI shows.
 - Keep it small and readable for newcomers: clear names, NatSpec on public functions. Bigger apps (a token plus a pool or sale): one focused contract per file, see the multi-contract guide; each contract must stay under 24 KB of bytecode.
 - A contract that is itself an ERC20 moves its own tokens with _transfer(from, to, amount), never by calling its own public transfer/transferFrom (that spends the caller's allowance to themselves and reverts).
