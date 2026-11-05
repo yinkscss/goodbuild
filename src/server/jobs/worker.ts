@@ -117,6 +117,7 @@ export class TurnWorker {
       if (!job) break;
       this.running.add(job.id);
       started.push(job);
+      console.log(`[worker] ${this.id} claimed job ${job.id} (project ${job.projectId.slice(0, 8)}, attempt ${job.attempt})`);
       void this.runJob(db, job).finally(() => {
         this.running.delete(job.id);
         this.kick();

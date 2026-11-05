@@ -49,6 +49,13 @@ export interface LoggedUsage {
 
 /** One completed model response, exactly as the loop consumed it. */
 export interface LoggedCall {
+  /**
+   * Where in the loop the call was made: its tier and the conversation length before it. A
+   * replay that reaches a call with different values has diverged (the code or a check
+   * result changed between attempts) and must not feed this response to the wrong step.
+   */
+  tier: string;
+  convoLen: number;
   deltas: string[];
   toolCalls: ToolCall[];
   finishReason: string | null;

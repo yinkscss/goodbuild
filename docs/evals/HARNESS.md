@@ -129,7 +129,7 @@ From the review after the first evals. "Live" means driven in a real browser or 
 - [x] Assets in production: signed public URLs at `/a/<token>`; data URLs stay for local development. Unit only, because it needs a public https origin. Object storage isn't built; `AssetStore` is the seam.
 - [x] SVG sanitising with a real parser (DOMPurify on jsdom). Unit, plus live uploads of a normal logo.
 - [x] Visual check (vision self-review). Live, see below.
-- [x] Background runner (P18). Live in Chrome on 5 Nov: reload mid-build, Stop with queued follow-ups, two and three prompts on one project, and the server stopped mid-build then restarted (resumed with no repeated tool calls or double billing). Details in P18 and the PR.
+- [x] Background runner (P18). Live in Chrome on 5 Nov: reload mid-build, Stop with queued follow-ups, two and three prompts on one project, and the server stopped mid-build then restarted (resumed with no repeated tool calls or double billing). Details in P18 and the PR. Also live: `pnpm worker` beside the inline worker on Postgres (both claimed jobs, no project ever ran two at once), and a new project from the home page (its first prompt queued automatically).
 
 ### Visual check, measured live (4 Nov 2026)
 

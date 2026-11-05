@@ -14,7 +14,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "smoke:auth": "node scripts/smoke-auth.mjs",
-    "worker": "tsx --conditions=react-server --env-file-if-exists=.env.local scripts/worker.ts"
+    "worker": "tsx --require ./scripts/worker-preload.cjs --env-file-if-exists=.env.local scripts/worker.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.96",

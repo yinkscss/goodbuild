@@ -6,6 +6,7 @@ import { createTestDb, type Db } from "@/server/db/client";
 import { messages, projects, turnEvents, turnJobCalls, turnJobs, usageEvents } from "@/server/db/schema";
 import { signInUser } from "@/server/auth/service";
 import { createProjectFromPrompt } from "@/server/projects";
+import { dbAssetStore, ingestAsset } from "@/server/agent/asset-store";
 import { scriptedModel, type ScriptedReply } from "@/server/agent/fake-model";
 import type { ModelClient, ModelRequest } from "@/server/agent/model";
 import { runTurn } from "@/server/agent/runner";
@@ -188,6 +189,59 @@ describe("background turn jobs", { timeout: 60_000 }, () => {
     expect(j.status).toBe("error");
     const [p] = await db.select().from(projects).where(eq(projects.id, projectId));
     expect(p.turnStartedAt).toBeNull();
+  });
+
+  it("ends with Retry when a replay diverges from the logged responses", async () => {
+    const job = await enqueueTurn(db, { projectId, userId, mode: "build", prompt: "Build the club page" });
+    // Crash after setup and two logged responses.
+    await expect(runJob(job.id, scriptedModel(SCRIPT).client, 4)).rejects.toBeInstanceOf(LeaseLostError);
+    // The code changed between attempts: the second logged call no longer sits where it did.
+    const [second] = await db.select().from(turnJobCalls).where(sql`${turnJobCalls.jobId} = ${job.id} and ${turnJobCalls.idx} = 1`);
+    await db.update(turnJobCalls).set({ data: { ...(second.data as Record<string, unknown>), convoLen: 99 } }).where(sql`${turnJobCalls.jobId} = ${job.id} and ${turnJobCalls.idx} = 1`);
+    await db.update(turnJobs).set({ leaseExpiresAt: sql`now() - interval '1 second'` }).where(eq(turnJobs.id, job.id));
+    const model = scriptedModel(SCRIPT);
+    const { record } = await runJob(job.id, model.client);
+    expect(record.status).toBe("error");
+    expect(record.error).toMatch(/no longer matches.*Retry/);
+    expect(model.requests).toHaveLength(0);
+  });
+
+  it("keeps a design reference through crash, resume, Stop and completion", async () => {
+    const sharp = (await import("sharp")).default;
+    const png = await sharp({ create: { width: 40, height: 20, channels: 3, background: "#0f766e" } }).png().toBuffer();
+    const store = dbAssetStore(db);
+    const ref = await ingestAsset({ store, db, model: null, projectId, userId, fileName: "inspo.png", kind: "reference", bytes: png });
+    const hasImage = (req: ModelRequest) => req.messages.some((m) => m.role === "user" && Array.isArray(m.content) && m.content.some((p) => p.type === "image"));
+
+    // Crash right after setup: the resumed run's first model call still carries the image.
+    const job = await enqueueTurn(db, { projectId, userId, mode: "build", prompt: "Match my reference" });
+    await expect(runJob(job.id, scriptedModel(SCRIPT).client, 2)).rejects.toBeInstanceOf(LeaseLostError);
+    expect(await store.unattached(projectId)).toHaveLength(1); // not marked seen before the turn commits
+    await db.update(turnJobs).set({ leaseExpiresAt: sql`now() - interval '1 second'` }).where(eq(turnJobs.id, job.id));
+    const resumed = scriptedModel(SCRIPT);
+    await runJob(job.id, resumed.client);
+    expect(hasImage(resumed.requests[0])).toBe(true);
+    // Completed: marked seen, so the next turn doesn't send it again.
+    expect((await store.unattached(projectId)).map((a) => a.id)).toEqual([]);
+
+    // A stopped turn leaves a newly re-classified reference unattached for the next turn.
+    await store.update(projectId, ref.id, { resetAttached: true });
+    const stopped = await enqueueTurn(db, { projectId, userId, mode: "build", prompt: "Again" });
+    const owner = "w-stop";
+    const claimed = (await claimJob(db, owner))!;
+    const controller = new AbortController();
+    const ctx = await jobContext(db, claimed, owner, controller.signal);
+    const abortingModel: ModelClient = {
+      async *stream(req: ModelRequest) {
+        expect(hasImage(req)).toBe(true);
+        controller.abort();
+        throw new Error("aborted");
+      },
+    };
+    const r = await runTurn({ db, model: abortingModel, job: ctx }, { projectId, userId, mode: "build", userMessageId: claimed.userMessageId }, () => undefined);
+    expect(r.status).toBe("stopped");
+    expect(stopped.id).toBe(claimed.id);
+    expect((await store.unattached(projectId)).map((a) => a.id)).toEqual([ref.id]);
   });
 
   it("refuses commits from a worker that lost its lease (fencing)", async () => {

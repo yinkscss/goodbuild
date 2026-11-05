@@ -163,6 +163,9 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       if (++calls > MAX_CALLS) throw new Error("This build used too many steps. Try a smaller change.");
       const idx = callIdx++;
       const logged = replayLog[idx];
+      if (logged && (logged.tier !== tier || logged.convoLen !== convo.length)) {
+        throw new ResumeFailedError("the saved progress no longer matches this build's steps.");
+      }
       if (!logged) goLive();
       let replyText = "";
       const toolCalls: ToolCall[] = [];
@@ -198,6 +201,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
         for (const u of logged.usage) addUsage(u);
       } else {
         const deltas: string[] = [];
+        const convoLen = convo.length;
         let finishReason: string | null = null;
         let usage: Array<Extract<ModelEvent, { type: "usage" }>> = [];
         // One retry when the provider fails mid-response (e.g. the SDK couldn't parse a chunk):
@@ -253,7 +257,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
             });
             rows.push({ model: ev.model, inputTokens: ev.inputTokens, outputTokens: ev.outputTokens, cachedInputTokens: ev.cachedInputTokens, callId, chargedMicro: cost.chargedMicro });
           }
-          await job.saveCall(tx, idx, { deltas, toolCalls: [...toolCalls], finishReason, usage: rows });
+          await job.saveCall(tx, idx, { tier, convoLen, deltas, toolCalls: [...toolCalls], finishReason, usage: rows });
           return rows;
         });
         for (const u of priced) addUsage(u);
@@ -569,21 +573,28 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     const all = await conversation(db, input.projectId, [userMessageId, assistantId]);
     const history: ChatMessage[] = all.slice(-HISTORY_WINDOW).map((m) => ({ role: m.role, content: m.content.slice(0, 4000) }));
     let memoryResult: { fallback: boolean; outputTokens: number; chars: number } | null = null;
-    const memory = await updateMemory(model, (project.memory as Memory | null) ?? null, all, async (ev) => {
-      const cost = await recordUsage(db, {
-        userId: input.userId,
-        projectId: input.projectId,
-        messageId: assistantId,
-        callId: ev.callId || `${assistantId}:memory`,
-        model: ev.model,
-        inputTokens: ev.inputTokens,
-        outputTokens: ev.outputTokens,
-        cachedInputTokens: ev.cachedInputTokens,
-      });
-      record.chargedMicro += cost.chargedMicro;
-    }, (r) => (memoryResult = r));
-    if (memory.upTo > ((project.memory as Memory | null)?.upTo ?? 0)) {
-      await db.update(projects).set({ memory }).where(eq(projects.id, input.projectId));
+    // The memory call's usage and the new memory are committed together: a crash in between
+    // re-runs the call on resume, unbilled the first time, never billed twice.
+    const memoryUsage: Array<Extract<ModelEvent, { type: "usage" }>> = [];
+    const memory = await updateMemory(model, (project.memory as Memory | null) ?? null, all, (ev) => void memoryUsage.push(ev), (r) => (memoryResult = r));
+    const advanced = memory.upTo > ((project.memory as Memory | null)?.upTo ?? 0);
+    if (memoryUsage.length || advanced) await job.commit(async (tx) => {
+      for (const [n, ev] of memoryUsage.entries()) {
+        const cost = await recordUsage(tx, {
+          userId: input.userId,
+          projectId: input.projectId,
+          messageId: assistantId,
+          callId: ev.callId || `${assistantId}:memory:${n}`,
+          model: ev.model,
+          inputTokens: ev.inputTokens,
+          outputTokens: ev.outputTokens,
+          cachedInputTokens: ev.cachedInputTokens,
+        });
+        record.chargedMicro += cost.chargedMicro;
+      }
+      if (advanced) await tx.update(projects).set({ memory }).where(eq(projects.id, input.projectId));
+    });
+    if (advanced) {
       // Output tokens and fallback are logged so empty replies (thinking on) can be measured.
       // Assigned in the callback above, which TypeScript can't see.
       const r = memoryResult as { fallback: boolean; outputTokens: number; chars: number } | null;
