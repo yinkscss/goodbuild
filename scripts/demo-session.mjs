@@ -36,4 +36,4 @@ if (process.argv.includes("--seed")) {
     await call("/api/projects", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ prompt, templateId, network: "celo-sepolia" }) });
   }
 }
-console.log(JSON.stringify({ wallet: account.address, gb_session: jar.gb_session }));
+console.log(JSON.stringify({ wallet: account.address, gb_session: jar.gb_session ?? jar["__Host-gb_session"] }));

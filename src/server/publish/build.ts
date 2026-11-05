@@ -21,6 +21,8 @@ export interface BuildInput {
   assets: Array<{ name: string; mime: string; bytes: Uint8Array }>;
   title: string;
   hasUndeployedContracts: boolean;
+  /** A link for visitors to report this app, on the main site. */
+  reportUrl?: string;
   /** Where the allowed packages are installed. */
   runtimeDir?: string;
 }
@@ -141,9 +143,10 @@ function escapeHtml(text: string) {
 const BAR_STYLE =
   "font:500 12px/1.4 system-ui,sans-serif;padding:6px 12px;text-align:center;background:#1a0d26;color:#fff";
 
-function bar(hasUndeployedContracts: boolean) {
+function bar(hasUndeployedContracts: boolean, reportUrl?: string) {
+  const report = reportUrl ? ` · <a href="${escapeHtml(reportUrl)}" target="_blank" rel="noreferrer" style="color:inherit;text-decoration:underline">Report</a>` : "";
   const demo = hasUndeployedContracts ? " · Demo: this app's contract isn't deployed yet, so on-chain actions won't work." : "";
-  return `<div data-goodbuild-bar role="note" style="${BAR_STYLE}">Built with GoodBuild · Unaudited${demo}</div>`;
+  return `<div data-goodbuild-bar role="note" style="${BAR_STYLE}">Built with GoodBuild · Unaudited${demo}${report}</div>`;
 }
 
 function hashed(name: string, ext: string, content: string) {
@@ -164,7 +167,7 @@ export async function buildPublishedApp(input: BuildInput): Promise<PublishedFil
   const cssName = hashed("app", "css", css);
   let page = html.replace(THEME_BLOCK, "").replace(/<title>[\s\S]*?<\/title>/, () => `<title>${escapeHtml(input.title)}</title>`);
   page = page.replace("</head>", () => `<link rel="stylesheet" href="/${cssName}" />\n</head>`);
-  page = page.replace(/<body[^>]*>/, (open) => `${open}\n${bar(input.hasUndeployedContracts)}`);
+  page = page.replace(/<body[^>]*>/, (open) => `${open}\n${bar(input.hasUndeployedContracts, input.reportUrl)}`);
   page = page.replace("</body>", () => `<script type="module" src="/${jsName}"></script>\n</body>`);
 
   const encoder = new TextEncoder();

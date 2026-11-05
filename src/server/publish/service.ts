@@ -10,7 +10,7 @@ import type { Db } from "@/server/db/client";
 import { deployments } from "@/server/db/deploy-schema";
 import { publicationFiles, publications, type Publication } from "@/server/db/publish-schema";
 import type { Project } from "@/server/db/schema";
-import { loadDeployedAddresses, withDeployedAddresses } from "@/server/deploy/addresses";
+import { withCurrentAddresses } from "@/server/deploy/addresses";
 import { sourceKey } from "@/server/deploy/compile";
 import { buildPublishedApp, PublishBuildError, type PublishedFile } from "./build";
 
@@ -100,6 +100,13 @@ function isUniqueViolation(error: unknown): boolean {
   return code(error) === "23505" || code((error as { cause?: unknown } | null)?.cause) === "23505";
 }
 
+/** Where a visitor reports this app, on the main site. */
+function reportUrl(slug: string): string | undefined {
+  const domain = process.env.APP_DOMAIN;
+  if (!domain) return undefined;
+  return `${/^(localhost|127\.)/.test(domain) ? "http" : "https"}://${domain}/report?app=${slug}`;
+}
+
 /** Build the saved version and swap it in. The old files stay live if anything fails. */
 export async function publishApp(db: Db, project: Project, slug: string, deps: { build?: typeof buildPublishedApp } = {}): Promise<PublishStatus> {
   assertSlug(slug);
@@ -110,7 +117,7 @@ export async function publishApp(db: Db, project: Project, slug: string, deps: {
 
   const saved = await loadFiles(db, project.id);
   const undeployed = await undeployedContracts(db, project, saved);
-  const files = withDeployedAddresses(saved, await loadDeployedAddresses(db, project.id));
+  const files = await withCurrentAddresses(db, project.id, saved);
 
   const store = dbAssetStore(db);
   const assets: Array<{ name: string; mime: string; bytes: Uint8Array }> = [];
@@ -122,7 +129,7 @@ export async function publishApp(db: Db, project: Project, slug: string, deps: {
 
   let built: PublishedFile[];
   try {
-    built = await (deps.build ?? buildPublishedApp)({ files, assets, title: project.name, hasUndeployedContracts: undeployed.length > 0 });
+    built = await (deps.build ?? buildPublishedApp)({ files, assets, title: project.name, reportUrl: reportUrl(slug), hasUndeployedContracts: undeployed.length > 0 });
   } catch (error) {
     if (error instanceof PublishBuildError) throw new PublishError("build_failed", error.message, error.details);
     throw error;

@@ -86,6 +86,12 @@ export function Workspace({ initial }: { initial: WorkspaceState }) {
         </div>
       </header>
 
+      {/* The header can't fit these on a phone, and MiniPay users are on phones. */}
+      <div className="flex gap-2 md:hidden">
+        <PublishButton publish={publish} onOpen={() => setPublishOpen(true)} disabled={running} className="flex-1 px-4 py-2.5" />
+        <DeployButton className="flex-1 px-4 py-2.5" />
+      </div>
+
       <div className="flex rounded-full bg-tint p-1 text-sm lg:hidden" role="tablist" aria-label="Pane">
         {(["chat", "preview"] as const).map((p) => (
           <button

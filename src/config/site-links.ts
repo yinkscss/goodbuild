@@ -4,6 +4,9 @@ export interface SiteLink {
   label: string;
 }
 
+/** Support and abuse reports. No address yet: legal pages say so rather than invent one. */
+export const CONTACT_EMAIL = process.env.NEXT_PUBLIC_CONTACT_EMAIL;
+
 export const NAV_LINKS: SiteLink[] = [
   { href: "/#templates", label: "Templates" },
   { href: "/#how-it-works", label: "How it works" },
@@ -28,6 +31,9 @@ export const FOOTER_COLUMNS: Array<{ title: string; links: SiteLink[] }> = [
       { href: "/docs", label: "Docs" },
       { href: "/#safety", label: "Safety" },
       { href: "/#faq", label: "FAQ" },
+      { href: "/terms", label: "Terms" },
+      { href: "/privacy", label: "Privacy" },
+      { href: "/report", label: "Report an app" },
     ],
   },
   {
