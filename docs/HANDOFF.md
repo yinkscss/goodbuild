@@ -93,6 +93,8 @@ Publish code lives in `src/server/publish/`, `src/server/db/publish-schema.ts` (
 - Magic email sign-in, on any cookies: the fix for `ERROR_INCORRECT_SIGNER_ADDR` hasn't had a live sign-in.
 - A real host: `*.goodbuildit.xyz` needs wildcard DNS. Q16 and Q31 stay open.
 
+**Running now (D27):** one VPS, see [DEPLOY.md](DEPLOY.md). The rest of this section describes the Vercel and Railway setup (D26), which is on hold.
+
 **Hosting (D26, amends D25):** Vercel serves pages and forwards `/api/*`, `/a/*` and published apps to Railway, which runs the `Dockerfile`, with Postgres alongside.
 
 | | Vercel (edge) | Railway (backend) |

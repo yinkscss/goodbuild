@@ -132,6 +132,7 @@
 ## Q31. Hosting and the geo-block
 - The API returns 451 for US and comprehensively sanctioned regions (CU, IR, KP, SY; list UNVERIFIED, confirm with counsel), read from the host's country header (`x-vercel-ip-country` or `cf-ipcountry`). With neither header (other hosts, local dev) only the attestation applies.
 - Published app hosts also return 451 for these regions (P19), so a public link isn't viewable there.
+- **Running on one VPS with Cloudflare in front (D27);** the plan below is on hold.
 - **Host decided (D26):** Vercel in front, Railway behind on its trial first. Vercel sets the country header and applies the block; `EDGE_SECRET` stops anyone reaching Railway directly.
 - Claude's input: confirm the country list with counsel. Pages stay viewable everywhere; only sign-in, building and credits are blocked.
 

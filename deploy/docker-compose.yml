@@ -1,0 +1,76 @@
+# GoodBuild on one server (D27): Postgres, web and worker. See docs/DEPLOY.md.
+# Coolify's Traefik owns ports 80 and 443 on this server and routes to the web service by label.
+name: goodbuild
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: goodbuild
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env.production}
+      POSTGRES_DB: goodbuild
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U goodbuild -d goodbuild"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    # No ports: only the app can reach the database.
+
+  migrate:
+    image: goodbuild:latest
+    command: ["pnpm", "db:migrate"]
+    env_file: .env.production
+    environment: &database
+      DATABASE_URL: postgres://goodbuild:${POSTGRES_PASSWORD}@postgres:5432/goodbuild
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  web:
+    image: goodbuild:latest
+    build:
+      context: ..
+      args:
+        NEXT_PUBLIC_MAGIC_PUBLISHABLE_KEY: ${NEXT_PUBLIC_MAGIC_PUBLISHABLE_KEY:-}
+        NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: ${NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID:-}
+        NEXT_PUBLIC_TEST_GD_ADDRESS: ${NEXT_PUBLIC_TEST_GD_ADDRESS:-}
+        NEXT_PUBLIC_CONTACT_EMAIL: ${NEXT_PUBLIC_CONTACT_EMAIL:-}
+    restart: unless-stopped
+    env_file: .env.production
+    environment:
+      <<: *database
+      GOODBUILD_INLINE_WORKER: "0"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    networks: [default, coolify]
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: coolify
+      traefik.http.routers.goodbuild.rule: Host(`${APP_DOMAIN}`) || HostRegexp(`^[a-z0-9-]+\.${PUBLISHED_APPS_DOMAIN_REGEX}$$`)
+      traefik.http.routers.goodbuild.entrypoints: https
+      traefik.http.routers.goodbuild.tls: "true"
+      traefik.http.services.goodbuild.loadbalancer.server.port: "3000"
+
+  worker:
+    image: goodbuild:latest
+    command: ["pnpm", "worker"]
+    restart: unless-stopped
+    env_file: .env.production
+    environment:
+      <<: *database
+      TURN_CONCURRENCY: ${TURN_CONCURRENCY:-6}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  postgres-data:
+
+networks:
+  coolify:
+    external: true

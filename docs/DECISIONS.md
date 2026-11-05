@@ -110,6 +110,13 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - **Vercel needs** `DATABASE_URL` (Railway's public address) because pages read Postgres, `DATABASE_POOL_MAX=2`, `SESSION_SECRET` and a region near Railway's.
 - **Trade-offs Claude flagged:** two platforms and a database reached over the public internet, where one Railway service could serve everything. Wildcard domains need Vercel's nameservers, so DNS moves to Vercel. Vercel's Hobby plan is non-commercial only, so paid credits (M6) need Pro. Proxied requests time out at 120s on Vercel, so the turn event stream relies on its reconnect.
 
+### D27. Launch on one VPS for the first month (replaces D26 for now)
+- Date: 5 Nov 2026 · Decided by: user (Olayinka).
+- For about 50 users and a one-month, paid-per-month start: everything on one VPS (iHostio; the owner holds written permission for blockchain and testnet work), with Postgres on the same box and Cloudflare in front. How it runs: [DEPLOY.md](DEPLOY.md).
+- Contabo declined the owner's card, and iHostio is run by a friend and takes naira. Coolify stays installed for now by the owner's choice; only its proxy is used.
+- Vercel (D26) and Railway (D25) are on hold. The edge code stays, switched off without `BACKEND_ORIGIN`.
+- **Trade-offs:** no failover, and backups live on the same server until copied off. Acceptable while credits are free; revisit before M6 takes money.
+
 ## Recommended decisions (Ego; adopted unless changed)
 
 ### D5. In-browser preview via Sandpack
