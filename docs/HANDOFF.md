@@ -81,7 +81,7 @@ Publish code lives in `src/server/publish/`, `src/server/db/publish-schema.ts` (
 
 **Verified on a production build (5 Nov 2026), on `<slug>.localhost`, with a demo tip jar and no contract deployed:**
 - API: publish (4s), update, unpublish (app returns 404), reserved and taken slugs refused, 451 on a blocked region.
-- Isolation: no main API or `/home` on an app host, a session cookie gets nothing there, the main host can't reach `/published-app`, and a request from the app page to the main API fails.
+- Isolation: no main API or `/home` on an app host, a session cookie gets nothing there, and the main host can't reach `/published-app`. Published apps are same-site with the main site, so the browser does send the session cookie on their requests to it. What protects the API is `isForeignWrite` in `src/proxy.ts`, which returns 403 for writes from another site or subdomain, plus CORS for reads. Before that check, a text/plain POST from an app host created a project as the signed-in user (reproduced on the server, 201).
 - Browser: the app runs under its CSP with the demo notice, the modal publishes and unpublishes, and the pop-out preview loads.
 - Sign-in with `__Host-` cookies, using an external wallet.
 

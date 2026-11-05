@@ -34,6 +34,29 @@ describe("published app hosts", () => {
 });
 
 describe("main host", () => {
+  describe("API writes from other sites", () => {
+    const post = (headers: Record<string, string>) =>
+      proxy(new NextRequest("http://localhost:3000/api/projects", { method: "POST", headers: { host: "localhost:3000", ...headers } }));
+
+    it("refuses a published app, another site and a sandboxed frame", () => {
+      expect(post({ origin: "http://tip-jar.localhost:3000", "sec-fetch-site": "same-site" }).status).toBe(403);
+      expect(post({ origin: "http://tip-jar.localhost:3000" }).status).toBe(403);
+      expect(post({ "sec-fetch-site": "same-site" }).status).toBe(403);
+      expect(post({ origin: "https://evil.example", "sec-fetch-site": "cross-site" }).status).toBe(403);
+      expect(post({ origin: "null" }).status).toBe(403);
+    });
+
+    it("allows our own pages and non-browser callers", () => {
+      expect(post({ origin: "http://localhost:3000", "sec-fetch-site": "same-origin" }).status).toBe(200);
+      expect(post({ "sec-fetch-site": "none" }).status).toBe(200);
+      expect(post({}).status).toBe(200);
+    });
+
+    it("leaves reads alone, which CORS keeps from the other site", () => {
+      expect(proxy(request("http://localhost:3000/api/auth/session", { origin: "http://tip-jar.localhost:3000", "sec-fetch-site": "same-site" })).status).toBe(200);
+    });
+  });
+
   it("can't serve published files", () => {
     expect(proxy(request("http://localhost:3000/published-app/tip-jar/app.abc.js")).status).toBe(404);
   });
