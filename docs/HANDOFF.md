@@ -5,7 +5,7 @@ Written 4 Nov 2026 at the end of the first build session (claude.ai), for whoeve
 ## Start here (5 Nov 2026)
 **Live:** https://goodbuildit.xyz, on one VPS with Cloudflare in front. How it runs, how to reach it and what not to break: [DEPLOY.md](DEPLOY.md). Merging a PR to `main` deploys it, so every merge is a release.
 
-**Working live:** email sign-in (Magic), a real AI build, deploying from an email wallet on Celo Sepolia with a Sourcify match, publishing to `<slug>.goodbuildit.xyz`, the firewall, and auto-deploy. Testnet only; mainnet is off.
+**Working live:** email sign-in (Magic), a real AI build, deploying from an email wallet on Celo Sepolia with a Sourcify match (the fix was Magic's content security policy, see DEPLOY.md; the explicit gas in PR #11 wasn't what solved it), publishing to `<slug>.goodbuildit.xyz`, the firewall, and auto-deploy. Testnet only; mainnet is off.
 
 **Next: M6**, in this order, with design in [CREDITS.md](CREDITS.md) and [TOPUPS.md](TOPUPS.md):
 1. GoodDollar face verification. Read `getWhitelistedRoot` on Celo mainnet (`0xC361…2F42`) with plain viem on the server, even for testnet apps, because the SDK has no Celo Sepolia. Key allowances by root, not wallet. Don't trust the callback: re-read the chain. Verification expires. Use redirect mode on phones. No testnet exists, so a real verified wallet is needed for the live test.

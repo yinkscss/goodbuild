@@ -23,6 +23,7 @@ describe("cleanName", () => {
   it("accepts a short name and strips quotes", () => {
     expect(cleanName('"Ikeja Fan Fund".')).toBe("Ikeja Fan Fund");
     expect(cleanName("Mama's Tip & Save")).toBe("Mama's Tip & Save");
+    expect(cleanName("G$ Savings Circle")).toBe("G$ Savings Circle");
   });
   it("rejects anything that isn't a name", () => {
     expect(cleanName("")).toBeNull();

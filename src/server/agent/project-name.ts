@@ -7,7 +7,7 @@ import { projects } from "@/server/db/schema";
 import { TIER_FOR, type ModelClient } from "./model";
 import { recordUsage } from "./store";
 
-const NAMER = `You name apps. Given what someone asked to build, reply with a short, specific name for it: 2 to 4 words, Title Case, no quotes, no punctuation, and no generic words like App, dApp or Project. Say what makes this one different. Reply with the name and nothing else.`;
+const NAMER = `You name apps. Given what someone asked to build, reply with a short, specific name for it: 2 to 4 words, Title Case, no quotes, no punctuation except the $ in "G$", and no generic words like App, dApp or Project. Say what makes this one different. Reply with the name and nothing else.`;
 
 const MAX_LENGTH = 40;
 
@@ -15,7 +15,7 @@ const MAX_LENGTH = 40;
 export function cleanName(reply: string): string | null {
   const name = reply.trim().replace(/^["'`*\s]+|["'`*.\s]+$/g, "").replace(/\s+/g, " ");
   if (name.length < 3 || name.length > MAX_LENGTH || name.split(" ").length > 5) return null;
-  return /^[\p{L}\p{N}][\p{L}\p{N} '&-]*$/u.test(name) ? name : null;
+  return /^[\p{L}\p{N}][\p{L}\p{N}$ '&-]*$/u.test(name) ? name : null;
 }
 
 /** Another of the owner's projects may already have this name, so number the new one. */
