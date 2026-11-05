@@ -4,7 +4,6 @@ import * as React from "react";
 
 import { useSendGate } from "@/components/auth/send-gate";
 import { PromptBox, type PromptBoxHandle } from "@/components/prompt/prompt-box";
-import { SAMPLE_CREDITS_LABEL } from "@/config/landing-stats";
 import { isMainnetEnabled } from "@/config/networks";
 import { LANDING_CHIP_IDS, getTemplate } from "@/config/templates";
 
@@ -38,7 +37,7 @@ export function LandingPrompt() {
     <PromptBox
       ref={box}
       chips={chips}
-      creditsLabel={SAMPLE_CREDITS_LABEL}
+      hint="Free to start, no card needed"
       mainnetEnabled={isMainnetEnabled()}
       onSubmit={send}
       status={sendError ? <span className="text-danger">{sendError}</span> : undefined}

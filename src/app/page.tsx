@@ -4,7 +4,7 @@ import { HeroCard } from "@/components/landing/hero-card";
 import { HowItWorks } from "@/components/landing/how-it-works";
 import { InsideBuilder } from "@/components/landing/inside-builder";
 import { LandingPrompt } from "@/components/landing/landing-prompt";
-import { MetricCard } from "@/components/landing/metric-card";
+import { BetaCard } from "@/components/landing/beta-card";
 import { Pricing } from "@/components/landing/pricing";
 import { Safety } from "@/components/landing/safety";
 import { SignedInRedirect } from "@/components/landing/signed-in-redirect";
@@ -12,7 +12,6 @@ import { SiteFooter } from "@/components/landing/site-footer";
 import { SiteNav } from "@/components/landing/site-nav";
 import { TemplateCard } from "@/components/landing/template-card";
 import { TemplateGallery } from "@/components/landing/template-gallery";
-import { landingStats } from "@/config/landing-stats";
 
 /**
  * Landing (design/landing/index.html). Bento order per DESIGN_SYSTEM §2:
@@ -35,7 +34,7 @@ export default function LandingPage() {
             <LandingPrompt />
           </div>
           <div className="order-3 flex lg:order-1 [&>*]:flex-1">
-            <MetricCard stats={landingStats} />
+            <BetaCard />
           </div>
           <div className="order-4 flex lg:order-3 [&>*]:flex-1">
             <TemplateCard />

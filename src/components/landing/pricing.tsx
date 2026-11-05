@@ -13,8 +13,8 @@ export function Pricing() {
             <p className="display mt-3 text-[58px] font-extrabold text-violet">Free</p>
           </div>
           <p className="max-w-md text-sm text-grey-600">
-            Building is free during the testnet beta on Celo Sepolia. Test networks use test tokens, so nothing you do here spends
-            real money.
+            Every new account gets $0.20 of AI free during the testnet beta on Celo Sepolia, which covers a few small builds or one
+            larger one. Test networks use test tokens, so nothing you do here spends real money.
           </p>
         </article>
         <article className="flex flex-col justify-between gap-12 rounded-card bg-surface p-8 shadow-card">
