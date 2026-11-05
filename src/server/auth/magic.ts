@@ -1,7 +1,9 @@
 import "server-only";
 
 import { Magic } from "@magic-sdk/admin";
-import { isAddressEqual, keccak256, toHex } from "viem";
+import { isAddressEqual } from "viem";
+
+import { attachmentFor } from "@/lib/auth/session-client";
 
 import { AuthError } from "./errors";
 
@@ -41,7 +43,7 @@ export function assertMagicLogin(
   validate: DidTokenValidator = validateDidToken,
 ): void {
   if (!input.didToken) throw new AuthError("magic_invalid");
-  const { address } = validate(input.didToken, keccak256(toHex(input.message)));
+  const { address } = validate(input.didToken, attachmentFor(input.message));
   if (!/^0x[0-9a-fA-F]{40}$/.test(address) || !isAddressEqual(address as `0x${string}`, input.address as `0x${string}`)) {
     throw new AuthError("magic_invalid");
   }
