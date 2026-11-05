@@ -74,8 +74,8 @@ describe("what the agent is held to", () => {
   });
 
   it("no helper or guide text uses an em dash", () => {
-    for (const p of ["src/lib/db.ts", "src/lib/useDb.ts"]) expect(starterFiles()[p]).not.toContain("—");
-    expect(loadGuides("app-data").text).not.toContain("—");
+    for (const p of ["src/lib/db.ts", "src/lib/useDb.ts"]) expect(starterFiles()[p]).not.toContain("\u2014");
+    expect(loadGuides("app-data").text).not.toContain("\u2014");
   });
 });
 
