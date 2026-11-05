@@ -4,6 +4,11 @@
 
 Mood: calm, bright, engineered. White cards on light grey, one deep violet, a rare flash of pink, and big extended all-caps headlines. It should feel like a precise instrument, not a crypto casino.
 
+
+## 0. Official logo
+**Glass 2x2 tile mark (5 Nov 2026).** Four glossy glass rounded tiles: white, lilac, lilac, pink. Brand palette for the mark: purple, lilac and pink — no green. Master: `design/brand/logo-mark.png` (transparent). App copies: `public/brand/`. Component: `src/components/brand/logo.tsx` (PNG mark + "GoodBuild" wordmark). See D25.
+
+
 ## 1. Tokens
 
 ### Colour

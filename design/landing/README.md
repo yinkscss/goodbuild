@@ -17,4 +17,4 @@ Two static mockups, each one self-contained HTML file (Tailwind CDN + Google Fon
 | Surfaces | glass: `rgba(22,22,26,.62)` + 22px backdrop blur + 1px white/9% border; ghost pills with a 1px white/28% border | no borders; shadow `0 1px 2px rgba(17,17,17,.03), 0 18px 50px -24px rgba(89,46,129,.18)` |
 | Motion | canvas sine wave drifts (one cycle about 16s), deploy card floats over 5s | line graph draws in over 2.4s, hero render bobs over 6s, the chart's end dot pulses |
 
-Assets (`assets/`): `logo.svg` (G mark, recoloured inline in each page), `hero-b.jpg` (chrome/violet render), `chrome-cube.jpg` (audited-template cube). Both JPGs were AI-generated for this project.
+Assets (`assets/`): `logo.png` (official glass 2x2 tile mark, 5 Nov 2026; see `design/brand/` and D25), `hero-b.jpg` (chrome/violet render), `chrome-cube.jpg` (audited-template cube). Both JPGs were AI-generated for this project.

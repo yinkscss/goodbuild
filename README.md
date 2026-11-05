@@ -36,5 +36,6 @@ Stack: Next.js 16 (App Router), TypeScript, Tailwind v4 + shadcn/ui, Vitest. Des
 - [Auth and wallets](docs/AUTH.md): Magic email wallet + external wallets, SIWE, prompt gating (D22)
 - [Stage 1 build prompt](docs/BUILD_PROMPT_STAGE1.md): the prompt to hand Claude
 - [Design system](docs/DESIGN_SYSTEM.md): light bento UI (D12, fixed); landing reference in design/landing/index.html
+- **Brand / logo:** official glass 2x2 tile mark (5 Nov 2026, D25) — assets in `design/brand/` and `public/brand/`; UI via `src/components/brand/logo.tsx`
 - [Credits system](docs/CREDITS.md): GoodBuild's own G$ credits (D11)
 - [GoodDollar AI credits (AntSeed)](docs/GOODDOLLAR_AI_CREDITS.md): researched, deferred

@@ -119,6 +119,14 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 
 ## Recommended decisions (Ego; adopted unless changed)
 
+
+### D25. Official logo: glass 2x2 tile mark
+- Date: 5 Nov 2026 · Decided by: user (Olayinka)
+- The official GoodBuild logo is the glossy glass 2x2 tile mark (white, lilac, lilac, pink; palette purple / lilac / pink, no green). Dated 5 Nov 2026.
+- **Canonical assets:** `design/brand/logo-mark.png` (transparent master) and `design/brand/logo-mark-source.jpg` (original white-background render). App-served copies live under `public/brand/` (`logo-mark.png`, `logo.png`, `logo-32.png`, `logo-180.png`, `logo-192.png`, `logo-512.png`). Favicon / app icons: `src/app/favicon.ico`, `src/app/icon.png`, `src/app/apple-icon.png`. Landing mock uses `design/landing/assets/logo.png`.
+- **UI:** `src/components/brand/logo.tsx` renders the PNG mark via `next/image` and keeps the "GoodBuild" wordmark text beside it. The previous inline SVG "G" mark is retired.
+- Rationale: user provided the new mark and asked to replace the logo everywhere and document it as official.
+
 ### D5. In-browser preview via Sandpack
 - Date: 4 Nov 2026 · Recommended by: Ego
 - Use Sandpack (open source, free). No E2B or WebContainers for now.
