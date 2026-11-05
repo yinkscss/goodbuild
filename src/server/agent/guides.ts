@@ -124,8 +124,8 @@ export const GUIDES: Guide[] = [
     when: "the app needs two or more contracts that work together (a token plus a pool, sale, staking or vault)",
     body: `Several contracts in one app.
 - One contract per file in contracts/, each small and focused (a token, a pool, a sale). Prefer two simple contracts to one big one; each must stay under 24 KB of bytecode.
-- A contract that needs another one takes its address as a constructor argument (IERC20 rtx_, not a hard-coded address and not created inside with new). Name constructor arguments clearly (rtxToken_, gd_) because the user is asked for them at deploy.
-- Say the deploy order in your reply: e.g. "Deploy RTXToken first, then RTXPool with the G$ address and the RTXToken address." (GoodBuild's deploy flow handles G$ and will fill other contracts' addresses in a later update.)
+- A contract that needs another one takes its address as a constructor argument (IERC20 rtx_, not a hard-coded address and not created inside with new). Name constructor arguments clearly (rtxToken_, gd_); the deploy manifest fills them by name.
+- List every contract in contracts/deploy.json (see the deploy manifest rule): the other contract's address is "\${RTXToken.address}" and the G$ token is "\${GOODDOLLAR}". GoodBuild deploys them in dependency order, one wallet signature each, and fills the addresses in. Say the order in your reply, e.g. "RTXToken deploys first, then RTXPool."
 - Front end: import each contract's Abi and Address from ./contracts and index each map with chain.id. The app is live only when every contract it uses is deployed: compute const ready = Boolean(tokenAddress && poolAddress) and show the deploy Notice listing what's missing.
 - Share token metadata reads (symbol, decimals) in a small hook (src/lib/useToken.ts) rather than repeating them in every component.`,
   },

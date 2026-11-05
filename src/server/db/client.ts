@@ -9,7 +9,10 @@ import { PGlite } from "@electric-sql/pglite";
 import postgres from "postgres";
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 
-import * as schema from "./schema";
+import * as coreSchema from "./schema";
+import * as deploySchema from "./deploy-schema";
+
+const schema = { ...coreSchema, ...deploySchema };
 
 /** Driver-agnostic handle: postgres-js in production, PGlite in dev and tests. */
 export type Db = PgDatabase<PgQueryResultHKT, typeof schema>;
