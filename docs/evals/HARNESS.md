@@ -124,7 +124,7 @@ From the review after the first evals. "Live" means driven in a real browser or 
 - [x] Request words that don't match file names: synonym list in the context ranking (404 and NotFound, home and index, nav and Layout or Header). Live in E3c: `NotFound.tsx` was in context for the 404 edit, with 0 reads.
 - [x] Memory call with thinking on (the empty-reply risk): measured live in E4 run 2. 6 calls returned 763 to 1,431 chars of usable JSON (289 to 508 output tokens), with no fallback. Left as it is; the runner now logs output tokens and any fallback.
 - [x] Upload descriptions through `visionClient()` (thinking off): live E1 run 3 (5 Nov). The logo got an accurate two-sentence description; the upload took 14.3 s including a cold compile.
-- [x] Test compile errors no longer go to Sonnet first: `fixTier()` in `runner.ts`, no change to `TIER_FOR`. Unit only. D19 second amendment, awaiting the user's approval.
+- [x] Test compile errors no longer go to Sonnet first: `fixTier()` in `runner.ts`, no change to `TIER_FOR`. Unit only. D19 second amendment, approved by the user on 5 Nov 2026.
 - [x] Em dashes in model replies: a prompt line plus `plainDashes` in the runner. Unit only.
 - [x] Assets in production: signed public URLs at `/a/<token>`; data URLs stay for local development. Unit only, because it needs a public https origin. Object storage isn't built; `AssetStore` is the seam.
 - [x] SVG sanitising with a real parser (DOMPurify on jsdom). Unit, plus live uploads of a normal logo.
