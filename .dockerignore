@@ -4,8 +4,7 @@
 .next
 .env*
 !.env.example
-deploy/.env*
-!deploy/env.production.example
+deploy
 node_modules
 publish-runtime/node_modules
 publish-runtime.pack.gz

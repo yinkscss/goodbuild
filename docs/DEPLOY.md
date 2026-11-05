@@ -5,7 +5,7 @@ How production runs today, for anyone (person or agent) working on it. Decision:
 ## What runs where
 - **Server:** VPS at `193.181.221.210` (iHostio; the owner has written permission for blockchain and testnet work, required by its terms). Ubuntu, with Docker and Coolify.
 - **Code and config:** `/opt/goodbuild`. Secrets: `/opt/goodbuild/deploy/.env.production` (mode 600, server only). Template: `deploy/env.production.example`.
-- **Containers** (`deploy/docker-compose.yml`, project `goodbuild`): `postgres` (no public port), `migrate` (runs once per deploy), `web` (`next start`) and `worker` (`pnpm worker`, `TURN_CONCURRENCY` builds at once).
+- **Containers** (`deploy/docker-compose.yml`, project `goodbuild`): `goodbuild-postgres` (no public port), `migrate` (runs once per deploy), `web` (`next start`) and `worker` (`pnpm worker`, `TURN_CONCURRENCY` builds at once).
 - **Traffic:** visitor → Cloudflare → Coolify's Traefik (`coolify-proxy`, ports 80 and 443) → `web`, routed by the labels in the compose file. Published apps use the same route at `<slug>.goodbuildit.xyz`, and `src/proxy.ts` separates them by Host.
 - **Coolify** is kept on the server for now by the owner's choice, but the app isn't managed through it. Only its proxy is used. Don't change settings in its dashboard expecting them to affect GoodBuild.
 
@@ -37,13 +37,14 @@ docker compose --env-file .env.production restart web worker
 
 Restore into an empty database:
 ```bash
-docker compose --env-file .env.production exec -T postgres pg_restore -U goodbuild -d goodbuild --clean --if-exists < /var/backups/goodbuild/<file>.dump
+docker compose --env-file .env.production exec -T goodbuild-postgres pg_restore -U goodbuild -d goodbuild --clean --if-exists < /var/backups/goodbuild/<file>.dump
 ```
 
 ## Requirements that are easy to break
 - **Cloudflare must proxy `goodbuildit.xyz` and `*.goodbuildit.xyz`**, with SSL mode **Full**. The US and sanctions block reads `cf-ipcountry`. With no proxy there is no header, and the block lets everyone through.
 - **Firewall:** Docker's published ports skip `ufw`, so the rules that restrict 80 and 443 to Cloudflare's IPs are in the `DOCKER-USER` chain. Without them, a visitor could reach the server directly, fake a country header and skip the block.
 - Don't set `BACKEND_ORIGIN` or `EDGE_SECRET` here. They're for the Vercel setup (D26), and `EDGE_SECRET` alone makes the server refuse everything.
+- **Keep the database's service name unique.** `web` joins Coolify's network, where `postgres` is Coolify's own database. With that name, web connected to the wrong server and got a password error.
 - Solidity compiling reads `node_modules` at runtime, so the image can't be pruned or made standalone.
 
 ## Status of this setup

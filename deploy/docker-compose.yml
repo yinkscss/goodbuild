@@ -3,7 +3,8 @@
 name: goodbuild
 
 services:
-  postgres:
+  # Not called "postgres": web also joins Coolify's network, where that name is Coolify's own database.
+  goodbuild-postgres:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
@@ -24,9 +25,9 @@ services:
     command: ["pnpm", "db:migrate"]
     env_file: .env.production
     environment: &database
-      DATABASE_URL: postgres://goodbuild:${POSTGRES_PASSWORD}@postgres:5432/goodbuild
+      DATABASE_URL: postgres://goodbuild:${POSTGRES_PASSWORD}@goodbuild-postgres:5432/goodbuild
     depends_on:
-      postgres:
+      goodbuild-postgres:
         condition: service_healthy
     restart: "no"
 

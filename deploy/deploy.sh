@@ -8,4 +8,4 @@ SSH=(ssh -i "$KEY" -o IdentitiesOnly=yes -o UserKnownHostsFile=.data/known_hosts
 
 git diff --quiet HEAD || { echo "Commit your changes first: this deploys HEAD."; exit 1; }
 git archive --format=tar HEAD | "${SSH[@]}" "$HOST" 'mkdir -p /opt/goodbuild && find /opt/goodbuild -mindepth 1 -maxdepth 1 ! -name deploy -exec rm -rf {} + ; find /opt/goodbuild/deploy -mindepth 1 ! -name .env.production -delete 2>/dev/null; tar -xf - -C /opt/goodbuild'
-"${SSH[@]}" "$HOST" 'cd /opt/goodbuild/deploy && docker compose --env-file .env.production up -d --build --remove-orphans && docker compose ps --format "{{.Name}} {{.Status}}"'
+"${SSH[@]}" "$HOST" 'cd /opt/goodbuild/deploy && docker compose --env-file .env.production up -d --build --remove-orphans && docker compose --env-file .env.production ps --format "{{.Name}} {{.Status}}"'
