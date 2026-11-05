@@ -16,6 +16,7 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 ### D3. Backend and database support for generated apps is deferred to Season 5
 - Date: 4 Nov 2026 · Decided by: user
 - Rationale: keeps Stage 1 small; adds hosting and cost complexity.
+- **Changed by D31 (5 Nov 2026), by the user.**
 
 ### D4. Sports betting rejected
 - Date: 4 Nov 2026 · Decided by: user
@@ -140,6 +141,16 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - **No SDK:** `@goodsdks/citizen-sdk` 1.2.7 needs wagmi and installs tsup at runtime. `src/lib/goodid.ts` rebuilds its short link code on `lz-string`, so the signed message must be kept in step with GoodDollar.
 - **UNVERIFIED:** a real face check end to end, signing with Magic email wallets, and how GoodDollar reports a "Twin" (a face already verified on another wallet). The card links GoodDollar's guide to linking wallets for that case.
 
+### D31. Generated apps get a persistent data backend (changes D3)
+- Date: 5 Nov 2026 · Decided by: user (Olayinka), in their words: "multi tenacy database, project id, client id, wallet address, for things like authentication, we'll just use the connect wallet, and then store persistent data". Replaces D3's deferral to Season 5, and amends D8 ("app data lives on-chain") and D20 ("no backend or database"). Design and details by Claude: [APP_DATA.md](APP_DATA.md).
+- **Tenancy:** `project_id` is the tenant and is only ever derived from the app's Host. `wallet_address` is the visitor and only ever comes from a signed session. `client_id` is a public id for the app: not a secret, and it authorises nothing.
+- **Sign-in:** connect wallet only, with Sign-In with Ethereum, a single-use server nonce, and a session scoped to that one app that never touches GoodBuild's own cookie.
+- **Store:** a small document store with no SQL, served from the app's own host. Collections are private to each wallet by default. `public-read` means anyone reads and only the writer changes.
+- **On-chain still decides money and ownership.** The agent's guide says so. This store is for what doesn't need to be verifiable without trusting GoodBuild.
+- **The preview uses a browser-only stand-in,** so it needs no CORS and preview data never reaches the real store.
+- **Open for the user:** see "Decisions for you" on the pull request, and APP_DATA.md. CLAUDE.md item 3 still says backend support is deferred; update it if this is merged.
+- **Trade-offs Claude flagged:** GoodBuild now holds other people's data on one VPS with backups on the same server, which raises the stakes on D27's "revisit before M6". Apps stay on subdomains of the main domain, so same-site protections have to be built by hand (P19 noted a separate registrable domain would be stronger).
+
 ### D32. A project's first message plans before it builds
 - Date: 5 Nov 2026 · Asked for by: user (Olayinka), to reduce how much a contract gets changed after the first build. The design below is Claude's, for the user to review.
 - **What people see.** The first send gets a short reply and a card: one screen per question, one option recommended, always a free-text "Other", and "Skip, just build it" on every screen. Then one palette question, then a short summary with Start building. The Build and Plan toggle is unchanged for later messages. Planning also skips itself near the cap (below).
@@ -152,7 +163,7 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - **Palette: curated, with the model only recommending one.** Six palettes in `src/lib/palettes.ts`, each tested for WCAG AA. Generated palettes would cost tokens and couldn't promise readable text. The server adds the question, so the model doesn't spend output on colours. The chosen one is written to the `@theme` block of `public/index.html` before the first build and written again after the model and any fix passes, so the design rule about choosing an accent can't undo it. Later messages can still change colours. The page's own colours now also live in the stylesheet (`@layer base`), because the preview's bundler drops the classes on `<body>`, which left dark text on a dark palette. "Other" goes to the model in the person's own words, and `ensureReadable` then fixes any text token below 4.5:1; colours not written as hex can't be checked.
 - **The black build log and file chips are gone from the chat** (user's request). `record.log` and `record.changes` are still saved, the error card keeps its Logs, and the Code tab shows files. Step rows stay (DESIGN_SYSTEM §4), and now fold away when a turn ends well.
 - **A typed message while questions are waiting** builds, with whatever has been answered. The composer's placeholder says so.
-- **UNVERIFIED:** the quality of real model questions, whether they stay free of jargon, and whether DeepSeek's tool calls behave with thinking off. All of this ran on the demo model, because real calls need the user's approval.
+- **Real model check (5 Nov 2026, user approved):** two prompts on `deepseek-flash` with thinking off, a savings circle and a salon booking app. Both called the tool, asked plain questions with no jargon, and cost about $0.001 each. The booking app got no questions about money or wallets. Start building after the answers wasn't run with the real model.
 
 ## Recommended decisions (Ego; adopted unless changed)
 
@@ -180,6 +191,7 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 ### D8. Persistence split
 - Date: 4 Nov 2026 · Recommended by: Ego
 - Project code and chat history live in our own DB. App data lives on-chain; the deployed contract address (and chain id) is stored per project.
+- Amended by D31 (5 Nov 2026): published apps can also keep off-chain data in our DB. Money and ownership stay on-chain.
 
 ### D9. AI calls via GoodDollar AI credits if allowed, else providers via LiteLLM
 - Date: 4 Nov 2026 · Recommended by: Ego
@@ -221,6 +233,7 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 ### D20. Websites and pages are in scope alongside dApps
 - Date: 4 Nov 2026 · Decided by: user (Olayinka), in chat: vibe-coding a website is also something GoodBuild does · Widens D2 (Stage 1 = dApps only).
 - The agent builds plain websites and pages (landing, about, signup, event or shop sites) as well as dApps, and writes a contract only when the app needs on-chain state or payments. Still no backend or database (D3): forms that must store data either use an on-chain registry or say storage is coming later.
+- Amended by D31 (5 Nov 2026): forms can now save to the app data store, within its rules. See the `forms-and-signup` and `app-data` guides.
 - Flag for the user: CLAUDE.md item 3 still reads "Stage 1 = dApps only"; update it if this stands.
 
 ### P3. Off-chain deployments table is the source of truth; on-chain factory optional later (proposed)

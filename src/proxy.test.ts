@@ -77,6 +77,25 @@ describe("published app hosts", () => {
     }
   });
 
+  it("sends the data API to its own route, with the query, and nothing else", () => {
+    expect(rewrittenTo(proxy(request("http://tip-jar.localhost:3000/__gb/data/v1/c/posts?limit=2")))).toMatch(/\/app-data\/tip-jar\/v1\/c\/posts\?limit=2$/);
+    expect(rewrittenTo(proxy(request("http://tip-jar.localhost:3000/app-data/other/v1/c/posts")))).toContain("/published-app/tip-jar/app-data/other");
+  });
+
+  it("refuses encoded data paths itself, before any route sees them", () => {
+    for (const path of ["/__gb/data/v1/c/..%2f..%2fother/x", "/__gb/data/v1/c/notes%00/x", "/__gb/data/v1/c/a%2Fb"]) {
+      const res = proxy(request(`http://tip-jar.localhost:3000${path}`));
+      expect(res.status, path).toBe(404);
+      expect(rewrittenTo(res), path).toBeNull();
+    }
+  });
+
+  it("answers a blocked region on the data API with JSON", async () => {
+    const res = proxy(request("http://tip-jar.localhost:3000/__gb/data/v1/c/posts", { "cf-ipcountry": "US" }));
+    expect(res.status).toBe(451);
+    expect(((await res.json()) as { error: string }).error).toBe("region_blocked");
+  });
+
   it("blocks restricted regions", () => {
     expect(proxy(request("http://tip-jar.localhost:3000/", { "x-vercel-ip-country": "US" })).status).toBe(451);
     expect(rewrittenTo(proxy(request("http://tip-jar.localhost:3000/", { "x-vercel-ip-country": "NG" })))).toBeTruthy();
@@ -117,6 +136,10 @@ describe("main host", () => {
     it("leaves reads alone, which CORS keeps from the other site", () => {
       expect(proxy(request("http://localhost:3000/api/auth/session", { origin: "http://tip-jar.localhost:3000", "sec-fetch-site": "same-site" })).status).toBe(200);
     });
+  });
+
+  it("has no data routes", () => {
+    expect(proxy(request("http://localhost:3000/app-data/tip-jar/v1/c/posts")).status).toBe(404);
   });
 
   it("can't serve published files", () => {

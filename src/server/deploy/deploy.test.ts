@@ -12,6 +12,7 @@ import { createProjectFromPrompt } from "@/server/projects";
 import { abisInModules, deploymentsBlock, loadDeployedAddresses, withDeployedAddresses } from "./addresses";
 import { compileForDeploy, sourceKey } from "./compile";
 import { contractState } from "./contract-state";
+import { oldContractsWithFunds } from "./old-contracts";
 import { DeployError, prepareDeploy, recordDeployment } from "./service";
 import { verifyOnSourcify } from "./verify";
 import { contractModule } from "@/server/agent/template";
@@ -346,3 +347,28 @@ describe("contractState", () => {
     expect((await contractState(db, project(), changed)).outdated).toEqual(["RTXToken"]);
   });
 });
+
+describe("oldContractsWithFunds", () => {
+  const WITHDRAW = [{ type: "function", name: "withdraw", stateMutability: "nonpayable", inputs: [], outputs: [] }];
+  const project = () => ({ id: projectId, chainId: 11142220 });
+  const add = (contractName: string, address: string, createdAt: string, chainId = 11142220) =>
+    db.insert(deployments).values({ projectId, userId, version: 1, runId: "r", chainId, contractName, address, deployer: WALLET, txHash: `0x${address}`, blockNumber: 1, compilerVersion: "0.8.28", evmVersion: "cancun", sourceHash: "0x1", abi: WITHDRAW, createdAt: new Date(createdAt) });
+  const balances = (map: Record<string, bigint>) => ({ readContract: async ({ args }: { args: readonly unknown[] }) => map[String(args[0])] ?? BigInt(0) }) as never;
+
+  it("lists replaced contracts holding G$, with their ways out, never the live one", async () => {
+    await add("Tip", "0xold", "2026-11-01");
+    await add("Tip", "0xempty", "2026-11-02");
+    await add("Tip", "0xlive", "2026-11-03");
+    const out = await oldContractsWithFunds(db, project(), balances({ "0xold": BigInt(7), "0xlive": BigInt(9) }));
+    expect(out.map((c) => [c.address, c.gdBalance, c.exits.map((e) => e.name)])).toEqual([["0xold", "7", ["withdraw"]]]);
+  });
+
+  it("ignores another chain and survives a failed read", async () => {
+    await add("Tip", "0xother", "2026-11-01", 42220);
+    await add("Tip", "0xold", "2026-11-01");
+    await add("Tip", "0xlive", "2026-11-03");
+    const client = { readContract: async () => { throw new Error("rpc down"); } } as never;
+    expect(await oldContractsWithFunds(db, project(), client)).toEqual([]);
+  });
+});
+

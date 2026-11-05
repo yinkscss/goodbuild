@@ -284,6 +284,9 @@ export function selectContext(
   opts: { budgetChars?: number; recent?: string[]; history?: string } = {},
 ): ContextPick[] {
   const budget = opts.budgetChars ?? 40_000;
+  // The app-data guide documents these two, and every turn on every small project would pay for them
+  // (about 11k chars). The manifest still lists them, so read_file can fetch them.
+  files = Object.fromEntries(Object.entries(files).filter(([p]) => p !== "src/lib/db.ts" && p !== "src/lib/useDb.ts"));
   const want = requestTerms(request);
   const soft = terms(opts.history ?? "").filter((t) => !want.includes(t));
   const symbols = symbolIndex(files);

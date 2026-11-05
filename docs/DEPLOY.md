@@ -41,10 +41,12 @@ docker compose --env-file .env.production restart web worker
 ```
 - Real AI spend so far, against the free budget (D29; `FREE_AI_BUDGET_MICRO`, default 4000000 = $4): `docker compose --env-file .env.production exec -T goodbuild-postgres psql -U goodbuild -d goodbuild -c 'select sum(provider_cost_micro)/1000000.0 as usd from usage_events'`. A changed setting needs `up -d web worker`, because a restart doesn't reread the env file.
 - Take a published app down: `docker compose --env-file .env.production exec web sh -c 'node scripts/takedown.mjs <slug>'`. Add `--restore` to bring it back.
+- A takedown also stops the app's data API and keeps its data. Add `--purge-data` to delete what visitors saved in it (D31).
+- App data on the whole server: `docker compose --env-file .env.production exec -T goodbuild-postgres psql -U goodbuild -d goodbuild -c "select count(*) as apps, sum(rows) as records, pg_size_pretty(sum(bytes)) as size from app_data_usage where wallet = '*'"`. The limit is `APP_DATA_MAX_TOTAL_BYTES` (default 1 GB). Set it to suit the free disk.
 - `NEXT_PUBLIC_*` values are fixed at build time, so changing one needs a deploy. Other values need a restart with `up -d`.
 
 ## Backups
-`deploy/backup.sh` runs nightly from root's crontab and keeps 7 days in `/var/backups/goodbuild`. They're on the same server, so a lost server loses them too. Copy one off with `scp` before ending a term or changing anything risky.
+`deploy/backup.sh` runs nightly from root's crontab and keeps 7 days in `/var/backups/goodbuild`. They're on the same server, so a lost server loses them too. Since D31 these also hold what published apps' visitors saved, including records deleted in the last 7 days. Copy one off with `scp` before ending a term or changing anything risky.
 
 Restore into an empty database:
 ```bash
