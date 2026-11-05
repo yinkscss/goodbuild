@@ -132,7 +132,8 @@
 ## Q31. Hosting and the geo-block
 - The API returns 451 for US and comprehensively sanctioned regions (CU, IR, KP, SY; list UNVERIFIED, confirm with counsel), read from the host's country header (`x-vercel-ip-country` or `cf-ipcountry`). With neither header (other hosts, local dev) only the attestation applies.
 - Published app hosts also return 451 for these regions (P19), so a public link isn't viewable there.
-- Claude's input: confirm the host (Vercel or Cloudflare work as-is). Pages stay viewable everywhere; only sign-in, building and credits are blocked.
+- The host must run a long-lived Node server with a full install, such as a container or VM. Contract compiling can't run on serverless (HANDOFF.md). Its proxy must pass a country header for the block to work.
+- Claude's input: confirm the host. Pages stay viewable everywhere; only sign-in, building and credits are blocked.
 
 ## Q32. MiniPay / Valora detection
 - The modal marks MiniPay as detected when `window.ethereum.isMiniPay` is set, and connects it as the injected wallet; elsewhere "MiniPay / Valora" falls back to WalletConnect. Not yet tested inside MiniPay (UNVERIFIED), per AUTH.md's pre-M2 check.
