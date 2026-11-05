@@ -11,8 +11,9 @@ import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 
 import * as coreSchema from "./schema";
 import * as deploySchema from "./deploy-schema";
+import * as publishSchema from "./publish-schema";
 
-const schema = { ...coreSchema, ...deploySchema };
+const schema = { ...coreSchema, ...deploySchema, ...publishSchema };
 
 /** Driver-agnostic handle: postgres-js in production, PGlite in dev and tests. */
 export type Db = PgDatabase<PgQueryResultHKT, typeof schema>;
@@ -27,7 +28,7 @@ const MIGRATIONS = path.join(process.cwd(), "drizzle");
 async function create(): Promise<Db> {
   const url = process.env.DATABASE_URL;
   if (url) {
-    return drizzlePg(postgres(url, { max: 10, prepare: false }), { schema });
+    return drizzlePg(postgres(url, { max: Number(process.env.DATABASE_POOL_MAX) || 10, prepare: false }), { schema });
   }
   if (process.env.NODE_ENV === "production" && process.env.ALLOW_PGLITE !== "true") {
     throw new Error("DATABASE_URL is required in production.");

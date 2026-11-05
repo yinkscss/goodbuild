@@ -11,7 +11,7 @@ import {
   type SandpackTheme,
 } from "@codesandbox/sandpack-react";
 import { contractAddressKey } from "@/lib/deploy/wiring";
-import { Monitor, RotateCw, ShieldAlert, Smartphone, Wrench } from "lucide-react";
+import { ExternalLink, Monitor, RotateCw, ShieldAlert, Smartphone, Wrench } from "lucide-react";
 
 import { LogoMark } from "@/components/brand/logo";
 import { Button } from "@/components/ui/button";
@@ -22,7 +22,7 @@ import { cn } from "@/lib/utils";
 type Tab = "preview" | "code" | "contract";
 
 /** Light Sandpack theme from DESIGN_SYSTEM §4 (violet keywords, sparing pink strings, grey comments). */
-const theme: SandpackTheme = {
+export const theme: SandpackTheme = {
   colors: {
     surface1: "#FFFFFF",
     surface2: "#F3EEF8",
@@ -63,7 +63,7 @@ export type { PreviewError };
  * preview only, because Sandpack's https origin can't load images from the GoodBuild server in
  * development (P17). Saved files keep the stable paths.
  */
-export function toSandpack(files: Record<string, string>, assetUrls: Record<string, string> = {}) {
+export function toAppFiles(files: Record<string, string>, assetUrls: Record<string, string> = {}) {
   const names = Object.keys(assetUrls).sort((a, b) => b.length - a.length);
   const re = names.length ? new RegExp(`/assets/(${names.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})(?![A-Za-z0-9._-])`, "g") : null;
   const out: Record<string, string> = {};
@@ -71,11 +71,15 @@ export function toSandpack(files: Record<string, string>, assetUrls: Record<stri
     if (p.startsWith("contracts/")) continue;
     out[`/${p}`] = re && c.includes("/assets/") ? c.replace(re, (_m, name: string) => assetUrls[name]) : c;
   }
-  // The screenshot helper for the visual check: preview only, never saved with the project.
-  return { ...out, ...CAPTURE_FILES };
+  return out;
 }
 
-function dependencies(files: Record<string, string>): Record<string, string> {
+/** The app plus the screenshot helper for the visual check: preview only, never saved with the project. */
+export function toSandpack(files: Record<string, string>, assetUrls: Record<string, string> = {}) {
+  return { ...toAppFiles(files, assetUrls), ...CAPTURE_FILES };
+}
+
+export function dependencies(files: Record<string, string>): Record<string, string> {
   try {
     return (JSON.parse(files["package.json"] ?? "{}") as { dependencies?: Record<string, string> }).dependencies ?? {};
   } catch {
@@ -84,6 +88,7 @@ function dependencies(files: Record<string, string>): Record<string, string> {
 }
 
 export function PreviewPanel({
+  projectId,
   files,
   assetUrls,
   version,
@@ -95,6 +100,7 @@ export function PreviewPanel({
   onCaptured,
   onCaptureFailed,
 }: {
+  projectId: string;
   files: Record<string, string>;
   assetUrls?: Record<string, string>;
   onRuntimeError?: (error: PreviewError) => void;
@@ -167,7 +173,7 @@ export function PreviewPanel({
           recompileDelay: 400,
         }}
       >
-        <Toolbar tabs={tabs} tab={tab} device={device} setDevice={setDevice} />
+        <Toolbar tabs={tabs} tab={tab} device={device} setDevice={setDevice} popoutHref={`/p/${projectId}/preview`} />
         <div className="gb-sandpack mt-3 min-h-0 flex-1 overflow-hidden rounded-block bg-canvas">
           <div className={cn("h-full", tab !== "preview" && "hidden")}>
             <div ref={frameRef} className={cn("relative mx-auto h-full transition-[max-width] duration-200 ease-gb", device === "mobile" ? "max-w-[390px] py-3" : "max-w-none")}>
@@ -200,7 +206,7 @@ export function PreviewPanel({
  * the "done" message in dev), hiding a working preview. It is hidden in globals.css; this cover
  * replaces it and clears on the bundler's raw "done" message, which always arrives.
  */
-function PreviewCover({ rounded }: { rounded: boolean }) {
+export function PreviewCover({ rounded }: { rounded: boolean }) {
   const [ready, setReady] = React.useState(false);
   const [slow, setSlow] = React.useState(false);
   React.useEffect(() => {
@@ -248,43 +254,64 @@ function Toolbar({
   tab,
   device,
   setDevice,
+  popoutHref,
 }: {
   tabs: React.ReactNode;
   tab: Tab;
   device: "desktop" | "mobile";
   setDevice: (d: "desktop" | "mobile") => void;
+  popoutHref: string;
 }) {
-  const { refresh } = useSandpackNavigation();
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 px-2 py-1">
       {tabs}
       <div className={cn("flex items-center gap-2 text-sm text-grey-600", tab !== "preview" && "invisible")}>
         <span className="hidden rounded-full bg-canvas px-3 py-1.5 font-mono text-xs sm:inline">preview · Celo Sepolia</span>
-        <button
-          type="button"
-          onClick={() => refresh()}
-          aria-label="Refresh preview"
+        <a
+          href={popoutHref}
+          target="_blank"
+          rel="noopener"
+          aria-label="Open preview in a new tab"
+          title="Open preview in a new tab"
           className="grid size-8 place-items-center rounded-full bg-canvas outline-none hover:bg-tint hover:text-violet focus-visible:shadow-focus"
         >
-          <RotateCw className="size-3.5" />
-        </button>
-        <div className="flex rounded-full bg-canvas p-1" role="radiogroup" aria-label="Device">
-          {(["desktop", "mobile"] as const).map((d) => (
-            <button
-              key={d}
-              type="button"
-              role="radio"
-              aria-checked={device === d}
-              aria-label={d === "desktop" ? "Desktop" : "Mobile"}
-              onClick={() => setDevice(d)}
-              className={cn("rounded-full px-2.5 py-1 outline-none focus-visible:shadow-focus", device === d && "bg-surface shadow-card")}
-            >
-              {d === "desktop" ? <Monitor className="size-3.5" /> : <Smartphone className="size-3.5" />}
-            </button>
-          ))}
-        </div>
+          <ExternalLink className="size-3.5" />
+        </a>
+        <PreviewControls device={device} setDevice={setDevice} />
       </div>
     </div>
+  );
+}
+
+/** Refresh and the device toggle, shared by the workspace toolbar and the pop-out tab. */
+export function PreviewControls({ device, setDevice }: { device: "desktop" | "mobile"; setDevice: (d: "desktop" | "mobile") => void }) {
+  const { refresh } = useSandpackNavigation();
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => refresh()}
+        aria-label="Refresh preview"
+        className="grid size-8 place-items-center rounded-full bg-canvas outline-none hover:bg-tint hover:text-violet focus-visible:shadow-focus"
+      >
+        <RotateCw className="size-3.5" />
+      </button>
+      <div className="flex rounded-full bg-canvas p-1" role="radiogroup" aria-label="Device">
+        {(["desktop", "mobile"] as const).map((d) => (
+          <button
+            key={d}
+            type="button"
+            role="radio"
+            aria-checked={device === d}
+            aria-label={d === "desktop" ? "Desktop" : "Mobile"}
+            onClick={() => setDevice(d)}
+            className={cn("rounded-full px-2.5 py-1 outline-none focus-visible:shadow-focus", device === d && "bg-surface shadow-card")}
+          >
+            {d === "desktop" ? <Monitor className="size-3.5" /> : <Smartphone className="size-3.5" />}
+          </button>
+        ))}
+      </div>
+    </>
   );
 }
 

@@ -9,7 +9,7 @@ import { createTestDb, type Db } from "@/server/db/client";
 import { deployments } from "@/server/db/deploy-schema";
 import { messages } from "@/server/db/schema";
 import { createProjectFromPrompt } from "@/server/projects";
-import { deploymentsBlock, loadDeployedAddresses, withDeployedAddresses } from "./addresses";
+import { abisInModules, deploymentsBlock, loadDeployedAddresses, withDeployedAddresses } from "./addresses";
 import { compileForDeploy, sourceKey } from "./compile";
 import { DeployError, prepareDeploy, recordDeployment } from "./service";
 import { verifyOnSourcify } from "./verify";
@@ -190,6 +190,10 @@ describe("recordDeployment", () => {
     // A rebuild that changed the ABI must not point the new ABI at the old contract.
     expect((await loadDeployedAddresses(db, projectId, { RTXPool: [{ type: "function", name: "changed" }] })).RTXPool).toBeUndefined();
     expect((await loadDeployedAddresses(db, projectId, { RTXPool: row.abi })).RTXPool).toBeDefined();
+    // A jsonb column reorders keys, and that alone must not count as a changed ABI.
+    const reordered = (row.abi as Array<Record<string, unknown>>).map((item) => Object.fromEntries(Object.entries(item).reverse()));
+    expect(JSON.stringify(reordered)).not.toBe(JSON.stringify(row.abi));
+    expect((await loadDeployedAddresses(db, projectId, { RTXPool: reordered })).RTXPool).toBeDefined();
   }, 90_000);
 
   it("is idempotent for the same transaction", async () => {
@@ -233,6 +237,14 @@ describe("recordDeployment", () => {
 });
 
 describe("addresses survive rebuilds", () => {
+  it("empties a module's stale map, and reads the ABI back out of the module", () => {
+    const abi = [{ type: "function", name: "x" }];
+    const files = { "src/contracts/RTXToken.ts": contractModule("RTXToken", abi, { 11142220: "0x4444444444444444444444444444444444444444" }), "src/contracts/index.ts": 'export * from "./RTXToken";\n' };
+    expect(withDeployedAddresses(files, {})["src/contracts/RTXToken.ts"]).not.toContain("0x4444");
+    expect(withDeployedAddresses(files, {})["src/contracts/index.ts"]).toBe(files["src/contracts/index.ts"]);
+    expect(abisInModules(files)).toEqual({ RTXToken: abi });
+  });
+
   it("withDeployedAddresses rewrites only the address map of a regenerated module", async () => {
     const regenerated = { "src/contracts/RTXToken.ts": contractModule("RTXToken", [{ type: "function", name: "x" }]), "src/App.tsx": "x" };
     const out = withDeployedAddresses(regenerated, { RTXToken: { 11142220: "0x4444444444444444444444444444444444444444" } });

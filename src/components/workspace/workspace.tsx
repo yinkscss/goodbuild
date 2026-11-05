@@ -7,7 +7,7 @@ import { ChevronDown, History } from "lucide-react";
 import { WalletButton } from "@/components/auth/wallet-button";
 import { Logo } from "@/components/brand/logo";
 import { DeployButton, DeployProvider } from "@/components/deploy/deploy-trigger";
-import { contractsToWire, wirePrompt } from "@/lib/deploy/wiring";
+import { contractAddressKey, contractsToWire, deployedContracts, wirePrompt } from "@/lib/deploy/wiring";
 import { CreditsPill } from "@/components/home/credits-pill";
 import { NetworkBadge } from "@/components/home/top-bar";
 import {
@@ -20,9 +20,12 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { relativeTime } from "@/lib/home";
 import type { TurnRecord } from "@/lib/turn-types";
+import { openPreviewChannel, type PreviewChannelMessage } from "@/lib/preview-channel";
 import { cn } from "@/lib/utils";
 import type { WorkspaceState } from "@/server/workspace-state";
 import { ChatPanel } from "./chat-panel";
+import { PublishButton, PublishModal } from "./publish-modal";
+import { usePublish } from "./use-publish";
 import { useAssetDataUrls, useWorkspace } from "./use-workspace";
 
 // Sandpack is browser-only and heavy: load it on the client.
@@ -42,13 +45,23 @@ export function Workspace({ initial }: { initial: WorkspaceState }) {
   const assetUrls = useAssetDataUrls(state.project.id, state.assets);
   const latestRecord = [...state.messages].reverse().map((m) => m.meta as TurnRecord | null).find((r) => r?.kind === "turn" && r.contracts?.length);
 
+  const previewVersion = live?.record.version ?? state.project.currentVersion;
+  useBroadcastPreview(state.project.id, files, previewVersion);
+  const [publishOpen, setPublishOpen] = React.useState(false);
+  const publish = usePublish(state.project.id, state.project.currentVersion, publishOpen);
+
   const hasContracts = Object.keys(files).some((p) => p.startsWith("contracts/") && p.endsWith(".sol") && !p.startsWith("contracts/test/"));
+
+  const addressKey = contractAddressKey(files);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- files change on every keystroke of a live turn; addresses rarely do
+  const deployed = React.useMemo(() => deployedContracts(files, state.project.chainId), [addressKey, state.project.chainId]);
 
   return (
     <DeployProvider
       projectId={state.project.id}
       chainId={state.project.chainId}
       hasContracts={hasContracts}
+      deployed={deployed}
       busy={running}
       onDeployed={(deployed) => {
         void ws.refresh().then((next) => {
@@ -57,11 +70,12 @@ export function Workspace({ initial }: { initial: WorkspaceState }) {
         });
       }}
       onFix={(prompt) => ws.send(prompt, "build")}
+      onPublish={() => setPublishOpen(true)}
     >
     <div className="flex h-dvh flex-col gap-4 p-4">
       <header className="flex h-12 shrink-0 items-center justify-between gap-3 px-2">
         <div className="flex min-w-0 items-center gap-3">
-          <Logo href="/home" />
+          <Logo href="/home" wordmarkClassName="hidden sm:inline" />
           <span className="hidden text-grey-400 sm:inline" aria-hidden>
             /
           </span>
@@ -71,10 +85,17 @@ export function Workspace({ initial }: { initial: WorkspaceState }) {
         <div className="flex items-center gap-3">
           <CreditsPill balanceGd={null} usdPerGd={null} className="hidden xl:flex" />
           <NetworkBadge />
+          <PublishButton publish={publish} onOpen={() => setPublishOpen(true)} disabled={running} className="hidden px-5 py-2.5 md:inline-flex" />
           <DeployButton className="hidden px-5 py-2.5 md:inline-flex" />
           <WalletButton showNetwork={false} />
         </div>
       </header>
+
+      {/* The header can't fit these on a phone, and MiniPay users are on phones. */}
+      <div className="flex gap-2 md:hidden">
+        <PublishButton publish={publish} onOpen={() => setPublishOpen(true)} disabled={running} className="flex-1 px-4 py-2.5" />
+        <DeployButton className="flex-1 px-4 py-2.5" />
+      </div>
 
       <div className="flex rounded-full bg-tint p-1 text-sm lg:hidden" role="tablist" aria-label="Pane">
         {(["chat", "preview"] as const).map((p) => (
@@ -91,15 +112,16 @@ export function Workspace({ initial }: { initial: WorkspaceState }) {
         ))}
       </div>
 
-      <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[420px_minmax(0,1fr)] xl:grid-cols-[460px_minmax(0,1fr)]">
+      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-[420px_minmax(0,1fr)] xl:grid-cols-[460px_minmax(0,1fr)]">
         <div className={cn("min-h-0 flex-col", pane === "chat" ? "flex" : "hidden lg:flex", "[&>*]:flex-1")}>
           <ChatPanel ws={ws} assetUrls={assetUrls} />
         </div>
         <div className={cn("min-h-0 flex-col", pane === "preview" ? "flex" : "hidden lg:flex", "[&>*]:flex-1")}>
           <PreviewPanel
+            projectId={state.project.id}
             files={files}
             assetUrls={assetUrls}
-            version={live?.record.version ?? state.project.currentVersion}
+            version={previewVersion}
             contracts={latestRecord?.contracts ?? []}
             onFix={(prompt) => ws.send(prompt, "build")}
             onRuntimeError={(e) => ws.onPreviewError(e, live?.record.version ?? state.project.currentVersion)}
@@ -110,9 +132,35 @@ export function Workspace({ initial }: { initial: WorkspaceState }) {
           />
         </div>
       </div>
+      <PublishModal open={publishOpen} onOpenChange={setPublishOpen} publish={publish} projectBusy={running} onFix={(prompt) => ws.send(prompt, "build")} />
     </div>
     </DeployProvider>
   );
+}
+
+/** Keeps pop-out preview tabs on what this tab is showing, including live files during a build. */
+function useBroadcastPreview(projectId: string, files: Record<string, string>, version: number) {
+  const channel = React.useRef<BroadcastChannel | null>(null);
+  const latest = React.useRef<PreviewChannelMessage>({ type: "files", files, version });
+
+  React.useEffect(() => {
+    const ch = openPreviewChannel(projectId);
+    if (!ch) return;
+    channel.current = ch;
+    // A pop-out that just opened asks for the current state.
+    ch.onmessage = (e: MessageEvent<PreviewChannelMessage>) => {
+      if (e.data?.type === "hello") ch.postMessage(latest.current);
+    };
+    return () => {
+      channel.current = null;
+      ch.close();
+    };
+  }, [projectId]);
+
+  React.useEffect(() => {
+    latest.current = { type: "files", files, version };
+    channel.current?.postMessage(latest.current);
+  }, [files, version]);
 }
 
 function VersionMenu({ ws }: { ws: ReturnType<typeof useWorkspace> }) {

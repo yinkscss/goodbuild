@@ -37,7 +37,7 @@ export async function takeNonceCookie(): Promise<string | undefined> {
 export async function requestDomain(): Promise<string> {
   const configured = process.env.APP_DOMAIN;
   if (configured) return configured;
-  if (isProduction()) throw new Error("APP_DOMAIN must be set in production (e.g. goodbuild.app).");
+  if (isProduction()) throw new Error("APP_DOMAIN must be set in production (e.g. goodbuildit.xyz).");
   const h = await headers();
   return h.get("host") ?? "localhost:3000";
 }

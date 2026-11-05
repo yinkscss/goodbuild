@@ -176,8 +176,17 @@
   }
 }
 
+/* In-page nav links glide to their section; the reduced-motion rule below turns this off. */
+html {
+  scroll-behavior: smooth;
+}
+
 /* DESIGN_SYSTEM §5: no bobs, shimmer, draw-ins or confetti under reduced motion. */
 @media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
   *,
   *::before,
   *::after {

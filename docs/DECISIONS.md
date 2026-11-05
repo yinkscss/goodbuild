@@ -95,6 +95,28 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - **Treasury:** the weekly batch keeps about one month of provider bills in USDT and converts only the surplus to G$, because credits are USD liabilities and provider bills are paid in USD.
 - **Live test:** both the Magic email wallet and MetaMask, on Celo Sepolia.
 
+### D25. Hosting: one Docker image on Railway or Fly.io
+- Date: 5 Nov 2026 · Decided by: user (Olayinka) · Resolves Q31's host question.
+- A container running `next start` with a full install, plus `pnpm worker` as a second process, from one `Dockerfile`, with Postgres alongside. Nothing planned is serverless, because compiling contracts reads `node_modules` from child processes (HANDOFF.md).
+- The publish packaging stays. The app host doesn't need it, but it keeps publishing generated apps independent of how the host installs packages.
+- **Requirement Claude flagged:** neither Railway nor Fly sets a country header, and with none the geo-block lets everyone through (D10). Put Cloudflare in front, proxied, so it sets `cf-ipcountry`. Its proxy can also handle `*.goodbuildit.xyz`. The origin should only accept traffic from Cloudflare, or a visitor could reach it directly and skip the block. **UNVERIFIED:** each provider's current features; check before choosing between them.
+
+### D26. Hosting: Vercel in front, Railway behind (amends D25)
+- Date: 5 Nov 2026 · Decided by: user (Olayinka). Starts on the Railway trial; the user upgrades if it fits.
+- **One origin:** the browser only talks to `goodbuildit.xyz`. Vercel renders pages and forwards `/api/*`, `/a/*` and published-app hosts to Railway on the server side, so cookies stay `__Host-` and first-party. Calling Railway directly from the browser would need cross-site cookies and open CORS.
+- **Railway** runs everything that can't be serverless: compiling, publishing, uploads and turns. On the trial (1 GB per service, one-time $5 credit) it is one service with the inline worker, plus Postgres. Split into web and `pnpm worker` after upgrading.
+- **Edge secret:** Railway's own address is public, so with `EDGE_SECRET` set it refuses every request without the secret. The edge overwrites `x-gb-edge` and `x-gb-host` on each request, so a visitor can't fake them.
+- **Geo-block:** on Vercel only `x-vercel-ip-country` is trusted. This replaces D25's Cloudflare requirement: the edge applies the block, and the secret stops anyone going around it. Cloudflare isn't needed.
+- **Vercel needs** `DATABASE_URL` (Railway's public address) because pages read Postgres, `DATABASE_POOL_MAX=2`, `SESSION_SECRET` and a region near Railway's.
+- **Trade-offs Claude flagged:** two platforms and a database reached over the public internet, where one Railway service could serve everything. Wildcard domains need Vercel's nameservers, so DNS moves to Vercel. Vercel's Hobby plan is non-commercial only, so paid credits (M6) need Pro. Proxied requests time out at 120s on Vercel, so the turn event stream relies on its reconnect.
+
+### D27. Launch on one VPS for the first month (replaces D26 for now)
+- Date: 5 Nov 2026 · Decided by: user (Olayinka).
+- For about 50 users and a one-month, paid-per-month start: everything on one VPS (iHostio; the owner holds written permission for blockchain and testnet work), with Postgres on the same box and Cloudflare in front. How it runs: [DEPLOY.md](DEPLOY.md).
+- Contabo declined the owner's card, and iHostio is run by a friend and takes naira. Coolify stays installed for now by the owner's choice; only its proxy is used.
+- Vercel (D26) and Railway (D25) are on hold. The edge code stays, switched off without `BACKEND_ORIGIN`.
+- **Trade-offs:** no failover, and backups live on the same server until copied off. Acceptable while credits are free; revisit before M6 takes money.
+
 ## Recommended decisions (Ego; adopted unless changed)
 
 
@@ -130,6 +152,18 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 ### D10. 18+ only; block US persons
 - Date: 4 Nov 2026 · Recommended by: Ego
 - Rationale: GoodDollar ToS §6.2 (18+) and §8 "NO U.S. PERSONS MAY USE THE SERVICES". Gemini API also requires 18+. Also exclude sanctioned jurisdictions.
+
+### P19. Publishing: own subdomain, server build, immutable snapshots (address and build approach decided by the user; the rest proposed)
+- Date: 5 Nov 2026 · Decided by: user (`<app>.goodbuildit.xyz`, a real server build, a /docs page), as passed on by the session that built it. Claude proposed the rest.
+- **Domain (5 Nov 2026, user):** GoodBuild's domain is `goodbuildit.xyz`, so apps default to `<slug>.goodbuildit.xyz`. Claude took this to be the main site's domain too (`APP_DOMAIN`), which keeps apps same-site with it.
+- **Subdomain isolation:** generated JS must never be served from the main origin, where it could call the API as whoever is signed in. `src/proxy.ts` sends a published app's host only to `/published-app/<slug>`, that route exists on no other host, and the route repeats the Host check. Each app also gets its own wallet permissions.
+- **API writes:** the proxy refuses API writes from another site or subdomain (`Sec-Fetch-Site`, then `Origin`). A subdomain is same-site, so the browser still sends the session cookie with its requests; `SameSite` and `__Host-` don't stop that. A separate registrable domain for published apps (as GitHub does with github.io) would be stronger, and the user may want to weigh it.
+- **Cookies:** `__Host-` session and nonce cookies in production, so a subdomain can neither read nor overwrite them. Plain names in development, because the prefix needs a secure context.
+- **Server build:** esbuild plus a Tailwind compile. Project code gets no filesystem access, and only `ALLOWED_DEPENDENCIES` resolve, from `publish-runtime/`.
+- **Immutable snapshots:** publishing stores built files in the database, so later edits don't change a live app until the user publishes again. If a build fails, the old files stay live.
+- **Undeployed contracts:** an app can go live before its contracts are deployed, with a demo notice, using `deployments.sourceHash` and `sourceKey` to tell.
+- **Region block:** published app hosts return 451 for blocked regions (Q31), the same list as the API.
+- **Verified on a production build, 5 Nov 2026:** see HANDOFF.md. Not verified on a real host.
 
 ## Proposed decisions (not adopted; Claude and the user may change them)
 

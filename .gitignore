@@ -41,3 +41,8 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 /.data/
+
+/publish-runtime/node_modules/
+
+# made by scripts/build-publish-runtime.mjs
+/publish-runtime.pack.gz

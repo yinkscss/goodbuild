@@ -7,7 +7,7 @@
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
   if (process.env.NEXT_PHASE === "phase-production-build") return;
-  if (process.env.GOODBUILD_INLINE_WORKER === "0") return;
+  if (process.env.GOODBUILD_INLINE_WORKER === "0" || process.env.BACKEND_ORIGIN) return; // the edge runs no turns (D26)
   const { inlineWorker } = await import("./server/jobs");
   inlineWorker();
 }

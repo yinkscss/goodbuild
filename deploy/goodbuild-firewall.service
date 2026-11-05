@@ -1,0 +1,13 @@
+[Unit]
+Description=GoodBuild firewall rules for Docker ports
+After=docker.service network-online.target
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/goodbuild-firewall.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

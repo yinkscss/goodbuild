@@ -119,6 +119,26 @@ function VerifyChip({ status }: { status: StepView["verify"] }) {
   return <span className="rounded-full bg-tint px-2 py-0.5 text-[11px] font-semibold text-violet">Verifying…</span>;
 }
 
+/** Where to send CELO: email wallets start empty, and their owners may not know the address. */
+function FundWallet({ chainId }: { chainId: number }) {
+  const { wallet } = useAuth();
+  if (!wallet) return null;
+  return (
+    <div className="mt-3 rounded-tip bg-surface p-3 text-sm">
+      <p className="text-grey-600">Send a little CELO to your wallet, then try again.</p>
+      <div className="mt-2 flex items-center gap-2">
+        <code className="min-w-0 flex-1 truncate font-mono text-xs">{wallet.address}</code>
+        <CopyButton value={wallet.address} />
+      </div>
+      {chainId !== 42220 && (
+        <a className="mt-2 inline-block text-xs font-medium text-violet hover:underline" href="https://faucet.celo.org/celo-sepolia" target="_blank" rel="noreferrer">
+          Get free test CELO from the faucet
+        </a>
+      )}
+    </div>
+  );
+}
+
 function ErrorCard({ deploy, onFix, chainId }: { deploy: Deploy; onFix: (prompt: string) => void; chainId: number }) {
   const { state } = deploy;
   const error = state.error;
@@ -140,6 +160,7 @@ function ErrorCard({ deploy, onFix, chainId }: { deploy: Deploy; onFix: (prompt:
           {state.stage === "error" && state.steps.some((s) => s.phase === "done" || s.phase === "reused") && !opcode && (
             <p className="mt-1 text-sm text-grey-600">Contracts already deployed stay deployed. Trying again continues from where it stopped.</p>
           )}
+          {error.kind === "insufficient_funds" && <FundWallet chainId={state.plan?.chainId ?? chainId} />}
           <div className="mt-3 flex flex-wrap gap-2">
             {opcode && state.evmVersion === "cancun" && (
               <Button variant="chipSelected" size="chip" onClick={() => void deploy.prepare("paris")}>
@@ -229,12 +250,14 @@ export function DeployModal({
   deploy,
   chainId,
   onFix,
+  onPublish,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   deploy: Deploy;
   chainId: number;
   onFix: (prompt: string) => void;
+  onPublish?: () => void;
 }) {
   const auth = useAuth();
   const { state } = deploy;
@@ -346,9 +369,16 @@ export function DeployModal({
             {state.stage === "done" ? "You can find these addresses in the Contract tab." : (state.plan?.chainId ?? chainId) === 42220 ? "This deploy spends real CELO." : "Testnet deploys are free of real money."}
           </p>
           {state.stage === "done" ? (
-            <Button variant="primary" onClick={() => onOpenChange(false)}>
-              Done
-            </Button>
+            <div className="flex gap-2">
+              {onPublish && (
+                <Button variant="secondary" onClick={onPublish}>
+                  Publish app
+                </Button>
+              )}
+              <Button variant="primary" onClick={() => onOpenChange(false)}>
+                Done
+              </Button>
+            </div>
           ) : (
             <Button
               variant="primary"

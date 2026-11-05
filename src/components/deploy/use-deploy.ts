@@ -232,7 +232,8 @@ async function estimate(plan: ServerPlan, account: Address, setState: SetState, 
     setState((s) => (s.plan === plan && s.stage === "ready" ? { ...s, feeCelo: Number(formatEther(BigInt(Math.ceil(total)) * price)).toPrecision(2) } : s));
   } catch (e) {
     const err = classifyDeployError(e);
-    if (err.kind === "opcode") {
+    // Both would fail at signing anyway, so say so as soon as the modal opens.
+    if (err.kind === "opcode" || err.kind === "insufficient_funds") {
       setState((s) => (s.plan === plan && s.stage === "ready" ? { ...s, stage: "error", error: { ...err, at: firstName(plan), logs, opcodes: (e as { opcodes?: string[] }).opcodes ?? [] } } : s));
     }
   }

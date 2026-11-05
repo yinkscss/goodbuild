@@ -15,7 +15,7 @@ import { PLATFORM_DIR } from "@/server/agent/template";
 import type { Db } from "@/server/db/client";
 import { deployments, type Deployment } from "@/server/db/deploy-schema";
 import { messages, projectFiles, projects } from "@/server/db/schema";
-import { loadDeployedAddresses, withDeployedAddresses } from "./addresses";
+import { withCurrentAddresses } from "./addresses";
 import { compileForDeploy, type EvmVersion } from "./compile";
 
 export type DeployErrorCode =
@@ -242,9 +242,8 @@ export async function recordDeployment(
 
 /** Write deployed addresses into the project's platform-owned src/contracts modules. */
 export async function syncContractModules(db: Db, projectId: string): Promise<void> {
-  const addresses = await loadDeployedAddresses(db, projectId);
   const files = await loadFiles(db, projectId);
-  const next = withDeployedAddresses(files, addresses);
+  const next = await withCurrentAddresses(db, projectId, files);
   for (const [path, content] of Object.entries(next)) {
     if (!path.startsWith(PLATFORM_DIR) || content === files[path]) continue;
     await db.update(projectFiles).set({ content, updatedAt: new Date() }).where(and(eq(projectFiles.projectId, projectId), eq(projectFiles.path, path)));

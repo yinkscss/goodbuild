@@ -112,7 +112,7 @@ export class TurnWorker {
       await sweep(db).catch(() => undefined);
     }
     const started: TurnJob[] = [];
-    while (this.running.size < (this.opts.concurrency ?? CONCURRENCY)) {
+    while (this.running.size < (this.opts.concurrency ?? (Number(process.env.TURN_CONCURRENCY) || CONCURRENCY))) {
       const job = await claimJob(db, this.id);
       if (!job) break;
       this.running.add(job.id);

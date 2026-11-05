@@ -72,14 +72,56 @@ What exists:
 2. Magic dashboard: create the app, set `NEXT_PUBLIC_MAGIC_PUBLISHABLE_KEY` and `MAGIC_SECRET_KEY`, and allow `https://forno.celo.org` and `https://forno.celo-sepolia.celo-testnet.org` in its content security policy.
 3. One real end-to-end deploy (email wallet, then MetaMask) on Sepolia. **Not verified live yet:** Magic's Celo Sepolia behaviour and confirmation UI, WalletConnect/MiniPay connection, whether Celo's RPC accepts state overrides (if not, only the creation estimate runs), and a real Sourcify match.
 
-Known gaps: no "Share app" button (no published URL yet); the fee estimate is exact for the first argument-free contract and scaled by size for the rest; mainnet deploys stay behind `NEXT_PUBLIC_ENABLE_MAINNET`.
+Known gaps: the fee estimate is exact for the first argument-free contract and scaled by size for the rest; mainnet deploys stay behind `NEXT_PUBLIC_ENABLE_MAINNET`.
 
 `main` (through the background runner, P18) is merged into this branch. The M5 migration is now `0004`, after main's `0003`. A local `.data/` database that ran the old M5 `0003` needs resetting: it would try to create `deployments` again.
+
+## Publish (P19), landing sections, /docs and preview pop-out
+Publish code lives in `src/server/publish/`, `src/server/db/publish-schema.ts` (migration `0005`), `src/proxy.ts`, `src/lib/published-host.ts`, `src/app/published-app/` and `src/components/workspace/publish-modal.tsx`.
+
+**Verified on a production build (5 Nov 2026), on `<slug>.localhost`, with a demo tip jar and no contract deployed:**
+- API: publish (4s), update, unpublish (app returns 404), reserved and taken slugs refused, 451 on a blocked region.
+- Isolation: no main API or `/home` on an app host, a session cookie gets nothing there, and the main host can't reach `/published-app`. Published apps are same-site with the main site, so the browser does send the session cookie on their requests to it. What protects the API is `isForeignWrite` in `src/proxy.ts`, which returns 403 for writes from another site or subdomain, plus CORS for reads. Before that check, a text/plain POST from an app host created a project as the signed-in user (reproduced on the server, 201).
+- Browser: the app runs under its CSP with the demo notice, the modal publishes and unpublishes, and the pop-out preview loads.
+- Sign-in with `__Host-` cookies, using an external wallet.
+
+**To run it locally:** production mode with `PUBLISHED_APPS_DOMAIN=localhost`, `ALLOW_PGLITE=true`, `SESSION_SECRET` and `APP_DOMAIN`.
+
+**Verified with a real deploy (5 Nov 2026):** a throwaway wallet deployed `TipJar` on Celo Sepolia at `0xAC81a96393eF4306E3885aC7868EBd6a0aAa7BEA` through the deploy modal on a production build on Postgres, with an exact Sourcify match. The preview went live with no reload, the chat got its "live at" note, and "Publish app" on the success screen published it with the address baked in and no demo notice. The test signer stood in for a browser wallet, so MetaMask's own UI wasn't part of this.
+
+**Not verified:**
+- Magic email sign-in, on any cookies: the fix for `ERROR_INCORRECT_SIGNER_ADDR` hasn't had a live sign-in.
+- A real host: `*.goodbuildit.xyz` needs wildcard DNS. Q16 and Q31 stay open.
+
+**Running now (D27):** live at https://goodbuildit.xyz on one VPS, see [DEPLOY.md](DEPLOY.md). Tested live on 5 Nov 2026: a real AI build, a Celo Sepolia deploy with a Sourcify match, publishing, the firewall, and the workspace and preview in a browser. A test signer stood in for the wallet. Not tested live: Magic email sign-in, and more than one build at a time. The rest of this section describes the Vercel and Railway setup (D26), which is on hold.
+
+**Hosting (D26, amends D25):** Vercel serves pages and forwards `/api/*`, `/a/*` and published apps to Railway, which runs the `Dockerfile`, with Postgres alongside.
+
+| | Vercel (edge) | Railway (backend) |
+|---|---|---|
+| Required | `BACKEND_ORIGIN`, `EDGE_SECRET`, `DATABASE_URL` (public), `DATABASE_POOL_MAX=2`, `SESSION_SECRET`, `APP_DOMAIN`, `PUBLISHED_APPS_DOMAIN` | `EDGE_SECRET`, `DATABASE_URL`, `SESSION_SECRET`, `APP_DOMAIN`, `PUBLISHED_APPS_DOMAIN`, `MAGIC_SECRET_KEY`, `ANTHROPIC_API_KEY`, `DEEPSEEK_API_KEY`, `NEXT_PUBLIC_TEST_GD_ADDRESS` |
+| Build-time | every `NEXT_PUBLIC_*` value | the same, as Docker build arguments |
+
+- `APP_DOMAIN=goodbuildit.xyz` and `PUBLISHED_APPS_DOMAIN=goodbuildit.xyz` on both, with the same `SESSION_SECRET`.
+- Trial: one Railway service, using the inline worker. After upgrading: add a `pnpm worker` service and set `GOODBUILD_INLINE_WORKER=0` on web.
+- Migrations: `pnpm db:migrate` before each deploy.
+- `*.goodbuildit.xyz` needs Vercel's nameservers.
+- Serverless and `output: standalone` can't compile contracts, because solc, OpenZeppelin imports and contract tests run in child processes that read `node_modules` directly. That's why this work is on Railway.
+- Rehearsed locally (5 Nov 2026): the backend image capped at 1 GB behind a separate edge server. Sign-in, pages, compiling, publishing, the app host, the 451, the secret check and turn events all worked through the edge. Peak memory was 657 MiB with a first publish and compiles running together, with no out-of-memory kill. A full AI turn with contract tests wasn't part of that, and Vercel's own forwarding is still to be checked on the first deploy.
+- Checked locally with Docker (5 Nov 2026): migrations, web and worker as separate containers, compiling with OpenZeppelin, publishing and serving an app, and the worker claiming a job (it then stopped at the AI call, because that test had no keys). Not yet run on Railway or Fly.
+- Serverless and `output: standalone` can't compile contracts, because solc, OpenZeppelin imports and contract tests run in child processes that read `node_modules` directly.
+
+**Publish's packages:** file tracing skips `node_modules` and pnpm's symlinks, so `pnpm build` first packs the runtime packages and Tailwind's stylesheets into `publish-runtime.pack.gz` (`scripts/build-publish-runtime.mjs`, about 22 MB), and the first publish unpacks it to the temp folder (`src/server/publish/runtime.ts`). Checked with `NEXT_OUTPUT=standalone pnpm build`, run outside the repo on Postgres. `PGlite` doesn't start in standalone output, and production doesn't use it. Don't set `HOSTNAME` to `127.0.0.1` on a standalone server: the route then sees the wrong Host and refuses to serve apps (`0.0.0.0` is fine).
+
+**Other gaps:** `/terms` and `/privacy` are drafts that no lawyer has reviewed, and legal pages and `/report` need `NEXT_PUBLIC_CONTACT_EMAIL`. `scripts/takedown.mjs` takes a published app down. The Unpublish button uses `window.confirm`, which blocks browser automation. A self-reload of `/home` and the workspace under `next dev` was reported by the session that built this, and didn't reproduce here over 30s on each page without a Magic key.
 
 Then M6 (credits, D13: USD primary, cost + 25%; usage is already recorded in `usage_events`). **Top-ups (D21) are designed in [TOPUPS.md](TOPUPS.md), waiting for your review: no code until then.**
 
 ## Open questions worth reading
 Q36 (preview depends on CodeSandbox and the Tailwind CDN), Q37 (chat width), Q38 (read-only code tab), Q40 (top-ups) and Q41 (Magic) in OPEN_QUESTIONS.md. Q39 is resolved (D23).
+
+## Test wallet
+Throwaway wallet for live deploy tests, kept on purpose: `0x80fB54faA246dd4E75A000D88eC9BF2aBD7407AD` on Celo Sepolia (about 0.97 test CELO on 5 Nov 2026). Its key is in `.data/throwaway-wallet.key` in the `landing-publish` worktree (gitignored). Never use it on mainnet or for anything of value.
 
 ## Working conventions used so far
 - Post a short plan before each milestone; commit after each; stop when the user asks for a review.

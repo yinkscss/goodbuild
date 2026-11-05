@@ -11,7 +11,7 @@ export interface VerifySignInInput {
   signature: Hex;
   /** Nonce from the signed cookie (not from the message). */
   expectedNonce: string | null;
-  /** Host the app is served from, e.g. "goodbuild.app" or "localhost:3000". */
+  /** Host the app is served from, e.g. "goodbuildit.xyz" or "localhost:3000". */
   expectedDomain: string;
   now?: Date;
   /**

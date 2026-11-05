@@ -9,6 +9,15 @@ export function contractAddressKey(files: Record<string, string>): string {
     .join("");
 }
 
+/** Contracts whose module holds an address for this chain. */
+export function deployedContracts(files: Record<string, string>, chainId: number): string[] {
+  return Object.entries(files)
+    .filter(([p]) => p.startsWith(PLATFORM_DIR))
+    .flatMap(([, source]) => [...source.matchAll(/export const (\w+)Address\b[^=]*=\s*(\{[\s\S]*?\});/g)])
+    .filter((m) => m[2].includes(`"${chainId}"`))
+    .map((m) => m[1]);
+}
+
 /**
  * Deployed contracts the app needs wiring to: all of them when no page reads any <Name>Address, and
  * none otherwise. A helper contract the app never touches directly is normal in a working app, so

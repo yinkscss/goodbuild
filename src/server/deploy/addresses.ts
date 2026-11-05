@@ -7,6 +7,19 @@ import { PLATFORM_DIR } from "@/server/agent/template";
 import type { Db } from "@/server/db/client";
 import { deployments } from "@/server/db/deploy-schema";
 
+/** Key order differs between solc's output and a jsonb column, so compare with sorted keys. */
+function sortedKeys(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortedKeys);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).sort(([a], [b]) => (a < b ? -1 : 1)).map(([k, v]) => [k, sortedKeys(v)]));
+  }
+  return value;
+}
+
+export function sameAbi(a: unknown, b: unknown): boolean {
+  return JSON.stringify(sortedKeys(a)) === JSON.stringify(sortedKeys(b));
+}
+
 /** Latest deployed address per contract and chain: { RTXPool: { 11142220: "0x…" } }. */
 export async function loadDeployedAddresses(
   db: Db,
@@ -21,7 +34,7 @@ export async function loadDeployedAddresses(
     .orderBy(desc(deployments.createdAt));
   const out: Record<string, Record<number, Address>> = {};
   for (const r of rows) {
-    if (currentAbis[r.name] && JSON.stringify(currentAbis[r.name]) !== JSON.stringify(r.abi)) continue;
+    if (currentAbis[r.name] && !sameAbi(currentAbis[r.name], r.abi)) continue;
     out[r.name] ??= {};
     out[r.name][r.chainId] ??= r.address as Address; // newest first, so the first row per chain wins
   }
@@ -37,19 +50,43 @@ export function deploymentsBlock(addresses: Record<string, Record<number, Addres
 
 const ADDRESS_MAP = (name: string) => new RegExp(`(export const ${name}Address: Partial<Record<number, Address>> = )\\{[\\s\\S]*?\\};`);
 
-/** Put deployed addresses into platform-owned contract modules, leaving every other file alone. */
+/**
+ * Set the address map of every platform-owned contract module, leaving every other file alone. A
+ * contract missing from `addresses` gets an empty map: its files may hold an address that no longer fits.
+ */
 export function withDeployedAddresses(
   files: Record<string, string>,
   addresses: Record<string, Record<number, Address>>,
 ): Record<string, string> {
   const out = { ...files };
-  for (const [name, map] of Object.entries(addresses)) {
-    const path = `${PLATFORM_DIR}${name}.ts`;
-    const source = out[path];
-    if (!source) continue;
-    out[path] = source.replace(ADDRESS_MAP(name), (_m, head: string) => `${head}${JSON.stringify(map, null, 2)};`);
+  for (const [path, source] of Object.entries(files)) {
+    if (!path.startsWith(PLATFORM_DIR) || !path.endsWith(".ts")) continue;
+    const name = path.slice(PLATFORM_DIR.length, -3);
+    out[path] = source.replace(ADDRESS_MAP(name), (_m, head: string) => `${head}${JSON.stringify(addresses[name] ?? {}, null, 2)};`);
   }
   return out;
+}
+
+/** The ABI in each contract module of these files. */
+export function abisInModules(files: Record<string, string>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [path, source] of Object.entries(files)) {
+    if (!path.startsWith(PLATFORM_DIR) || !path.endsWith(".ts")) continue;
+    const name = path.slice(PLATFORM_DIR.length, -3);
+    const abi = new RegExp(`export const ${name}Abi = ([\\s\\S]*?) as const;`).exec(source)?.[1];
+    try {
+      const parsed = abi ? (JSON.parse(abi) as unknown[]) : [];
+      if (parsed.length) out[name] = parsed; // an empty placeholder says nothing about what is deployed
+    } catch {
+      /* not a module GoodBuild wrote: no check for it */
+    }
+  }
+  return out;
+}
+
+/** Files with the addresses that fit their ABIs. For reverts and publishing, where the files may be older. */
+export async function withCurrentAddresses(db: Db, projectId: string, files: Record<string, string>): Promise<Record<string, string>> {
+  return withDeployedAddresses(files, await loadDeployedAddresses(db, projectId, abisInModules(files)));
 }
 
 export async function deployedAddressesFor(db: Db, projectId: string, chainId: number, name: string): Promise<Address | undefined> {

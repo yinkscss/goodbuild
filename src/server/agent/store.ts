@@ -4,7 +4,7 @@ import { and, desc, eq, isNull, sql } from "drizzle-orm";
 
 import type { Db } from "@/server/db/client";
 import { messages, projectFiles, projects, usageEvents, versions, type Version } from "@/server/db/schema";
-import { loadDeployedAddresses, withDeployedAddresses } from "@/server/deploy/addresses";
+import { withCurrentAddresses } from "@/server/deploy/addresses";
 import { MARKUP_BPS } from "@/config/model-pricing";
 import { chargedMicro, costMicro } from "@/lib/pricing";
 
@@ -64,8 +64,8 @@ export async function revertTo(db: Db, projectId: string, number: number): Promi
     .where(and(eq(versions.projectId, projectId), eq(versions.number, number)))
     .limit(1);
   if (!v) return null;
-  // Contracts stay deployed after a revert, so their addresses go back into the restored modules (M5).
-  const files = withDeployedAddresses(v.files, await loadDeployedAddresses(db, projectId));
+  // Contracts stay deployed after a revert, so addresses that fit the restored ABIs go back in (M5).
+  const files = await withCurrentAddresses(db, projectId, v.files);
   const next = await checkpoint(db, { projectId, files, summary: `Reverted to v${number}`, revertedFrom: number });
   await db.insert(messages).values({
     projectId,

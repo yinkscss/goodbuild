@@ -68,7 +68,7 @@ check("first sign-in without attestation is refused", res.status === 403, (await
 const body = await signedBody({ ageOk: true, notUsPerson: true });
 res = await post("/api/auth/verify", body);
 check("sign-in with attestation succeeds", res.status === 200);
-const sessionCookie = lastSetCookies.find((c) => c.startsWith("gb_session="));
+const sessionCookie = lastSetCookies.find((c) => /^(__Host-)?gb_session=/.test(c));
 check("session cookie is httpOnly + SameSite=Lax", /HttpOnly/i.test(sessionCookie ?? "") && /SameSite=Lax/i.test(sessionCookie ?? ""));
 
 res = await post("/api/auth/verify", body);
