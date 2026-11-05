@@ -6,6 +6,7 @@ import { createPublicClient, formatEther, http, type Address, type Hex } from "v
 import { useAuth } from "@/lib/auth/context";
 import { celoChainFor } from "@/lib/auth/wallet-client";
 import { classifyDeployError, type ClassifiedError } from "@/lib/deploy/errors";
+import { loadSent, pendingKey, saveSent } from "@/lib/deploy/pending";
 import { runDeploy, StepFailure, usesGoodDollar, type DeployEvent, type DeployProgress, type Plan, type PlanStep, type StepPhase } from "@/lib/deploy/run";
 import { simulateCreation } from "@/lib/deploy/simulate";
 
@@ -132,6 +133,8 @@ export function useDeploy({ projectId, chainId, onDeployed }: { projectId: strin
       const walletClient = await auth.getWalletClient();
       const publicClient = publicClientFor(plan.chainId);
       const account = wallet.address;
+      const pending = pendingKey(projectId, plan.chainId, plan.sourceHash, account);
+      progressRef.current.sent = { ...loadSent(pending), ...progressRef.current.sent };
 
       const deployed = await runDeploy(
         plan,
@@ -152,6 +155,7 @@ export function useDeploy({ projectId, chainId, onDeployed }: { projectId: strin
           },
         },
         (event: DeployEvent) => {
+          saveSent(pending, progressRef.current.sent);
           if (event.type === "phase") {
             log(`${event.step}: ${event.phase}${event.txHash ? ` ${event.txHash}` : ""}`);
             setState((s) => ({ ...s, steps: s.steps.map((x) => (x.name === event.step ? { ...x, phase: event.phase, txHash: event.txHash ?? x.txHash, address: event.address ?? x.address } : x)) }));

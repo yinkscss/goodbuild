@@ -129,7 +129,8 @@ export function DiffChips({ changes }: { changes: FileChange[] }) {
 
 /** "Ready to deploy contract" card; the button opens the deploy modal (M5). */
 export function DeployCard({ record }: { record: TurnRecord }) {
-  const main = record.contracts?.[0];
+  const contracts = record.contracts ?? [];
+  const main = contracts[0];
   if (!main) return null;
   return (
     <div className="mt-4 flex flex-wrap items-center gap-4 rounded-[20px] bg-tint p-4">
@@ -137,9 +138,9 @@ export function DeployCard({ record }: { record: TurnRecord }) {
         <Hexagon className="size-5" />
       </span>
       <div className="min-w-[60%] flex-1">
-        <p className="text-sm font-semibold">Ready to deploy {main.name}</p>
+        <p className="text-sm font-semibold">Ready to deploy {contracts.map((c) => c.name).join(", ")}</p>
         <p className="text-xs text-grey-600">
-          Celo Sepolia · {(main.bytecodeBytes / 1024).toFixed(1)} kB · you sign from your own wallet
+          Celo Sepolia · {contracts.length > 1 ? `${contracts.length} contracts, one signature each` : `${(main.bytecodeBytes / 1024).toFixed(1)} kB`} · you sign from your own wallet
         </p>
       </div>
       <DeployButton label="Deploy contract" size="sm" className="w-full px-4 py-2.5 text-sm sm:w-auto" />

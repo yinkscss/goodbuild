@@ -80,7 +80,10 @@ export async function runDeploy(
   for (const step of plan.steps) onEvent({ type: "phase", step: step.name, phase: deployed[step.name] ? "reused" : "waiting", address: deployed[step.name] });
 
   for (const step of plan.steps) {
-    if (deployed[step.name]) continue;
+    if (deployed[step.name]) {
+      delete progress.sent[step.name];
+      continue;
+    }
     const phase = (p: StepPhase, extra: { txHash?: Hex; address?: Address } = {}) => onEvent({ type: "phase", step: step.name, phase: p, ...extra });
     try {
       const args = resolveArgs({ name: step.name, args: step.args, dependsOn: step.dependsOn }, step.abi, {
@@ -102,7 +105,11 @@ export async function runDeploy(
       }
 
       phase("broadcasting", { txHash });
-      const receipt = await env.waitForReceipt(txHash);
+      const receipt = await env.waitForReceipt(txHash).catch((error: unknown) => {
+        // Never mined in the time allowed: probably dropped, and keeping it would block every retry.
+        if ((error as Error).name === "WaitForTransactionReceiptTimeoutError") delete progress.sent[step.name];
+        throw error;
+      });
       if (receipt.status !== "success") {
         delete progress.sent[step.name]; // dead on-chain, so a retry must send a new one
         throw Object.assign(new Error("execution reverted"), { code: "reverted" });
