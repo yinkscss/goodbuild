@@ -7,7 +7,7 @@ export function FinalCta() {
         <h2 id="cta-heading" className="display text-[28px] font-bold sm:text-[40px]">
           What would your community build?
         </h2>
-        <p className="mt-4 text-base text-white/70">One sentence is enough to start, and it&apos;s free during the testnet beta.</p>
+        <p className="mt-4 text-base text-white/70">One sentence is enough to start, and every new account gets $0.20 of AI free.</p>
       </div>
       <a
         href="#build"

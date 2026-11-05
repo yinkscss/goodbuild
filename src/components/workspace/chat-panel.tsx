@@ -242,7 +242,7 @@ export function Composer({
         </div>
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-xs text-grey-400" title="Estimated charge for this request: AI cost + 25% (free during the testnet beta)">
+          <span className="text-xs text-grey-400" title="Estimated charge for this request: AI cost + 25%. Each new account gets $0.20 of AI free during the testnet beta.">
             ≈ {formatMicroUsd(est)} {running ? "· runs after this build" : ""}
           </span>
           {running && onStop && (

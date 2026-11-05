@@ -85,7 +85,7 @@ describe("home prompt and empty state", () => {
 
   it("shows the testnet hint before credits exist", () => {
     render(<Home />);
-    expect(screen.getByText("Free during the testnet beta")).toBeInTheDocument();
+    expect(screen.getByText("$0.20 of AI free during the testnet beta")).toBeInTheDocument();
   });
 
   it("disables Build it at zero credits with the top-up message", async () => {

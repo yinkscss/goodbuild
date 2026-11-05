@@ -100,7 +100,7 @@
 - DESIGN_SYSTEM §6 is written for Tailwind v3. Current Tailwind is v4.3 and the shadcn CLI targets v4, where theme config lives in CSS `@theme`.
 - Claude's input: M1 uses v4 with §6's tokens mapped 1:1 into `src/app/globals.css` (same names and hex values, shadcn variables as `hsl()` colours). The default Tailwind palette is reset so only design-system colours compile. Pinning v3 is possible but would fight current shadcn. **Needs user OK** (recorded as P6).
 
-## Q24. Landing metric card shows sample numbers
+## Q24. Landing metric card shows sample numbers (resolved 5 Nov 2026: removed before launch; the card now states facts about the beta, and real numbers can return once they exist)
 - "2.48M G$ deployed this week" and "14,902 contracts compiled" are mockup values. Shown as "Live" at launch they would be false, and DESIGN_SYSTEM §7 asks for real numbers.
 - Claude's input: M1 feeds the card from `src/config/landing-stats.ts` with `isLive: false`, which shows a "Preview" chip. Proposal: wire it to the deployments table (M5) and switch to "Live" then. Also reconsider the metric: "G$ deployed" is unclear; "G$ moved through GoodBuild apps" or "dApps deployed" is easier to defend.
 
