@@ -1,12 +1,14 @@
+import type { WalletClient } from "viem";
+
 /**
  * Provider-agnostic auth contract. UI code only talks to this (via useAuth / useWallet);
- * the Privy implementation lives in ./privy, so a thirdweb fallback (P5) touches one folder.
+ * the Magic implementation lives in ./magic (D22), so swapping providers touches one folder.
  */
 
 export type WalletKind = "embedded" | "external";
 
 /** The external wallets offered in the connect modal (mockup a). */
-export type ExternalWalletId = "metamask" | "minipay" | "walletconnect" | "coinbase";
+export type ExternalWalletId = "metamask" | "minipay" | "walletconnect";
 
 export interface Attestation {
   ageOk: boolean;
@@ -39,7 +41,7 @@ export type AuthPhase =
   | "error";
 
 export interface AuthApi {
-  /** False when no auth provider is configured (no Privy app id). */
+  /** False when no auth provider is configured (no Magic publishable key). */
   configured: boolean;
   /** True once the provider and the server session check have settled. */
   ready: boolean;
@@ -63,6 +65,11 @@ export interface AuthApi {
   reset(): void;
   signOut(): Promise<void>;
   switchChain(chainId: number): Promise<void>;
-  /** Only for embedded wallets. */
+  /**
+   * A viem wallet client for the connected wallet, the same type for the Magic wallet and
+   * every external wallet (D22). Deploy signing goes through this. Throws if no wallet is connected.
+   */
+  getWalletClient(): Promise<WalletClient>;
+  /** Only for embedded wallets: opens Magic's key reveal. */
   exportKey?: () => Promise<void>;
 }

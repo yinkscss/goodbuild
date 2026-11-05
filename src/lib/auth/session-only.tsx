@@ -7,9 +7,9 @@ import { endSession, fetchSession } from "./session-client";
 import type { AuthApi, SessionUser } from "./types";
 
 /**
- * Auth when no wallet provider is configured (no Privy app id). New sign-ins are off,
+ * Auth when no wallet provider is configured (no Magic publishable key). New sign-ins are off,
  * but an existing GoodBuild session (ours, not Privy's) is still recognised and can be
- * signed out. Also what the app uses in development before Privy is set up.
+ * signed out. Also what the app uses in development before Magic is set up.
  */
 export function SessionOnlyAuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = React.useState<SessionUser | null>(null);

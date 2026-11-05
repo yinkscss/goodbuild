@@ -14,7 +14,6 @@ const WALLETS: Array<{ id: ExternalWalletId; name: string; hint: string; tile: s
   { id: "metamask", name: "MetaMask", hint: "Browser extension", tile: "#F6851B", letter: "M" },
   { id: "minipay", name: "MiniPay / Valora", hint: "Celo mobile wallets", tile: "#35D07F", letter: "V" },
   { id: "walletconnect", name: "WalletConnect", hint: "Scan with any wallet", tile: "#3B99FC", letter: "W" },
-  { id: "coinbase", name: "Coinbase Wallet", hint: "Extension or app", tile: "#0052FF", letter: "C" },
 ];
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -107,7 +106,7 @@ function ConnectModalBody({ hasPendingPrompt, busy }: { hasPendingPrompt: boolea
 
         {!auth.configured ? (
           <div className="mt-5 rounded-block bg-tint p-4 text-sm text-violet-ink">
-            Sign-in isn&apos;t set up on this deployment yet (no Privy app id). Your prompt stays saved in this tab.
+            Sign-in isn&apos;t set up on this deployment yet (no Magic key). Your prompt stays saved in this tab.
           </div>
         ) : (
           <>

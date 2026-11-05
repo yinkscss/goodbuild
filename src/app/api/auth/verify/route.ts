@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { verifyBody } from "@/lib/api-schemas";
 import { errorResponse, requestDomain, setSessionCookie, takeNonceCookie } from "@/server/auth/http";
 import { AuthError } from "@/server/auth/errors";
+import { assertMagicLogin } from "@/server/auth/magic";
 import { issueSession, publicUser, signInUser } from "@/server/auth/service";
 import { verifySignIn } from "@/server/auth/siwe";
 import { readNonceToken } from "@/server/auth/tokens";
@@ -25,6 +26,9 @@ export async function POST(request: Request) {
       expectedNonce,
       expectedDomain: await requestDomain(),
     });
+
+    // Email wallets (Magic, D22) must also present a DID token for this exact sign-in.
+    if (body.walletKind === "embedded") assertMagicLogin({ didToken: body.didToken, message: body.message, address });
 
     const db = await getDb();
     const user = await signInUser(db, { wallet: address, walletKind: body.walletKind, attestation: body.attestation });

@@ -8,6 +8,8 @@ export const verifyBody = z.object({
   message: z.string().min(1).max(4000),
   signature: z.string().regex(/^0x[0-9a-fA-F]+$/),
   walletKind: z.enum(["embedded", "external"]),
+  /** Magic DID token (D22). Required for walletKind "embedded"; ignored for external wallets. */
+  didToken: z.string().min(20).max(8000).optional(),
   attestation: z
     .object({
       ageOk: z.boolean(),
