@@ -5,7 +5,7 @@ import userEvent from "@testing-library/user-event";
 
 import { AuthContextProvider, unconfiguredAuth } from "@/lib/auth/context";
 import type { Plan } from "@/lib/deploy/run";
-import { DeployModal, stageIndex } from "./deploy-modal";
+import { DeployModal, keepsLine, stageIndex } from "./deploy-modal";
 import type { DeployState, StepView } from "./use-deploy";
 
 const wallet = "0x7a3000000000000000000000000000000000e41c" as const;
@@ -15,7 +15,7 @@ const auth = {
   user: { id: "u", wallet, walletKind: "external" as const, verified: false },
   wallet: { address: wallet, chainId: 11142220, kind: "external" as const, label: "MetaMask" },
 };
-const plan = { runId: "r", chainId: 11142220, compilerVersion: "0.8.28+commit.abc", openZeppelin: "5.6.1", gooddollar: null, alreadyDeployed: {}, steps: [] } as Plan;
+const plan = { runId: "r", chainId: 11142220, compilerVersion: "0.8.28+commit.abc", openZeppelin: "5.6.1", gooddollar: null, alreadyDeployed: {}, replaces: [], steps: [] } as Plan;
 const state = (over: Partial<DeployState>): DeployState => ({ stage: "ready", plan, steps: [{ name: "Tip", phase: "waiting" }], feeCelo: null, error: null, evmVersion: "cancun", needsTestGd: false, ...over });
 
 function renderModal(s: DeployState, deploy: Partial<Record<string, unknown>> = {}, onFix = vi.fn()) {
@@ -93,5 +93,23 @@ describe("DeployModal", () => {
     expect(screen.getByText(address)).toBeInTheDocument();
     expect(screen.getByText("Verified on Sourcify")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /View Tip on the explorer/ })).toHaveAttribute("href", `https://celo-sepolia.blockscout.com/address/${address}`);
+  });
+
+  it("warns before replacing a live contract, saying what stays behind", () => {
+    const address = "0x3333333333333333333333333333333333333333" as const;
+    renderModal(state({ plan: { ...plan, replaces: [{ name: "Tip", address, gdBalance: "1200500000000000000000" }] } }));
+    expect(screen.getByText(/This creates a new contract/)).toBeInTheDocument();
+    expect(screen.getByText(/keeps its 1,200.5 G\$ and its history/)).toBeInTheDocument();
+    expect(screen.getByText(/stays on the old one until you publish again/)).toBeInTheDocument();
+  });
+
+  it("says nothing on a first deploy", () => {
+    renderModal(state({}));
+    expect(screen.queryByText(/This creates a new contract/)).not.toBeInTheDocument();
+  });
+
+  it("describes the old contract's balance honestly", () => {
+    expect(keepsLine(null)).toBe("keeps any funds it holds and its history");
+    expect(keepsLine("0")).toBe("keeps its history and holds no G$");
   });
 });

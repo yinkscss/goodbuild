@@ -102,7 +102,7 @@ What exists:
 - **Server record** (`recordDeployment`): reads the receipt and transaction itself (sender must be the session wallet, creation input must start with GoodBuild's compiled bytecode), then writes the `deployments` row (migration `0004_m5_deployments`) and the addresses into `src/contracts/<Name>.ts`. Rebuilds and reverts re-apply those addresses.
 - **After a deploy:** the preview remounts when an address lands (`contractAddressKey`), the chat gets a "live at" note, and every later turn tells the agent what is deployed (`deploymentsBlock`). If no page reads any `<Name>Address`, a wiring turn is queued automatically (`contractsToWire`). A rebuild that changes a contract's ABI drops its old address until it is deployed again; a revert doesn't apply that check yet.
 - **Verification**: Sourcify v2 (both Celo chains are in its live chain list), polled after the response; Celoscan later.
-- **Deploy modal** per DESIGN_SYSTEM §4 (preview states at `/dev/preview?deploy=ready|signing|second|opcode|failed|manifest|done`).
+- **Deploy modal** per DESIGN_SYSTEM §4 (preview states at `/dev/preview?deploy=ready|replace|signing|second|opcode|failed|manifest|done`).
 - **Test G$** (`scripts/solidity/goodbuild/TestGoodDollar.sol`, 18 decimals, ERC-677 `transferAndCall`, 1,000 per wallet per day faucet) plus `pnpm deploy:test-gd`.
 
 **Needs you (nothing below could be done from this session):**

@@ -5,17 +5,15 @@ import { randomBytes } from "node:crypto";
 import { and, eq, ne } from "drizzle-orm";
 
 import { DATA_RULES_PATH, parseDataRules } from "@/lib/app-data";
-import { MANIFEST_PATH, parseManifest } from "@/lib/deploy/manifest";
 import { slugFromName, slugProblem } from "@/lib/published-host";
 import { dbAssetStore } from "@/server/agent/asset-store";
 import { hideRecordsNoLongerPublic } from "@/server/app-data/store";
 import { loadFiles } from "@/server/agent/store";
 import type { Db } from "@/server/db/client";
-import { deployments } from "@/server/db/deploy-schema";
 import { publicationFiles, publications, type Publication } from "@/server/db/publish-schema";
 import type { Project } from "@/server/db/schema";
 import { withCurrentAddresses } from "@/server/deploy/addresses";
-import { sourceKey } from "@/server/deploy/compile";
+import { contractState } from "@/server/deploy/contract-state";
 import { buildPublishedApp, PublishBuildError, type PublishedFile } from "./build";
 
 export type PublishErrorCode = "invalid_slug" | "reserved_slug" | "slug_taken" | "busy" | "disabled" | "build_failed" | "not_published";
@@ -50,17 +48,8 @@ export async function slugAvailable(db: Db, slug: string, projectId: string): Pr
  * version of the contracts doesn't count: its functions may not match this front end.
  */
 export async function undeployedContracts(db: Db, project: Pick<Project, "id" | "chainId">, files: Record<string, string>): Promise<string[]> {
-  const sources = Object.keys(files).filter((p) => p.startsWith("contracts/") && p.endsWith(".sol") && !p.startsWith("contracts/test/"));
-  if (!sources.length) return [];
-  const manifest = files[MANIFEST_PATH] ? parseManifest(files[MANIFEST_PATH]) : null;
-  const names = manifest?.ok ? manifest.manifest.contracts.map((c) => c.name) : sources.map((p) => p.slice("contracts/".length, -".sol".length));
-  const current = new Set<string>([sourceKey(files, "cancun"), sourceKey(files, "paris")]);
-  const rows = await db
-    .select({ name: deployments.contractName, sourceHash: deployments.sourceHash })
-    .from(deployments)
-    .where(and(eq(deployments.projectId, project.id), eq(deployments.chainId, project.chainId)));
-  const live = new Set(rows.filter((r) => current.has(r.sourceHash)).map((r) => r.name));
-  return names.filter((n) => !live.has(n));
+  const { names, live } = await contractState(db, project, files);
+  return names.filter((n) => !live.includes(n));
 }
 
 export interface PublishStatus {
