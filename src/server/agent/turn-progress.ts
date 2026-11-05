@@ -23,6 +23,12 @@ export interface TurnSetup {
   userMessageId: string;
   request: string;
   firstBuild: boolean;
+  /** This turn asks the plan-first questions (D32): one small call, no files, no edits. */
+  intake?: boolean;
+  /** The curated palette kept in public/index.html on this first build (D32). */
+  paletteId?: string;
+  /** They described their own colours: keep text readable after the model picks them (D32). */
+  customColours?: boolean;
   /** Project status before the turn ("building" while it runs). */
   priorStatus: string;
   assetNames: string[];

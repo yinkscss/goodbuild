@@ -1,7 +1,10 @@
 import "server-only";
 
+import { estimateTokens } from "@/lib/pricing";
+
 import type { ModelClient } from "./model";
 import { scriptedModel } from "./fake-model";
+import { looksLikeWebsite } from "./plan-intake";
 
 /**
  * Development-only stand-in for the LLM (GOODBUILD_DEMO_MODEL=1): replays a realistic
@@ -180,6 +183,62 @@ export default function App() {
 
 const DEMO_MANIFEST = `${JSON.stringify({ contracts: [{ name: "TipJar", args: { gd_: "${GOODDOLLAR}", coach_: "${DEPLOYER}", kitFund_: "${DEPLOYER}", coachShare_: 70 } }] }, null, 2)}\n`;
 
+const DEMO_SITE = `import { Mail, Sparkles } from "lucide-react";
+import { Button } from "./components/ui/button";
+import { Card, CardContent } from "./components/ui/card";
+
+export default function App() {
+  return (
+    <main className="mx-auto grid max-w-3xl gap-6 p-4 sm:p-8">
+      <p className="flex items-center gap-2 font-semibold"><Sparkles className="size-5 text-accent" /> Ada's Kitchen</p>
+      <h1 className="text-3xl font-semibold tracking-tight">Home-cooked jollof, delivered across Yaba</h1>
+      <p className="text-muted-foreground">Order by Thursday for weekend delivery. Small batches, made fresh.</p>
+      <Card><CardContent className="grid gap-3 pt-5">
+        <p className="font-medium">This week's menu</p>
+        <p className="text-sm text-muted-foreground">Smoky party jollof, peppered chicken and fried plantain.</p>
+        <Button variant="accent"><Mail className="size-4" /> Get in touch</Button>
+      </CardContent></Card>
+    </main>
+  );
+}
+`;
+
+/** The person's request inside a context message, or the message itself. */
+function requestText(content: unknown): string {
+  const text = typeof content === "string" ? content : Array.isArray(content) ? content.map((p: { text?: string }) => p.text ?? "").join("\n") : "";
+  return text.split("User request:\n").at(-1) ?? "";
+}
+
+/** Questions that fit the request, the way the real model is asked to write them. */
+function demoQuestions(request: string) {
+  const choice = (question: string, label: string, options: string[], multiple = false) => ({
+    question,
+    label,
+    multiple,
+    options: options.map((text, i) => ({ label: text, ...(i === 0 ? { recommended: true } : {}) })),
+  });
+  if (looksLikeWebsite(request)) {
+    return {
+      summary: "A simple website for what you described.",
+      recommended_palette: "sunrise",
+      questions: [
+        choice("What's the main thing visitors should do?", "Main action", ["Get in touch", "See what you offer", "Sign up for updates"]),
+        choice("Which sections do you want?", "Sections", ["About you", "What you offer", "Photos", "Contact details"], true),
+        choice("How should it sound?", "Tone", ["Friendly and simple", "Professional", "Bold and exciting"]),
+      ],
+    };
+  }
+  return {
+    summary: "An app where supporters send money and it's shared out the way you choose.",
+    recommended_palette: "forest",
+    questions: [
+      choice("What should people be able to do?", "People can", ["Send money", "Leave a short message", "See who has given", "Withdraw their own money"], true),
+      choice("Who can take the money out?", "Who takes it out", ["It goes straight to who it's for", "Only me", "Everyone votes on it"]),
+      choice("Should there be a limit on how much someone can send?", "Limit", ["No limit", "A small minimum", "A maximum per person"]),
+    ],
+  };
+}
+
 export function demoModel(): ModelClient {
   if (process.env.NODE_ENV === "production" && process.env.GOODBUILD_DEMO_MODEL_IN_PROD !== "true") {
     throw new Error("The demo model is for development only.");
@@ -192,6 +251,28 @@ export function demoModel(): ModelClient {
       const afterFix = req.messages.some((m) => m.role === "user" && String(m.content).startsWith("GoodBuild's checks failed"));
       const hasToolResults = req.messages.some((m) => m.role === "tool");
       const planMode = !(req.tools ?? []).some((t) => t.type === "function" && t.function.name === "create_file");
+      const asking = (req.tools ?? []).some((t) => t.type === "function" && t.function.name === "ask_questions");
+      // Plan first (D32). Usage is counted from what this call really sends and returns, so the
+      // price the chat shows comes from the normal token and pricing code.
+      if (asking) {
+        const args = demoQuestions(String(req.messages.at(-1)?.content ?? ""));
+        const sent = req.messages.reduce((n, m) => n + String(m.content ?? "").length, 0) + JSON.stringify(req.tools).length;
+        return scriptedModel([
+          {
+            text: "Good idea. A few quick questions so I build the right thing.",
+            tools: [{ name: "ask_questions", args }],
+            usage: { input: estimateTokens(sent), output: estimateTokens(JSON.stringify(args).length + 60) },
+          },
+        ]).client.stream(req);
+      }
+      // A plain website (D20) gets a page and no contract.
+      if (!planMode && req.messages.some((m) => m.role === "user" && looksLikeWebsite(requestText(m.content)))) {
+        return scriptedModel(
+          hasToolResults
+            ? [{ text: "Built your page: a clear headline, what you offer and a way to get in touch, in the colours you picked.", usage: { input: 8_000, output: 40 } }]
+            : [{ tools: [{ name: "set_plan", args: { summary: "One page", steps: ["Build the page"] } }, { name: "create_file", args: { path: "src/App.tsx", content: DEMO_SITE } }], usage: { input: 8_000, output: 500 } }],
+        ).client.stream(req);
+      }
       if (planMode) {
         return scriptedModel([
           {

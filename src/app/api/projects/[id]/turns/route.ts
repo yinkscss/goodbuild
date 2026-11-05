@@ -7,6 +7,7 @@ import { checkAiAllowance } from "@/server/credits/cap";
 import { getDb } from "@/server/db/client";
 import { kickWorker } from "@/server/jobs";
 import { enqueueTurn } from "@/server/jobs/jobs";
+import { shouldPlanFirst } from "@/server/agent/plan-first";
 import { getOwnedProject } from "@/server/projects";
 
 const body = z
@@ -14,6 +15,8 @@ const body = z
     mode: z.enum(["build", "plan"]).default("build"),
     prompt: z.string().trim().min(1).max(PROMPT_MAX_LENGTH).optional(),
     userMessageId: z.string().uuid().optional(),
+    /** "Skip, just build it" while the questions are still being written. */
+    skipPlan: z.boolean().optional(),
   })
   .refine((b) => b.prompt || b.userMessageId, { message: "prompt or userMessageId is required" });
 
@@ -37,7 +40,10 @@ export async function POST(request: Request, ctx: RouteContext<"/api/projects/[i
     }
     const allowance = await checkAiAllowance(db, { userId: session.user.id, projectId: id });
     if (!allowance.allowed) return NextResponse.json({ error: allowance.reason, message: allowance.message }, { status: 402 });
-    const job = await enqueueTurn(db, { projectId: id, userId: session.user.id, ...parsed.data });
+    const { skipPlan, mode, prompt, userMessageId } = parsed.data;
+    // First send plans first (D32), whichever screen it came from: the server decides, not the client.
+    const intake = await shouldPlanFirst(db, { projectId: id, userId: session.user.id, prompt, skipPlan });
+    const job = await enqueueTurn(db, { projectId: id, userId: session.user.id, mode: intake ? "plan" : mode, prompt, userMessageId, intake });
     kickWorker();
     return NextResponse.json({ jobId: job.id, messageId: job.userMessageId, status: job.status }, { status: 202 });
   } catch (error) {

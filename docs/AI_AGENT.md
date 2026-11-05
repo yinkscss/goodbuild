@@ -51,6 +51,7 @@ flowchart TD
 - **Select-to-edit:** click element(s) in the preview → attaches component file + line + DOM snippet to the prompt. Lovable does this via its preview toolbar (select elements, inline text edit, annotations) ([docs](https://docs.lovable.dev/features/preview-toolbar)). Implementation: Babel/Vite-style plugin adds `data-gb-src="file:line"` to JSX in Sandpack; an iframe script reports clicks via postMessage. Inline text edits can be applied without a model call.
 - **Checkpoints per prompt:** each agent turn = one version (file snapshot/diff in DB). Lovable saves a version per change with revert ([summary](https://aliteq.com/undo-ai-changes)); Cursor checkpoints restore files but not chat and are not a substitute for git (same source). Our revert restores files; chat stays and logs "reverted to v12". **Revert never touches deployed contracts** (show this clearly).
 - **Branch:** "fork from this version" creates a new project branch (like Lovable Remix). Later: export to GitHub.
+- **Plan first (D32):** a project's first message gets a few plain questions as cards, a palette choice and a summary with Start building, then builds with those answers in its context. One cheap call, no files. See `plan-intake.ts`, `plan-first.ts`, `src/lib/palettes.ts` and `plan-card.tsx`.
 - **Plan mode vs build mode:** plan mode answers and drafts a plan but never edits files (Lovable glossary: [docs](https://docs.lovable.dev/glossary)); build mode executes. Follow-ups while running are queued on the server and run in order (P18); Stop cancels them, and they stay in the chat to resend.
 - Chat history stored per project (D8).
 
@@ -99,7 +100,7 @@ Q13–Q16 in [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md).
   - A reload replays the events from the start. After a resume, a `snapshot` event replaces the half-finished view.
   - `POST /api/projects/[id]/turns/[jobId]/stop` stops the turn.
   - The turn runs and persists whether or not any browser is watching.
-- **Offline demo:** `GOODBUILD_DEMO_MODEL=1` replays a scripted tip-jar build (development only).
+- **Offline demo:** `GOODBUILD_DEMO_MODEL=1` asks plan-first questions (website ones for a website), then replays a scripted tip-jar build or a one-page site (development only).
 
 ## Project names
 On a project's first build, a cheap call with no thinking (`nameProject`, `src/server/agent/project-name.ts`) gives it a short name, numbered if the owner already has one like it. It runs beside the build and counts as usage. If it fails or the reply isn't a name, the name made from the prompt stays.

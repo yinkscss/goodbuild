@@ -56,6 +56,11 @@ export interface ModelRequest {
   tools?: ToolSpec[];
   maxTokens: number;
   signal?: AbortSignal;
+  /**
+   * Turn off DeepSeek's thinking, for short answers on a tight output limit. With it on,
+   * deepseek-flash spent all of 500, 2,500 and 6,000 output tokens on reasoning (HARNESS.md).
+   */
+  noThinking?: boolean;
 }
 
 /** Streaming chat with tool calls. Implemented over the Vercel AI SDK, or scripted in tests. */
@@ -99,6 +104,7 @@ export function aiSdkClient(models?: Record<ModelTier, LanguageModel>): ModelCli
           maxOutputTokens: req.maxTokens,
           maxRetries: 1,
           abortSignal: req.signal,
+          ...(req.noThinking ? { providerOptions: { deepseek: { thinking: { type: "disabled" } } } } : {}),
         });
       } catch (error) {
         throw new ModelUnavailableError(describe(error, tier));

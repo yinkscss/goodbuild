@@ -20,6 +20,9 @@ Written 4 Nov 2026 at the end of the first build session (claude.ai), for whoeve
 - Whether the owner's wallet is exempt from the cap, and a wallet already verified with GoodDollar for testing.
 - Whether GoodDollar requires approval for third-party use of face verification. Its docs don't say.
 
+### Plan first (D32)
+A project's first message now asks questions before building. The chat no longer shows the build log or file chips. Tried with the demo model only: real model question quality is **UNVERIFIED**, because no real provider was called.
+
 ### M5 gaps
 **Wrong today:**
 - The deploy success screen says addresses are in the Contract tab, but that tab doesn't show them.
@@ -166,7 +169,7 @@ Throwaway wallet for live deploy tests, kept on purpose: `0x80fB54faA246dd4E75A0
 - Commit trailers used so far: `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 
 ## Testing without real accounts
-- `GOODBUILD_DEMO_MODEL=1` replays a scripted G$ tip-jar build (development only).
+- `GOODBUILD_DEMO_MODEL=1` asks plan-first questions, then replays a scripted G$ tip-jar build, or a one-page site for a website prompt (development only).
 - `node scripts/demo-session.mjs [--seed]` signs in a throwaway wallet against a running server and prints the session cookie, so you can test without Magic.
 - `pnpm smoke:auth` runs 14 end-to-end sign-in checks against a running server (`BASE_URL`).
 - Production-mode local runs need `SESSION_SECRET`, `APP_DOMAIN` and `ALLOW_PGLITE=true` (or a `DATABASE_URL`).

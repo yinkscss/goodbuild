@@ -43,6 +43,8 @@ export function applyTurnEvent(turn: LiveTurn, e: TurnEvent): LiveTurn {
       return { ...turn, record: { ...r, plan: { summary: e.summary, steps: e.steps } } };
     case "suggestions":
       return { ...turn, record: { ...r, suggestions: e.items } };
+    case "questions":
+      return { ...turn, record: { ...r, intake: e.intake } };
     case "step":
       return { ...turn, record: { ...r, steps: upsertStep(r.steps, e.step) } };
     case "log":
