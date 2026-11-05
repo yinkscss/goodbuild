@@ -70,7 +70,7 @@ export function usePublish(projectId: string, version: number, modalOpen: boolea
     [url],
   );
 
-  return { info, publish, unpublish, checkSlug };
+  return { projectId, info, publish, unpublish, checkSlug };
 }
 
 export type Publish = ReturnType<typeof usePublish>;

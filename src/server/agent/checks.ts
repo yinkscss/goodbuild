@@ -6,6 +6,7 @@ import ts from "typescript";
 
 import * as Lucide from "lucide-react";
 
+import { COLLECTION_NAME, DATA_PATH_PREFIX, DATA_RULES_PATH, parseDataRules } from "@/lib/app-data";
 import { MANIFEST_PATH, parseManifest, planManifest } from "@/lib/deploy/manifest";
 
 import { assetRefs } from "./assets";
@@ -449,6 +450,7 @@ export function checkApp(files: Record<string, string>, opts: { assets?: string[
   if (!files["src/App.tsx"]) errors.push({ file: "src/App.tsx", message: "src/App.tsx is missing (it's the app entry).", source: "paths" });
   if (opts.assets) errors.push(...assetRefIssues(files, opts.assets));
   errors.push(...lucideIssues(files));
+  errors.push(...dataIssues(files));
   return { ok: errors.length === 0, errors, warnings: [], contracts: [] };
 }
 
@@ -479,6 +481,33 @@ export function lucideIssues(files: Record<string, string>): CheckIssue[] {
           source: "imports",
         });
       }
+    }
+  }
+  return issues;
+}
+
+const HOSTED_BACKENDS = /\b(?:[a-z0-9-]+\.)*(?:firebaseio\.com|firebaseapp\.com|firestore\.googleapis\.com|supabase\.co|mongodb\.net|airtable\.com|sheetdb\.io|formspree\.io|getform\.io|web3forms\.com|jsonbin\.io|pantry\.cloud)\b/;
+const OWN_ROUTE_FETCH = /\b(?:fetch|axios(?:\.[a-z]+)?)\(\s*[`"'](\/(?!assets\/)[^`"']*)/g;
+const COLLECTION_CALL = /\b(?:collection|useCollection)(?:<[^>()]*>)?\(\s*["'`]([^"'`]*)["'`]/g;
+
+/**
+ * Saved data goes through src/lib/db.ts (docs/APP_DATA.md). A static app has no server of its own, so
+ * a call to its own "/api/..." route only fails once published, and a hosted database sends visitors' data elsewhere.
+ */
+export function dataIssues(files: Record<string, string>): CheckIssue[] {
+  const issues: CheckIssue[] = parseDataRules(files[DATA_RULES_PATH]).issues.map((message) => ({ file: DATA_RULES_PATH, message, source: "paths" }));
+  for (const [file, content] of Object.entries(files)) {
+    if (!/\.(tsx?|jsx?)$/.test(file) || file === "src/lib/db.ts" || file === "src/lib/useDb.ts" || file.startsWith(PLATFORM_DIR)) continue;
+    const lineOf = (index: number) => content.slice(0, index).split("\n").length;
+    const hosted = HOSTED_BACKENDS.exec(content);
+    if (hosted) issues.push({ file, line: lineOf(hosted.index), message: `Don't send app data to ${hosted[0]}. Save it with src/lib/db.ts (load the app-data guide).`, source: "imports" });
+    const raw = content.indexOf(DATA_PATH_PREFIX);
+    if (raw >= 0) issues.push({ file, line: lineOf(raw), message: "Use the helpers in src/lib/db.ts instead of calling the data API directly.", source: "imports" });
+    for (const m of content.matchAll(OWN_ROUTE_FETCH)) {
+      issues.push({ file, line: lineOf(m.index), message: `This app has no server, so ${m[1]} won't exist once it's published. Save and read data with src/lib/db.ts (load the app-data guide).`, source: "imports" });
+    }
+    for (const m of content.matchAll(COLLECTION_CALL)) {
+      if (!COLLECTION_NAME.test(m[1])) issues.push({ file, line: lineOf(m.index), message: `Collection name "${m[1]}" isn't valid: use lowercase letters, numbers, - and _, starting with a letter.`, source: "imports" });
     }
   }
   return issues;

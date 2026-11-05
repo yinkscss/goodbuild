@@ -302,7 +302,7 @@ describe("sign-in", () => {
 
   it("a signature for another domain is refused: another app, the main site, a phishing site", async () => {
     const carol = privateKeyToAccount(generatePrivateKey());
-    for (const domain of [Y, MAIN, "goodbuildit.xyz", "evil.example", "x-app.localhost", "x-app.localhost:3000.evil.example"]) {
+    for (const domain of [Y, MAIN, "goodbuildit.xyz", "evil.example", "x-app.localhost", "x-app.localhost.evil.example"]) {
       const message = siwe(carol, domain, await nonceFor(X), { uri: `http://${X}` });
       const res = await call(X, "POST", `${V1}/session`, { headers: page(X), json: { message, signature: await carol.signMessage({ message }) } });
       expect(res.status, domain).toBe(401);
@@ -619,7 +619,7 @@ describe("quotas and limits", () => {
     limits.signInsPerIpPerMinute = 1;
     const check = vi.fn(async () => false);
     deps = { ...deps, verifyContractSignature: check };
-    const message = siwe(alice, X, await nonceFor(Y));
+    const message = siwe(alice, X, ((await (await call(X, "GET", `${V1}/session/nonce`, { headers: from("4.4.4.4") })).json()) as { nonce: string }).nonce);
     await call(X, "POST", `${V1}/session`, { headers: from("3.3.3.3"), json: { message, signature: "0x12" } });
     expect((await call(X, "POST", `${V1}/session`, { headers: from("3.3.3.3"), json: { message, signature: "0x12" } })).status).toBe(429);
   });

@@ -7,3 +7,5 @@ const prefix = process.env.NODE_ENV === "production" ? "__Host-" : "";
 
 export const SESSION_COOKIE = `${prefix}gb_session`;
 export const NONCE_COOKIE = `${prefix}gb_siwe_nonce`;
+/** A visitor's session in one published app (docs/APP_DATA.md). Never the same cookie as SESSION_COOKIE. */
+export const APP_SESSION_COOKIE = `${prefix}gbapp_session`;

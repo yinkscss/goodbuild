@@ -7,6 +7,7 @@ import { useDeployAction } from "@/components/deploy/deploy-trigger";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { AppDataRow } from "./app-data-row";
 import type { Publish, PublishFailure } from "./use-publish";
 
 type SlugCheck = "idle" | "checking" | "free" | "taken" | "reserved" | "invalid";
@@ -200,6 +201,7 @@ function PublishBody({
                   <span className="rounded-full bg-warning/10 px-2 py-0.5 text-[11px] font-semibold text-warning">Unaudited</span>
                 </dd>
               </div>
+              <AppDataRow projectId={publish.projectId} />
             </dl>
 
             {undeployed.length > 0 && (
