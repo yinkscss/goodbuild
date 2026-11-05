@@ -97,6 +97,17 @@ function luminance(hex: string): number | null {
 
 const THEME_BLOCK = /@theme\s*\{([\s\S]*?)\}/;
 
+/**
+ * The page's own colours, in the stylesheet as well as on <body>: the preview's bundler keeps only
+ * what's inside <body>, not its classes. Light themes hide that, but on a dark one everything that
+ * inherits its text colour went black on navy (seen in the browser on Midnight).
+ */
+const PAGE_COLOURS = `@layer base {
+        body {
+          @apply bg-muted text-foreground;
+        }
+      }`;
+
 function setToken(theme: string, name: string, value: string): string {
   const line = new RegExp(`--color-${name}\\s*:[^;]*;`);
   return line.test(theme) ? theme.replace(line, `--color-${name}: ${value};`) : `${theme.trimEnd()}\n        --color-${name}: ${value};\n      `;
@@ -108,8 +119,9 @@ function setToken(theme: string, name: string, value: string): string {
  */
 export function applyPalette(html: string, palette: Palette): string {
   const write = (theme: string) => Object.entries(palette.tokens).reduce((t, [name, value]) => setToken(t, name, value), theme);
-  if (THEME_BLOCK.test(html)) return html.replace(THEME_BLOCK, (_, theme: string) => `@theme {${write(theme)}}`);
-  const block = `<style type="text/tailwindcss">\n      @theme {${write("\n")}}\n    </style>\n  `;
+  const page = html.includes("@apply bg-muted text-foreground") ? "" : `\n      ${PAGE_COLOURS}`;
+  if (THEME_BLOCK.test(html)) return html.replace(THEME_BLOCK, (_, theme: string) => `@theme {${write(theme)}}${page}`);
+  const block = `<style type="text/tailwindcss">\n      @theme {${write("\n")}}\n      ${PAGE_COLOURS}\n    </style>\n  `;
   return /<\/head>/i.test(html) ? html.replace(/<\/head>/i, `${block}</head>`) : `${block}${html}`;
 }
 

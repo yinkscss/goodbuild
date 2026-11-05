@@ -19,7 +19,7 @@ const OPTION_CLASS =
   "flex w-full items-start gap-3 rounded-block bg-surface p-3 text-left outline-none transition-colors duration-200 ease-gb hover:bg-tint focus-visible:shadow-focus";
 
 function Recommended() {
-  return <span className="rounded-full bg-tint px-2 py-0.5 text-[11px] font-medium whitespace-nowrap text-violet">Recommended</span>;
+  return <span className="rounded-full bg-violet-soft px-2 py-0.5 text-[11px] font-medium whitespace-nowrap text-violet">Recommended</span>;
 }
 
 function Tick({ on }: { on: boolean }) {
@@ -51,7 +51,12 @@ function PaletteOption({ palette, recommended, selected, onClick }: { palette: P
   const t = palette.tokens;
   return (
     <button type="button" className={cn("flex w-full flex-col gap-2 rounded-block bg-surface p-2 text-left outline-none transition-colors duration-200 ease-gb hover:bg-tint focus-visible:shadow-focus", selected && "bg-tint")} onClick={onClick} aria-pressed={selected}>
-      <span aria-hidden className="block rounded-[12px] p-2" style={{ background: t.muted, boxShadow: `inset 0 0 0 1px ${t.border}` }}>
+      <span aria-hidden className="block overflow-hidden rounded-[12px]" style={{ background: t.muted, boxShadow: `inset 0 0 0 1px ${t.border}` }}>
+        <span className="flex h-2">
+          <span className="flex-1" style={{ background: t.primary }} />
+          <span className="flex-1" style={{ background: t.accent }} />
+        </span>
+        <span className="block p-2">
         <span className="block rounded-lg p-2" style={{ background: t.card, boxShadow: `inset 0 0 0 1px ${t.border}` }}>
           <span className="block text-sm leading-tight font-semibold" style={{ color: t.foreground }}>
             Aa
@@ -62,6 +67,7 @@ function PaletteOption({ palette, recommended, selected, onClick }: { palette: P
           <span className="mt-1.5 block w-fit rounded-md px-2 py-0.5 text-[11px] font-medium" style={{ background: t.accent, color: t["accent-foreground"] }}>
             Button
           </span>
+        </span>
         </span>
       </span>
       <span className="flex items-start gap-1.5 px-1">

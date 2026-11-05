@@ -33,8 +33,8 @@ function StepDot({ status }: { status: Step["status"] }) {
   );
 }
 
-/** Step rows (DESIGN_SYSTEM §4). They collapse once a turn is over, unless a step failed. */
-export function StepRows({ steps, live = true }: { steps: Step[]; live?: boolean }) {
+/** Step rows (DESIGN_SYSTEM §4). They fold away once a turn has ended well. */
+export function StepRows({ steps, open = true }: { steps: Step[]; open?: boolean }) {
   if (!steps.length) return null;
   const rows = (
     <ol className="mt-3 rounded-block bg-[#FAFAFA] px-4 py-1" aria-label="Build steps">
@@ -49,7 +49,7 @@ export function StepRows({ steps, live = true }: { steps: Step[]; live?: boolean
       ))}
     </ol>
   );
-  if (live || steps.some((s) => s.status === "error")) return rows;
+  if (open) return rows;
   return (
     <details className="mt-3 text-xs text-grey-600">
       <summary className="w-fit cursor-pointer rounded-full outline-none select-none focus-visible:shadow-focus">
@@ -233,7 +233,7 @@ export function TurnView({
           Skip, just build it
         </Button>
       )}
-      <StepRows steps={record.steps} live={live} />
+      <StepRows steps={record.steps} open={live || record.status === "needs_fix" || record.status === "error" || record.status === "stopped"} />
       {record.intake && <PlanCard intake={record.intake} actions={plan} />}
       {!live && record.status === "ready" && <DeployCard record={record} />}
       {showError && <TurnError record={record} onFix={onFix} disabled={fixDisabled} />}

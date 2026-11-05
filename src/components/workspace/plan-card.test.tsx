@@ -119,13 +119,16 @@ describe("TurnView", () => {
     const { rerender, container } = render(view({ ...record }, true));
     expect(screen.getByText("Writing App.tsx")).toBeTruthy();
     expect(container.querySelector("details")).toBeNull();
-    rerender(view({ ...record }, false));
+    // A step that auto-fix recovered from doesn't keep the list open.
+    rerender(view({ ...record, status: "ready", steps: [...record.steps, { id: "b", label: "Compiling", status: "error" }] }, false));
     expect(container.querySelector("details")).not.toBeNull();
-    expect(screen.getByText("1 step done")).toBeTruthy();
+    expect(screen.getByText("2 steps done")).toBeTruthy();
   });
 
   it("the error card keeps its expandable logs", () => {
-    render(view({ ...record, status: "error", error: "It broke" }));
+    const { container } = render(view({ ...record, status: "error", error: "It broke" }));
+    expect(screen.getByText("Writing App.tsx").closest("details")).toBeNull();
+    expect(container.querySelector("ol")).not.toBeNull();
     expect(screen.getByText("Logs")).toBeTruthy();
     expect(screen.getByRole("alert").textContent).toContain("wrote src/App.tsx");
   });

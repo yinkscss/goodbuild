@@ -53,6 +53,9 @@ describe("palettes", () => {
     expect(readTheme(out).accent).toBe(PALETTES[0].tokens.accent);
     const partial = applyPalette("<style>@theme { --color-accent: #000; --font-sans: Inter; }</style>", PALETTES[0]);
     expect(readTheme(partial).primary).toBe(PALETTES[0].tokens.primary);
+    // A rewritten page gets the page colours back, once, because the preview ignores <body> classes.
+    expect(partial).toContain("@apply bg-muted text-foreground");
+    expect(applyPalette(partial, PALETTES[0]).match(/@apply bg-muted/g)).toHaveLength(1);
     expect(partial).toContain("--font-sans: Inter");
   });
 
