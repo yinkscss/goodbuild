@@ -1,0 +1,13 @@
+{
+  "name": "E3c: five new single-file edits on the E3 project (36+ files, over budget), run through the P18 background runner",
+  "project": "b9e834f8-0622-447d-933d-d704ae841a04",
+  "cookie": "SET_FROM_E5_RUN_OUTPUT",
+  "targets": ["src/pages/About.tsx", "src/components/StatsRow.tsx", "src/pages/Events.tsx", "src/components/TipForm.tsx", "src/pages/NotFound.tsx"],
+  "turns": [
+    "On the About page, reword the first FAQ answer so it sounds friendlier.",
+    "In the stats row, rename the 'Tippers' label to 'Supporters'.",
+    "On the Events page, show each meetup's time in bold.",
+    "In the tip form, change the message placeholder to 'Say thanks to the club'.",
+    "On the 404 page, change the headline to 'This page wandered off'."
+  ]
+}

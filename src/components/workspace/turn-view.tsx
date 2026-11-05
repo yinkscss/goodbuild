@@ -281,6 +281,12 @@ export function TurnView({
       {!live && <DiffChips changes={record.changes} />}
       {!live && record.status === "ready" && <DeployCard record={record} />}
       {showError && <TurnError record={record} onFix={onFix} disabled={fixDisabled} />}
+      {!live && record.status === "stopped" && (
+        <p className="mt-3 flex items-center gap-2 text-xs text-grey-600" role="status">
+          <span className="size-2 shrink-0 rounded-full bg-grey-400" aria-hidden />
+          Stopped. This build&apos;s edits were discarded; your files are as they were.
+        </p>
+      )}
       {!live && <VisualCheckNote record={record} checking={checking} failed={checkFailed} onFix={onSuggest} disabled={fixDisabled} />}
       {!live && onSuggest && record.status !== "error" && record.suggestions?.length ? (
         <SuggestionChips items={record.suggestions} onPick={onSuggest} disabled={fixDisabled} />

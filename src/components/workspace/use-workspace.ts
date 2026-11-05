@@ -4,24 +4,20 @@ import * as React from "react";
 
 import { applyTurnEvent, emptyTurn, type LiveTurn } from "@/lib/live-turn";
 import { AUTO_FIX_LEAD, previewFixPrompt, shouldAutoFix, type PreviewError } from "@/lib/preview-errors";
-import { createSseParser } from "@/lib/sse";
-import type { TurnEvent, TurnMode } from "@/lib/turn-types";
+import { backoffMs, createJobStreamParser } from "@/lib/job-stream";
+import type { TurnMode } from "@/lib/turn-types";
 import type { AssetInfo, AssetKind } from "@/server/agent/assets";
 import type { WorkspaceState } from "@/server/workspace-state";
-
-export interface QueuedPrompt {
-  id: string;
-  prompt: string;
-  mode: TurnMode;
-}
 
 export interface UseWorkspace {
   state: WorkspaceState;
   live: LiveTurn | null;
-  queue: QueuedPrompt[];
+  /** A turn is running or queued for this project (on the server, P18). */
   running: boolean;
-  /** Send a prompt now, or queue it if a turn is running (AI_AGENT.md §4). */
+  /** Queue a prompt on the server; it runs after any turn ahead of it (AI_AGENT.md §4). */
   send: (prompt: string, mode: TurnMode) => void;
+  /** Stop the running turn and cancel queued follow-ups. */
+  stop: () => Promise<void>;
   revert: (version: number) => Promise<void>;
   refresh: () => Promise<void>;
   error: string | null;
@@ -91,9 +87,7 @@ export function useAssetDataUrls(projectId: string, assets: Array<AssetInfo & { 
 export function useWorkspace(initial: WorkspaceState): UseWorkspace {
   const [state, setState] = React.useState(initial);
   const [live, setLive] = React.useState<LiveTurn | null>(null);
-  const [queue, setQueue] = React.useState<QueuedPrompt[]>([]);
   const [error, setError] = React.useState<string | null>(null);
-  const runningRef = React.useRef(false);
   const projectId = initial.project.id;
   const [autoFixVersion, setAutoFixVersion] = React.useState<number | null>(null);
   const [checkVersion, setCheckVersion] = React.useState<number | null>(null);
@@ -105,100 +99,126 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
     if (res.ok) setState((await res.json()) as WorkspaceState);
   }, [projectId]);
 
-  const run = React.useCallback(
+  /**
+   * Queue a turn on the server (P18). The worker runs it; this browser only watches. Follow-ups
+   * queue behind a running turn on the server, so they survive a reload or a closed tab.
+   */
+  const enqueue = React.useCallback(
     async (body: { mode: TurnMode; prompt?: string; userMessageId?: string }) => {
-      if (runningRef.current) return;
-      runningRef.current = true;
       setError(null);
       setCheckFailed(false);
-      // Show the user's prompt immediately (the server stores it as part of the turn).
       if (body.prompt) {
         const prompt = body.prompt;
+        // Show the prompt at once; the refresh below replaces it with the saved message.
         setState((s) => ({
           ...s,
-          messages: [
-            ...s.messages,
-            { id: `local-${Date.now()}`, role: "user", content: prompt, status: "done", meta: { mode: body.mode }, createdAt: new Date().toISOString() },
-          ],
+          messages: [...s.messages, { id: `local-${Date.now()}`, role: "user", content: prompt, status: "queued", meta: { mode: body.mode }, createdAt: new Date().toISOString() }],
         }));
       }
-      let turn = emptyTurn(body.mode);
-      setLive(turn);
       try {
         const res = await fetch(`/api/projects/${projectId}/turns`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         });
-        if (!res.ok || !res.body) {
+        if (!res.ok) {
           const code = await res.json().then((b: { error?: string }) => b.error).catch(() => undefined);
-          throw new Error(code === "unauthenticated" ? "Your session ended. Sign in again." : "The build couldn't start. Try again.");
+          setError(code === "unauthenticated" ? "Your session ended. Sign in again." : "The build couldn't be queued. Try again.");
         }
-        const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
-        const parse = createSseParser<TurnEvent>();
-        for (;;) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          for (const event of parse(value)) {
-            turn = applyTurnEvent(turn, event);
-            setLive(turn);
-          }
-        }
-        if (turn.phase === "busy") setError("Another build is still running for this project. It'll show here when it finishes.");
-        // A build this browser just watched finish may get one automatic preview fix.
-        if (turn.phase === "done" && turn.record.version && !(body.prompt ?? "").startsWith(AUTO_FIX_LEAD)) setAutoFixVersion(turn.record.version);
-        // ...and one visual check of the preview (an auto-fix build is checked too).
-        if (turn.phase === "done" && turn.record.version && turn.record.status === "ready") setCheckVersion(turn.record.version);
-      } catch (e) {
-        // The turn may still be running server-side; the reload below picks it up.
-        setError(e instanceof Error ? e.message : "The connection dropped. Reloading the project.");
+      } catch {
+        setError("Couldn't reach GoodBuild. Check your connection and try again.");
       } finally {
         await refresh().catch(() => undefined);
-        setLive(null);
-        runningRef.current = false;
       }
     },
     [projectId, refresh],
   );
 
+  // Sends go out one at a time, so the server queues prompts in the order they were sent
+  // (measured: three quick sends raced and were queued out of order).
+  const sending = React.useRef<Promise<void>>(Promise.resolve());
   const send = React.useCallback(
     (prompt: string, mode: TurnMode) => {
       const trimmed = prompt.trim();
-      if (!trimmed) return;
-      if (runningRef.current || state.project.building) {
-        setQueue((q) => [...q, { id: `${Date.now()}-${q.length}`, prompt: trimmed, mode }]);
-        return;
-      }
-      void run({ mode, prompt: trimmed });
+      if (trimmed) sending.current = sending.current.then(() => enqueue({ mode, prompt: trimmed }));
     },
-    [run, state.project.building],
+    [enqueue],
   );
 
-  // Run the next queued follow-up once the current turn finishes.
-  React.useEffect(() => {
-    if (live || state.project.building || !queue.length) return;
-    const [next, ...rest] = queue;
-    const t = setTimeout(() => {
-      setQueue(rest);
-      void run({ mode: next.mode, prompt: next.prompt });
-    }, 0);
-    return () => clearTimeout(t);
-  }, [live, queue, run, state.project.building]);
+  /** Watch one job's events: replay from the start, reconnect with ?after= and backoff. */
+  const attached = React.useRef<string | null>(null);
+  const attach = React.useCallback(
+    async (jobId: string, mode: TurnMode, prompt: string) => {
+      if (attached.current === jobId) return;
+      attached.current = jobId;
+      let turn = emptyTurn(mode);
+      setLive(turn);
+      let after = -1;
+      let failures = 0;
+      let ended = false;
+      while (!ended && attached.current === jobId) {
+        try {
+          const res = await fetch(`/api/projects/${projectId}/turns/${jobId}/events?after=${after}`, { cache: "no-store" });
+          if (res.status === 404) break;
+          if (!res.ok || !res.body) throw new Error(String(res.status));
+          failures = 0;
+          const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+          const parse = createJobStreamParser();
+          for (;;) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            for (const m of parse(value)) {
+              if (m.id !== null) after = m.id;
+              if (m.event === "end") ended = true;
+              else if (m.data) {
+                turn = applyTurnEvent(turn, m.data);
+                setLive(turn);
+              }
+            }
+          }
+        } catch {
+          failures++;
+          await new Promise((r) => setTimeout(r, backoffMs(failures)));
+        }
+      }
+      if (attached.current !== jobId) return;
+      // A build this browser just watched finish may get one automatic preview fix...
+      if (turn.phase === "done" && turn.record.version && !prompt.startsWith(AUTO_FIX_LEAD)) setAutoFixVersion(turn.record.version);
+      // ...and one visual check of the preview (an auto-fix build is checked too).
+      if (turn.phase === "done" && turn.record.version && turn.record.status === "ready") setCheckVersion(turn.record.version);
+      await refresh().catch(() => undefined);
+      setLive(null);
+      attached.current = null;
+    },
+    [projectId, refresh],
+  );
 
-  // First visit after the landing page: answer the queued prompt automatically.
+  // Watch the oldest active job (running, or queued next). After a reload this replays the
+  // events so far, so the build continues on screen where it was.
+  const head = state.jobs[0];
+  React.useEffect(() => {
+    if (!head || attached.current) return;
+    const prompt = state.messages.find((m) => m.id === head.userMessageId)?.content ?? "";
+    void attach(head.id, head.mode as TurnMode, prompt);
+  }, [head, attach, state.messages]);
+
+  // First visit after the landing page: queue the waiting prompt automatically.
+  const autoQueued = React.useRef(false);
   React.useEffect(() => {
     const last = state.messages.at(-1);
-    if (live || state.project.building || !last || last.role !== "user" || last.status !== "queued") return;
-    const t = setTimeout(() => void run({ mode: "build", userMessageId: last.id }), 0);
-    return () => clearTimeout(t);
-  }, [live, run, state.messages, state.project.building]);
+    if (autoQueued.current || state.jobs.length || !last || last.role !== "user" || last.status !== "queued" || last.id.startsWith("local-")) return;
+    autoQueued.current = true;
+    void enqueue({ mode: "build", userMessageId: last.id });
+  }, [enqueue, state.jobs.length, state.messages]);
 
-  // A turn running elsewhere (another tab, or a reload mid-build): poll until it ends.
-  React.useEffect(() => {
-    if (live || !state.project.building) return;
-    const t = setInterval(() => void refresh(), 2500);
-    return () => clearInterval(t);
-  }, [live, refresh, state.project.building]);
+  /** Stop the running turn and cancel queued follow-ups (they stay visible to resend). */
+  const stop = React.useCallback(async () => {
+    const job = state.jobs[0];
+    if (!job) return;
+    const res = await fetch(`/api/projects/${projectId}/turns/${job.id}/stop`, { method: "POST" }).catch(() => null);
+    if (!res?.ok) setError("Couldn't stop the build. Try again.");
+    await refresh();
+  }, [projectId, refresh, state.jobs]);
 
   const revert = React.useCallback(
     async (version: number) => {
@@ -266,11 +286,11 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
   /** The preview reported an error: fix it automatically once, if policy allows (P17). */
   const onPreviewError = React.useCallback(
     (error: PreviewError, version: number) => {
-      if (!shouldAutoFix({ error, version, eligibleVersion: autoFixVersion, running: runningRef.current })) return;
+      if (!shouldAutoFix({ error, version, eligibleVersion: autoFixVersion, running: Boolean(attached.current) || state.jobs.length > 0 })) return;
       setAutoFixVersion(null);
-      void run({ mode: "build", prompt: previewFixPrompt(error, true) });
+      void enqueue({ mode: "build", prompt: previewFixPrompt(error, true) });
     },
-    [autoFixVersion, run],
+    [autoFixVersion, enqueue, state.jobs.length],
   );
 
   /** A screenshot of the version just built: ask the server's vision check, then show the result. */
@@ -310,9 +330,9 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
     changeAssetKind,
     state,
     live,
-    queue,
-    running: Boolean(live) || state.project.building,
+    running: (Boolean(live) && live?.phase === "running") || state.jobs.length > 0,
     send,
+    stop,
     revert,
     refresh,
     error,

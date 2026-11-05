@@ -129,7 +129,7 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - Routing: `deepseek-flash` for planning and the first build pass; `claude-sonnet-5-5` for every auto-fix attempt (compile errors, guardrail and app-check failures). The fallback wrapper still retries a failed strong call on cheap.
 - Why: the first live runs cost about $0.02 on DeepSeek and $0.10 on Sonnet for a similar small contract, and both compiled clean. Claude is kept for the step where a cheap model has already failed.
 - Amendment (4 Nov 2026, decided by: user, implemented with the model.ts owner): when every failure is a contract test (P16), the first auto-fix attempt uses `TIER_FOR.testFix` (cheap). Mixed failures and any later attempt still use `TIER_FOR.fix` (strong). Why: in the RTX eval run 4, Sonnet's five fix calls cost $0.44 of $0.50, and most were test fixes. See [evals/RTX.md](evals/RTX.md). Runner: `fixTier()` in `runner.ts`.
-- **Second amendment (4 Nov 2026, proposed by Claude, NEEDS THE USER'S APPROVAL):** a compile error inside a contract test file (`contracts/test/`) also counts as a test failure, so when every failure is a test or a test compile error, the first fix attempt uses `TIER_FOR.testFix` (cheap). Mixed failures and later attempts still use `TIER_FOR.fix` (strong). Why: in HARNESS.md E5, Sonnet's fix of a test compile error was $0.20 of a $0.26 build. It is already in the code (`fixTier()` in `runner.ts`, commit 2a690fe, covered by unit tests), `TIER_FOR` in `model.ts` is unchanged, and it has not been measured live. If the user declines, remove the `solc` clause from `fixTier()`.
+- **Second amendment (proposed by Claude on 4 Nov 2026; approved by the user (Olayinka) in chat on 5 Nov 2026):** a compile error inside a contract test file (`contracts/test/`) also counts as a test failure, so when every failure is a test or a test compile error, the first fix attempt uses `TIER_FOR.testFix` (cheap). Mixed failures and later attempts still use `TIER_FOR.fix` (strong). Why: in HARNESS.md E5, Sonnet's fix of a test compile error was $0.20 of a $0.26 build. It is already in the code (`fixTier()` in `runner.ts`, commit 2a690fe, covered by unit tests), `TIER_FOR` in `model.ts` is unchanged, and it has not been measured live yet.
 - Open: whether follow-up edits (reprompts on an existing project) should use Claude. Claude recommends yes, see AI_AGENT.md. One line in `TIER_FOR` (`src/server/agent/model.ts`).
 
 ### D20. Websites and pages are in scope alongside dApps
@@ -233,6 +233,53 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
   - **Context ranking:** a short synonym list (404 and NotFound, home and index, nav and Layout or Header).
   - **Style:** no em dashes in replies (prompt line, plus `plainDashes` as a backstop).
   - **Reads of uploads:** `read_file` on an uploaded image's path returns a pointer to `/assets/<name>` instead of "missing".
+
+### P18. Background turn runner: jobs, leases, resumable turns, Stop (proposed)
+- Date: 5 Nov 2026 · Design agreed with the user (Olayinka), who decided resume (option C) and Stop (cancels queued follow-ups); built by Claude · Code: `src/server/jobs/`, `src/server/agent/turn-progress.ts`, `runner.ts`
+- **Jobs.** `POST /turns` saves the prompt as a queued user message and inserts a `turn_jobs` row; it returns the job id.
+  - A worker claims the oldest runnable job with `FOR UPDATE SKIP LOCKED`.
+  - A partial unique index allows one running job per project; a race on it counts as "not claimed".
+  - A unique index on `user_message_id` stops the same prompt being queued twice (landing page auto-run, two tabs).
+  - Follow-ups queue on the server in send order. The client sends one at a time: three quick sends raced and were queued out of order in the live test.
+- **The lease is the only lock.**
+  - The lease is renewed every 5 s and expires 30 s after the last renewal.
+  - Claiming sets `projects.turnStartedAt`, so the revert route and the UI keep working. The final commit clears it.
+  - `claimTurn` lost its 10-minute stale expiry; it remains only for direct runs (tests).
+  - Every commit a job makes is fenced: one transaction checks `lease_owner` and `attempt` with `FOR UPDATE`. That covers creating the reply message, the memory commit, the setup save, every logged response and the final commit. A worker whose lease expired (a laptop that slept, say) can't commit beside the worker that took over. The plain setup writes before that (the user message's status, reading files) are idempotent.
+- **Resume (user decision: option C), as a replay log rather than serialised loop state.**
+  - **Setup is saved once:** the reply message, the conversation prefix (context text included, design references as asset ids), base files, asset names, contract options and the project's prior status. Setup is never redone on resume, so the memory call isn't billed twice.
+  - **Each completed model response** (text deltas, tool calls, finish reason, priced usage) goes into `turn_job_calls` in the same transaction as its `usage_events` rows.
+  - **A resumed run** rebuilds the setup and replays the logged responses through the unchanged loop, emitting nothing. Tools are pure workspace operations and checks are deterministic, so both simply run again. The model is called only after the log is used up, and a `snapshot` event then replaces the client's view.
+  - **A crash mid-stream** leaves no log row and no usage row, so that call is asked again. The provider may still have charged for the lost call, and GoodBuild bills nothing for it; M6 should account for that.
+  - **A diverged replay is detected.** Each logged response records the tier and conversation length it was made at. If a replay reaches a call where either differs (the code or a check result changed between attempts), it stops instead of feeding the response to the wrong step.
+  - **The memory call** is committed with `projects.memory` in one transaction, so a crash between them re-runs it, never bills it twice.
+  - **An unusable save** (another format version, a deleted design reference, a diverged replay) ends the job with a visible error and Retry. After 3 attempts a job ends with Retry too. The contract-test EVM uses a constant block timestamp, so checks replay deterministically.
+  - **Why replay:** serialising every local of the loop (fix attempt, round, previous issues) was error-prone, while the replay keeps the loop as the single source of truth.
+- **Final commit.** One transaction holds the checkpoint, the final message, design references marked as seen, the cleared lock and the job's end state. A job that crashed after it is finished, not run again.
+  - `markAttached` moved from the start of the turn to this commit, so a stopped, failed or retried turn attaches the image again.
+  - Step ids include the model-call number (`tool:<n>:<id>`): in the replay test, a provider reusing a tool call id overwrote an earlier step.
+- **Stop (user decision).**
+  - `POST /turns/[jobId]/stop` sets `stop_requested`; the lease renewal turns that into an `AbortController.abort()`. The signal reaches `model.stream`, and the runner checks it between rounds and before compile, tests and the final commit (solc and the test EVM can't be interrupted mid-run).
+  - Every queued follow-up of the project is cancelled. Cancelled prompts stay in the chat with Resend.
+  - Stop saves no checkpoint (edits discarded) and marks the message `stopped`. Usage already recorded stays.
+- **Events.**
+  - `turn_events` holds `(job_id, seq, event)`. The worker batches about every 200 ms and merges text deltas. The file map goes in once, at the end. An `end` marker closes the stream.
+  - `GET /turns/[jobId]/events?after=seq` streams `id:`-numbered SSE (with `connection()` outside `try`), closes every 60 s, and the client reconnects with backoff.
+  - Workspace state lists the active jobs; a reload attaches to the oldest and replays from the start. Events are deleted 2 minutes after the job ends; the message keeps the final record.
+  - A queued prompt's message moves to the moment its turn starts, so each reply sits under its prompt.
+- **Worker.** Started from `src/instrumentation.ts` (Node runtime only, skipped during `next build`, off with `GOODBUILD_INLINE_WORKER=0`) as a `globalThis` singleton that runs 3 jobs at once.
+  - `pnpm worker` runs the same worker standalone for hosting where builds shouldn't run in the web process (Q31). It is tsx plus `scripts/worker-preload.cjs`, which stubs only `server-only`, and needs `DATABASE_URL`.
+    - `--conditions=react-server` was tried first and broke it: it swaps `react` for its server build, so lucide-react's `createContext` crashed.
+    - Verified live on Postgres beside the inline worker: with four projects queued at once, the inline worker claimed three, the standalone worker claimed the fourth project's two jobs one after the other, and no project ever ran two jobs at the same time.
+    - The unique-index race (error 23505) never occurred, so that path is unit-only.
+  - Both need a long-lived Node host: a serverless function can't keep a worker alive.
+  - Dev gotcha: the singleton survives hot reload, so restart the dev server after editing `runner.ts` or `src/server/jobs/`.
+- **Measured payloads (live, Postgres):** a one-page site's setup row was 14.9 KB, and its 11 logged responses were 16 KB in all (largest 2.1 KB) with 64 batched events. The contract build in the crash test logged 19 responses. Images are never stored, only asset ids.
+- **Tests:**
+  - `src/server/jobs/jobs.test.ts` runs a build with a fix pass, crashes it after every save point in turn, and resumes. It asserts identical files, record (apart from the resume log line), usage row count and model requests.
+  - It also covers fencing, Stop with a queued follow-up, two prompts on one project, the unusable-save Retry and a tampered (diverged) replay.
+  - A design reference is tested through crash and resume (the resumed call still carries the image), completion (marked seen) and Stop (left unattached).
+  - Live results are in [evals/HARNESS.md](evals/HARNESS.md).
 
 ### P3. GoodDollar AI credits via AntSeed gateway behind LiteLLM (DEFERRED by D11)
 - Status: deferred. GoodDollar/AntSeed is an optional future provider only, revisit once GoodDollar ships its proxy/API keys.

@@ -26,8 +26,15 @@
     {
       "idx": 3,
       "version": "7",
-      "when": 1793839699248,
-      "tag": "0003_m5_deployments",
+      "when": 1793834779834,
+      "tag": "0003_public_the_liberteens",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793842586975,
+      "tag": "0004_m5_deployments",
       "breakpoints": true
     }
   ]

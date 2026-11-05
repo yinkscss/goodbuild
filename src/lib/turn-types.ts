@@ -43,7 +43,11 @@ export type TurnEvent =
       outputTokens?: number;
       cachedInputTokens?: number;
     }
-  | { type: "done"; status: "ready" | "needs_fix" | "answered"; summary: string }
+  | { type: "done"; status: "ready" | "needs_fix" | "answered" | "stopped"; summary: string }
+  /** After a resumed run replays its saved progress: the turn so far, replacing what the client had (P18). */
+  | { type: "snapshot"; text: string; record: TurnRecord }
+  /** The job is waiting in the queue behind another turn (P18). */
+  | { type: "queued"; position: number }
   | { type: "error"; message: string }
   /** Sent instead of a turn when one is already running for the project. */
   | { type: "busy" };
@@ -60,7 +64,7 @@ export interface TurnRecord {
   changes: FileChange[];
   version?: number;
   chargedMicro: number;
-  status: "ready" | "needs_fix" | "answered" | "error";
+  status: "ready" | "needs_fix" | "answered" | "error" | "stopped";
   checks?: { errors: number; warnings: number };
   contracts?: Array<{ name: string; file: string; bytecodeBytes: number }>;
   error?: string;

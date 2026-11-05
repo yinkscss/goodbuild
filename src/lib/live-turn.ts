@@ -57,6 +57,8 @@ export function applyTurnEvent(turn: LiveTurn, e: TurnEvent): LiveTurn {
       return { ...turn, record: { ...r, version: e.number } };
     case "usage":
       return { ...turn, record: { ...r, chargedMicro: e.totalChargedMicro } };
+    case "snapshot":
+      return { ...turn, text: e.text, record: e.record };
     case "done":
       return { ...turn, phase: "done", record: { ...r, status: e.status } };
     case "error":

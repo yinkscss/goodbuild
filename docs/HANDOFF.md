@@ -61,7 +61,7 @@ What exists:
 - **Simulation** (`src/lib/deploy/simulate.ts`): scans runtime code for post-Paris opcodes and asks the chain whether each exists (an `eth_call` with a state override), then `eth_estimateGas` on the creation. An opcode failure shows "Rebuild for older Celo", which re-runs prepare with `paris`.
 - **Deploy run** (`src/lib/deploy/run.ts`): one wallet signature per contract in order, references filled from real addresses. Partial failure keeps finished contracts and "Try again" resumes: it never re-signs a finished contract, and a transaction already sent is picked up again rather than sent twice. A browser reload mid-transaction loses that memory (see known gaps).
 - **Reuse rule:** a contract counts as already deployed only for the same `.sol` sources, `contracts/deploy.json` and EVM target (`sourceKey`). When nothing is left to sign, the modal shows the live addresses.
-- **Server record** (`recordDeployment`): reads the receipt and transaction itself (sender must be the session wallet, creation input must start with GoodBuild's compiled bytecode), then writes the `deployments` row (migration `0003_m5_deployments`) and the addresses into `src/contracts/<Name>.ts`. Rebuilds and reverts re-apply those addresses.
+- **Server record** (`recordDeployment`): reads the receipt and transaction itself (sender must be the session wallet, creation input must start with GoodBuild's compiled bytecode), then writes the `deployments` row (migration `0004_m5_deployments`) and the addresses into `src/contracts/<Name>.ts`. Rebuilds and reverts re-apply those addresses.
 - **Verification**: Sourcify v2 (both Celo chains are in its live chain list), polled after the response; Celoscan later.
 - **Deploy modal** per DESIGN_SYSTEM §4 (preview states at `/dev/preview?deploy=ready|signing|second|opcode|failed|manifest|done`).
 - **Test G$** (`scripts/solidity/goodbuild/TestGoodDollar.sol`, 18 decimals, ERC-677 `transferAndCall`, 1,000 per wallet per day faucet) plus `pnpm deploy:test-gd`.
@@ -73,7 +73,7 @@ What exists:
 
 Known gaps: a reload between sending a transaction and recording it leaves the contract live on-chain but unknown to GoodBuild, so the next deploy creates a new one; no "Share app" button (no published URL yet); the fee estimate is exact for the first argument-free contract and scaled by size for the rest; mainnet deploys stay behind `NEXT_PUBLIC_ENABLE_MAINNET`.
 
-Likely merge conflicts with `main`: `package.json`, `pnpm-lock.yaml`, `drizzle/meta/_journal.json` and the `0003` migration number (renumber if `main` also added one), `src/server/agent/{checks,runner,store,prompt,guides}.ts`, and the two button sites in `workspace.tsx` and `turn-view.tsx`.
+`main` (through the background runner, P18) is merged into this branch. The M5 migration is now `0004`, after main's `0003`. A local `.data/` database that ran the old M5 `0003` needs resetting: it would try to create `deployments` again.
 
 Then M6 (credits, D13: USD primary, cost + 25%; usage is already recorded in `usage_events`). **Top-ups (D21) are designed in [TOPUPS.md](TOPUPS.md), waiting for your review: no code until then.**
 
@@ -93,6 +93,8 @@ Q36 (preview depends on CodeSandbox and the Tailwind CDN), Q37 (chat width), Q38
 - Production-mode local runs need `SESSION_SECRET`, `APP_DOMAIN` and `ALLOW_PGLITE=true` (or a `DATABASE_URL`).
 
 ## Gotchas found the hard way
+- `pnpm build` failing with "binding to a port: Operation not permitted" in the PostCSS (Tailwind) loader: measured on 5 Nov 2026, the cause was a stale `.next` left by `next dev` in the same folder, not the code or the sandbox. Move `.next` aside and the build passes. Stop the dev server first.
+- Background turns (P18): the worker is a `globalThis` singleton started from `src/instrumentation.ts`, and hot reload doesn't replace it. Restart `pnpm dev` after changing `src/server/agent/runner.ts` or `src/server/jobs/`, and after any migration.
 - Next 16: GET route handlers are prerendered unless they call `await connection()` (outside `try`). The SIWE nonce route relies on this.
 - PGlite and solc must stay in `serverExternalPackages` (next.config.ts); bundling PGlite breaks restarts on an existing `.data/` database.
 - Sandpack injects unlayered CSS that beats Tailwind's layered utilities, so its layout overrides live in plain CSS in `globals.css` (`.gb-sp-section`, `.gb-sandpack`).

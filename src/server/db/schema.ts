@@ -183,6 +183,83 @@ export const projectAssets = pgTable(
   (t) => [uniqueIndex("project_assets_name_idx").on(t.projectId, t.name)],
 );
 
+/**
+ * Background turn jobs (P18). A prompt becomes a queued job; a worker claims it with a lease
+ * (FOR UPDATE SKIP LOCKED), runs the agent turn and commits the result. The lease is the only
+ * turn lock: at most one running job per project (partial unique index).
+ */
+export const turnJobs = pgTable(
+  "turn_jobs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    mode: text("mode").notNull(),
+    prompt: text("prompt").notNull(),
+    userMessageId: uuid("user_message_id").notNull(),
+    /** Set once the turn has created its assistant message (reused on resume). */
+    assistantMessageId: uuid("assistant_message_id"),
+    /** queued | running | done | error | stopped | cancelled */
+    status: text("status").notNull().default("queued"),
+    /** How many times a worker has claimed it (1 = first run; more = resumed after a crash). */
+    attempt: integer("attempt").notNull().default(0),
+    leaseOwner: text("lease_owner"),
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+    stopRequested: boolean("stop_requested").notNull().default(false),
+    /** Saved once after setup: what a resumed run needs instead of redoing setup (runner.ts TurnSetup). */
+    setup: jsonb("setup").$type<Record<string, unknown>>(),
+    /** Next turn_events seq. */
+    nextSeq: integer("next_seq").notNull().default(0),
+    error: text("error"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+  },
+  (t) => [
+    index("turn_jobs_status_idx").on(t.status, t.createdAt),
+    index("turn_jobs_project_idx").on(t.projectId, t.createdAt),
+    uniqueIndex("turn_jobs_one_running_idx").on(t.projectId).where(sql`status = 'running'`),
+    uniqueIndex("turn_jobs_user_message_idx").on(t.userMessageId),
+  ],
+);
+
+/**
+ * Each completed model response of a job, committed with its usage rows in one transaction.
+ * A resumed run replays these instead of calling the model again (no repeated tool calls, no
+ * double billing).
+ */
+export const turnJobCalls = pgTable(
+  "turn_job_calls",
+  {
+    jobId: uuid("job_id")
+      .notNull()
+      .references(() => turnJobs.id, { onDelete: "cascade" }),
+    idx: integer("idx").notNull(),
+    data: jsonb("data").$type<Record<string, unknown>>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.jobId, t.idx] })],
+);
+
+/** The live event stream of a job, numbered, for SSE replay; deleted a while after the job ends. */
+export const turnEvents = pgTable(
+  "turn_events",
+  {
+    jobId: uuid("job_id")
+      .notNull()
+      .references(() => turnJobs.id, { onDelete: "cascade" }),
+    seq: integer("seq").notNull(),
+    event: jsonb("event").$type<Record<string, unknown>>().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.jobId, t.seq] })],
+);
+
+export type TurnJob = typeof turnJobs.$inferSelect;
+
 export type User = typeof users.$inferSelect;
 export type Session = typeof sessions.$inferSelect;
 export type Project = typeof projects.$inferSelect;

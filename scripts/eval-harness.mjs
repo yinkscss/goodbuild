@@ -58,36 +58,77 @@ for (const u of scenario.uploads ?? []) {
   console.log(`upload ${u.file}: ${res.status} ${j.asset ? `${j.asset.name} ${j.asset.width}x${j.asset.height} ${j.asset.palette.join(" ")}` : JSON.stringify(j)}`);
 }
 
+/** Queue one turn (P18: the server runs it in a background job). */
+async function enqueue(i, prompt) {
+  const body = i === 0 && queued ? { mode: "build", userMessageId: queued } : { mode: "build", prompt };
+  const res = await call(`/api/projects/${projectId}/turns`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  if (res.status !== 202) throw new Error(`enqueue failed: ${res.status} ${await res.text()}`);
+  return (await res.json()).jobId;
+}
+
+/** Every event of a job, reconnecting with ?after= until the server sends `event: end`. */
+async function streamJob(jobId, onEvent) {
+  let after = -1;
+  for (let failures = 0; failures < 20; ) {
+    const res = await call(`/api/projects/${projectId}/turns/${jobId}/events?after=${after}`).catch(() => null);
+    if (!res?.ok) {
+      failures++;
+      await new Promise((r) => setTimeout(r, 1000 * Math.min(8, failures)));
+      continue;
+    }
+    const decoder = new TextDecoder();
+    let buf = "";
+    let ended = false;
+    try {
+      for await (const chunk of res.body) {
+        buf += decoder.decode(chunk, { stream: true });
+        let idx;
+        while ((idx = buf.indexOf("\n\n")) >= 0) {
+          const block = buf.slice(0, idx);
+          buf = buf.slice(idx + 2);
+          const id = block.match(/^id: (\d+)$/m)?.[1];
+          if (id) after = Number(id);
+          if (/^event: end$/m.test(block)) ended = true;
+          const data = block.match(/^data: (.*)$/m)?.[1];
+          if (data && !ended) onEvent(JSON.parse(data));
+        }
+      }
+    } catch {
+      failures++;
+    }
+    if (ended) return;
+  }
+  throw new Error(`stream for ${jobId} kept failing`);
+}
+
+// queueAll: send every prompt at once (they run one after another on the server).
+const jobIds = scenario.queueAll ? [] : null;
+if (jobIds) for (const [i, prompt] of scenario.turns.entries()) jobIds.push(await enqueue(i, prompt));
+
 const turns = [];
 for (const [i, prompt] of scenario.turns.entries()) {
   const t0 = Date.now();
-  const body = i === 0 && queued ? { mode: "build", userMessageId: queued } : { mode: "build", prompt };
-  const res = await call(`/api/projects/${projectId}/turns`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  const jobId = jobIds ? jobIds[i] : await enqueue(i, prompt);
   const usage = [];
   let done = null;
   let error = null;
   let text = "";
   const log = [];
   const steps = new Map();
-  const decoder = new TextDecoder();
-  let buf = "";
-  for await (const chunk of res.body) {
-    buf += decoder.decode(chunk, { stream: true });
-    let idx;
-    while ((idx = buf.indexOf("\n\n")) >= 0) {
-      const line = buf.slice(0, idx).replace(/^data: /, "");
-      buf = buf.slice(idx + 2);
-      if (!line.trim()) continue;
-      const e = JSON.parse(line);
-      if (e.type === "usage") usage.push({ model: e.model, in: e.inputTokens, out: e.outputTokens, cached: e.cachedInputTokens, micro: e.chargedMicro });
-      else if (e.type === "log") log.push(e.line);
-      else if (e.type === "step") steps.set(e.step.id, e.step);
-      else if (e.type === "text") text += e.delta;
-      else if (e.type === "text_set") text = e.text;
-      else if (e.type === "done") done = e;
-      else if (e.type === "error") error = e.message;
-    }
-  }
+  await streamJob(jobId, (e) => {
+    if (e.type === "usage") usage.push({ model: e.model, in: e.inputTokens, out: e.outputTokens, cached: e.cachedInputTokens, micro: e.chargedMicro });
+    else if (e.type === "log") log.push(e.line);
+    else if (e.type === "step") steps.set(e.step.id, e.step);
+    else if (e.type === "text") text += e.delta;
+    else if (e.type === "text_set") text = e.text;
+    else if (e.type === "snapshot") {
+      text = e.text;
+      log.splice(0, log.length, ...e.record.log);
+      steps.clear();
+      for (const s of e.record.steps) steps.set(s.id, s);
+    } else if (e.type === "done") done = e;
+    else if (e.type === "error") error = e.message;
+  });
   const byModel = {};
   for (const u of usage) {
     byModel[u.model] ??= { calls: 0, in: 0, out: 0, usd: 0 };
