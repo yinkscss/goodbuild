@@ -51,7 +51,7 @@ flowchart TD
 - **Select-to-edit:** click element(s) in the preview → attaches component file + line + DOM snippet to the prompt. Lovable does this via its preview toolbar (select elements, inline text edit, annotations) ([docs](https://docs.lovable.dev/features/preview-toolbar)). Implementation: Babel/Vite-style plugin adds `data-gb-src="file:line"` to JSX in Sandpack; an iframe script reports clicks via postMessage. Inline text edits can be applied without a model call.
 - **Checkpoints per prompt:** each agent turn = one version (file snapshot/diff in DB). Lovable saves a version per change with revert ([summary](https://aliteq.com/undo-ai-changes)); Cursor checkpoints restore files but not chat and are not a substitute for git (same source). Our revert restores files; chat stays and logs "reverted to v12". **Revert never touches deployed contracts** (show this clearly).
 - **Branch:** "fork from this version" creates a new project branch (like Lovable Remix). Later: export to GitHub.
-- **Plan mode vs build mode:** plan mode answers and drafts a plan but never edits files (Lovable glossary: [docs](https://docs.lovable.dev/glossary)); build mode executes. Follow-ups while running are queued to the next stop point.
+- **Plan mode vs build mode:** plan mode answers and drafts a plan but never edits files (Lovable glossary: [docs](https://docs.lovable.dev/glossary)); build mode executes. Follow-ups while running are queued on the server and run in order (P18); Stop cancels them, and they stay in the chat to resend.
 - Chat history stored per project (D8).
 
 ## 5. Multi-page apps
@@ -85,9 +85,18 @@ Q13–Q16 in [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md).
 
 ## Implementation (M4)
 - **Models:** the Vercel AI SDK (D18) in `src/server/agent/model.ts`: `claude-sonnet-5-5` (`@ai-sdk/anthropic`) for fixes (D19), `deepseek-flash` (`@ai-sdk/deepseek`, an alias for the current V4 Flash, see Q34) for planning, the first build and as fallback. The SDK retries once; `withFallback` then retries a strong call on cheap only if nothing has streamed yet. Keys come from `ANTHROPIC_API_KEY` and `DEEPSEEK_API_KEY`. The system prompt is cache-marked for Anthropic.
-- **Loop:** `src/server/agent/runner.ts`. Plan (`set_plan`), tool edits (`src/server/agent/workspace.ts`), checks (`checks.ts`), up to 3 auto-fixes (cheap model first), one checkpoint per prompt (`store.ts`). One turn per project at a time; follow-ups queue in the browser.
+- **Loop:**
+  - `src/server/agent/runner.ts` runs plan (`set_plan`), tool edits (`src/server/agent/workspace.ts`), checks (`checks.ts`), up to 3 auto-fixes and one checkpoint per prompt (`store.ts`).
+  - Turns run as background jobs (P18): `src/server/jobs/`, with tables `turn_jobs`, `turn_job_calls` and `turn_events`. A worker claims a job with a lease. One turn per project runs at a time; follow-ups queue on the server in send order.
+  - The turn is resumable. Setup is saved once, each model response is committed with its usage, and a crashed turn is resumed by replaying those responses.
+  - Stop takes effect at the next safe point, saves nothing, and cancels queued follow-ups.
 - **Edits:** search/replace with exact match, then a whitespace-tolerant unique match (`edits.ts`).
 - **Platform-owned files:** after each compile GoodBuild writes `src/contracts/<Name>.ts` (ABI; addresses after deploy in M5). The agent can read but not edit them.
 - **Billing data:** every model call is stored in `usage_events`, priced with `src/config/model-pricing.ts` at cost + 25% (D13). M6 debits from these rows.
-- **Streaming:** `POST /api/projects/[id]/turns` returns Server-Sent Events. The turn finishes and persists even if the browser disconnects.
+- **Streaming:**
+  - `POST /api/projects/[id]/turns` queues the turn and returns a job id.
+  - `GET /api/projects/[id]/turns/[jobId]/events?after=seq` streams numbered Server-Sent Events from `turn_events` (`id:` lines, `event: end` when the job is over). The stream closes every 60 s and the client reconnects with backoff.
+  - A reload replays the events from the start. After a resume, a `snapshot` event replaces the half-finished view.
+  - `POST /api/projects/[id]/turns/[jobId]/stop` stops the turn.
+  - The turn runs and persists whether or not any browser is watching.
 - **Offline demo:** `GOODBUILD_DEMO_MODEL=1` replays a scripted tip-jar build (development only).

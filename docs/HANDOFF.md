@@ -81,6 +81,8 @@ Q36 (preview depends on CodeSandbox and the Tailwind CDN), Q37 (chat width), Q38
 - Production-mode local runs need `SESSION_SECRET`, `APP_DOMAIN` and `ALLOW_PGLITE=true` (or a `DATABASE_URL`).
 
 ## Gotchas found the hard way
+- `pnpm build` failing with "binding to a port: Operation not permitted" in the PostCSS (Tailwind) loader: measured on 5 Nov 2026, the cause was a stale `.next` left by `next dev` in the same folder, not the code or the sandbox. Move `.next` aside and the build passes. Stop the dev server first.
+- Background turns (P18): the worker is a `globalThis` singleton started from `src/instrumentation.ts`, and hot reload doesn't replace it. Restart `pnpm dev` after changing `src/server/agent/runner.ts` or `src/server/jobs/`, and after any migration.
 - Next 16: GET route handlers are prerendered unless they call `await connection()` (outside `try`). The SIWE nonce route relies on this.
 - PGlite and solc must stay in `serverExternalPackages` (next.config.ts); bundling PGlite breaks restarts on an existing `.data/` database.
 - Sandpack injects unlayered CSS that beats Tailwind's layered utilities, so its layout overrides live in plain CSS in `globals.css` (`.gb-sp-section`, `.gb-sandpack`).

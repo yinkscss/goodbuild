@@ -213,6 +213,47 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
   - **Style:** no em dashes in replies (prompt line, plus `plainDashes` as a backstop).
   - **Reads of uploads:** `read_file` on an uploaded image's path returns a pointer to `/assets/<name>` instead of "missing".
 
+### P18. Background turn runner: jobs, leases, resumable turns, Stop (proposed)
+- Date: 5 Nov 2026 · Design agreed with the user (Olayinka), who decided resume (option C) and Stop (cancels queued follow-ups); built by Claude · Code: `src/server/jobs/`, `src/server/agent/turn-progress.ts`, `runner.ts`
+- **Jobs.** `POST /turns` saves the prompt as a queued user message and inserts a `turn_jobs` row; it returns the job id.
+  - A worker claims the oldest runnable job with `FOR UPDATE SKIP LOCKED`.
+  - A partial unique index allows one running job per project; a race on it counts as "not claimed".
+  - A unique index on `user_message_id` stops the same prompt being queued twice (landing page auto-run, two tabs).
+  - Follow-ups queue on the server in send order. The client sends one at a time: three quick sends raced and were queued out of order in the live test.
+- **The lease is the only lock.**
+  - The lease is renewed every 5 s and expires 30 s after the last renewal.
+  - Claiming sets `projects.turnStartedAt`, so the revert route and the UI keep working. The final commit clears it.
+  - `claimTurn` lost its 10-minute stale expiry; it remains only for direct runs (tests).
+  - Every write a job makes is fenced: one transaction checks `lease_owner` and `attempt` with `FOR UPDATE`. A worker whose lease expired (a laptop that slept, say) can't commit beside the worker that took over.
+- **Resume (user decision: option C), as a replay log rather than serialised loop state.**
+  - **Setup is saved once:** the reply message, the conversation prefix (context text included, design references as asset ids), base files, asset names, contract options and the project's prior status. Setup is never redone on resume, so the memory call isn't billed twice.
+  - **Each completed model response** (text deltas, tool calls, finish reason, priced usage) goes into `turn_job_calls` in the same transaction as its `usage_events` rows.
+  - **A resumed run** rebuilds the setup and replays the logged responses through the unchanged loop, emitting nothing. Tools are pure workspace operations and checks are deterministic, so both simply run again. The model is called only after the log is used up, and a `snapshot` event then replaces the client's view.
+  - **A crash mid-stream** leaves no log row and no usage row, so that call is asked again. The provider may still have charged for the lost call, and GoodBuild bills nothing for it; M6 should account for that.
+  - **An unusable save** (another format version, a deleted design reference) ends the job with a visible error and Retry. After 3 attempts a job ends with Retry too.
+  - **Why replay:** serialising every local of the loop (fix attempt, round, previous issues) was error-prone, while the replay keeps the loop as the single source of truth.
+- **Final commit.** One transaction holds the checkpoint, the final message, design references marked as seen, the cleared lock and the job's end state. A job that crashed after it is finished, not run again.
+  - `markAttached` moved from the start of the turn to this commit, so a stopped, failed or retried turn attaches the image again.
+  - Step ids include the model-call number (`tool:<n>:<id>`): in the replay test, a provider reusing a tool call id overwrote an earlier step.
+- **Stop (user decision).**
+  - `POST /turns/[jobId]/stop` sets `stop_requested`; the lease renewal turns that into an `AbortController.abort()`. The signal reaches `model.stream`, and the runner checks it between rounds and before compile, tests and the final commit (solc and the test EVM can't be interrupted mid-run).
+  - Every queued follow-up of the project is cancelled. Cancelled prompts stay in the chat with Resend.
+  - Stop saves no checkpoint (edits discarded) and marks the message `stopped`. Usage already recorded stays.
+- **Events.**
+  - `turn_events` holds `(job_id, seq, event)`. The worker batches about every 200 ms and merges text deltas. The file map goes in once, at the end. An `end` marker closes the stream.
+  - `GET /turns/[jobId]/events?after=seq` streams `id:`-numbered SSE (with `connection()` outside `try`), closes every 60 s, and the client reconnects with backoff.
+  - Workspace state lists the active jobs; a reload attaches to the oldest and replays from the start. Events are deleted 2 minutes after the job ends; the message keeps the final record.
+  - A queued prompt's message moves to the moment its turn starts, so each reply sits under its prompt.
+- **Worker.** Started from `src/instrumentation.ts` (Node runtime only, skipped during `next build`, off with `GOODBUILD_INLINE_WORKER=0`) as a `globalThis` singleton that runs 3 jobs at once.
+  - `pnpm worker` (tsx with `--conditions=react-server`, needs `DATABASE_URL`) runs the same worker standalone for hosting where builds shouldn't run in the web process (Q31).
+  - Both need a long-lived Node host: a serverless function can't keep a worker alive.
+  - Dev gotcha: the singleton survives hot reload, so restart the dev server after editing `runner.ts` or `src/server/jobs/`.
+- **Measured payloads (live, Postgres):** a one-page site's setup row was 14.9 KB, and its 11 logged responses were 16 KB in all (largest 2.1 KB) with 64 batched events. The contract build in the crash test logged 19 responses. Images are never stored, only asset ids.
+- **Tests:**
+  - `src/server/jobs/jobs.test.ts` runs a build with a fix pass, crashes it after every save point in turn, and resumes. It asserts identical files, record (apart from the resume log line), usage row count and model requests.
+  - It also covers fencing, Stop with a queued follow-up, two prompts on one project and the unusable-save Retry.
+  - Live results are in [evals/HARNESS.md](evals/HARNESS.md).
+
 ### P3. GoodDollar AI credits via AntSeed gateway behind LiteLLM (DEFERRED by D11)
 - Status: deferred. GoodDollar/AntSeed is an optional future provider only, revisit once GoodDollar ships its proxy/API keys.
 - Date: 4 Nov 2026 · Proposed by: Grok Bot · Users fund credits with the GoodWidget AI credits widget; GoodBuild runs an AntSeed gateway registered as an OpenAI-compatible LiteLLM provider, falling back to direct providers. Blocked on buyer-key custody / GoodDollar proxy (see [GOODDOLLAR_AI_CREDITS.md](GOODDOLLAR_AI_CREDITS.md), Q17).

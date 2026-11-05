@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, desc, eq, isNull, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 
 import type { Db } from "@/server/db/client";
 import { messages, projectFiles, projects, usageEvents, versions, type Version } from "@/server/db/schema";
@@ -74,19 +74,16 @@ export async function revertTo(db: Db, projectId: string, number: number): Promi
   return next;
 }
 
-/** Claim the project's single turn slot. Stale locks (crashed turns) expire after 10 minutes. */
+/**
+ * Claim the project's turn slot for a turn run directly (tests, scripts). Background jobs don't
+ * use this: their lease is the lock and the worker sets turnStartedAt from it (P18). No stale
+ * expiry any more: a crashed job is resumed by the next worker, not timed out.
+ */
 export async function claimTurn(db: Db, projectId: string, ownerId: string, now = new Date()): Promise<boolean> {
-  const staleBefore = new Date(now.getTime() - 10 * 60_000);
   const rows = await db
     .update(projects)
     .set({ turnStartedAt: now, status: "building" })
-    .where(
-      and(
-        eq(projects.id, projectId),
-        eq(projects.ownerId, ownerId),
-        or(isNull(projects.turnStartedAt), lt(projects.turnStartedAt, staleBefore)),
-      ),
-    )
+    .where(and(eq(projects.id, projectId), eq(projects.ownerId, ownerId), isNull(projects.turnStartedAt)))
     .returning({ id: projects.id });
   return rows.length === 1;
 }
