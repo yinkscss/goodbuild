@@ -56,5 +56,12 @@ docker compose --env-file .env.production exec -T goodbuild-postgres pg_restore 
 - **Keep the database's service name unique.** `web` joins Coolify's network, where `postgres` is Coolify's own database. With that name, web connected to the wrong server and got a password error.
 - Solidity compiling reads `node_modules` at runtime, so the image can't be pruned or made standalone.
 
+## Known issues
+- **Preview:** the live preview loads its bundler from CodeSandbox. It sometimes answers 503 and the preview shows "Couldn't connect to server" with `TIME_OUT`, and pressing Try again worked when this happened on 5 Nov 2026. The site isn't at fault. Self-hosting the bundler would remove this (Q36).
+- **`backup.sh` reads stdin** through `docker compose exec`, so don't chain it before another command that needs the same input.
+
+## Testing the live site
+The throwaway wallet in `.data/throwaway-wallet.key` (Celo Sepolia only) can sign in and deploy from a script. A real build costs real AI money, about $0.35 for a one-contract app. Delete its test data afterwards. Its address is in `HANDOFF.md`.
+
 ## Status of this setup
 See "Hosting" in `HANDOFF.md`. It has one server and no failover, which suits the one-month testnet beta. Before M6 takes real money, move the database off the box and copy backups elsewhere.

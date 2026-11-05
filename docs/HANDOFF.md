@@ -93,7 +93,7 @@ Publish code lives in `src/server/publish/`, `src/server/db/publish-schema.ts` (
 - Magic email sign-in, on any cookies: the fix for `ERROR_INCORRECT_SIGNER_ADDR` hasn't had a live sign-in.
 - A real host: `*.goodbuildit.xyz` needs wildcard DNS. Q16 and Q31 stay open.
 
-**Running now (D27):** one VPS, see [DEPLOY.md](DEPLOY.md). The rest of this section describes the Vercel and Railway setup (D26), which is on hold.
+**Running now (D27):** live at https://goodbuildit.xyz on one VPS, see [DEPLOY.md](DEPLOY.md). Tested live on 5 Nov 2026: a real AI build, a Celo Sepolia deploy with a Sourcify match, publishing, the firewall, and the workspace and preview in a browser. A test signer stood in for the wallet. Not tested live: Magic email sign-in, and more than one build at a time. The rest of this section describes the Vercel and Railway setup (D26), which is on hold.
 
 **Hosting (D26, amends D25):** Vercel serves pages and forwards `/api/*`, `/a/*` and published apps to Railway, which runs the `Dockerfile`, with Postgres alongside.
 
