@@ -10,6 +10,7 @@ import type { TurnMode, TurnRecord } from "@/lib/turn-types";
 import { cn } from "@/lib/utils";
 import { DeployButton } from "@/components/deploy/deploy-trigger";
 import { AssetBar, AttachMenu, imageFiles } from "./asset-bar";
+import { OldFundsCard } from "./old-funds-card";
 import { TurnView } from "./turn-view";
 import type { UseWorkspace } from "./use-workspace";
 import { VerifyCard } from "./verify-card";
@@ -118,6 +119,7 @@ export function ChatPanel({ ws, assetUrls = {} }: { ws: UseWorkspace; assetUrls?
             <DeployButton label="Deploy again" size="sm" />
           </div>
         )}
+        <OldFundsCard projectId={state.project.id} chainId={state.project.chainId} refreshKey={state.project.currentVersion} busy={running} onAsk={suggest} />
         {state.offerVerification && !running && <VerifyCard onVerified={ws.refresh} />}
         <div ref={endRef} />
       </div>
