@@ -47,9 +47,22 @@ export function getDb(): Promise<Db> {
   return globalForDb.__gbDb;
 }
 
-/** Test helper: a fresh in-memory database with migrations applied. */
+let testDb: Promise<{ client: PGlite; db: Db }> | undefined;
+
+/**
+ * Test helper: an empty, migrated in-memory database. PGlite's wasm start-up takes seconds, so each
+ * test file starts one and later calls empty its tables, which takes milliseconds. That means a new
+ * call wipes what the previous call returned: a test can't hold two databases at once.
+ */
 export async function createTestDb(): Promise<Db> {
-  const db = drizzlePglite(new PGlite(), { schema });
-  await migratePglite(db, { migrationsFolder: MIGRATIONS });
+  testDb ??= (async () => {
+    const client = new PGlite();
+    const db = drizzlePglite(client, { schema });
+    await migratePglite(db, { migrationsFolder: MIGRATIONS });
+    return { client, db };
+  })();
+  const { client, db } = await testDb;
+  const { rows } = await client.query<{ tablename: string }>("select tablename from pg_tables where schemaname = 'public'");
+  await client.exec(`TRUNCATE ${rows.map((r) => `"${r.tablename}"`).join(", ")} RESTART IDENTITY CASCADE`);
   return db;
 }
