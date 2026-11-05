@@ -2,6 +2,19 @@ import { bigint, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, u
 
 import { projects, users } from "./schema";
 
+/** A deployment behind a proxy (D33). `address` on its row is the proxy, which never moves. */
+export interface ProxyRecord {
+  /** The code the proxy uses now, as last checked from the chain when recorded. */
+  implementation: string;
+  implementationTx: string;
+  /** OpenZeppelin ProxyAdmin the proxy created. Its owner holds the upgrade authority. */
+  admin: string;
+  /** keccak256 of the implementation's runtime code, so an unchanged contract skips its upgrade. */
+  codeHash: string;
+  /** upgrades-core's storage layout of the implementation: the baseline for the next upgrade. */
+  layout: unknown;
+}
+
 /**
  * Deployed contracts (P3: the deployments table is the source of truth). Written only after the
  * server has read the receipt from the chain, never from client-reported addresses
@@ -42,6 +55,8 @@ export const deployments = pgTable(
     verifyProvider: text("verify_provider"),
     verifyDetail: text("verify_detail"),
     verifiedAt: timestamp("verified_at", { withTimezone: true }),
+    /** Set for a contract behind a proxy (D33). An upgrade updates this row, because the address stays. */
+    proxy: jsonb("proxy").$type<ProxyRecord>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -52,3 +67,31 @@ export const deployments = pgTable(
 );
 
 export type Deployment = typeof deployments.$inferSelect;
+
+/** Projects that opted in to the upgradeable trial (D33). No row means the default: non-upgradeable. */
+export const upgradeableProjects = pgTable("upgradeable_projects", {
+  projectId: uuid("project_id")
+    .primaryKey()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  enabledAt: timestamp("enabled_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** One row per recorded upgrade, so a retried request can't apply one twice and history is kept (D33). */
+export const contractUpgrades = pgTable(
+  "contract_upgrades",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    deploymentId: uuid("deployment_id")
+      .notNull()
+      .references(() => deployments.id, { onDelete: "cascade" }),
+    chainId: integer("chain_id").notNull(),
+    txHash: text("tx_hash").notNull(),
+    fromImplementation: text("from_implementation").notNull(),
+    toImplementation: text("to_implementation").notNull(),
+    implementationTx: text("implementation_tx").notNull(),
+    version: integer("version").notNull(),
+    sourceHash: text("source_hash").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("contract_upgrades_chain_tx_idx").on(t.chainId, t.txHash), index("contract_upgrades_deployment_idx").on(t.deploymentId, t.createdAt)],
+);

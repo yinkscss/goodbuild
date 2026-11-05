@@ -101,7 +101,7 @@ erDiagram
 - **House rules (D15, enforced):** custom errors only; for G$ projects, G$ is the ERC-20 (no `msg.value`/`payable`), accepted via `onTokenTransfer` (with a `msg.sender` check) or `safeTransferFrom`, with SafeERC20 for every transfer.
 - **Static analysis:** solhint rules in browser (JS; feasible). Slither is Python → **not in-browser**; run on a small server worker (feasible, but it adds a server, ~seconds per run) or Pyodide (**UNVERIFIED**). Aderyn (Rust) is an alternative (**UNVERIFIED** wasm).
 - **Tests:** AI generates tests per template (template ships golden tests too). Options: (a) browser EVM (@ethereumjs/vm or Tevm) running deploy + calls in a worker (feasible; **UNVERIFIED** performance); (b) Foundry `forge test` in a cloud worker (strongest, needs a server); (c) Hardhat server. Proposal: (a) for every build, (b) before mainnet.
-- **Upgradeability:** **non-upgradeable by default** (simpler, no admin-key risk for newcomers). Upgrades = redeploy a new version (§5). UUPS proxies only for advanced users later.
+- **Upgradeability:** **non-upgradeable by default** (simpler, no admin-key risk for newcomers). Upgrades = redeploy a new version (§5). A testnet-only, per-project trial of OpenZeppelin's transparent proxy exists (D33, §6).
 - **Free-form custom contracts:** allowed only on testnet in Stage 1 *(proposal)*; mainnet requires typed confirmation, "UNAUDITED – may lose funds" warning, and optional value caps in generated code.
 
 ## 5. After deploy
@@ -110,6 +110,15 @@ erDiagram
 - **Redeploy / versioning:** each deploy links to a `version`; new deploy = new address, old stays listed ("v2 active, v1 archived"). Contract state does **not** migrate; warn users.
   - Built (5 Nov 2026): the deploy modal names each live contract a deploy leaves behind and what G$ it still holds; the chat flags contracts whose saved code has changed since deploying; the agent must say when a change needs a new deploy. Still to do: redeploy only the contracts that changed (today any contract or manifest change redeploys all of them), a deployment history view, and a rule that contracts holding user funds let people withdraw directly, before mainnet.
 - **Public link:** Publish builds the saved version and serves it at `<slug>.goodbuildit.xyz` with deployed addresses baked in, as an immutable snapshot until the user publishes again (P19). If a contract isn't deployed, the app goes live with a demo notice. Published apps are labelled "Built with GoodBuild · Unaudited". An explorer link is not added yet.
+
+## 6. Upgradeable contracts: testnet trial (D33)
+Reasons and limits are in [DECISIONS.md](DECISIONS.md) D33. How it works:
+- **Switch:** "Can be changed later" in the deploy modal, testnet only. `PUT /api/projects/[id]/upgradeable`, refused on mainnet. One row in `upgradeable_projects` means on.
+- **First deploy, per contract:** the wallet deploys the code, then OpenZeppelin's `TransparentUpgradeableProxy(code, wallet, initialize(args))`. The proxy's constructor creates a `ProxyAdmin` owned by the wallet. `deployments.address` is the proxy, which is what the app uses. `deployments.proxy` holds the current code, admin, code hash and storage layout.
+- **Upgrade, per changed contract:** at prepare the server compares the new layout with the saved one and reads the live code and owner from the chain. If it's safe the wallet deploys the new code, then calls `ProxyAdmin.upgradeAndCall(proxy, code, "0x")`. The same `deployments` row is updated in place and `contract_upgrades` gets a history row, so everything keyed on "newest row per contract" (addresses, outdated notice, old-funds card, replaces notice) sees one contract at one address.
+- **What the server checks when recording:** both transactions came from the session wallet; the code is exactly GoodBuild's compile; the proxy is GoodBuild's compile of OpenZeppelin's source, owned by the wallet, and pointed at that code; the upgrade went to this proxy's admin; the slot on chain now holds that code; and the storage check still passes.
+- **Verification:** two Sourcify submissions from one standard JSON, one for the code and one for the proxy. The chip is green only when both match. The `ProxyAdmin` isn't submitted, because the proxy creates it. Proxy detection on explorers and Sourcify's handling of the proxy's immutable are UNVERIFIED on Celo Sepolia.
+- **Generated code:** rules in `src/server/agent/upgradeable-rules.ts`, added to the project context; enforced by `upgradeableIssues` and `guardrailIssues` in `checks.ts`, at the agent's checks and again at prepare.
 
 ## Open choices (Claude's input invited)
 Q2 (updated), Q4, Q10–Q13 in [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md).

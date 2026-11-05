@@ -1,6 +1,7 @@
 import "server-only";
 
 import { and, eq, ne } from "drizzle-orm";
+import type { PublicClient } from "viem";
 
 import { slugFromName, slugProblem } from "@/lib/published-host";
 import { dbAssetStore } from "@/server/agent/asset-store";
@@ -10,6 +11,8 @@ import { publicationFiles, publications, type Publication } from "@/server/db/pu
 import type { Project } from "@/server/db/schema";
 import { withCurrentAddresses } from "@/server/deploy/addresses";
 import { contractState } from "@/server/deploy/contract-state";
+import { publicClientFor } from "@/server/deploy/service";
+import { hasChangeableContracts } from "@/server/deploy/upgradeable";
 import { buildPublishedApp, PublishBuildError, type PublishedFile } from "./build";
 
 export type PublishErrorCode = "invalid_slug" | "reserved_slug" | "slug_taken" | "busy" | "disabled" | "build_failed" | "not_published";
@@ -97,7 +100,7 @@ function reportUrl(slug: string): string | undefined {
 }
 
 /** Build the saved version and swap it in. The old files stay live if anything fails. */
-export async function publishApp(db: Db, project: Project, slug: string, deps: { build?: typeof buildPublishedApp } = {}): Promise<PublishStatus> {
+export async function publishApp(db: Db, project: Project, slug: string, deps: { build?: typeof buildPublishedApp; client?: Pick<PublicClient, "readContract"> } = {}): Promise<PublishStatus> {
   assertSlug(slug);
   if (project.turnStartedAt) throw new PublishError("busy", "Wait for the build to finish, then publish.");
   const existing = await publicationOf(db, project.id);
@@ -118,7 +121,8 @@ export async function publishApp(db: Db, project: Project, slug: string, deps: {
 
   let built: PublishedFile[];
   try {
-    built = await (deps.build ?? buildPublishedApp)({ files, assets, title: project.name, reportUrl: reportUrl(slug), hasUndeployedContracts: undeployed.length > 0 });
+    const changeableContract = await hasChangeableContracts(db, project, saved, deps.client ?? publicClientFor(project.chainId));
+    built = await (deps.build ?? buildPublishedApp)({ files, assets, title: project.name, reportUrl: reportUrl(slug), hasUndeployedContracts: undeployed.length > 0, changeableContract });
   } catch (error) {
     if (error instanceof PublishBuildError) throw new PublishError("build_failed", error.message, error.details);
     throw error;

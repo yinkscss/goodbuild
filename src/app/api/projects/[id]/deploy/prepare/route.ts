@@ -8,7 +8,7 @@ import { getOwnedProject } from "@/server/projects";
 
 export const maxDuration = 60;
 
-const body = z.object({ chainId: z.number().int(), evmVersion: z.enum(["cancun", "paris"]).optional() });
+const body = z.object({ chainId: z.number().int(), evmVersion: z.enum(["cancun", "paris"]).optional(), fresh: z.boolean().optional() });
 
 /** Compile the saved project and return the ordered deploy plan (D23). */
 export async function POST(request: Request, ctx: RouteContext<"/api/projects/[id]/deploy/prepare">) {
@@ -20,7 +20,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/projects/[i
     const db = await getDb();
     if (!(await getOwnedProject(db, id, session.user.id))) return NextResponse.json({ error: "not_found" }, { status: 404 });
     try {
-      return NextResponse.json({ plan: await prepareDeploy(db, { projectId: id, ...parsed.data }) });
+      return NextResponse.json({ plan: await prepareDeploy(db, { projectId: id, wallet: session.user.wallet, ...parsed.data }) });
     } catch (error) {
       if (error instanceof DeployError) return NextResponse.json({ error: error.code, message: error.message, details: error.details }, { status: 422 });
       throw error;

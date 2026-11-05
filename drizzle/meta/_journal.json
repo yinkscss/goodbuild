@@ -43,6 +43,13 @@
       "when": 1793853445154,
       "tag": "0005_publications",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793909825825,
+      "tag": "0006_upgradeable_contracts",
+      "breakpoints": true
     }
   ]
 }

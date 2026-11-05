@@ -48,6 +48,12 @@ describe("buildPublishedApp", () => {
     expect(page(await build({}, { hasUndeployedContracts: true }))).toContain("isn't deployed yet");
   });
 
+  it("says when the app's contract can be changed (D33), and only then", async () => {
+    const page = (out: Awaited<ReturnType<typeof build>>) => text(named(out, /^index\.html$/));
+    expect(page(await build({}, { changeableContract: true }))).toContain("Built with GoodBuild · Unaudited · This contract can be changed");
+    expect(page(await build({}))).not.toContain("can be changed");
+  });
+
   it("escapes the title", async () => {
     const page = text(named(await build({}, { title: `</title><script>x</script>` }), /^index\.html$/));
     expect(page).not.toContain("<script>x");

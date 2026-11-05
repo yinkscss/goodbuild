@@ -5,6 +5,7 @@ import { classifyDeployError, errorDetail } from "./errors";
 import { newOpcodesUsed } from "./opcodes";
 import { runDeploy, StepFailure, usesGoodDollar, type DeployEnv, type DeployEvent, type DeployProgress, type Plan } from "./run";
 import { chainSupportsOpcode, simulateCreation, UnsupportedOpcodeError } from "./simulate";
+import { encodeUpgrade } from "./upgradeable";
 
 const A: Address = "0x1111111111111111111111111111111111111111";
 const GD: Address = "0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A";
@@ -208,5 +209,95 @@ describe("opcode scan and probes", () => {
   it("returns gas for a clean bytecode", async () => {
     const client = { call: vi.fn(async () => ({ data: "0x" as Hex })), estimateGas: vi.fn(async () => BigInt(1234)), getBalance: vi.fn(async () => BigInt(10_000)), getGasPrice: vi.fn(async () => BigInt(2)) };
     expect(await simulateCreation(client as never, { account: A, data: "0x60", runtimeBytecode: "0x5e00" as Hex })).toEqual({ gas: BigInt(1234) });
+  });
+});
+
+describe("runDeploy behind a proxy (D33)", () => {
+  const proxyAbi = [{ type: "constructor", stateMutability: "payable", inputs: [{ name: "_logic", type: "address" }, { name: "initialOwner", type: "address" }, { name: "_data", type: "bytes" }] }] as const;
+  const initAbi = [{ type: "function", name: "initialize", stateMutability: "nonpayable", inputs: [{ name: "cap_", type: "uint256" }], outputs: [] }] as const;
+  const CODE: Address = "0x00000000000000000000000000000000000c0de0";
+  const PROXY: Address = "0x0000000000000000000000000000000000000abc";
+  const ADMIN: Address = "0x0000000000000000000000000000000000000adc";
+  const ME: Address = "0x7a3000000000000000000000000000000000e41c";
+  const hash = (n: number) => `0x${String(n).padStart(64, "0")}` as Hex;
+
+  function harness(fail: { sendAt?: number; recordOnce?: boolean } = {}) {
+    const sends: Array<{ data: Hex; to?: Address }> = [];
+    const records: Array<{ tx: Hex; code?: Hex }> = [];
+    const env = {
+      account: ME,
+      simulate: async () => ({ gas: BigInt(1) }),
+      send: async (data: Hex, _gas: bigint, to?: Address) => {
+        if (sends.length + 1 === fail.sendAt) {
+          fail.sendAt = undefined;
+          throw Object.assign(new Error("User rejected the request"), { code: 4001 });
+        }
+        sends.push({ data, to });
+        return hash(sends.length);
+      },
+      waitForReceipt: async (h: Hex) => ({ status: "success" as const, contractAddress: h === hash(1) ? CODE : to(h) }),
+      record: async (_s: unknown, tx: Hex, code?: Hex) => {
+        if (fail.recordOnce) {
+          fail.recordOnce = false;
+          throw new Error("network");
+        }
+        records.push({ tx, code });
+        return { address: PROXY };
+      },
+    };
+    const to = (h: Hex) => (h === hash(2) ? PROXY : null);
+    return { env, sends, records };
+  }
+
+  const firstPlan = {
+    runId: "r",
+    chainId: 11142220,
+    compilerVersion: "x",
+    openZeppelin: "5.6.1",
+    gooddollar: null,
+    alreadyDeployed: {},
+    replaces: [],
+    steps: [{ name: "Vault", abi: initAbi, bytecode: "0xc0de" as Hex, args: { cap_: "7" }, dependsOn: [], upgradeable: { kind: "first" as const, proxyAbi, proxyBytecode: "0xabcd" as Hex } }],
+  } as unknown as Plan;
+  const upgradePlan = { ...firstPlan, steps: [{ ...firstPlan.steps[0], upgradeable: { kind: "upgrade" as const, proxy: PROXY, admin: ADMIN } }] } as unknown as Plan;
+
+  it("sends the code, then a proxy that runs initialize with the wallet as owner", async () => {
+    const { env, sends, records } = harness();
+    await expect(runDeploy(firstPlan, env)).resolves.toEqual({ Vault: PROXY });
+    expect(sends[0]).toEqual({ data: "0xc0de", to: undefined });
+    expect(sends[1].to).toBeUndefined();
+    expect(sends[1].data.startsWith("0xabcd")).toBe(true);
+    expect(sends[1].data.toLowerCase()).toContain(CODE.slice(2));
+    expect(sends[1].data.toLowerCase()).toContain(ME.slice(2));
+    expect(records).toEqual([{ tx: hash(2), code: hash(1) }]);
+  });
+
+  it("an upgrade goes to the ProxyAdmin", async () => {
+    const { env, sends, records } = harness();
+    await runDeploy(upgradePlan, env);
+    expect(sends[1].to).toBe(ADMIN);
+    expect(sends[1].data).toBe(encodeUpgrade(PROXY, CODE));
+    expect(records).toEqual([{ tx: hash(2), code: hash(1) }]);
+  });
+
+  it("cancelling the second confirmation doesn't send the code again on retry", async () => {
+    const { env, sends, records } = harness({ sendAt: 2 });
+    const progress = { deployed: {}, sent: {} };
+    await expect(runDeploy(upgradePlan, env, undefined, progress)).rejects.toBeInstanceOf(StepFailure);
+    expect(sends).toHaveLength(1);
+    await runDeploy(upgradePlan, env, undefined, progress);
+    expect(sends).toHaveLength(2);
+    expect(sends.filter((x) => x.data === "0xc0de")).toHaveLength(1);
+    expect(records).toEqual([{ tx: hash(2), code: hash(1) }]);
+    expect(progress.sent).toEqual({});
+  });
+
+  it("a failed record retries without signing anything", async () => {
+    const { env, sends, records } = harness({ recordOnce: true });
+    const progress = { deployed: {}, sent: {} };
+    await expect(runDeploy(firstPlan, env, undefined, progress)).rejects.toBeInstanceOf(StepFailure);
+    await runDeploy(firstPlan, env, undefined, progress);
+    expect(sends).toHaveLength(2);
+    expect(records).toHaveLength(1);
   });
 });

@@ -13,6 +13,8 @@ import { TIER_FOR, ModelUnavailableError, type ChatMessage, type ModelClient, ty
 import { BUILD_TOOLS, PLAN_TOOLS, contextWithPicks, systemPrompt } from "./prompt";
 import { checkpoint, claimTurn, loadFiles, recordUsage, releaseTurn } from "./store";
 import { deploymentsBlock, loadDeployedAddresses } from "@/server/deploy/addresses";
+import { isUpgradeableProject, liveStorage, upgradeChecksFor } from "@/server/deploy/upgradeable";
+import { upgradeableRules } from "./upgradeable-rules";
 import { PLATFORM_DIR, contractModule, contractsIndex, starterFiles, withStarterHelpers } from "./template";
 import {
   LeaseLostError,
@@ -80,7 +82,9 @@ export class TurnBusyError extends Error {
 export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEvent) => void): Promise<TurnRecord> {
   const { db, model } = deps;
   const job = deps.job ?? directJob(db);
-  const compile = deps.checkContracts ?? checkContracts;
+  const compileWith = deps.checkContracts ?? checkContracts;
+  // The saved turn setup only says "upgradeable" (it has to stay JSON); the checks are wired here.
+  const compile: typeof checkContracts = (files, options = {}) => compileWith(files, options.upgradeable ? { ...options, upgradeChecks: upgradeChecksFor(db, input.projectId) } : options);
   const lintWith = deps.checkApp ?? checkApp;
   let assetNames: string[] = [];
   const lint = (files: Record<string, string>) => lintWith(files, { assets: assetNames });
@@ -605,6 +609,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       log(`memory: ${memory.upTo} older messages summarised, ${memory.decisions.length} decisions kept${how}`);
     }
 
+    const upgradeable = await isUpgradeableProject(db, input.projectId);
     const ctx = contextWithPicks({
       files,
       request,
@@ -615,7 +620,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       lastSuggestions: await lastSuggestions(db, input.projectId, assistantId),
       assets: assetManifest(assets),
       memory: memoryBlock(memory),
-      deployments: deploymentsBlock(await loadDeployedAddresses(db, input.projectId)),
+      deployments: [upgradeable ? upgradeableRules(await liveStorage(db, project)) : "", deploymentsBlock(await loadDeployedAddresses(db, input.projectId), { upgradeable })].filter(Boolean).join("\n\n"),
     });
     log(`context: ${ctx.picks.length} of ${Object.keys(files).length} files in full (${ctx.picks.map((p) => p.path.split("/").pop()).join(", ")})`);
     // Design references the model hasn't seen yet go in as images, once; the manifest keeps
@@ -641,7 +646,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       firstBuild,
       priorStatus: finalStatus,
       assetNames: names,
-      contractOptions: { gdToken: mentionsGd(userText), allowNative: mentionsNativeCelo(userText) },
+      contractOptions: { gdToken: mentionsGd(userText), allowNative: mentionsNativeCelo(userText), ...(upgradeable ? { upgradeable } : {}) },
       baseFiles: files,
       prefix,
       imageAssetIds,

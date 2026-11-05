@@ -42,10 +42,13 @@ export async function loadDeployedAddresses(
 }
 
 /** What the agent is told about the project's live contracts on every turn. */
-export function deploymentsBlock(addresses: Record<string, Record<number, Address>>): string {
+export function deploymentsBlock(addresses: Record<string, Record<number, Address>>, { upgradeable = false }: { upgradeable?: boolean } = {}): string {
   const lines = Object.entries(addresses).flatMap(([name, map]) => Object.entries(map).map(([chainId, address]) => `- ${name} on chain ${chainId}: ${address}`));
   if (!lines.length) return "";
-  return `Deployed contracts (live on-chain, recorded by GoodBuild):\n${lines.join("\n")}\nThe ABI and these addresses are already in ${PLATFORM_DIR}<Name>.ts. Read them through <Name>Abi and <Name>Address[chain.id], never hardcode them, and make the app use real data for these contracts. If you change a deployed contract's code in any way, say so in your reply: it must be deployed again, which creates a new contract at a new address, the old one keeps its funds and history, and a published app needs publishing again. If you only change the front end, no new deploy is needed, so avoid editing contracts unless the request needs it. If you change its functions or events, until it's deployed again its address map is empty for that contract and the app should show its not-deployed state.`;
+  const change = upgradeable
+    ? "If you change a deployed contract's code in any way, say so in your reply: the user upgrades it from their wallet, it keeps the same address, funds and data, and a published app needs publishing again only to show new front-end features."
+    : "If you change a deployed contract's code in any way, say so in your reply: it must be deployed again, which creates a new contract at a new address, the old one keeps its funds and history, and a published app needs publishing again.";
+  return `Deployed contracts (live on-chain, recorded by GoodBuild):\n${lines.join("\n")}\nThe ABI and these addresses are already in ${PLATFORM_DIR}<Name>.ts. Read them through <Name>Abi and <Name>Address[chain.id], never hardcode them, and make the app use real data for these contracts. ${change} If you only change the front end, no new deploy is needed, so avoid editing contracts unless the request needs it. If you change its functions or events, until it's ${upgradeable ? "upgraded" : "deployed again"} its address map is empty for that contract and the app should show its not-deployed state.`;
 }
 
 const ADDRESS_MAP = (name: string) => new RegExp(`(export const ${name}Address: Partial<Record<number, Address>> = )\\{[\\s\\S]*?\\};`);

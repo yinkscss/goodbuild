@@ -7,8 +7,9 @@ import { useAuth } from "@/lib/auth/context";
 import { celoChainFor } from "@/lib/auth/wallet-client";
 import { classifyDeployError, errorDetail, type ClassifiedError } from "@/lib/deploy/errors";
 import { loadSent, pendingKey, saveSent } from "@/lib/deploy/pending";
-import { runDeploy, StepFailure, usesGoodDollar, type DeployEvent, type DeployProgress, type Plan, type PlanStep, type StepPhase } from "@/lib/deploy/run";
+import { runDeploy, StepFailure, usesGoodDollar, type DeployEvent, type DeployProgress, type Plan, type PlanStep, type StepPart, type StepPhase } from "@/lib/deploy/run";
 import { simulateCreation } from "@/lib/deploy/simulate";
+import { proxyAdminAbi } from "@/lib/deploy/upgradeable";
 
 export type DeployStage = "idle" | "preparing" | "ready" | "running" | "done" | "error";
 
@@ -18,6 +19,8 @@ export interface StepView {
   txHash?: Hex;
   address?: Address;
   verify?: "pending" | "verified" | "failed" | "unsupported";
+  /** Which transaction of a proxied contract this is on (D33). */
+  part?: StepPart;
 }
 
 export interface DeployErrorView extends ClassifiedError {
@@ -72,14 +75,14 @@ export function useDeploy({ projectId, chainId, onDeployed }: { projectId: strin
   }, []);
 
   const prepare = React.useCallback(
-    async (evmVersion: "cancun" | "paris" = "cancun") => {
+    async (evmVersion: "cancun" | "paris" = "cancun", options: { fresh?: boolean } = {}) => {
       setState({ ...initial, stage: "preparing", evmVersion });
       logsRef.current = [];
       try {
         const res = await fetch(`/api/projects/${projectId}/deploy/prepare`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ chainId, evmVersion }),
+          body: JSON.stringify({ chainId, evmVersion, ...(options.fresh ? { fresh: true } : {}) }),
         });
         const body = (await res.json()) as { plan?: ServerPlan; error?: string; message?: string; details?: string[] };
         if (!res.ok || !body.plan) {
@@ -140,18 +143,19 @@ export function useDeploy({ projectId, chainId, onDeployed }: { projectId: strin
         plan,
         {
           account,
-          simulate: ({ data, runtimeBytecode }) => simulateCreation(publicClient, { account, data, runtimeBytecode }),
-          send: async (data, gas) => {
+          simulate: ({ data, runtimeBytecode, to }) => simulateCreation(publicClient, { account, data, runtimeBytecode, to }),
+          send: async (data, gas, to) => {
             // Email wallets get explicit gas and fees: left to itself, Magic can fail on a custom network.
             const fees = wallet.kind === "embedded" ? { gas: (gas * BigInt(13)) / BigInt(10), ...(await publicClient.estimateFeesPerGas()) } : {};
-            return walletClient.sendTransaction({ account, chain: celoChainFor(plan.chainId), data, to: undefined, ...fees });
+            return walletClient.sendTransaction({ account, chain: celoChainFor(plan.chainId), data, to, ...fees });
           },
           waitForReceipt: (hash) => publicClient.waitForTransactionReceipt({ hash, timeout: 120_000 }),
-          record: async (step, txHash) => {
+          record: async (step, txHash, implementationTx) => {
+            const proxied = step.upgradeable && implementationTx ? { kind: step.upgradeable.kind === "upgrade" ? "upgrade" : "proxy", implementationTxHash: implementationTx } : undefined;
             const res = await fetch(`/api/projects/${projectId}/deployments`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ runId: plan.runId, chainId: plan.chainId, contractName: step.name, txHash, sourceHash: plan.sourceHash, evmVersion: plan.evmVersion }),
+              body: JSON.stringify({ runId: plan.runId, chainId: plan.chainId, contractName: step.name, txHash, sourceHash: plan.sourceHash, evmVersion: plan.evmVersion, proxied }),
             });
             const body = (await res.json()) as { deployment?: { address: Address; verifyStatus: StepView["verify"] }; message?: string };
             if (!res.ok || !body.deployment) throw new Error(body.message ?? "We couldn't save the deployment.");
@@ -162,7 +166,7 @@ export function useDeploy({ projectId, chainId, onDeployed }: { projectId: strin
           saveSent(pending, progressRef.current.sent);
           if (event.type === "phase") {
             log(`${event.step}: ${event.phase}${event.txHash ? ` ${event.txHash}` : ""}`);
-            setState((s) => ({ ...s, steps: s.steps.map((x) => (x.name === event.step ? { ...x, phase: event.phase, txHash: event.txHash ?? x.txHash, address: event.address ?? x.address } : x)) }));
+            setState((s) => ({ ...s, steps: s.steps.map((x) => (x.name === event.step ? { ...x, phase: event.phase, txHash: event.txHash ?? x.txHash, address: event.address ?? x.address, part: event.part ?? x.part } : x)) }));
           }
         },
         progressRef.current,
@@ -211,7 +215,39 @@ export function useDeploy({ projectId, chainId, onDeployed }: { projectId: strin
     return hash;
   }, [auth]);
 
-  return { state, prepare, start, reset, retry, claimTestGd };
+  /** Turn the project's upgradeable option on or off (the server refuses it on mainnet), then re-plan (D33). */
+  const setUpgradeable = React.useCallback(
+    async (enabled: boolean) => {
+      const res = await fetch(`/api/projects/${projectId}/upgradeable`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled }) });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { message?: string };
+        setState((s) => ({ ...s, stage: "error", error: { kind: "unknown", message: body.message ?? "We couldn't change that setting.", at: "prepare", logs: [], opcodes: [] } }));
+        return;
+      }
+      await prepare("cancun");
+    },
+    [projectId, prepare],
+  );
+
+  /**
+   * Give up the right to change a contract, for good: the wallet renounces its ProxyAdmin (D33). The
+   * chain is the record. Every later prepare reads the owner from there and sees it is locked.
+   */
+  const lockContract = React.useCallback(
+    async (name: string) => {
+      const plan = planRef.current;
+      const proxy = plan?.proxies?.[name];
+      if (!plan || !proxy || !auth.wallet) throw new Error("Connect your wallet first.");
+      if (auth.wallet.chainId !== plan.chainId) await auth.switchChain(plan.chainId);
+      const client = await auth.getWalletClient();
+      const hash = await client.writeContract({ address: proxy.admin, abi: proxyAdminAbi, functionName: "renounceOwnership", account: auth.wallet.address, chain: celoChainFor(plan.chainId) });
+      await publicClientFor(plan.chainId).waitForTransactionReceipt({ hash });
+      setState((s) => (s.plan?.proxies?.[name] ? { ...s, plan: { ...s.plan, proxies: { ...s.plan.proxies, [name]: { ...s.plan.proxies[name], authority: "locked" } } } } : s));
+    },
+    [auth],
+  );
+
+  return { state, prepare, start, reset, retry, claimTestGd, setUpgradeable, lockContract };
 }
 
 function firstName(plan: ServerPlan) {
@@ -227,9 +263,12 @@ async function estimate(plan: ServerPlan, account: Address, setState: SetState, 
   try {
     const client = publicClientFor(plan.chainId);
     // Only a contract with no constructor arguments can be simulated before its inputs exist.
-    const probe = plan.steps.find((s) => !plan.alreadyDeployed[s.name] && Object.keys(s.args).length === 0);
+    // Behind a proxy (D33) the code itself takes no arguments, whatever initialize takes.
+    const probe = plan.steps.find((s) => !plan.alreadyDeployed[s.name] && (s.upgradeable || Object.keys(s.args).length === 0));
     if (!probe) return;
     const { gas } = await simulateCreation(client, { account, data: probe.bytecode, runtimeBytecode: probe.deployedBytecode });
+    // Behind a proxy the second transaction isn't in this size-based sum, so the modal says "as you sign".
+    if (plan.steps.some((s) => s.upgradeable)) return;
     const price = await client.getGasPrice();
     const perByte = Number(gas) / Math.max(probe.bytecodeBytes, 1);
     const total = plan.steps.filter((s) => !plan.alreadyDeployed[s.name]).reduce((n, s) => n + perByte * s.bytecodeBytes, 0);

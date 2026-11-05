@@ -34,10 +34,12 @@ export async function chainSupportsOpcode(client: Pick<PublicClient, "call">, na
 
 export interface SimulateArgs {
   account: Address;
-  /** Creation data: bytecode plus ABI-encoded constructor arguments. */
+  /** Creation data: bytecode plus ABI-encoded constructor arguments. Or a call's data, with `to`. */
   data: Hex;
   /** Runtime bytecode, scanned for opcodes the chain may not know. */
   runtimeBytecode?: Hex;
+  /** A call to a live contract instead of a creation: pointing a proxy at new code (D33). */
+  to?: Address;
 }
 
 /**
@@ -52,7 +54,7 @@ export async function simulateCreation(client: Pick<PublicClient, "call" | "esti
   const missing: string[] = [];
   for (const name of used) if ((await chainSupportsOpcode(client, name)) === false) missing.push(name);
   if (missing.length) throw new UnsupportedOpcodeError(missing);
-  const gas = await client.estimateGas({ account: args.account, data: args.data });
+  const gas = await client.estimateGas({ account: args.account, data: args.data, to: args.to });
   // Some wallets (Magic's among them) answer an unfunded send with a bare "internal error".
   const [balance, price] = await Promise.all([client.getBalance({ address: args.account }), client.getGasPrice()]);
   if (balance < gas * price) throw Object.assign(new Error("insufficient funds for the network fee"), { code: "insufficient_funds" });

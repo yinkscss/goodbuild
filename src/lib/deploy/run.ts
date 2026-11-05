@@ -3,6 +3,7 @@ import { encodeDeployData, type Abi, type Address, type Hex } from "viem";
 import { classifyDeployError, type ClassifiedError } from "./errors";
 import { referencesIn, resolveArgs, type ArgValue } from "./manifest";
 import { UnsupportedOpcodeError } from "./simulate";
+import { encodeProxyDeploy, encodeUpgrade, initializerData, type ProxyInfo, type UpgradeableStep } from "./upgradeable";
 
 /** The plan the server returns from /deploy/prepare (src/server/deploy/service.ts). */
 export interface PlanStep {
@@ -13,6 +14,8 @@ export interface PlanStep {
   deployedBytecode?: Hex;
   args: Record<string, ArgValue>;
   dependsOn: string[];
+  /** Behind a proxy (D33): this step takes two transactions, the new code and then the proxy. */
+  upgradeable?: UpgradeableStep;
 }
 export interface Plan {
   runId: string;
@@ -24,25 +27,34 @@ export interface Plan {
   alreadyDeployed: Record<string, Address>;
   /** Live contracts this deploy leaves behind, which keep their funds and history. */
   replaces: Array<{ name: string; address: Address; gdBalance: string | null }>;
+  /** This project opted in to upgradeable contracts (D33). */
+  upgradeable?: boolean;
+  /** Live proxies that get new code at the same address in this deploy. */
+  upgrades?: Array<{ name: string; address: Address }>;
+  /** Live proxies by contract name, with who can still change each one. */
+  proxies?: Record<string, ProxyInfo>;
 }
 
 /** Everything that touches the wallet or the network, injected so the order logic is testable. */
 export interface DeployEnv {
   account: Address;
   /** Throws on a rejected bytecode or a reverting constructor. */
-  simulate(args: { data: Hex; runtimeBytecode?: Hex }): Promise<{ gas: bigint }>;
-  /** Asks the wallet to sign and broadcast the creation transaction; returns its hash. `gas` is the simulation's estimate. */
-  send(data: Hex, gas: bigint): Promise<Hex>;
+  simulate(args: { data: Hex; runtimeBytecode?: Hex; to?: Address }): Promise<{ gas: bigint }>;
+  /** Asks the wallet to sign and broadcast the transaction; returns its hash. `gas` is the simulation's estimate. `to` is unset for a creation. */
+  send(data: Hex, gas: bigint, to?: Address): Promise<Hex>;
   /** Waits until the transaction is mined. */
-  waitForReceipt(hash: Hex): Promise<{ status: "success" | "reverted" }>;
-  /** Server-side: reads the chain, verifies the transaction, stores it, returns the deployed address. */
-  record(step: PlanStep, txHash: Hex): Promise<{ address: Address }>;
+  waitForReceipt(hash: Hex): Promise<{ status: "success" | "reverted"; contractAddress?: Address | null }>;
+  /** Server-side: reads the chain, verifies the transaction, stores it, returns the deployed address. `implementationTx` is set behind a proxy. */
+  record(step: PlanStep, txHash: Hex, implementationTx?: Hex): Promise<{ address: Address }>;
 }
 
 export type StepPhase = "waiting" | "reused" | "simulating" | "signing" | "broadcasting" | "recording" | "done" | "failed";
 
+/** Which of the two transactions an upgradeable step is on (D33). */
+export type StepPart = "code" | "proxy" | "switch";
+
 export type DeployEvent =
-  | { type: "phase"; step: string; phase: StepPhase; txHash?: Hex; address?: Address }
+  | { type: "phase"; step: string; phase: StepPhase; txHash?: Hex; address?: Address; part?: StepPart }
   | { type: "sent"; step: string; txHash: Hex };
 
 /**
@@ -86,8 +98,15 @@ export async function runDeploy(
       delete progress.sent[step.name];
       continue;
     }
-    const phase = (p: StepPhase, extra: { txHash?: Hex; address?: Address } = {}) => onEvent({ type: "phase", step: step.name, phase: p, ...extra });
+    const phase = (p: StepPhase, extra: { txHash?: Hex; address?: Address; part?: StepPart } = {}) => onEvent({ type: "phase", step: step.name, phase: p, ...extra });
     try {
+      if (step.upgradeable) {
+        const { address, txHash } = await runProxiedStep(plan, step, step.upgradeable, env, deployed, progress, phase, onEvent);
+        deployed[step.name] = address;
+        progress.deployed[step.name] = address;
+        phase("done", { txHash, address });
+        continue;
+      }
       const args = resolveArgs({ name: step.name, args: step.args, dependsOn: step.dependsOn }, step.abi, {
         deployed,
         gooddollar: plan.gooddollar,
@@ -133,6 +152,73 @@ export async function runDeploy(
     }
   }
   return deployed;
+}
+
+/** A sent transaction under its own key, so a retry picks up each one and never sends it twice. */
+async function sendOnce(
+  key: string,
+  step: PlanStep,
+  env: DeployEnv,
+  progress: DeployProgress,
+  phase: (p: StepPhase, extra?: { txHash?: Hex; part?: StepPart }) => void,
+  onEvent: (e: DeployEvent) => void,
+  part: StepPart,
+  tx: { data: Hex; to?: Address; runtimeBytecode?: Hex },
+) {
+  let txHash = progress.sent[key];
+  if (!txHash) {
+    phase("simulating", { part });
+    const { gas } = await env.simulate(tx);
+    phase("signing", { part });
+    txHash = await env.send(tx.data, gas, tx.to);
+    progress.sent[key] = txHash;
+    onEvent({ type: "sent", step: step.name, txHash });
+  }
+  phase("broadcasting", { txHash, part });
+  const receipt = await env.waitForReceipt(txHash).catch((error: unknown) => {
+    if ((error as Error).name === "WaitForTransactionReceiptTimeoutError") delete progress.sent[key];
+    throw error;
+  });
+  if (receipt.status !== "success") {
+    delete progress.sent[key];
+    throw Object.assign(new Error("execution reverted"), { code: "reverted" });
+  }
+  return { txHash, contractAddress: receipt.contractAddress ?? null };
+}
+
+/**
+ * A contract behind a proxy (D33), in two transactions. The first only puts the code on chain and
+ * changes nothing anyone uses. The second creates the proxy, or points the live proxy at that code.
+ */
+async function runProxiedStep(
+  plan: Plan,
+  step: PlanStep,
+  how: UpgradeableStep,
+  env: DeployEnv,
+  deployed: Record<string, Address>,
+  progress: DeployProgress,
+  phase: (p: StepPhase, extra?: { txHash?: Hex; part?: StepPart }) => void,
+  onEvent: (e: DeployEvent) => void,
+): Promise<{ address: Address; txHash: Hex }> {
+  const codeKey = `${step.name}#code`;
+  const code = await sendOnce(codeKey, step, env, progress, phase, onEvent, "code", { data: step.bytecode, runtimeBytecode: step.deployedBytecode });
+  if (!code.contractAddress) throw new Error("The new code's transaction didn't create a contract.");
+
+  let second: { data: Hex; to?: Address };
+  if (how.kind === "first") {
+    const args = resolveArgs({ name: step.name, args: step.args, dependsOn: step.dependsOn }, step.abi, { deployed, gooddollar: plan.gooddollar, deployer: env.account }, { upgradeable: true });
+    second = { data: encodeProxyDeploy(how, code.contractAddress, env.account, initializerData(step.abi, args)) };
+  } else {
+    second = { data: encodeUpgrade(how.proxy, code.contractAddress), to: how.admin };
+  }
+  const part: StepPart = how.kind === "first" ? "proxy" : "switch";
+  const { txHash } = await sendOnce(step.name, step, env, progress, phase, onEvent, part, second);
+
+  phase("recording", { txHash, part });
+  const { address } = await env.record(step, txHash, code.txHash);
+  delete progress.sent[codeKey];
+  delete progress.sent[step.name];
+  return { address, txHash };
 }
 
 /** True when a constructor argument references ${GOODDOLLAR}. */

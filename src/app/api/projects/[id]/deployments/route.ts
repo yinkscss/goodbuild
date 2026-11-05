@@ -32,6 +32,8 @@ const body = z.object({
   txHash: hex.length(66),
   sourceHash: hex.length(66),
   evmVersion: z.enum(["cancun", "paris"]),
+  /** Behind a proxy (D33): what txHash is, and the transaction that deployed the new code. */
+  proxied: z.object({ kind: z.enum(["proxy", "upgrade"]), implementationTxHash: hex.length(66) }).optional(),
 });
 
 /** Record a mined deployment. The server reads the chain; the browser only names the transaction. */
@@ -51,13 +53,14 @@ export async function POST(request: Request, ctx: RouteContext<"/api/projects/[i
         ...parsed.data,
         txHash: parsed.data.txHash as `0x${string}`,
         sourceHash: parsed.data.sourceHash as `0x${string}`,
+        proxied: parsed.data.proxied && { kind: parsed.data.proxied.kind, implementationTxHash: parsed.data.proxied.implementationTxHash as `0x${string}` },
       });
       // Verification runs after the response so the stepper isn't held up by Sourcify.
       const { after } = await import("next/server");
       after(() => verifyDeployment(db, row).then(() => undefined, () => undefined));
       return NextResponse.json({ deployment: publicDeployment(row) }, { status: 201 });
     } catch (error) {
-      if (error instanceof DeployError) return NextResponse.json({ error: error.code, message: error.message }, { status: 422 });
+      if (error instanceof DeployError) return NextResponse.json({ error: error.code, message: error.message, details: error.details }, { status: 422 });
       throw error;
     }
   } catch (error) {

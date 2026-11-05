@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 
 import type { Db } from "@/server/db/client";
 import { deployments, type Deployment } from "@/server/db/deploy-schema";
+import { PROXY_IDENTIFIER } from "./compile";
 
 /** Sourcify's public server. It lists both Celo chains as supported (checked 5 Nov 2026). */
 export const SOURCIFY_URL = process.env.SOURCIFY_URL ?? "https://sourcify.dev/server";
@@ -16,7 +17,7 @@ export interface VerifyOutcome {
 }
 
 /** Fully qualified name of the deployed contract inside the standard JSON input. */
-function identifier(d: Deployment): string | null {
+function identifier(d: Pick<Deployment, "stdJsonInput" | "contractName">): string | null {
   const sources = (d.stdJsonInput as { sources?: Record<string, unknown> } | null)?.sources ?? {};
   const file = Object.keys(sources).find((p) => p.startsWith("contracts/") && p === `contracts/${d.contractName}.sol`);
   return file ? `${file}:${d.contractName}` : null;
@@ -27,8 +28,8 @@ function identifier(d: Deployment): string | null {
  * A job that is still running returns "pending"; call again later. Sourcify forwards verified
  * contracts to Blockscout and Etherscan-style explorers on its own.
  */
-export async function verifyOnSourcify(d: Deployment, f: Fetch = fetch, opts: { pollMs?: number; polls?: number } = {}): Promise<VerifyOutcome> {
-  const id = identifier(d);
+export async function verifyOnSourcify(d: Pick<Deployment, "stdJsonInput" | "contractName" | "chainId" | "address" | "compilerVersion" | "txHash">, f: Fetch = fetch, opts: { pollMs?: number; polls?: number; identifier?: string } = {}): Promise<VerifyOutcome> {
+  const id = opts.identifier ?? identifier(d);
   if (!d.stdJsonInput || !id) return { status: "failed", detail: "The sources for this deployment weren't saved, so it can't be verified." };
   const pollMs = opts.pollMs ?? 1500;
   const polls = opts.polls ?? 8;
@@ -75,9 +76,22 @@ async function message(res: Response): Promise<string> {
   }
 }
 
+/**
+ * A contract behind a proxy is two contracts to verify (D33): the current code, from its own creation
+ * transaction, and OpenZeppelin's proxy at the address people use. Worst result wins, because a green
+ * chip should mean someone can read what the address runs. The stored standard JSON holds both.
+ */
+export async function verifyProxied(d: Deployment, f: Fetch = fetch, opts: { pollMs?: number; polls?: number } = {}): Promise<VerifyOutcome> {
+  const code = await verifyOnSourcify({ ...d, address: d.proxy!.implementation, txHash: d.proxy!.implementationTx }, f, opts);
+  const proxy = await verifyOnSourcify(d, f, { ...opts, identifier: PROXY_IDENTIFIER });
+  const order: VerifyOutcome["status"][] = ["failed", "unsupported", "pending", "verified"];
+  const worst = order.indexOf(code.status) <= order.indexOf(proxy.status) ? code : proxy;
+  return { status: worst.status, detail: worst.status === "verified" ? "The code and its proxy both match on Sourcify." : `${worst === code ? "The code" : "The proxy"}: ${worst.detail}` };
+}
+
 /** Run verification for a stored deployment and save the result. */
 export async function verifyDeployment(db: Db, d: Deployment, f: Fetch = fetch): Promise<Deployment> {
-  const out = await verifyOnSourcify(d, f);
+  const out = d.proxy ? await verifyProxied(d, f) : await verifyOnSourcify(d, f);
   const [row] = await db
     .update(deployments)
     .set({
