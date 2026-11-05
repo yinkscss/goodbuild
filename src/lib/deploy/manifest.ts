@@ -54,7 +54,6 @@ export function parseManifest(source: string): ParseResult {
 }
 
 const REF = /\$\{([A-Za-z_][A-Za-z0-9_]*)(?:\.(address))?\}/g;
-const WHOLE_REF = /^\$\{([A-Za-z_][A-Za-z0-9_]*)(?:\.(address))?\}$/;
 
 export type Reference = { kind: "contract"; name: string } | { kind: "gooddollar" } | { kind: "deployer" };
 

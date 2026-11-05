@@ -15,7 +15,7 @@ import type { Db } from "@/server/db/client";
 import { deployments, type Deployment } from "@/server/db/deploy-schema";
 import { projectFiles, projects } from "@/server/db/schema";
 import { loadDeployedAddresses, withDeployedAddresses } from "./addresses";
-import { compileForDeploy, type DeployCompile, type EvmVersion } from "./compile";
+import { compileForDeploy, type EvmVersion } from "./compile";
 
 export type DeployErrorCode =
   | "mainnet_disabled"
@@ -48,6 +48,7 @@ export interface DeployStepPlan {
   file: string;
   abi: Abi;
   bytecode: Hex;
+  deployedBytecode: Hex;
   bytecodeBytes: number;
   /** Constructor arguments by parameter name, references still unresolved. */
   args: Record<string, ArgValue>;
@@ -136,7 +137,7 @@ export async function prepareDeploy(
     unaudited: true,
     steps: plan.steps.map((s) => {
       const a = byName.get(s.name)!;
-      return { name: s.name, file: a.file, abi: a.abi, bytecode: a.bytecode, bytecodeBytes: (a.bytecode.length - 2) / 2, args: s.args, dependsOn: s.dependsOn };
+      return { name: s.name, file: a.file, abi: a.abi, bytecode: a.bytecode, deployedBytecode: a.deployedBytecode, bytecodeBytes: (a.bytecode.length - 2) / 2, args: s.args, dependsOn: s.dependsOn };
     }),
     alreadyDeployed,
   };
@@ -181,7 +182,7 @@ export async function recordDeployment(
     .where(and(eq(deployments.chainId, input.chainId), eq(deployments.txHash, input.txHash.toLowerCase())))
     .limit(1);
   if (existing[0]) {
-    if (existing[0].userId !== input.userId) throw new DeployError("wrong_sender", "That transaction belongs to another account.");
+    if (existing[0].userId !== input.userId || existing[0].projectId !== input.projectId) throw new DeployError("wrong_sender", "That transaction belongs to another project.");
     return existing[0]; // idempotent: a retried request returns the same row
   }
 

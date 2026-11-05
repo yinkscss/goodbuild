@@ -235,3 +235,15 @@ code {
 .gb-sandpack .cm-scroller {
   overflow: auto !important;
 }
+
+/* Deploy success (DESIGN_SYSTEM §4): one pink burst, under 1.2s, skipped for reduced motion. */
+@keyframes gb-burst {
+  0% { transform: scale(0.4); opacity: 0.85; }
+  100% { transform: scale(2.4); opacity: 0; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .gb-burst { animation: gb-burst 1.1s cubic-bezier(0.2, 0.8, 0.2, 1) 1 forwards; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gb-burst { display: none; }
+}

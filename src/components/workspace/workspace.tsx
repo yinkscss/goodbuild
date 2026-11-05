@@ -6,9 +6,9 @@ import { ChevronDown, History } from "lucide-react";
 
 import { WalletButton } from "@/components/auth/wallet-button";
 import { Logo } from "@/components/brand/logo";
+import { DeployButton, DeployProvider } from "@/components/deploy/deploy-trigger";
 import { CreditsPill } from "@/components/home/credits-pill";
 import { NetworkBadge } from "@/components/home/top-bar";
-import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -41,7 +41,17 @@ export function Workspace({ initial }: { initial: WorkspaceState }) {
   const assetUrls = useAssetDataUrls(state.project.id, state.assets);
   const latestRecord = [...state.messages].reverse().map((m) => m.meta as TurnRecord | null).find((r) => r?.kind === "turn" && r.contracts?.length);
 
+  const hasContracts = Object.keys(files).some((p) => p.startsWith("contracts/") && p.endsWith(".sol") && !p.startsWith("contracts/test/"));
+
   return (
+    <DeployProvider
+      projectId={state.project.id}
+      chainId={state.project.chainId}
+      hasContracts={hasContracts}
+      busy={running}
+      onDeployed={() => void ws.refresh()}
+      onFix={(prompt) => ws.send(prompt, "build")}
+    >
     <div className="flex h-dvh flex-col gap-4 p-4">
       <header className="flex h-12 shrink-0 items-center justify-between gap-3 px-2">
         <div className="flex min-w-0 items-center gap-3">
@@ -55,9 +65,7 @@ export function Workspace({ initial }: { initial: WorkspaceState }) {
         <div className="flex items-center gap-3">
           <CreditsPill balanceGd={null} usdPerGd={null} className="hidden xl:flex" />
           <NetworkBadge />
-          <Button variant="primary" className="hidden px-5 py-2.5 md:inline-flex" disabled title="Wallet-signed deploys are coming in the next update">
-            Deploy
-          </Button>
+          <DeployButton className="hidden px-5 py-2.5 md:inline-flex" />
           <WalletButton showNetwork={false} />
         </div>
       </header>
@@ -97,6 +105,7 @@ export function Workspace({ initial }: { initial: WorkspaceState }) {
         </div>
       </div>
     </div>
+    </DeployProvider>
   );
 }
 

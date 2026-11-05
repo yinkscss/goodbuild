@@ -8,7 +8,7 @@ import { createTestDb, type Db } from "@/server/db/client";
 import { deployments } from "@/server/db/deploy-schema";
 import { createProjectFromPrompt } from "@/server/projects";
 import { loadDeployedAddresses, withDeployedAddresses } from "./addresses";
-import { compileForDeploy } from "./compile";
+import { compileForDeploy, sourceKey } from "./compile";
 import { DeployError, prepareDeploy, recordDeployment } from "./service";
 import { verifyOnSourcify } from "./verify";
 import { contractModule } from "@/server/agent/template";
@@ -121,7 +121,8 @@ describe("prepareDeploy", () => {
 
   it("fails clearly without a manifest, on a cycle, and on a bad reference", async () => {
     const files = await loadFiles(db, projectId);
-    const { "contracts/deploy.json": _drop, ...rest } = files;
+    const rest = { ...files };
+    delete rest["contracts/deploy.json"];
     await saveFiles(db, projectId, rest);
     await expect(prepareDeploy(db, { projectId, chainId: 11142220 })).rejects.toMatchObject({ code: "manifest_missing" });
 
@@ -204,6 +205,12 @@ describe("recordDeployment", () => {
     await saveFiles(db, projectId, { ...files, "contracts/RTXToken.sol": TOKEN.replace("1000 ether", "2000 ether") });
     await expect(recordDeployment(db, await base(p, 0), { client: fakeChain({ input: p.steps[0].bytecode }).client })).rejects.toMatchObject({ code: "source_changed" });
   }, 90_000);
+
+  it("a changed manifest is a new deployment, even with the same contracts", async () => {
+    const files = { "contracts/Token.sol": TOKEN, "contracts/deploy.json": MANIFEST };
+    expect(sourceKey(files, "cancun")).not.toBe(sourceKey({ ...files, "contracts/deploy.json": MANIFEST + " " }, "cancun"));
+    expect(sourceKey(files, "cancun")).toBe(sourceKey({ ...files, "src/App.tsx": "x" }, "cancun"));
+  });
 
   it("resumes: a second prepare reports what is already deployed from the same source", async () => {
     const p = await plan();

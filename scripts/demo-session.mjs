@@ -1,5 +1,5 @@
 // Sign in a throwaway wallet against a running server and optionally seed projects.
-// Prints the session cookie value, for screenshots and manual testing without Privy.
+// Prints the session cookie value, for screenshots and manual testing without Magic.
 // Usage: BASE_URL=http://localhost:3000 node scripts/demo-session.mjs [--seed]
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { createSiweMessage } from "viem/siwe";

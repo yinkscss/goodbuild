@@ -127,7 +127,7 @@
 
 ## Q30. Storing the email of email-login users
 - AUTH.md says to store the email for email logins. The browser knows it, but the server can't trust a client-supplied email.
-- Claude's input: M2 stores no email. Doing it properly means verifying the user's Privy access token server-side (needs `PRIVY_APP_SECRET` or Privy's verification key). Proposal: add that when email is actually used (receipts, notifications).
+- Claude's input: M2 stores no email. Doing it properly means verifying the Magic DID token server-side (D22 already does this on sign-in; Magic returns the email in its user metadata). Proposal: add that when email is actually used (receipts, notifications).
 
 ## Q31. Hosting and the geo-block
 - The API returns 451 for US and comprehensively sanctioned regions (CU, IR, KP, SY; list UNVERIFIED, confirm with counsel), read from the host's country header (`x-vercel-ip-country` or `cf-ipcountry`). With neither header (other hosts, local dev) only the attestation applies.

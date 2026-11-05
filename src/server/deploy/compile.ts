@@ -2,6 +2,7 @@ import "server-only";
 
 import { keccak256, toHex, type Abi, type Hex } from "viem";
 
+import { MANIFEST_PATH } from "@/lib/deploy/manifest";
 import { SOLC_SETTINGS, isTestFile, runSolc } from "@/server/agent/checks";
 
 export type EvmVersion = "cancun" | "paris";
@@ -13,6 +14,8 @@ export interface DeployArtifact {
   abi: Abi;
   /** Creation bytecode, 0x-prefixed. Never has unlinked library placeholders. */
   bytecode: Hex;
+  /** Runtime bytecode, scanned in the browser for opcodes the chain may not support. */
+  deployedBytecode: Hex;
 }
 
 export interface DeployCompile {
@@ -56,10 +59,14 @@ function stableStringify(value: unknown): string {
 
 const cache = new Map<string, DeployCompile>();
 
-/** Hash of the project's deployable sources plus the compile target. Stable across runs. */
+/**
+ * Hash of the project's deployable sources, deploy manifest and compile target. Stable across runs.
+ * The manifest counts because it holds the constructor arguments: changing one is a new deployment,
+ * not a contract that is "already deployed".
+ */
 export function sourceKey(files: Record<string, string>, evmVersion: EvmVersion): Hex {
   const sources = Object.fromEntries(Object.entries(files).filter(([p]) => deployable(p)));
-  return keccak256(toHex(stableStringify({ sources, evmVersion, optimizer: SOLC_SETTINGS.optimizer })));
+  return keccak256(toHex(stableStringify({ sources, manifest: files[MANIFEST_PATH] ?? null, evmVersion, optimizer: SOLC_SETTINGS.optimizer })));
 }
 
 function deployable(path: string) {
@@ -105,7 +112,7 @@ export async function compileForDeploy(
         problems.push(`${name} links an external library, which GoodBuild can't deploy yet. Use internal library functions.`);
         continue;
       }
-      artifacts.push({ name, file, abi: c.abi as Abi, bytecode: `0x${object}` });
+      artifacts.push({ name, file, abi: c.abi as Abi, bytecode: `0x${object}`, deployedBytecode: `0x${c.evm?.deployedBytecode?.object ?? ""}` });
     }
   }
   if (problems.length) return { ok: false, errors: problems };
