@@ -7,6 +7,7 @@ import { ChevronDown, History } from "lucide-react";
 import { WalletButton } from "@/components/auth/wallet-button";
 import { Logo } from "@/components/brand/logo";
 import { DeployButton, DeployProvider } from "@/components/deploy/deploy-trigger";
+import { contractsToWire, wirePrompt } from "@/lib/deploy/wiring";
 import { CreditsPill } from "@/components/home/credits-pill";
 import { NetworkBadge } from "@/components/home/top-bar";
 import {
@@ -49,7 +50,12 @@ export function Workspace({ initial }: { initial: WorkspaceState }) {
       chainId={state.project.chainId}
       hasContracts={hasContracts}
       busy={running}
-      onDeployed={() => void ws.refresh()}
+      onDeployed={(deployed) => {
+        void ws.refresh().then((next) => {
+          const toWire = next ? contractsToWire(next.files, deployed) : [];
+          if (toWire.length) ws.send(wirePrompt(toWire), "build");
+        });
+      }}
       onFix={(prompt) => ws.send(prompt, "build")}
     >
     <div className="flex h-dvh flex-col gap-4 p-4">

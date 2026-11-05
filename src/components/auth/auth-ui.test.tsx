@@ -57,7 +57,7 @@ beforeEach(() => {
 describe("prompt gating", () => {
   it("shows the prompt at once while sending, and a repeat Send doesn't create a second project", async () => {
     let finish: (r: Response) => void = () => undefined;
-    const fetchMock = vi.fn((_url: string) => new Promise<Response>((r) => (finish = r)));
+    const fetchMock = vi.fn<(url: string) => Promise<Response>>(() => new Promise((r) => (finish = r)));
     vi.stubGlobal("fetch", fetchMock);
     render(<Harness auth={makeAuth({ user: { id: "u1", wallet: "0xabc", walletKind: "external" } as never })} />);
     await userEvent.click(screen.getByText("send"));

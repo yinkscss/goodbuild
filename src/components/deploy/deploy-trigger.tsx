@@ -32,7 +32,8 @@ export function DeployProvider({
   chainId: number;
   hasContracts: boolean;
   busy: boolean;
-  onDeployed: () => void;
+  /** Everything landed: the contract names. Empty after a partial failure (files still changed). */
+  onDeployed: (deployed: string[]) => void;
   onFix: (prompt: string) => void;
   children: React.ReactNode;
 }) {

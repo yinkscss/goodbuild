@@ -60,7 +60,7 @@ interface ServerPlan extends Plan {
  * unit tests; this hook only wires the real wallet (the same viem client for Magic and external
  * wallets) and the API.
  */
-export function useDeploy({ projectId, chainId, onDeployed }: { projectId: string; chainId: number; onDeployed: () => void }) {
+export function useDeploy({ projectId, chainId, onDeployed }: { projectId: string; chainId: number; onDeployed: (deployed: string[]) => void }) {
   const auth = useAuth();
   const [state, setState] = React.useState<DeployState>(initial);
   const planRef = React.useRef<ServerPlan | null>(null);
@@ -164,11 +164,11 @@ export function useDeploy({ projectId, chainId, onDeployed }: { projectId: strin
         progressRef.current,
       );
       setState((s) => ({ ...s, stage: "done" }));
-      onDeployed();
+      onDeployed(plan.steps.map((s) => s.name));
       void pollVerification(projectId, plan, deployed, setState);
     } catch (e) {
       // Finished contracts are saved and their addresses are in the project files, so refresh those.
-      if (Object.keys(progressRef.current.deployed).length) onDeployed();
+      if (Object.keys(progressRef.current.deployed).length) onDeployed([]);
       if (e instanceof StepFailure) {
         log(`${e.step}: ${e.error.kind} ${String((e.raw as Error | undefined)?.message ?? e.message).slice(0, 300)}`);
         setState((s) => ({ ...s, stage: "error", error: { ...e.error, at: e.step, logs: logsRef.current, opcodes: e.opcodes } }));

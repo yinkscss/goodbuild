@@ -1,13 +1,15 @@
 // @vitest-environment node
 import { beforeEach, describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
 import { encodeAbiParameters, type Address, type Hex, type PublicClient } from "viem";
 
 import { signInUser } from "@/server/auth/service";
 import { loadFiles, saveFiles } from "@/server/agent/store";
 import { createTestDb, type Db } from "@/server/db/client";
 import { deployments } from "@/server/db/deploy-schema";
+import { messages } from "@/server/db/schema";
 import { createProjectFromPrompt } from "@/server/projects";
-import { loadDeployedAddresses, withDeployedAddresses } from "./addresses";
+import { deploymentsBlock, loadDeployedAddresses, withDeployedAddresses } from "./addresses";
 import { compileForDeploy, sourceKey } from "./compile";
 import { DeployError, prepareDeploy, recordDeployment } from "./service";
 import { verifyOnSourcify } from "./verify";
@@ -179,6 +181,15 @@ describe("recordDeployment", () => {
     const files = await loadFiles(db, projectId);
     expect(files["src/contracts/RTXPool.ts"]).toContain('"11142220": "0x3333333333333333333333333333333333333333"');
     expect(files["src/contracts/RTXToken.ts"]).not.toContain("0x3333");
+    const notes = await db.select().from(messages).where(eq(messages.projectId, projectId));
+    expect(notes.find((m) => m.role === "system")?.content).toContain("RTXPool is live on Celo Sepolia at 0x3333");
+
+    const addresses = await loadDeployedAddresses(db, projectId);
+    expect(deploymentsBlock(addresses)).toContain("RTXPool on chain 11142220: 0x3333");
+    expect(deploymentsBlock({})).toBe("");
+    // A rebuild that changed the ABI must not point the new ABI at the old contract.
+    expect((await loadDeployedAddresses(db, projectId, { RTXPool: [{ type: "function", name: "changed" }] })).RTXPool).toBeUndefined();
+    expect((await loadDeployedAddresses(db, projectId, { RTXPool: row.abi })).RTXPool).toBeDefined();
   }, 90_000);
 
   it("is idempotent for the same transaction", async () => {
