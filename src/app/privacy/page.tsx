@@ -17,6 +17,7 @@ export default function PrivacyPage() {
         <li>Magic handles email sign-in and your email wallet, so it receives your email address.</li>
         <li>WalletConnect, if you connect through it.</li>
         <li>Sourcify receives your contract&apos;s source code when it is verified.</li>
+        <li>Cloudflare sits in front of GoodBuild and its published apps, so it handles every request, including your IP address.</li>
       </ul>
       <h2>What is public</h2>
       <p>Anything on a blockchain is public and permanent, including deployed contracts and your wallet address. Verified source code and published apps are public too.</p>
