@@ -78,6 +78,6 @@ export async function getOwnedProject(
   return { project, messages: chat };
 }
 
-export async function listProjects(db: Db, ownerId: string, limit = 20): Promise<Project[]> {
+export async function listProjects(db: Db, ownerId: string, limit = 500): Promise<Project[]> {
   return db.select().from(projects).where(eq(projects.ownerId, ownerId)).orderBy(desc(projects.updatedAt)).limit(limit);
 }

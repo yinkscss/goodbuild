@@ -39,13 +39,34 @@ export function ProjectCard({ project, index, now }: { project: ProjectSummary; 
   );
 }
 
+/** How many projects show before "Show all". Every project is loaded, so none is ever out of reach. */
+export const PROJECTS_SHOWN = 8;
+const GRID = "mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4";
+
 export function ProjectGrid({ projects, now = new Date() }: { projects: ProjectSummary[]; now?: Date }) {
+  const first = projects.slice(0, PROJECTS_SHOWN);
+  const rest = projects.slice(PROJECTS_SHOWN);
   return (
-    <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      {projects.map((p, i) => (
-        <ProjectCard key={p.id} project={p} index={i} now={now} />
-      ))}
-    </div>
+    <>
+      <div className={GRID}>
+        {first.map((p, i) => (
+          <ProjectCard key={p.id} project={p} index={i} now={now} />
+        ))}
+      </div>
+      {rest.length > 0 && (
+        <details className="group mt-2">
+          <summary className="mx-auto mt-2 flex w-fit cursor-pointer list-none items-center rounded-full bg-tint px-3.5 py-1.5 text-[13px] font-medium text-violet outline-none select-none hover:bg-violet-soft focus-visible:shadow-focus [&::-webkit-details-marker]:hidden">
+            <span className="group-open:hidden">Show all {projects.length} projects</span>
+            <span className="hidden group-open:inline">Show fewer</span>
+          </summary>
+          <div className={GRID}>
+            {rest.map((p, i) => (
+              <ProjectCard key={p.id} project={p} index={PROJECTS_SHOWN + i} now={now} />
+            ))}
+          </div>
+        </details>
+      )}
+    </>
   );
 }
 
