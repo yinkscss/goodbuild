@@ -25,8 +25,63 @@ Written 4 Nov 2026 at the end of the first build session (claude.ai), for whoeve
 ### Plan first (D32)
 A project's first message now asks questions before building. The chat no longer shows the build log or file chips. Tried with the demo model only: real model question quality is **UNVERIFIED**, because no real provider was called.
 
-### Upgradeable contracts trial (D33): built on a branch, not live-tested
-Proved in a local EVM with real compiled contracts (`src/server/deploy/upgradeable.evm.test.ts`). **Nothing has run on Celo Sepolia.** Modal states: `/dev/preview?deploy=upgradeable|upgrade|upgrading|refused|not-ready|upgraded`.
+### Live Celo Sepolia test of redeploy warnings, the old-funds card and the proxy trial (6 Nov 2026)
+**Setup.** A local production build of `main` at `ac40179f2`, using its own Postgres and the real Celo Sepolia network. Nothing touched goodbuildit.xyz.
+- **Wallet:** the throwaway test wallet `0x80fB…07AD`, signed in with SIWE. A MetaMask-style provider was injected into Chromium (Playwright), and it signed in Node. Test G$ came from `faucet()` on `0xefcb…ee4a`.
+- **Contracts:** written into `project_files` by SQL, with no AI builds: the plain and upgradeable Vaults from the tests.
+- **Cost:** the whole run used about 0.31 test CELO (0.923 down to 0.610).
+- **Screenshots:** [docs/testing/sepolia-2026-11-06/](testing/sepolia-2026-11-06/).
+
+**A. Redeploy warnings (PR 16) and old funds (PR 18): all pass**
+
+| Step | Result | Evidence |
+|---|---|---|
+| Deploy Vault v1 through the modal | Pass. One confirmation, Sourcify exact match | `0x86c18aa068229df68ef5a51b9831d8331e378a63`, tx `0xe49fd448…53bb6` |
+| Deposit 200 test G$ | Pass | tx `0xf89ea2f4…5d73b` |
+| Change the source: chat notice | Pass. "Vault doesn't have your latest contract changes yet." | `a3-outdated-notice.png` |
+| Deploy modal warning | Pass. "The old Vault at 0x86c…8a63 keeps its 200 G$ and its history. Nothing moves across." | `a4-replaces-warning.png` |
+| Deploy v2 | Pass. New address `0xe8a957e6c83999522607d66ba0fb77eb5f622b33`, tx `0x236a1758…453a2` | See the Sourcify bug below |
+| Old-funds card | Pass. A calm card, "Vault 200 G$ … Move funds out, withdraw()" | `a6-funds-card.png` |
+| Move funds out | Pass. +200 G$ back to the wallet, old contract at 0 | tx `0x7849434a…a840c`, `a7-funds-moved.png` |
+
+**B. Proxy trial (PR 21, D33): every step passes except the two bugs below**
+
+| HANDOFF step | Result | Evidence |
+|---|---|---|
+| 2. Turn on with plain contracts | Pass. "Not ready to be upgradeable" (the builder's conversion was done by SQL, because it needs AI) | `b2-not-ready.png` |
+| 3. Deploy behind a proxy | Pass. Two confirmations (code, then proxy). Sourcify: "The code and its proxy both match" | Proxy `0x932FFcb743ba661EaDF863b797919E3a94504e2d`, implementation `0x4C68…E8B5`, ProxyAdmin `0x2CD3…C08D` |
+| 4. Deposit 100 test G$ | Pass | tx `0x5024a0eb…78050` |
+| 5. Explorer | Pass. Blockscout API: `proxy_type=eip1967`, implementation Vault, verified | |
+| 6. Change the contract | Pass. The chat shows **Upgrade**, not "Deploy again", with no new-contract warning: "The address, funds and data stay the same." | `b6-chat-upgrade.png` |
+| 7. Upgrade | Modal pass: "Sign & upgrade … keeps its funds and data", no replaces warning. On-chain pass: same address, 100 G$ and the deposit kept, the new `deposits()` works, the record moved to implementation `0xe12d…c636`, Sourcify matched. The modal itself stalled, so the transactions were sent from Node (see open item 3). | `b7-modal-upgrade.png`, code tx `0xee577a57…16302`, switch tx `0xe2f64f2c…817fe` |
+| 8. Publish | Pass. "Built with GoodBuild · Unaudited · This contract can be changed" | `b8-published-label.png` |
+| 9. Storage-breaking change | Pass, on a fresh proxy `0x8a2f…8e2d`. "We can't upgrade this safely. This change would scramble the data Vault has stored… Nothing was changed." Nothing was sent to the wallet. "Deploy as a new contract" shows the normal replaces notice. | `b9-refused.png`, `b9-as-new-contract.png` |
+| 10. Stranger upgrade | Pass. A second funded wallet's `upgradeAndCall` reverted, in simulation and on-chain | Stranger `0x1e6f…503c` |
+| 11. Lock | Pass. After `renounceOwnership` (sent from Node, not the "Lock it for good" button), prepare refuses with "Vault was locked, so it can't be changed any more", the modal says the same, and republishing removes the label | renounce tx `0xd1a6498b…1f4ed9`, `b11-locked-modal.png` |
+
+**Bugs found**
+1. **Recording a proxy deploy or an upgrade can fail right after it's mined.**
+   - The record call returns `422 wrong_upgrade`, "The network says that proxy uses different code". That happened on the first two proxy deploys and on the upgrade.
+   - The same transactions record fine 15 seconds to a few minutes later, and a third proxy deploy recorded on its first try.
+   - Likely cause: `readProxy` (`src/server/deploy/upgradeable.ts`) reads the EIP-1967 slots at `latest`, and a forno node that hasn't seen the block yet returns zero.
+   - Fix: read at the receipt's block, retry a few times, and treat a mismatch caught early as `pending`, not a hard error. Today the modal shows "Failed", even though both transactions succeeded.
+2. **Sourcify verification can fail right after a deploy.**
+   - Vault v2 got `failed`: "Cannot fetch bytecode for chain #11142220". Retrying through `POST …/deployments/<id>/verify` gave an exact match.
+   - Fix: treat "Cannot fetch bytecode" as `pending` and retry, so the chip doesn't say "Not verified yet".
+
+**Open items**
+3. **In this harness, the modal's upgrade never got past "Checking on Celo…".**
+   - The page's RPC `fetch` for the opcode probe never settled, not even on viem's 10-second timeout.
+   - A plain `fetch` to forno from the same page, with the modal open, worked. The first proxy deploy from the modal worked in the same harness.
+   - Not resolved. Check an upgrade once in a real browser with MetaMask before trusting the modal path.
+4. **Not covered by this run:**
+   - MetaMask's own screens
+   - Magic email-wallet signing
+   - the builder converting contracts to upgradeable (step 2 needs AI)
+   - the "Lock it for good" button itself
+
+### Upgradeable contracts trial (D33)
+Proved in a local EVM with real compiled contracts (`src/server/deploy/upgradeable.evm.test.ts`), and on Celo Sepolia on 6 Nov 2026 (section above). Modal states: `/dev/preview?deploy=upgradeable|upgrade|upgrading|refused|not-ready|upgraded`.
 
 **Live test, on Celo Sepolia, with your own wallet and test CELO (about 10 minutes):**
 1. Run the migration. Create a project with a small contract that holds G$, for example "a G$ savings jar where people deposit and withdraw". Let it build.
