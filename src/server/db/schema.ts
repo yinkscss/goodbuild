@@ -1,10 +1,14 @@
 import { sql } from "drizzle-orm";
-import { bigint, boolean, customType, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { bigint, boolean, check, customType, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 
 /**
  * Stage 1 schema (D8: project code and chat in our DB; app data on-chain).
- * Credits tables (CREDITS.md §3) arrive in M6, deployments in M5.
+ * The credits ledger is at the end of this file (D45), deployments are in deploy-schema.ts.
  */
+
+/** Who pays for a model call or a build (MAINNET_PLAN.md section 5). Older rows are all `free`. */
+export const FUNDING_SOURCES = ["free", "paid", "exempt", "platform"] as const;
+export type FundingSource = (typeof FUNDING_SOURCES)[number];
 
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -121,14 +125,17 @@ export const versions = pgTable(
   (t) => [uniqueIndex("versions_project_number_idx").on(t.projectId, t.number)],
 );
 
-/** One row per model call, priced with GoodBuild's table (D13). M6 debits from these. */
+/**
+ * One row per model call, priced with GoodBuild's table (D13). A money record: the free total (D29)
+ * adds these up and M3 debits from them, so deleting a user is refused rather than losing them (D45).
+ */
 export const usageEvents = pgTable(
   "usage_events",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     userId: uuid("user_id")
       .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+      .references(() => users.id, { onDelete: "restrict" }),
     projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
     messageId: uuid("message_id"),
     /** Provider call id; unique so a replay can't double count. */
@@ -140,9 +147,10 @@ export const usageEvents = pgTable(
     providerCostMicro: bigint("provider_cost_micro", { mode: "number" }).notNull(),
     chargedMicro: bigint("charged_micro", { mode: "number" }).notNull(),
     markupBps: integer("markup_bps").notNull(),
+    funding: text("funding").$type<FundingSource>().notNull().default("free"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("usage_user_idx").on(t.userId, t.createdAt)],
+  (t) => [index("usage_user_idx").on(t.userId, t.createdAt), check("usage_events_funding_check", sql`${t.funding} IN ('free', 'paid', 'exempt', 'platform')`)],
 );
 
 /** Raw bytes (Postgres bytea). PGlite and postgres-js both return a Uint8Array/Buffer. */
@@ -187,6 +195,8 @@ export const projectAssets = pgTable(
  * Background turn jobs (P18). A prompt becomes a queued job; a worker claims it with a lease
  * (FOR UPDATE SKIP LOCKED), runs the agent turn and commits the result. The lease is the only
  * turn lock: at most one running job per project (partial unique index).
+ * Mostly a work queue, so jobs still go when their project or user is deleted. A `paid` job is a
+ * money record: a trigger refuses to delete it, and that refuses the whole delete (D45).
  */
 export const turnJobs = pgTable(
   "turn_jobs",
@@ -215,6 +225,8 @@ export const turnJobs = pgTable(
     /** Next turn_events seq. */
     nextSeq: integer("next_seq").notNull().default(0),
     error: text("error"),
+    /** Who funds this build. M2 sets it; until then every job takes the default. */
+    funding: text("funding").$type<FundingSource>().notNull().default("free"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     startedAt: timestamp("started_at", { withTimezone: true }),
     finishedAt: timestamp("finished_at", { withTimezone: true }),
@@ -224,6 +236,7 @@ export const turnJobs = pgTable(
     index("turn_jobs_project_idx").on(t.projectId, t.createdAt),
     uniqueIndex("turn_jobs_one_running_idx").on(t.projectId).where(sql`status = 'running'`),
     uniqueIndex("turn_jobs_user_message_idx").on(t.userMessageId),
+    check("turn_jobs_funding_check", sql`${t.funding} IN ('free', 'paid', 'exempt', 'platform')`),
   ],
 );
 
@@ -258,6 +271,64 @@ export const turnEvents = pgTable(
   (t) => [primaryKey({ columns: [t.jobId, t.seq] })],
 );
 
+/**
+ * What a ledger entry records. Free AI never appears here: it's counted from usage_events (D28 to D30).
+ * deposit: credit bought (+). usage: AI spent (-). refund: credit taken back with money returned (-).
+ * adjust: a correction either way, such as a chargeback or a write-off.
+ */
+export const LEDGER_KINDS = ["deposit", "usage", "refund", "adjust"] as const;
+export type LedgerKind = (typeof LEDGER_KINDS)[number];
+
+/**
+ * The credits ledger (D45, CREDITS.md section 3). Append-only: triggers in migration 0010 refuse
+ * UPDATE, DELETE and TRUNCATE, and only `postLedgerEntry` should write here. All amounts are integer
+ * micro-USD. There's no link to projects, so deleting a project can't touch a money record.
+ */
+export const ledgerEntries = pgTable(
+  "ledger_entries",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** Posting order. Entries of one user are posted under a lock, so this is their true order. */
+    seq: bigint("seq", { mode: "number" }).notNull().generatedAlwaysAsIdentity(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    kind: text("kind").$type<LedgerKind>().notNull(),
+    amountMicro: bigint("amount_micro", { mode: "number" }).notNull(),
+    /** The user's balance straight after this entry. */
+    balanceAfterMicro: bigint("balance_after_micro", { mode: "number" }).notNull(),
+    /** Set when the caller allowed this entry to take the balance below zero (the rule is in ledger.ts). */
+    allowNegative: boolean("allow_negative").notNull().default(false),
+    /** What the entry is about, such as "topup" and a reference. Plain text, never a foreign key. */
+    refType: text("ref_type"),
+    refId: text("ref_id"),
+    /** Unique, so a replay can't post twice. For example `topup:<reference>`. */
+    idempotencyKey: text("idempotency_key").notNull().unique(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("ledger_entries_user_idx").on(t.userId, t.seq),
+    check("ledger_entries_kind_sign_check", sql`(${t.kind} = 'deposit' AND ${t.amountMicro} > 0) OR (${t.kind} IN ('usage', 'refund') AND ${t.amountMicro} < 0) OR (${t.kind} = 'adjust' AND ${t.amountMicro} <> 0)`),
+    check("ledger_entries_key_check", sql`length(${t.idempotencyKey}) > 0`),
+    check("ledger_entries_negative_check", sql`${t.balanceAfterMicro} >= 0 OR ${t.amountMicro} > 0 OR ${t.allowNegative}`),
+    check("ledger_entries_allow_negative_check", sql`NOT ${t.allowNegative} OR ${t.kind} IN ('usage', 'adjust')`),
+  ],
+);
+
+/**
+ * The sum of a user's ledger entries, kept for fast reads and locked while posting. A deferred
+ * trigger refuses to commit any change that makes it differ from the entries. It may be negative,
+ * after a chargeback for example, so there's deliberately no check that it's at least zero.
+ */
+export const balances = pgTable("balances", {
+  userId: uuid("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "restrict" }),
+  balanceMicro: bigint("balance_micro", { mode: "number" }).notNull().default(0),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type LedgerEntry = typeof ledgerEntries.$inferSelect;
 export type TurnJob = typeof turnJobs.$inferSelect;
 
 export type User = typeof users.$inferSelect;
