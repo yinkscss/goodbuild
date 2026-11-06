@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { signInUser } from "@/server/auth/service";
 import { hasPlanHeadroom, checkAiAllowance, PLAN_HEADROOM_MICRO, UNVERIFIED_CAP_MICRO } from "@/server/credits/cap";
-import { messages, projects, usageEvents, users } from "@/server/db/schema";
+import { messages, projects, turnJobs, usageEvents, users } from "@/server/db/schema";
 import { createTestDb, type Db } from "@/server/db/client";
 import { enqueueTurn } from "@/server/jobs/jobs";
 import { createProjectFromPrompt } from "@/server/projects";
@@ -109,6 +109,34 @@ describe("shouldPlanFirst", () => {
     await runTurn({ db, model: failing as never }, { projectId, userId, mode: "plan", userMessageId: firstMessageId }, () => undefined);
     await db.execute(`update turn_jobs set status = 'error' where id = '${job.id}'`);
     expect(await shouldPlanFirst(db, { projectId, userId, prompt: "A tip jar" })).toBe(true);
+  });
+});
+
+describe("when planning keeps ending without questions", () => {
+  async function endedPlanTurn(prompt: string, status: "done" | "error") {
+    const job = await enqueueTurn(db, { projectId, userId, mode: "plan", prompt, intake: true });
+    await db.update(turnJobs).set({ status }).where(eq(turnJobs.id, job.id));
+  }
+
+  it("allows one more try, then the next send builds, so nobody gets stuck", async () => {
+    await endedPlanTurn("A tip jar", "error");
+    expect(await shouldPlanFirst(db, { projectId, userId, prompt: "A tip jar" })).toBe(true);
+    await endedPlanTurn("A tip jar", "error");
+    expect(await shouldPlanFirst(db, { projectId, userId, prompt: "A tip jar" })).toBe(false);
+  });
+
+  it("counts turns the model only answered in words", async () => {
+    await endedPlanTurn("what can you build?", "done");
+    await endedPlanTurn("and on Celo?", "done");
+    expect(await shouldPlanFirst(db, { projectId, userId, prompt: "A tip jar" })).toBe(false);
+  });
+
+  it("doesn't count a plan that was stopped or cancelled", async () => {
+    const stopped = await enqueueTurn(db, { projectId, userId, mode: "plan", prompt: "one", intake: true });
+    await db.update(turnJobs).set({ status: "stopped" }).where(eq(turnJobs.id, stopped.id));
+    const cancelled = await enqueueTurn(db, { projectId, userId, mode: "plan", prompt: "two", intake: true });
+    await db.update(turnJobs).set({ status: "cancelled" }).where(eq(turnJobs.id, cancelled.id));
+    expect(await shouldPlanFirst(db, { projectId, userId, prompt: "three" })).toBe(true);
   });
 });
 
