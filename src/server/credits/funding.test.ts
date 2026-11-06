@@ -210,40 +210,38 @@ describe.each(testBackends())("free and paid kept apart on $name", (backend) => 
     });
   });
 
-  describe("a paid balance unlocks nothing until M3 can charge it", () => {
-    it("someone at the free limit with credit is refused exactly as before, and the job would be free", async () => {
+  describe("a paid balance unlocks builds from M3 (D49), never by its funding changing", () => {
+    it("someone at the free limit with credit may go on, but a job queued without the start check stays free", async () => {
       const a = await newUser();
       await usage(a.userId, a.projectId, { provider: 0, charged: 200_000 }, "free");
       await postLedgerEntry(db, { userId: a.userId, kind: "deposit", amountMicro: 20_000_000, idempotencyKey: `topup:${randomUUID()}` });
       expect(await getBalanceMicro(db, a.userId)).toBe(20_000_000);
 
-      expect(await checkAiAllowance(db, { userId: a.userId, projectId: a.projectId }, {})).toEqual({ allowed: false, reason: "free_limit", message: CAP_MESSAGE });
+      expect(await checkAiAllowance(db, { userId: a.userId, projectId: a.projectId }, {})).toEqual({ allowed: true });
       expect(await hasPlanHeadroom(db, a.userId, {})).toBe(false);
       expect(await decideFunding(db, a.userId, {})).toBe("free");
       const queued = await enqueueTurn(db, { projectId: a.projectId, userId: a.userId, mode: "build", prompt: "x" }, {});
       expect(queued.funding).toBe("free");
     });
 
-    it("a verified person with credit at their limit, or anyone when the trial is full, is refused as before", async () => {
+    it("a verified person with credit at their limit, or anyone when the trial is full, may go on", async () => {
       const a = await newUser();
       await db.update(users).set({ verifiedAt: new Date(), goodidRoot: ROOT }).where(eq(users.id, a.userId));
       await usage(a.userId, a.projectId, { provider: 0, charged: 700_000 }, "free");
       await postLedgerEntry(db, { userId: a.userId, kind: "deposit", amountMicro: 5_000_000, idempotencyKey: `topup:${randomUUID()}` });
-      expect(await checkAiAllowance(db, { userId: a.userId }, {})).toEqual({ allowed: false, reason: "verified_limit", message: VERIFIED_CAP_MESSAGE });
+      expect(await checkAiAllowance(db, { userId: a.userId }, {})).toEqual({ allowed: true });
 
       const b = await newUser();
       await postLedgerEntry(db, { userId: b.userId, kind: "deposit", amountMicro: 5_000_000, idempotencyKey: `topup:${randomUUID()}` });
-      expect(await checkAiAllowance(db, { userId: b.userId }, { FREE_AI_BUDGET_MICRO: "0" })).toEqual({ allowed: false, reason: "budget_full", message: BUDGET_MESSAGE });
+      expect(await checkAiAllowance(db, { userId: b.userId }, { FREE_AI_BUDGET_MICRO: "0" })).toEqual({ allowed: true });
     });
 
-    it("a paid or platform job never starts, since nothing could charge for it yet", async () => {
+    it("a platform job never starts, since nothing creates them yet, and a paid one does", async () => {
       const a = await newUser();
       const paid = await job(a.userId, a.projectId, "running", "paid");
       const platform = await job(a.userId, a.otherProjectId, "running", "platform");
-      await postLedgerEntry(db, { userId: a.userId, kind: "deposit", amountMicro: 5_000_000, idempotencyKey: `topup:${randomUUID()}` });
-      for (const j of [paid, platform]) {
-        expect(await checkAiAllowance(db, { userId: a.userId, startingJobId: j.id, funding: j.funding }, { UNCAPPED_WALLETS: "" })).toMatchObject({ allowed: false, reason: "funding_unavailable" });
-      }
+      expect(await checkAiAllowance(db, { userId: a.userId, startingJobId: paid.id, funding: paid.funding }, { UNCAPPED_WALLETS: "" })).toEqual({ allowed: true });
+      expect(await checkAiAllowance(db, { userId: a.userId, startingJobId: platform.id, funding: platform.funding }, { UNCAPPED_WALLETS: "" })).toMatchObject({ allowed: false, reason: "funding_unavailable" });
     });
   });
 
@@ -315,22 +313,6 @@ describe.each(testBackends())("free and paid kept apart on $name", (backend) => 
       );
       expect(results.every((r) => r.status === "rejected")).toBe(true);
       expect((await db.select().from(turnJobs).where(eq(turnJobs.id, j.id)))[0].funding).toBe("paid");
-    });
-
-    it("turns sent at once by a payer at the free limit are all refused, with no job, paid or otherwise", async () => {
-      const a = await newUser();
-      await usage(a.userId, a.projectId, { provider: 0, charged: 200_000 }, "free");
-      await postLedgerEntry(db, { userId: a.userId, kind: "deposit", amountMicro: 20_000_000, idempotencyKey: `topup:${randomUUID()}` });
-      // What the turns route does: check, then queue.
-      const send = async (projectId: string) => {
-        const allowance = await checkAiAllowance(db, { userId: a.userId, projectId }, {});
-        if (!allowance.allowed) return allowance.reason;
-        await enqueueTurn(db, { projectId, userId: a.userId, mode: "build", prompt: "x" }, {});
-        return "queued";
-      };
-      const results = await Promise.all(Array.from({ length: 10 }, (_, i) => send(i % 2 ? a.projectId : a.otherProjectId)));
-      expect(new Set(results)).toEqual(new Set(["free_limit"]));
-      expect(await db.select().from(turnJobs)).toHaveLength(0);
     });
 
     it("turns sent at once just under the limit are all free jobs, and the worker's start check sees them as the old code did", async () => {

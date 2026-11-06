@@ -92,13 +92,13 @@ describe.each(testBackends())("holds and charging on $name", (backend) => {
 
   const deposit = (userId: string, amountMicro: number) => postLedgerEntry(db, { userId, kind: "deposit", amountMicro, idempotencyKey: `topup:${randomUUID()}` });
 
-  const useFree = (userId: string, charged = 200_000) =>
+  const spendFree = (userId: string, charged = 200_000) =>
     db.insert(usageEvents).values({ userId, callId: randomUUID(), model: "m", inputTokens: 1, outputTokens: 1, providerCostMicro: 0, chargedMicro: charged, markupBps: 2500, funding: "free" });
 
   /** Someone whose free AI is gone, with this much credit. */
   async function payer(credit: number) {
     const user = await newUser();
-    await useFree(user.userId);
+    await spendFree(user.userId);
     if (credit) await deposit(user.userId, credit);
     return user;
   }
@@ -181,7 +181,7 @@ describe.each(testBackends())("holds and charging on $name", (backend) => {
     it("a verified person at their limit, and anyone when the free trial is full, build on credit", async () => {
       const a = await newUser();
       await db.update(users).set({ verifiedAt: new Date(), goodidRoot: "0xr" }).where(eq(users.id, a.userId));
-      await useFree(a.userId, 700_000);
+      await spendFree(a.userId, 700_000);
       await deposit(a.userId, 2_000_000);
       expect(queued(await start(a.userId, a.projectId)).funding).toBe("paid");
 
@@ -196,7 +196,7 @@ describe.each(testBackends())("holds and charging on $name", (backend) => {
 
       const b = await newUser();
       await db.update(users).set({ verifiedAt: new Date() }).where(eq(users.id, b.userId));
-      await useFree(b.userId, 700_000);
+      await spendFree(b.userId, 700_000);
       await deposit(b.userId, 100_000);
       expect(refusal(await start(b.userId, b.projectId)).message).toBe(OUT_OF_CREDITS_MESSAGE);
 
@@ -210,7 +210,7 @@ describe.each(testBackends())("holds and charging on $name", (backend) => {
       expect(refusal(await start(a.userId, a.projectId))).toEqual({ allowed: false, reason: "free_limit", message: CAP_MESSAGE });
       const b = await newUser();
       await db.update(users).set({ verifiedAt: new Date() }).where(eq(users.id, b.userId));
-      await useFree(b.userId, 700_000);
+      await spendFree(b.userId, 700_000);
       expect(refusal(await start(b.userId, b.projectId))).toEqual({ allowed: false, reason: "verified_limit", message: VERIFIED_CAP_MESSAGE });
       const c = await newUser();
       expect(refusal(await start(c.userId, c.projectId, { FREE_AI_BUDGET_MICRO: "0" }))).toEqual({ allowed: false, reason: "budget_full", message: BUDGET_MESSAGE });
@@ -231,7 +231,7 @@ describe.each(testBackends())("holds and charging on $name", (backend) => {
     it("exempt wallets set nothing aside, whatever their balance", async () => {
       const wallet = "0x00000000000000000000000000000000000e4e47";
       const a = await newUser(wallet);
-      await useFree(a.userId);
+      await spendFree(a.userId);
       await deposit(a.userId, 5_000_000);
       const job = queued(await start(a.userId, a.projectId, { UNCAPPED_WALLETS: wallet }));
       expect([job.funding, job.holdMicro]).toEqual(["exempt", 0]);
@@ -466,7 +466,6 @@ describe.each(testBackends())("holds and charging on $name", (backend) => {
       const a = await payer(5_000_000);
       const job = queued(await start(a.userId, a.projectId));
       const client: ModelClient = {
-        // eslint-disable-next-line require-yield
         async *stream() {
           throw new Error("provider exploded");
         },
@@ -640,7 +639,7 @@ describe.each(testBackends())("holds and charging on $name", (backend) => {
       await deposit(a.userId, 5_000_000);
       const job = queued(await start(a.userId, a.projectId));
       expect(job.funding).toBe("free");
-      await useFree(a.userId);
+      await spendFree(a.userId);
       const refused = await checkAiAllowance(db, { userId: a.userId, startingJobId: job.id, funding: "free" }, {});
       expect(refused).toEqual({ allowed: false, reason: "free_limit", message: FREE_RAN_OUT_MESSAGE });
       // The retry then runs on credit.
@@ -651,7 +650,7 @@ describe.each(testBackends())("holds and charging on $name", (backend) => {
     it("the same overtaken job with no credit keeps today's message", async () => {
       const a = await newUser();
       const job = queued(await start(a.userId, a.projectId));
-      await useFree(a.userId);
+      await spendFree(a.userId);
       expect(await checkAiAllowance(db, { userId: a.userId, startingJobId: job.id, funding: "free" }, {})).toEqual({ allowed: false, reason: "free_limit", message: CAP_MESSAGE });
     });
   });
