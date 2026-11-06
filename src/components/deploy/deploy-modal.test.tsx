@@ -36,6 +36,9 @@ describe("stageIndex", () => {
     expect(at("done", "pending")).toEqual({ active: 2, done: 2 });
     expect(at("done", "verified")).toEqual({ active: 3, done: 3 });
   });
+  it("marks sign and broadcast done when the transactions mined but aren't saved yet", () => {
+    expect(at("unsaved")).toEqual({ active: -1, done: 2 });
+  });
   it("puts a failure on Broadcast once a transaction exists", () => {
     expect(at("failed")).toEqual({ active: 0, done: 0 });
     expect(stageIndex({ name: "X", phase: "failed", txHash: "0x01" })).toEqual({ active: 1, done: 1 });
@@ -78,6 +81,26 @@ describe("DeployModal", () => {
     renderModal(state({ stage: "error", plan: null, steps: [], error }), {}, onFix);
     await userEvent.click(screen.getByRole("button", { name: "Try fix" }));
     expect(onFix).toHaveBeenCalledWith(expect.stringContaining("contracts/deploy.json"));
+  });
+
+  it("when Celo is slow to confirm, says both went through and offers Try again, never Failed", async () => {
+    const error = { kind: "not_saved" as const, message: "Both transactions went through, but GoodBuild couldn't save the result yet, usually because Celo's network is still catching up. Try again in a moment. Nothing new will be sent.", at: "Vault", logs: [], opcodes: [] };
+    const api = renderModal(state({ stage: "error", steps: [{ name: "Vault", phase: "unsaved", txHash: "0x01", part: "proxy" }], error }));
+    expect(screen.getByText("Vault isn't saved yet")).toBeInTheDocument();
+    expect(screen.getByText(/Both transactions went through/)).toBeInTheDocument();
+    expect(screen.getByText("Sent, not saved yet")).toBeInTheDocument();
+    expect(screen.queryByText("Failed")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(api.retry).toHaveBeenCalled();
+  });
+
+  it("when the check on Celo times out, says nothing was sent and offers Try again", async () => {
+    const error = { kind: "timeout" as const, message: "Celo didn't answer in time, so nothing was sent and nothing was spent. Try again.", at: "Vault", logs: [], opcodes: [] };
+    const api = renderModal(state({ stage: "error", steps: [{ name: "Vault", phase: "failed" }], error }));
+    expect(screen.getByText("Celo didn't answer")).toBeInTheDocument();
+    expect(screen.getByText(/nothing was sent/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(api.retry).toHaveBeenCalled();
   });
 
   it("says deployed contracts stay deployed after a later failure", () => {

@@ -6,7 +6,7 @@ import { errorResponse, requireSession } from "@/server/auth/http";
 import { getDb } from "@/server/db/client";
 import { deployments } from "@/server/db/deploy-schema";
 import { DeployError, publicDeployment, recordDeployment } from "@/server/deploy/service";
-import { verifyDeployment } from "@/server/deploy/verify";
+import { AFTER_DEPLOY, verifyDeployment } from "@/server/deploy/verify";
 import { getOwnedProject } from "@/server/projects";
 
 export const maxDuration = 60;
@@ -57,7 +57,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/projects/[i
       });
       // Verification runs after the response so the stepper isn't held up by Sourcify.
       const { after } = await import("next/server");
-      after(() => verifyDeployment(db, row).then(() => undefined, () => undefined));
+      after(() => verifyDeployment(db, row, fetch, AFTER_DEPLOY).then(() => undefined, () => undefined));
       return NextResponse.json({ deployment: publicDeployment(row) }, { status: 201 });
     } catch (error) {
       if (error instanceof DeployError) return NextResponse.json({ error: error.code, message: error.message, details: error.details }, { status: 422 });

@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
-import { encodeDeployData, encodeFunctionData, erc20Abi, getAddress, parseAbi, type Abi, type Address, type Hex } from "viem";
+import { encodeDeployData, encodeFunctionData, erc20Abi, getAddress, parseAbi, zeroHash, type Abi, type Address, type Hex, type PublicClient } from "viem";
 
 import { runDeploy, type Plan, type PlanStep } from "@/lib/deploy/run";
 import { ADMIN_SLOT, IMPLEMENTATION_SLOT, encodeUpgrade, proxyAdminAbi } from "@/lib/deploy/upgradeable";
@@ -19,7 +19,7 @@ import { LocalChain } from "./local-chain";
 import { oldContractsWithFunds } from "./old-contracts";
 import { DeployError, prepareDeploy, recordDeployment, type DeployPlan } from "./service";
 import { compareLayouts } from "./upgrade-check";
-import { hasChangeableContracts, isUpgradeableProject, liveStorage, setUpgradeable, upgradeChecksFor } from "./upgradeable";
+import { hasChangeableContracts, isUpgradeableProject, liveStorage, setUpgradeable, upgradeChecksFor, type ChainWait } from "./upgradeable";
 import { verifyProxied } from "./verify";
 import { createProjectFromPrompt } from "@/server/projects";
 
@@ -113,7 +113,7 @@ async function writeContract(file: string, manifest = MANIFEST) {
   });
 }
 
-function envFor(from: Address, plan: DeployPlan) {
+function envFor(from: Address, plan: DeployPlan, client: PublicClient = chain.client(), wait?: ChainWait) {
   return {
     account: from,
     simulate: async ({ data, to }: { data: Hex; to?: Address }) => {
@@ -138,7 +138,7 @@ function envFor(from: Address, plan: DeployPlan) {
           evmVersion: plan.evmVersion,
           proxied: step.upgradeable && implementationTx ? { kind: step.upgradeable.kind === "upgrade" ? "upgrade" : "proxy", implementationTxHash: implementationTx } : undefined,
         },
-        { client: chain.client() },
+        { client, wait },
       );
       return { address: getAddress(row.address) };
     },
@@ -467,6 +467,78 @@ contract Reenter {
       recordDeployment(db, { projectId, userId, wallet: WALLET, runId: plan.runId, chainId: SEPOLIA, contractName: "Vault", txHash: proxyTx, sourceHash: plan.sourceHash, evmVersion: plan.evmVersion, proxied: { kind: "proxy", implementationTxHash: codeTx } }, { client: chain.client() }),
     );
     expect(out.code).toBe("wrong_upgrade");
+  });
+});
+
+/**
+ * The Celo Sepolia live test (6 Nov 2026): recording right after mining got "422 wrong_upgrade" because
+ * the load-balanced RPC answered from a node a block behind. This node is behind for the first reads:
+ * it doesn't know the transaction, errors on the new block, then shows the state from before it.
+ */
+function laggingNode(misses: { tx: number; storage: number }, before: Record<string, Hex> = {}) {
+  const base = chain.client();
+  let tx = misses.tx;
+  let storage = misses.storage;
+  const blocks: Array<bigint | undefined> = [];
+  const client = {
+    ...base,
+    getTransaction: async (args: { hash: Hex }) => {
+      if (tx-- > 0) throw new Error(`Transaction with hash "${args.hash}" could not be found.`);
+      return base.getTransaction(args);
+    },
+    getStorageAt: async (args: { address: Address; slot: Hex; blockNumber?: bigint }) => {
+      blocks.push(args.blockNumber);
+      if (storage-- > 0) {
+        if (storage % 2 === 0) throw new Error("header not found");
+        return before[args.slot] ?? zeroHash;
+      }
+      return base.getStorageAt(args);
+    },
+  } as unknown as PublicClient;
+  return { client, blocks };
+}
+
+const fast: ChainWait = { sleep: async () => undefined };
+
+describe("recording right after mining, on a node that's behind", () => {
+  it("records a new proxy and its upgrade instead of calling them wrong", { timeout: SECONDS }, async () => {
+    await writeContract(V1);
+    const plan = await prepare();
+    const lag = laggingNode({ tx: 2, storage: 6 });
+    const proxy = (await runDeploy(plan as unknown as Plan, envFor(WALLET, plan, lag.client, fast))).Vault;
+    const [row] = await db.select().from(deployments);
+    expect(getAddress(row.address)).toBe(proxy);
+    // Read at the proxy transaction's block, never at whatever "latest" the node has.
+    expect(lag.blocks.every((b) => b === BigInt(row.blockNumber))).toBe(true);
+
+    await aliceDeposits(proxy, BigInt(5) * ONE);
+    await writeContract(V2_SAFE);
+    const upgrade = await prepare();
+    const oldCode = await chain.slot(proxy, IMPLEMENTATION_SLOT);
+    const behind = laggingNode({ tx: 1, storage: 6 }, { [IMPLEMENTATION_SLOT]: oldCode });
+    await runDeploy(upgrade as unknown as Plan, envFor(WALLET, upgrade, behind.client, fast));
+    const [upgraded] = await db.select().from(deployments);
+    expect(upgraded.proxy!.implementation).toBe(addressIn(await chain.slot(proxy, IMPLEMENTATION_SLOT)).toLowerCase());
+    expect(await db.select().from(contractUpgrades)).toHaveLength(1);
+  });
+
+  it("a node that never catches up gets a retryable error, never wrong_upgrade", { timeout: SECONDS }, async () => {
+    await writeContract(V1);
+    const plan = await prepare();
+    const step = plan.steps[0];
+    if (step.upgradeable?.kind !== "first") throw new Error("expected a first deploy");
+    const codeTx = await chain.send({ from: WALLET, data: step.bytecode });
+    const code = chain.receipts.get(codeTx)!.contractAddress!;
+    const init = encodeFunctionData({ abi: step.abi, functionName: "initialize", args: [gd, BigInt(1000)] });
+    const proxyTx = await chain.send({ from: WALLET, data: encodeDeployData({ abi: step.upgradeable.proxyAbi, bytecode: step.upgradeable.proxyBytecode, args: [code, WALLET, init] }) });
+    const input = { projectId, userId, wallet: WALLET, runId: plan.runId, chainId: SEPOLIA, contractName: "Vault", txHash: proxyTx, sourceHash: plan.sourceHash, evmVersion: plan.evmVersion, proxied: { kind: "proxy" as const, implementationTxHash: codeTx } };
+    const stuck = laggingNode({ tx: 0, storage: 1_000_000 });
+    const out = await refusal(() => recordDeployment(db, input, { client: stuck.client, wait: { ...fast, timeoutMs: 3000 } }));
+    expect(out.code).toBe("chain_read_failed");
+    expect(await db.select().from(deployments)).toHaveLength(0);
+    // Once the node catches up, the same transactions record.
+    const row = await recordDeployment(db, input, { client: chain.client() });
+    expect(row.proxy?.implementation).toBe(code.toLowerCase());
   });
 });
 
