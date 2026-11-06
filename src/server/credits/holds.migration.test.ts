@@ -71,7 +71,7 @@ describe.each(testBackends())("migration to M3 over existing rows on $name", (ba
   let cleanup = () => undefined as void;
   let before: Awaited<ReturnType<typeof totals>>;
   let decisionsBefore: unknown[];
-  const decisions = (cap: Pick<typeof capBefore, "checkAiAllowance" | "spentMicro">) =>
+  const decisions = (cap: { checkAiAllowance: (db: Db, input: { userId: string }, env: Record<string, string | undefined>) => Promise<unknown>; spentMicro: (db: Db, userId: string) => Promise<number> }) =>
     Promise.all([
       cap.spentMicro(db, ALICE),
       cap.spentMicro(db, BOB),
