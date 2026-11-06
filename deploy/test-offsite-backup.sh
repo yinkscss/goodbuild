@@ -107,13 +107,24 @@ import http.server, sys
 class H(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
         self.rfile.read(int(self.headers.get("Content-Length", 0)))
+        if self.path == "/__ready":  # readiness probe from this script; not a ping, so not recorded
+            self.send_response(200); self.end_headers(); return
         open(sys.argv[1], "a").write(self.path + "\n"); self.send_response(200); self.end_headers()
     do_GET = do_POST
     def log_message(self, *a): pass
 http.server.HTTPServer(("127.0.0.1", 19001), H).serve_forever()
-' "$dir/pings.log" &
+' "$dir/pings.log" 2>"$dir/hc.err" &
 hc_pid=$!
 touch "$dir/pings.log"
+# The server starts in the background, so wait until it answers before anything pings it. Without this
+# the first backup could ping before the port was open and fail with "missing start or success ping".
+hc_ready=""
+for _ in $(seq 1 100); do
+  kill -0 "$hc_pid" 2>/dev/null || fail "the test ping server exited (is port 19001 already in use?): $(cat "$dir/hc.err")"
+  curl -fsS -m 2 -o /dev/null http://127.0.0.1:19001/__ready 2>/dev/null && { hc_ready=1; break; }
+  sleep 0.1
+done
+[ -n "$hc_ready" ] || fail "the test ping server never started listening on 127.0.0.1:19001"
 
 write_config() { # write_config <file> <secret>
   cat >"$1" <<EOF
