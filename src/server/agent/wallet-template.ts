@@ -805,15 +805,25 @@ const LEGACY: Record<string, { sha256: string; current: string }> = {
   "src/components/ConnectButton.tsx": { sha256: "3b22244b9be11f78416d45ed398562ee89806ed08a8e47b1b46b8ee72f707241", current: CONNECT_BUTTON },
 };
 
+const LEGACY_CHAIN = "src/lib/chain.ts";
+const LEGACY_HOOK = "src/lib/useWallet.ts";
+const LEGACY_BUTTON = "src/components/ConnectButton.tsx";
+
 /**
  * Every project always has the current wallet layer, and untouched pre-D36 copies of chain.ts,
- * useWallet.ts and ConnectButton.tsx move onto it. Copies the builder edited stay as they are (and keep
- * using window.ethereum).
+ * useWallet.ts and ConnectButton.tsx move onto it, but never only some of them. chain.ts sends and
+ * useWallet.ts shows the account, so they move together or not at all: otherwise the page could show
+ * the wallet the visitor picked while the transaction goes to window.ethereum. If the builder edited
+ * either one on the old path, the app stays on window.ethereum. An edited ConnectButton stays as it is
+ * and works with the new hook.
  */
 export function withCurrentWalletHelpers(files: Record<string, string>): Record<string, string> {
   const out = { ...files, ...WALLET_HELPERS };
-  for (const [p, { sha256, current }] of Object.entries(LEGACY)) {
-    if (p in out && createHash("sha256").update(out[p]).digest("hex") === sha256) out[p] = current;
+  const isOld = (p: string) => p in out && createHash("sha256").update(out[p]).digest("hex") === LEGACY[p].sha256;
+  const canMove = (p: string) => !(p in out) || isOld(p) || out[p].includes("./goodbuild/wallet");
+  if (!canMove(LEGACY_CHAIN) || !canMove(LEGACY_HOOK)) return out;
+  for (const p of [LEGACY_CHAIN, LEGACY_HOOK, LEGACY_BUTTON]) {
+    if (isOld(p)) out[p] = LEGACY[p].current;
   }
   return out;
 }

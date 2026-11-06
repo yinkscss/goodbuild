@@ -91,6 +91,40 @@ describe("the wallet layer is GoodBuild's", () => {
     expect(checkApp({ ...starterFiles(), "src/lib/chain.ts": edited["src/lib/chain.ts"] }).errors).toEqual([]);
   });
 
+  it("never moves only part of an older project: the wallet shown and the wallet that sends must be the same", () => {
+    const CHAIN = "src/lib/chain.ts";
+    const HOOK = "src/lib/useWallet.ts";
+    const BUTTON = "src/components/ConnectButton.tsx";
+    const current = starterFiles();
+    const old = { "src/App.tsx": "x", ...OLD_STARTER };
+
+    // An edited chain.ts still sends through window.ethereum, so the hook and button stay with it.
+    const chainEdited = withStarterHelpers({ ...old, [CHAIN]: OLD_STARTER[CHAIN] + "\nexport const extra = 1;\n" });
+    expect(chainEdited[HOOK]).toBe(OLD_STARTER[HOOK]);
+    expect(chainEdited[BUTTON]).toBe(OLD_STARTER[BUTTON]);
+
+    // An edited useWallet.ts shows window.ethereum's account, so chain.ts stays too. The new button needs the new hook.
+    const hookEdited = withStarterHelpers({ ...old, [HOOK]: OLD_STARTER[HOOK] + "\nexport const extra = 1;\n" });
+    expect(hookEdited[CHAIN]).toBe(OLD_STARTER[CHAIN]);
+    expect(hookEdited[BUTTON]).toBe(OLD_STARTER[BUTTON]);
+
+    // An edited button only uses what the new hook still returns, so the other two can move.
+    const buttonEdited = withStarterHelpers({ ...old, [BUTTON]: OLD_STARTER[BUTTON] + "\nexport const extra = 1;\n" });
+    expect(buttonEdited[CHAIN]).toBe(current[CHAIN]);
+    expect(buttonEdited[HOOK]).toBe(current[HOOK]);
+    expect(buttonEdited[BUTTON]).toContain("export const extra = 1;");
+
+    // Already on the layer and edited since: the remaining old copies can catch up.
+    const onLayer = withStarterHelpers({ ...old, [CHAIN]: current[CHAIN] + "\nexport const extra = 1;\n" });
+    expect(onLayer[HOOK]).toBe(current[HOOK]);
+    expect(onLayer[BUTTON]).toBe(current[BUTTON]);
+
+    // A project that deleted the hook has nothing showing a different wallet.
+    const noHook: Record<string, string> = { ...old };
+    delete noHook[HOOK];
+    expect(withStarterHelpers(noHook)[CHAIN]).toBe(current[CHAIN]);
+  });
+
   it("tells the builder not to read window.ethereum itself", () => {
     const issues = walletIssues({ "src/App.tsx": "const eth = (window as any).ethereum;\nexport default function App() { return null; }\n", "src/pages/Home.tsx": "await window.ethereum.request({ method: 'eth_accounts' })" });
     expect(issues.map((i) => [i.file, i.line])).toEqual([
