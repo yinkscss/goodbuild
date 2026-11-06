@@ -1,0 +1,1 @@
+ALTER TABLE "app_data_records" ADD COLUMN "access" jsonb;

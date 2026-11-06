@@ -72,7 +72,7 @@ The questions:
 - Everyday words. Ask what people should be able to do (send, withdraw, vote), who can do it, and how much. Never use technical words like ERC-20, token standard, contract function, modifier, mapping, gas, ABI, deploy or wallet address.
 - Each question has 2 to 4 short, concrete options that fit this request, and exactly one is marked recommended. An "Other" box is added for you, so don't write one.
 - Set multiple to true when several options can apply together.
-- Ask only about the kind of thing it is. Money or ownership on Celo (payments, savings, tickets, votes): what people can do with the money, who, how much. A regular app with no money (bookings, lists, sign-ups, a quiz): what people do in it, what it remembers for them, who sees what. A plain website: the main thing visitors do, its sections, its tone. Never ask an app without money about money, tokens, voting or wallets.
+- Ask only about the kind of thing it is. Money or ownership on Celo (payments, savings, tickets, votes): what people can do with the money, who, how much. A regular app with no money (bookings, lists, sign-ups, a quiz): what people do in it, what it remembers for them, who sees what (offer "Only me, the owner" for forms sent to them, never a passcode). A plain website: the main thing visitors do, its sections, its tone. Never ask an app without money about money, tokens, voting or wallets.
 - Don't ask about colours, GoodBuild adds that question itself. Set recommended_palette to the one that suits the app: ${PALETTES.map((p) => `${p.id} (${p.mood.toLowerCase()})`).join("; ")}. Use "none" only if they already named their colours.
 - Never ask about the network, pricing or how the code is written.
 - Never use em dashes.
