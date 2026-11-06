@@ -132,7 +132,7 @@ Proved in a local EVM with real compiled contracts (`src/server/deploy/upgradeab
 **Left for later on purpose:** Celoscan verification (Sourcify works), paying fees in stablecoins, sponsored gas, a fee estimate that's only exact for the first argument-free contract, and mainnet.
 
 **Launch and operations:**
-- Auto-deploy doesn't run the tests first, and has no staging or rollback.
+- Auto-deploy runs the checks first and images can be rolled back (D45). There's no staging. The owner still has to turn on the branch rule and test a rollback once (`DEPLOY.md`).
 - Backups live on the same server.
 - The preview depends on CodeSandbox, which sometimes fails until Try again (Q36).
 - New email wallets start with no CELO, so a newcomer has to find the faucet (Q12).

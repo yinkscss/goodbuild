@@ -266,6 +266,17 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - **Legal and Paystack:** the owner states these are cleared, on the basis that GoodBuild sells usage only. Claude hasn't seen a written answer. The legal pages' "not reviewed by a lawyer" banner stays until a lawyer has actually reviewed them.
 - **Funding, proposed by Claude:** Paystack settles naira to a bank account, the owner buys dollars weekly through a virtual dollar card or a similar service, and pays the AI providers from it, keeping about one month of bills ahead. Credits are priced from the official NFEM rate plus 2%, with a floor the owner sets in admin so the price never falls below what dollars really cost. Worked example, using 6 Nov rates and an assumed cost of about N1,425 per dollar (UNVERIFIED): a $1 credit brings in about N1,376 and costs about N1,140 of AI at cost plus 25%, leaving about N236, or 17%, before free AI, gas and hosting. Which provider works with Anthropic and DeepSeek is UNVERIFIED, so test with a small amount first.
 
+### D45. Checks before every deploy, and tagged images for rollback
+- Date: 6 Nov 2026 · Decided by: Claude, building step O1 of the launch plan for the user's session, reviewed by the advisor.
+- **Gate:** `ci.yml` runs on every pull request, and `deploy.yml` calls it as a job that the deploy job needs. So the commit that ships is the one tested, and a failure there skips the deploy, with no GitHub setting involved. The trigger moved from a merged pull request to a push to `main`, because a merge commit doesn't exist until the merge. **A direct push to `main` now deploys too,** where before it didn't. The branch rule stops direct pushes.
+- **Not `workflow_run`:** it only fires from the default branch's copy, so it can't be exercised on a pull request, and it runs separately from the commit it deploys.
+- **The lock covers the whole Deploy run,** checks included, so an older commit whose checks finish late can't overwrite a newer one.
+- **Branch rule:** it adds that a failing pull request can't merge. Only the owner can set it (DEPLOY.md). Without it, a failing commit can still reach `main`, but it doesn't deploy.
+- **Docs filter:** Deploy skips pushes that only change `docs/`, which `.dockerignore` leaves out of the image. It's on the Deploy push and not on pull requests, since a required check that never reports blocks the merge. `src/server/agent/assets.test.ts` reads a file in `docs/`, so docs pull requests still need their checks. Root `*.md` files go into the image, so they aren't filtered.
+- **Rollback:** the compose file still runs `goodbuild:latest`, and rolling back moves that tag. Passing a tag through an env var was rejected: the documented `up -d` would then silently undo a rollback. `release.sh` moves `previous` only after a build succeeds, so a failed build can't lose the way back. Migrations only add, in ways old code can still write to, because a rollback can't undo one (DEPLOY.md).
+- **Remaining bypass:** `deploy/deploy.sh` by hand skips the checks, kept for when GitHub Actions is down.
+- **Not verified (UNVERIFIED):** rollback on the production server and disk use per image. The scripts are tested on real Docker in CI only.
+
 ## Recommended decisions (Ego; adopted unless changed)
 
 

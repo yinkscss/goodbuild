@@ -23,15 +23,71 @@ ssh -i .data/goodbuild-deploy -o IdentitiesOnly=yes -o UserKnownHostsFile=.data/
 ```
 
 ## Deploy
-**Automatic:** merging a pull request to `main` deploys it (`.github/workflows/deploy.yml`). Check the result in the repo's Actions tab. Merging is therefore a production release, so CI must pass and the migration must be safe before you merge. To redeploy without a merge, run the Deploy workflow by hand from that tab.
+**Automatic:** a push to `main`, which normally means a merged pull request, runs the Deploy workflow (`.github/workflows/deploy.yml`). It runs the checks on that exact commit, and deploys only if they pass. Check the result in the repo's Actions tab. Merging is still a production release, so the migration must be safe before you merge. To redeploy without a merge, run the Deploy workflow by hand on `main` from that tab. The checks run first then too, and on any other branch it runs the checks and doesn't deploy.
+
+**The checks** (`.github/workflows/ci.yml`) are lint, typecheck, the full tests, the build and `deploy/test-release.sh`. They run on every pull request and again on `main` before a deploy. A pull request's failed check only blocks its merge if the branch rule below is on. Whether or not it is, a commit that fails on `main` doesn't deploy.
+
+**What doesn't deploy:** a push that changes only `docs/`, since `.dockerignore` keeps that folder out of the image. Root files such as `README.md` do go into the image, so they still deploy. If a deploy failed and a docs-only merge followed, nothing retries it, so run Deploy by hand.
+
+**If several merges land close together:** runs go one at a time, and a newer waiting run replaces an older waiting one, which shows as cancelled. That's normal, since the newer commit contains the older one.
 
 **By hand:** from the repo root, with your changes committed:
 ```bash
 deploy/deploy.sh
 ```
-It copies HEAD, rebuilds the image on the server, runs migrations and restarts. The build takes several minutes. Deploying a branch by hand leaves the server ahead of `main`, and the next merge replaces it.
+It copies HEAD, rebuilds the image on the server, runs migrations and restarts. The build takes several minutes. **This skips the checks,** so keep it for when GitHub Actions is down. Deploying a branch by hand leaves the server ahead of `main`, and the next deploy replaces it.
 
 The workflow's GitHub secrets are `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS` (the server's pinned host key) and `DEPLOY_HOST`. If you change the key on the server, update them too.
+
+### Branch rule (owner only, in GitHub)
+This stops a pull request with failing checks from being merged. Settings → Branches → Add classic branch protection rule:
+1. Branch name pattern: `main`.
+2. Tick "Require a pull request before merging". Set required approvals to 0 unless someone else reviews.
+3. Tick "Require status checks to pass before merging", then search for and choose `Lint, types, tests, build`. It's only listed once a pull request has run it.
+4. Leave "Require branches to be up to date before merging" off. `main` is tested again before each deploy, so a stale pull request can't ship untested, and this avoids rerunning the checks after every merge.
+5. Tick "Do not allow bypassing the above settings" so the rule also binds admins.
+
+An open pull request from before CI existed shows the check as "Expected" until its next push, or until it's closed and reopened.
+
+## Rollback
+Each deploy tags its image `goodbuild:sha-<first 12 of the commit>`, and the newest 5 stay. `goodbuild:previous` is the image that ran before the last deploy. `goodbuild:latest` is what's running.
+
+On the server, or from a machine with the deploy key (the same `ssh` command as under Access, followed by the path):
+```bash
+/opt/goodbuild/deploy/rollback.sh previous      # go back one deploy
+/opt/goodbuild/deploy/rollback.sh               # list the images, changing nothing
+/opt/goodbuild/deploy/rollback.sh sha-abc123def456   # go back to a chosen commit
+```
+It restarts `web` and `worker` from an image already on the server, in seconds, with no rebuild and no checks. It leaves the database and `migrate` alone. A build in progress is interrupted, as in any deploy.
+
+**Then revert the bad commit on `main`.** The rollback only lasts until the next deploy, which ships `main` again, bad commit included. The revert's own deploy keeps the rolled-back image as `previous`.
+
+**A rollback can't undo a migration.** The database stays as the newer code left it, and old code runs against it.
+
+| What the bad deploy's migration did | Is rollback safe? |
+|---|---|
+| Nothing | Yes |
+| Added a table, or a column that's nullable or has a default | Yes. Old code ignores them. Check that the new code didn't write values the old code can't read, such as a new status. |
+| Added a unique index, check or foreign key to an existing table | **Maybe not.** It still looks like an addition, but old code's writes fail if they break the new rule. Check that they can't. |
+| Added a `NOT NULL` column with no default | **No.** Old code's inserts fail. |
+| Dropped or renamed a table or column, or changed a type | **No.** Old code's queries fail. |
+
+So migrations only add, and in ways old code can still write to. To remove or rename something, stop using it in one deploy and drop it in a later one, once rolling back past that point is no longer needed. Searching `0000` to `0009` found no drop, rename or type change, and no added `NOT NULL` column without a default. In `0005` to `0009`, the one constraint added to an existing table is the unique index `publications_client_idx` in `0006`. These were text searches of the SQL, not a test of old code against the new schema. Before rolling back, check what's new with `git diff --stat <good commit> <bad commit> -- drizzle`.
+
+If the migration itself is the problem, a rollback won't fix it. The options are a new forward migration, which is the normal answer, or restoring a backup (below), which **loses everything written since that backup**. Once real money is in the database, don't restore without reconciling against Paystack and the chain.
+
+A rollback also doesn't change `.env.production` or the files in `/opt/goodbuild`, including the compose file. `NEXT_PUBLIC_*` values go back with the image, since they're fixed at build time.
+
+**How far this is tested:** `deploy/test-release.sh` runs both scripts against real Docker in CI, on a throwaway project. UNVERIFIED on the production server until the owner runs the test below. Disk use per image is also UNVERIFIED.
+
+### Test it once on production (owner, before step B of the launch plan)
+Do this right after the first deploy that includes these scripts, at a quiet time. That deploy adds no migration, so going back is safe. Run these in `/opt/goodbuild/deploy`:
+1. `df -h /` and `docker system df`. Note the free disk.
+2. `./rollback.sh`, to see the list. `previous` should be there. Note the `sha-` tag that has the same image ID as `latest`.
+3. `./rollback.sh previous`
+4. `docker compose --env-file .env.production ps`, and open https://goodbuildit.xyz/. Both containers should be up and the site should load.
+5. `./rollback.sh sha-<the tag from step 2>`, to return. Repeat step 4.
+6. Record the date and how long the site was down in this file.
 
 ## Everyday commands (on the server, in /opt/goodbuild/deploy)
 ```bash
