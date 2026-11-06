@@ -915,6 +915,8 @@ describe.each(testBackends())("holds and charging on $name", (backend) => {
     it("simultaneous free starts on different projects: exactly one gets through (the gap D48 flagged)", async () => {
       for (let round = 0; round < 6; round++) {
         const a = await newUser();
+        // The row exists already, as for anyone who has built before. A first insert would queue them by itself.
+        if (round % 2) await db.insert(balances).values({ userId: a.userId });
         const projectIds = await Promise.all(Array.from({ length: 10 }, () => project(a.userId)));
         const results = await Promise.all(projectIds.map((projectId) => start(a.userId, projectId, { FREE_AI_BUDGET_MICRO: "1000000000" })));
         expect(results.filter((r) => "job" in r)).toHaveLength(1);

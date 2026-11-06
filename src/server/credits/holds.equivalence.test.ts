@@ -213,6 +213,8 @@ describe.each(testBackends())("free-only users notice no change on $name", (back
   it.runIf(backend.realConcurrency)("the one difference: simultaneous free starts no longer slip past one-project-at-a-time", async () => {
     const a = await newUser();
     const env = { FREE_AI_BUDGET_MICRO: "100000000" };
+    // The row exists already: a first insert would queue them by itself, even with no lock.
+    await db.insert(balances).values({ userId: a.userId });
     const results = await Promise.all([a.projectId, a.otherProjectId].map((projectId) => startTurn(db, { projectId, userId: a.userId, mode: "build", prompt: "x" }, env)));
     expect(results.filter((r) => "job" in r)).toHaveLength(1);
   });
