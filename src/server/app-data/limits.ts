@@ -9,6 +9,8 @@ export const DEFAULT_LIMITS = {
   maxRowsPerWallet: 1_000,
   maxBytesPerWallet: 2 * MIB,
   maxRowsPerProject: 20_000,
+  /** Records from visitors who didn't sign in (D34), well below the app's total so spam can't crowd out the rest. */
+  maxAnonRowsPerProject: 2_000,
   maxBytesPerProject: 20 * MIB,
   /** Across every app. New projects and wallets are free, so per-project limits alone don't bound the disk. */
   maxTotalBytes: 1024 * MIB,
@@ -16,6 +18,9 @@ export const DEFAULT_LIMITS = {
   readsPerIpPerMinute: 300,
   writesPerIpPerMinute: 120,
   writesPerWalletPerMinute: 60,
+  /** Writes without sign-in (D34): per IP, and for the whole app. */
+  anonWritesPerIpPerMinute: 10,
+  anonWritesPerProjectPerMinute: 60,
   requestsPerProjectPerMinute: 1_500,
   noncesPerIpPerMinute: 30,
   noncesPerProjectPerMinute: 300,

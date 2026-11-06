@@ -44,11 +44,71 @@ export interface DeployEnv {
   send(data: Hex, gas: bigint, to?: Address): Promise<Hex>;
   /** Waits until the transaction is mined. */
   waitForReceipt(hash: Hex): Promise<{ status: "success" | "reverted"; contractAddress?: Address | null }>;
-  /** Server-side: reads the chain, verifies the transaction, stores it, returns the deployed address. `implementationTx` is set behind a proxy. */
+  /**
+   * Server-side: reads the chain, verifies the transaction, stores it, returns the deployed address.
+   * `implementationTx` is set behind a proxy. A refusal carries the server's error `code`; an error
+   * without one means GoodBuild couldn't be reached.
+   */
   record(step: PlanStep, txHash: Hex, implementationTx?: Hex): Promise<{ address: Address }>;
+  /** Waits between record attempts. Injectable so tests don't wait. */
+  sleep?: (ms: number) => Promise<void>;
 }
 
-export type StepPhase = "waiting" | "reused" | "simulating" | "signing" | "broadcasting" | "recording" | "done" | "failed";
+/** "unsaved": every transaction mined, but GoodBuild couldn't record it yet. Try again only records. */
+export type StepPhase = "waiting" | "reused" | "simulating" | "signing" | "broadcasting" | "recording" | "unsaved" | "done" | "failed";
+
+/**
+ * The longest the pre-sign check may take (the Playwright run on 6 Nov 2026 sat on "Checking on
+ * Celo…"). Against an RPC that never answers, viem tries each call 4 times at 10s each, about 41s,
+ * and the opcode probe treats that as "can't tell" and moves on to the next call, so the check alone
+ * could run past 80s with no word to the user. The check is a handful of calls that each take well
+ * under a second, so 30s is generous. It also doesn't depend on the fetch honouring its abort signal.
+ */
+export const SIMULATE_TIMEOUT_MS = 30_000;
+
+/** Rejects with code "rpc_timeout" if `promise` hasn't settled in `ms`. */
+export function withDeadline<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(Object.assign(new Error("Celo didn't answer in time."), { code: "rpc_timeout" })), ms);
+  });
+  return Promise.race([promise, deadline]).finally(() => clearTimeout(timer));
+}
+
+/**
+ * Server answers that mean the chain hasn't caught up with a just-mined transaction yet: Celo's RPC is
+ * load-balanced, and the node that answers can be a block behind. Asked again after a pause.
+ */
+const RETRYABLE_RECORD = new Set(["chain_read_failed", "tx_not_found"]);
+const RECORD_RETRY_MS = [5000, 10_000];
+
+/** Every transaction for this step mined, but recording it didn't finish. */
+class NotSaved extends Error {
+  constructor(readonly raw: unknown) {
+    super("not saved");
+  }
+}
+
+async function recordStep(env: DeployEnv, step: PlanStep, txHash: Hex, implementationTx?: Hex): Promise<{ address: Address }> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await env.record(step, txHash, implementationTx);
+    } catch (error) {
+      const code = (error as { code?: unknown } | null)?.code;
+      if (typeof code === "string" && !RETRYABLE_RECORD.has(code)) {
+        // The server checked the chain and refused. Its reason is the useful message.
+        throw new StepFailure(step.name, { kind: "unknown", message: (error as Error).message || "GoodBuild couldn't save the deployment." }, [], error);
+      }
+      if (typeof code !== "string" || attempt >= RECORD_RETRY_MS.length) throw new NotSaved(error);
+      await (env.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms))))(RECORD_RETRY_MS[attempt]);
+    }
+  }
+}
+
+function notSaved(step: PlanStep): ClassifiedError {
+  const went = step.upgradeable ? "Both transactions went through" : "The transaction went through";
+  return { kind: "not_saved", message: `${went}, but GoodBuild couldn't save the result yet, usually because Celo's network is still catching up. Try again in a moment. Nothing new will be sent.` };
+}
 
 /** Which of the two transactions an upgradeable step is on (D33). */
 export type StepPart = "code" | "proxy" | "switch";
@@ -117,7 +177,7 @@ export async function runDeploy(
       let txHash = progress.sent[step.name];
       if (!txHash) {
         phase("simulating");
-        const { gas } = await env.simulate({ data, runtimeBytecode: step.deployedBytecode });
+        const { gas } = await withDeadline(env.simulate({ data, runtimeBytecode: step.deployedBytecode }), SIMULATE_TIMEOUT_MS);
 
         phase("signing");
         txHash = await env.send(data, gas);
@@ -137,12 +197,17 @@ export async function runDeploy(
       }
 
       phase("recording", { txHash });
-      const { address } = await env.record(step, txHash);
+      const { address } = await recordStep(env, step, txHash);
       deployed[step.name] = address;
       progress.deployed[step.name] = address;
       delete progress.sent[step.name];
       phase("done", { txHash, address });
     } catch (error) {
+      if (error instanceof NotSaved) {
+        // Nothing failed on-chain, so the step doesn't say Failed. Try again picks up the sent hashes.
+        onEvent({ type: "phase", step: step.name, phase: "unsaved" });
+        throw new StepFailure(step.name, notSaved(step), [], error.raw);
+      }
       onEvent({ type: "phase", step: step.name, phase: "failed" });
       if (error instanceof StepFailure) throw error;
       if (error instanceof UnsupportedOpcodeError) {
@@ -168,7 +233,7 @@ async function sendOnce(
   let txHash = progress.sent[key];
   if (!txHash) {
     phase("simulating", { part });
-    const { gas } = await env.simulate(tx);
+    const { gas } = await withDeadline(env.simulate(tx), SIMULATE_TIMEOUT_MS);
     phase("signing", { part });
     txHash = await env.send(tx.data, gas, tx.to);
     progress.sent[key] = txHash;
@@ -215,7 +280,7 @@ async function runProxiedStep(
   const { txHash } = await sendOnce(step.name, step, env, progress, phase, onEvent, part, second);
 
   phase("recording", { txHash, part });
-  const { address } = await env.record(step, txHash, code.txHash);
+  const { address } = await recordStep(env, step, txHash, code.txHash);
   delete progress.sent[codeKey];
   delete progress.sent[step.name];
   return { address, txHash };

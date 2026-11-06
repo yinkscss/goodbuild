@@ -1,4 +1,6 @@
-import { bigint, bigserial, boolean, index, integer, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { bigint, bigserial, boolean, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+
+import type { RecordGrant } from "@/lib/app-data";
 
 import { projects } from "./schema";
 
@@ -16,7 +18,7 @@ export const appDataRecords = pgTable(
       .notNull()
       .references(() => projects.id, { onDelete: "cascade" }),
     collection: text("collection").notNull(),
-    /** Lowercase address. */
+    /** Who saved it: a lowercase wallet address, or "anon:<id>" for a visitor who didn't sign in (D34). */
     ownerWallet: text("owner_wallet").notNull(),
     key: text("key").notNull(),
     /** JSON text. Plain text so nothing a visitor sends can make Postgres reject or reshape it. */
@@ -26,6 +28,12 @@ export const appDataRecords = pgTable(
      * a collection public later doesn't expose what visitors wrote while it was private.
      */
     isPublic: boolean("is_public").notNull().default(false),
+    /**
+     * Who could read the record when it was saved (D34). Reads use the stricter of this and the rule
+     * now, so loosening a rule never exposes what was saved under a tighter one. Null on records
+     * saved before D34: those follow is_public, and otherwise only their writer reads them.
+     */
+    access: jsonb("access").$type<RecordGrant>(),
     sizeBytes: integer("size_bytes").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

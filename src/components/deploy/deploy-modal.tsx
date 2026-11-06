@@ -23,6 +23,7 @@ const PHASE_COPY: Record<StepPhase, string> = {
   signing: "Confirm in your wallet",
   broadcasting: "Sending to Celo…",
   recording: "Saving…",
+  unsaved: "Sent, not saved yet",
   done: "Deployed",
   failed: "Failed",
 };
@@ -44,6 +45,9 @@ export function stageIndex(step: StepView | undefined): { active: number; done: 
     case "broadcasting":
     case "recording":
       return { active: 1, done: 1 };
+    case "unsaved":
+      // Signed and mined. Only GoodBuild's record is missing, so nothing is marked as failed.
+      return { active: -1, done: 2 };
     case "done":
     case "reused":
       return step.verify === "verified" ? { active: 3, done: 3 } : { active: 2, done: 2 };
@@ -156,11 +160,25 @@ function ErrorCard({ deploy, onFix, chainId }: { deploy: Deploy; onFix: (prompt:
   const opcode = error.kind === "opcode";
   const refused = error.code === "upgrade_refused";
   const notReady = error.code === "upgradeable_not_ready";
-  const heading = refused ? "We can't upgrade this safely" : notReady ? "Not ready to be upgradeable" : opcode ? "Celo can't run this contract yet" : error.at === "prepare" ? "We couldn't prepare the deploy" : `Couldn't deploy ${error.at}`;
+  // Waiting on the network, not a failure: nothing was lost, and Try again is the whole fix.
+  const waiting = error.kind === "not_saved" || error.kind === "timeout";
+  const heading = refused
+    ? "We can't upgrade this safely"
+    : notReady
+      ? "Not ready to be upgradeable"
+      : opcode
+        ? "Celo can't run this contract yet"
+        : error.kind === "not_saved"
+          ? `${error.at} isn't saved yet`
+          : error.kind === "timeout"
+            ? "Celo didn't answer"
+            : error.at === "prepare"
+              ? "We couldn't prepare the deploy"
+              : `Couldn't deploy ${error.at}`;
   return (
     <div className="mt-5 rounded-block bg-canvas p-4" role="alert">
       <div className="flex items-start gap-3">
-        <span className="mt-1.5 size-2 shrink-0 rounded-full bg-danger" aria-hidden />
+        <span className={cn("mt-1.5 size-2 shrink-0 rounded-full", waiting ? "bg-warning" : "bg-danger")} aria-hidden />
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold">{heading}</p>
           <p className="mt-1 text-sm text-grey-600">{error.message}</p>
@@ -574,7 +592,7 @@ function StepBadge({ step }: { step: StepView }) {
   if (step.phase === "waiting") return null;
   const done = step.phase === "done" || step.phase === "reused";
   return (
-    <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-semibold", done ? "bg-success/10 text-success" : step.phase === "failed" ? "bg-danger/10 text-danger" : "bg-tint text-violet")}>
+    <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-semibold", done ? "bg-success/10 text-success" : step.phase === "failed" ? "bg-danger/10 text-danger" : step.phase === "unsaved" ? "bg-warning/10 text-warning" : "bg-tint text-violet")}>
       {PHASE_COPY[step.phase]}
     </span>
   );

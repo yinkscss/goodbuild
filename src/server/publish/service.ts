@@ -6,9 +6,9 @@ import { and, eq, ne } from "drizzle-orm";
 import type { PublicClient } from "viem";
 
 import { DATA_RULES_PATH, parseDataRules } from "@/lib/app-data";
+import { withCurrentDataHelpers } from "@/server/agent/template";
 import { slugFromName, slugProblem } from "@/lib/published-host";
 import { dbAssetStore } from "@/server/agent/asset-store";
-import { hideRecordsNoLongerPublic } from "@/server/app-data/store";
 import { loadFiles } from "@/server/agent/store";
 import type { Db } from "@/server/db/client";
 import { publicationFiles, publications, type Publication } from "@/server/db/publish-schema";
@@ -117,7 +117,8 @@ export async function publishApp(db: Db, project: Project, slug: string, deps: {
   // Public (docs/APP_DATA.md). Keeps its value across republishing, so a built page never goes stale.
   const clientId = existing?.clientId ?? `gbc_${randomBytes(16).toString("hex")}`;
   const undeployed = await undeployedContracts(db, project, saved);
-  const files = await withCurrentAddresses(db, project.id, saved);
+  // The current data helpers, so an app published from an older project gets today's rules support (D34).
+  const files = withCurrentDataHelpers(await withCurrentAddresses(db, project.id, saved));
 
   const store = dbAssetStore(db);
   const assets: Array<{ name: string; mime: string; bytes: Uint8Array }> = [];
@@ -146,7 +147,6 @@ export async function publishApp(db: Db, project: Project, slug: string, deps: {
         .returning({ id: publications.id });
       await tx.delete(publicationFiles).where(eq(publicationFiles.publicationId, row.id));
       await tx.insert(publicationFiles).values(built.map((f) => ({ publicationId: row.id, path: f.path, mime: f.mime, bytes: f.bytes })));
-      await hideRecordsNoLongerPublic(tx, project.id, dataRules);
     });
   } catch (error) {
     if (isUniqueViolation(error)) throw new PublishError("slug_taken", "That address is taken. Try another.");

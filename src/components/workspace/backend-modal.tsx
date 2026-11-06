@@ -1,11 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { ArrowRight, Database } from "lucide-react";
+import { ArrowRight, Database, Download, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
-import { DATA_RULES_PATH, parseDataRules, type DataAccess } from "@/lib/app-data";
+import { DATA_RULES_PATH, describeRule, parseDataRules } from "@/lib/app-data";
 import { inferKind, type ContractKind } from "@/lib/contract-kind";
 import { cn } from "@/lib/utils";
 import { AppDataRow } from "./app-data-row";
@@ -16,13 +16,18 @@ const USES_HELPER = /from\s+["'][^"']*lib\/(db|useDb)["']/;
 
 export interface BackendState {
   on: boolean;
-  collections: { name: string; access: DataAccess }[];
+  collections: { name: string; who: string; publicFields: string[]; everyone: boolean; noSignIn: boolean }[];
 }
 
 /** Whether the app saves data, and what it saves, read from its own files. */
 export function backendState(files: Record<string, string>): BackendState {
   const { rules } = parseDataRules(files[DATA_RULES_PATH]);
-  const collections = Object.entries(rules).map(([name, access]) => ({ name, access }));
+  const collections = Object.entries(rules).map(([name, rule]) => ({
+    name,
+    ...describeRule(rule),
+    everyone: rule.read.includes("anyone"),
+    noSignIn: rule.create === "anyone",
+  }));
   const usesHelper = Object.entries(files).some(([path, src]) => path.startsWith("src/") && !HELPERS.has(path) && USES_HELPER.test(src));
   return { on: usesHelper || collections.length > 0, collections };
 }
@@ -62,12 +67,14 @@ const IDEAS: Partial<Record<ContractKind, BackendIdea[]>> = {
     idea("Saved drafts", "Draft a proposal before submitting", "let each person save proposal drafts, private to them, before they submit on-chain."),
   ],
   site: [
+    idea("Booking requests", "Customers book a time without a wallet, only you see who", "add a booking form anyone can use without signing in or a wallet: name, phone, day and time. Only I, the app's owner, can read names and phone numbers, everyone can see which day and time slots are taken, and a slot can't be booked twice. The form must say that the owner sees their name and phone."),
     idea("Guestbook", "Visitors sign a public guestbook", "add a guestbook where signed-in visitors leave a short public message."),
     idea("Saved favourites", "Visitors keep their own list", "let each visitor save favourites, private to them, and see them again next visit."),
   ],
 };
 
 const GENERAL: BackendIdea[] = [
+  idea("Contact form", "Visitors send a message without signing in, only you read it", "add a contact form anyone can send without signing in or a wallet. Only I, the app's owner, can read the messages, and the form says so. Store name, email or phone, and the message."),
   idea("Profiles", "Each person saves their own details", "let each person save a display name and short bio, private to them, and show it once they sign in."),
   idea("Public posts", "People post things everyone can read", "let signed-in people post short entries that everyone can read, newest first, and delete their own."),
 ];
@@ -77,18 +84,12 @@ const DECIDE: BackendIdea = idea("Let the builder decide", "It adds saved data w
 /** Two ideas for this app, two general ones, and "let the builder decide". No typing needed. */
 export function backendIdeas(project: { name: string; templateId?: string | null }): BackendIdea[] {
   const kind = inferKind({ templateId: project.templateId, text: project.name });
-  return [...(IDEAS[kind] ?? []), ...GENERAL, DECIDE].slice(0, 5);
+  return [...(IDEAS[kind] ?? []).slice(0, 2), ...GENERAL, DECIDE].slice(0, 6);
 }
 
-const ACCESS_TEXT: Record<DataAccess, string> = {
-  private: "Only the person who saved it can see it",
-  "public-read": "Anyone can read it, only the writer can change it",
-};
-
-/** `compact` hides the word until there's room, so the header's pills don't wrap. */
 export function BackendButton({ on, disabled, onOpen, compact, className }: { on: boolean; disabled: boolean; onOpen: () => void; compact?: boolean; className?: string }) {
   return (
-    <Button variant="secondary" className={className} aria-label="Backend" disabled={disabled} title={disabled ? "Wait for the build to finish" : "Save data for the people who use your app"} onClick={onOpen}>
+    <Button variant="secondary" className={className} aria-label="Backend" disabled={disabled} title="Save data for the people who use your app, and see what they sent" onClick={onOpen}>
       <span className="relative inline-flex">
         <Database className="size-4" aria-hidden />
         {on && <span className="absolute -top-0.5 -right-1 size-2 rounded-full bg-pink" aria-hidden />}
@@ -125,7 +126,7 @@ export function BackendModal({
         <p className="eyebrow pr-10">Backend</p>
         <DialogTitle className="display mt-2 pr-10 text-[28px] font-extrabold">{state.on ? "Your app saves data" : "Add a backend"}</DialogTitle>
         <DialogDescription className="mt-2 text-sm text-grey-600">
-          Built in, with nothing to set up. People sign in by connecting their wallet, and each app&apos;s data is kept apart from every other app.
+          Built in, with nothing to set up. Personal areas use wallet sign-in, forms can work without one, and each app&apos;s data is kept apart from every other app.
         </DialogDescription>
 
         {state.on && (
@@ -135,10 +136,14 @@ export function BackendModal({
               <ul className="mt-2 space-y-2">
                 {state.collections.map((c) => (
                   <li key={c.name} className="flex items-start gap-3">
-                    <span className={cn("mt-1.5 size-2 shrink-0 rounded-full", c.access === "public-read" ? "bg-pink" : "bg-violet")} aria-hidden />
+                    <span className={cn("mt-1.5 size-2 shrink-0 rounded-full", c.everyone ? "bg-pink" : "bg-violet")} aria-hidden />
                     <span className="min-w-0">
                       <span className="block text-sm font-medium break-words">{c.name}</span>
-                      <span className="block text-xs text-grey-600">{ACCESS_TEXT[c.access]}</span>
+                      <span className="block text-xs text-grey-600">
+                        {c.who}
+                        {c.publicFields.length > 0 && `. Everyone sees: ${c.publicFields.join(", ")}`}
+                        {c.noSignIn && ". No sign-in needed to send"}
+                      </span>
                     </span>
                   </li>
                 ))}
@@ -152,6 +157,7 @@ export function BackendModal({
             {published && <AppDataRow projectId={projectId} />}
           </div>
         )}
+        {state.on && <Submissions projectId={projectId} />}
 
         <p className="mt-5 text-sm font-medium">{state.on ? "Add more" : "Pick what your app should remember"}</p>
         <div className="mt-2 space-y-2" role="group" aria-label="Backend ideas">
@@ -177,5 +183,95 @@ export function BackendModal({
         <p className="mt-3 text-xs text-grey-600">{busy ? "Wait for the current build to finish." : "Picking one starts a build. Money and ownership stay in your contract."}</p>
       </DialogContent>
     </Dialog>
+  );
+}
+
+interface OwnerPage {
+  collections: string[];
+  collection?: string;
+  records: { key: string; owner: string | null; value: unknown; createdAt: string }[];
+}
+
+/** Text only: entries come from strangers, and this runs on GoodBuild's own origin. */
+function entryText(value: unknown): { label: string; text: string }[] {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return Object.entries(value as Record<string, unknown>).map(([label, v]) => ({ label, text: typeof v === "object" ? JSON.stringify(v) : String(v) }));
+  }
+  return [{ label: "value", text: JSON.stringify(value) }];
+}
+
+/** What visitors sent to the published app, for collections its owner may read (D34). */
+export function Submissions({ projectId }: { projectId: string }) {
+  const [page, setPage] = React.useState<OwnerPage | null>(null);
+  const [collection, setCollection] = React.useState<string | undefined>();
+  const [error, setError] = React.useState(false);
+
+  const load = React.useCallback(
+    (name?: string) => {
+      const query = name ? `?collection=${encodeURIComponent(name)}` : "";
+      void fetch(`/api/projects/${projectId}/app-data/records${query}`)
+        .then((r) => (r.ok ? (r.json() as Promise<OwnerPage>) : Promise.reject(new Error(String(r.status)))))
+        .then((p) => {
+          setPage(p);
+          setError(false);
+        })
+        .catch(() => setError(true));
+    },
+    [projectId],
+  );
+  React.useEffect(() => load(collection), [load, collection]);
+
+  if (error) return <p className="mt-4 text-xs text-grey-600">Couldn&apos;t load what visitors sent. Try again in a moment.</p>;
+  if (!page || page.collections.length === 0) return null;
+  const current = page.collection ?? page.collections[0];
+
+  async function remove(owner: string | null, key: string) {
+    if (!owner || !window.confirm("Delete this entry? It can't be undone.")) return;
+    const query = new URLSearchParams({ collection: current, owner, key });
+    await fetch(`/api/projects/${projectId}/app-data/records?${query}`, { method: "DELETE" });
+    load(current);
+  }
+
+  return (
+    <div className="mt-5">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm font-medium">What visitors sent</p>
+        <a className="inline-flex items-center gap-1.5 text-xs font-medium text-violet hover:underline" href={`/api/projects/${projectId}/app-data/records?collection=${encodeURIComponent(current)}&format=csv`}>
+          <Download className="size-3.5" aria-hidden />
+          Download CSV
+        </a>
+      </div>
+      {page.collections.length > 1 && (
+        <div className="mt-2 flex flex-wrap gap-1.5" role="tablist" aria-label="Collections">
+          {page.collections.map((name) => (
+            <Button key={name} role="tab" aria-selected={name === current} size="chip" variant={name === current ? "chipSelected" : "chip"} onClick={() => setCollection(name)}>
+              {name}
+            </Button>
+          ))}
+        </div>
+      )}
+      {page.records.length === 0 ? (
+        <p className="mt-2 text-xs text-grey-600">Nothing yet. Entries appear here once your published app gets some.</p>
+      ) : (
+        <ul className="mt-2 max-h-64 space-y-2 overflow-y-auto">
+          {page.records.map((r) => (
+            <li key={`${r.owner}/${r.key}`} className="flex items-start gap-3 rounded-block bg-canvas p-3">
+              <dl className="min-w-0 flex-1 space-y-0.5 text-sm">
+                {entryText(r.value).map(({ label, text }) => (
+                  <div key={label} className="flex gap-2">
+                    <dt className="shrink-0 text-grey-600">{label}</dt>
+                    <dd className="min-w-0 break-words">{text}</dd>
+                  </div>
+                ))}
+                <div className="text-xs text-grey-400">{new Date(r.createdAt).toLocaleString()}</div>
+              </dl>
+              <Button variant="ghost" size="icon" aria-label="Delete this entry" onClick={() => void remove(r.owner, r.key)}>
+                <Trash2 className="size-4" aria-hidden />
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }

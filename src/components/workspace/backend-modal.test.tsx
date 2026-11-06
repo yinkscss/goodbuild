@@ -16,7 +16,12 @@ describe("backendState", () => {
       "src/App.tsx": `import { useCollection } from "./lib/useDb";\nexport default function App() { return null; }`,
       "src/lib/dataRules.json": JSON.stringify({ collections: { notes: "private", posts: "public-read" } }),
     };
-    expect(backendState(files)).toEqual({ on: true, collections: [{ name: "notes", access: "private" }, { name: "posts", access: "public-read" }] });
+    const state = backendState(files);
+    expect(state.on).toBe(true);
+    expect(state.collections.map((c) => [c.name, c.who, c.everyone])).toEqual([
+      ["notes", "Only the person who saved it can read it", false],
+      ["posts", "Anyone can read it", true],
+    ]);
   });
 });
 
@@ -25,7 +30,7 @@ describe("backendIdeas", () => {
     const tips = backendIdeas({ name: "Ikeja FC tip jar" });
     expect(tips[0].label).toBe("Thank-you wall");
     expect(tips.at(-1)?.label).toBe("Let the builder decide");
-    expect(backendIdeas({ name: "Something else" }).map((i) => i.label)).toEqual(["Profiles", "Public posts", "Let the builder decide"]);
+    expect(backendIdeas({ name: "Something else" }).map((i) => i.label)).toEqual(["Contact form", "Profiles", "Public posts", "Let the builder decide"]);
   });
 });
 

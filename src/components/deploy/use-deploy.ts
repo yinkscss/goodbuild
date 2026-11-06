@@ -7,7 +7,7 @@ import { useAuth } from "@/lib/auth/context";
 import { celoChainFor } from "@/lib/auth/wallet-client";
 import { classifyDeployError, errorDetail, type ClassifiedError } from "@/lib/deploy/errors";
 import { loadSent, pendingKey, saveSent } from "@/lib/deploy/pending";
-import { runDeploy, StepFailure, usesGoodDollar, type DeployEvent, type DeployProgress, type Plan, type PlanStep, type StepPart, type StepPhase } from "@/lib/deploy/run";
+import { runDeploy, SIMULATE_TIMEOUT_MS, StepFailure, usesGoodDollar, withDeadline, type DeployEvent, type DeployProgress, type Plan, type PlanStep, type StepPart, type StepPhase } from "@/lib/deploy/run";
 import { simulateCreation } from "@/lib/deploy/simulate";
 import { proxyAdminAbi } from "@/lib/deploy/upgradeable";
 
@@ -157,9 +157,12 @@ export function useDeploy({ projectId, chainId, onDeployed }: { projectId: strin
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ runId: plan.runId, chainId: plan.chainId, contractName: step.name, txHash, sourceHash: plan.sourceHash, evmVersion: plan.evmVersion, proxied }),
             });
-            const body = (await res.json()) as { deployment?: { address: Address; verifyStatus: StepView["verify"] }; message?: string };
-            if (!res.ok || !body.deployment) throw new Error(body.message ?? "We couldn't save the deployment.");
-            return { address: body.deployment.address };
+            const body = (await res.json().catch(() => ({}))) as { deployment?: { address: Address; verifyStatus: StepView["verify"] }; error?: string; message?: string };
+            if (res.ok && body.deployment) return { address: body.deployment.address };
+            // A 422 is the server's verdict on the chain, with a code runDeploy acts on. Anything else
+            // (a 5xx, a dropped connection) leaves no code, so the step shows as not saved yet.
+            const error = new Error(body.message ?? "We couldn't save the deployment.");
+            throw res.status === 422 && body.error ? Object.assign(error, { code: body.error }) : error;
           },
         },
         (event: DeployEvent) => {
@@ -195,7 +198,7 @@ export function useDeploy({ projectId, chainId, onDeployed }: { projectId: strin
 
   /** After an error: go back to the summary. Contracts already deployed stay deployed. */
   const retry = React.useCallback(() => {
-    setState((s) => ({ ...s, stage: "ready", error: null, steps: s.steps.map((x) => (x.phase === "failed" ? { ...x, phase: "waiting" } : x)) }));
+    setState((s) => ({ ...s, stage: "ready", error: null, steps: s.steps.map((x) => (x.phase === "failed" || x.phase === "unsaved" ? { ...x, phase: "waiting" } : x)) }));
   }, []);
 
   /** Claim 1,000 test G$ from the Celo Sepolia faucet (D23), once a day per wallet. */
@@ -266,10 +269,11 @@ async function estimate(plan: ServerPlan, account: Address, setState: SetState, 
     // Behind a proxy (D33) the code itself takes no arguments, whatever initialize takes.
     const probe = plan.steps.find((s) => !plan.alreadyDeployed[s.name] && (s.upgradeable || Object.keys(s.args).length === 0));
     if (!probe) return;
-    const { gas } = await simulateCreation(client, { account, data: probe.bytecode, runtimeBytecode: probe.deployedBytecode });
+    // The same deadline as the deploy's own check: a stuck RPC must not leave the estimate pending.
+    const { gas } = await withDeadline(simulateCreation(client, { account, data: probe.bytecode, runtimeBytecode: probe.deployedBytecode }), SIMULATE_TIMEOUT_MS);
     // Behind a proxy the second transaction isn't in this size-based sum, so the modal says "as you sign".
     if (plan.steps.some((s) => s.upgradeable)) return;
-    const price = await client.getGasPrice();
+    const price = await withDeadline(client.getGasPrice(), SIMULATE_TIMEOUT_MS);
     const perByte = Number(gas) / Math.max(probe.bytecodeBytes, 1);
     const total = plan.steps.filter((s) => !plan.alreadyDeployed[s.name]).reduce((n, s) => n + perByte * s.bytecodeBytes, 0);
     setState((s) => (s.plan === plan && s.stage === "ready" ? { ...s, feeCelo: Number(formatEther(BigInt(Math.ceil(total)) * price)).toPrecision(2) } : s));

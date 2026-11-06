@@ -2,7 +2,9 @@ import "server-only";
 
 import { parseSiweMessage } from "viem/siwe";
 
-import { accessFor, COLLECTION_NAME, DATA_CLIENT_HEADER, RECORD_KEY } from "@/lib/app-data";
+import { randomUUID } from "node:crypto";
+
+import { COLLECTION_NAME, DATA_CLIENT_HEADER, RECORD_KEY, ruleFor, type CollectionRule } from "@/lib/app-data";
 import { APP_SESSION_COOKIE } from "@/lib/auth/cookie-names";
 import { classifyHost, publishedAppUrl, publishedAppsDomain } from "@/lib/published-host";
 import { isProduction } from "@/server/auth/config";
@@ -12,8 +14,10 @@ import type { Db } from "@/server/db/client";
 import { effectiveHost } from "@/server/edge";
 import { createRateLimiter, limitsFromEnv, type AppDataLimits, type RateLimiter } from "./limits";
 import {
+  ANON_PREFIX,
   AppDataError,
   SESSION_TTL_SECONDS,
+  canCreate,
   consumeNonce,
   createNonce,
   createSession,
@@ -28,7 +32,9 @@ import {
   sessionWallet,
   totalStoredBytes,
   usableNonce,
+  viewerFor,
   type LiveApp,
+  type Viewer,
 } from "./store";
 
 export { APP_SESSION_COOKIE, createRateLimiter };
@@ -132,11 +138,15 @@ function checkKey(key: string) {
   if (!RECORD_KEY.test(key)) fail("invalid_key", 400, "Keys use letters, numbers, _ . : and -, start with a letter or number, and have at most 128 characters.");
 }
 
+const ANON_ID = /^anon:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/** Whose record: a wallet, or an anonymous visitor's id as the API showed it. */
 function ownerParam(url: URL): string | undefined {
   const owner = url.searchParams.get("owner");
   if (owner === null) return undefined;
-  if (!/^0x[0-9a-fA-F]{40}$/.test(owner)) fail("invalid_owner", 400, "owner must be a wallet address.");
-  return owner.toLowerCase();
+  if (/^0x[0-9a-fA-F]{40}$/.test(owner)) return owner.toLowerCase();
+  if (ANON_ID.test(owner)) return owner;
+  return fail("invalid_owner", 400, "owner must be a wallet address.");
 }
 
 function pageParams(url: URL): { limit: number; cursor?: number } {
@@ -167,19 +177,29 @@ function limit(ctx: Context, key: string, perMinute: number) {
   if (retry) throw new AppDataError("rate_limited", 429, "Too many requests. Wait a moment and try again.", retry);
 }
 
-async function viewerOf(ctx: Context): Promise<string | null> {
-  return sessionWallet(ctx.db, ctx.app.projectId, readCookie(ctx.request));
+/** The session's subject: a wallet, or an anonymous visitor (D34). */
+async function viewerOf(ctx: Context): Promise<Viewer | null> {
+  return viewerFor(ctx.app, await sessionWallet(ctx.db, ctx.app.projectId, readCookie(ctx.request)));
 }
 
-async function requireViewer(ctx: Context): Promise<string> {
-  const wallet = await viewerOf(ctx);
-  if (!wallet) fail("unauthenticated", 401, "Connect your wallet and sign in first.");
-  return wallet;
+async function requireViewer(ctx: Context): Promise<Viewer> {
+  const viewer = await viewerOf(ctx);
+  if (!viewer) fail("unauthenticated", 401, "Connect your wallet and sign in first.");
+  return viewer;
 }
 
-function limitWrite(ctx: Context, wallet: string) {
+function limitWrite(ctx: Context, viewer: Viewer) {
   limit(ctx, `w:ip:${ctx.ip}`, ctx.limits.writesPerIpPerMinute);
-  limit(ctx, `w:wallet:${ctx.app.projectId}:${wallet}`, ctx.limits.writesPerWalletPerMinute);
+  limit(ctx, `w:wallet:${ctx.app.projectId}:${viewer.subject}`, ctx.limits.writesPerWalletPerMinute);
+  if (!viewer.signedIn) {
+    limit(ctx, `w:anon-ip:${ctx.ip}`, ctx.limits.anonWritesPerIpPerMinute);
+    limit(ctx, `w:anon-project:${ctx.app.projectId}`, ctx.limits.anonWritesPerProjectPerMinute);
+  }
+}
+
+/** Can someone with no session see anything here? If not, they're asked to sign in. */
+function openToVisitors(rule: CollectionRule): boolean {
+  return rule.read.includes("anyone") || rule.public.length > 0;
 }
 
 // --- Routes ------------------------------------------------------------------
@@ -241,7 +261,9 @@ async function signInRoute(ctx: Context): Promise<Response> {
 async function sessionRoute(ctx: Context, method: string): Promise<Response> {
   if (method === "GET") {
     limit(ctx, `r:ip:${ctx.ip}`, ctx.limits.readsPerIpPerMinute);
-    return json({ wallet: await viewerOf(ctx) });
+    const viewer = await viewerOf(ctx);
+    // An anonymous visitor isn't signed in. `owner` lets the app show its owner view.
+    return json({ wallet: viewer?.signedIn ? viewer.subject : null, owner: Boolean(viewer?.isOwner) });
   }
   if (method === "POST") return signInRoute(ctx);
   if (method === "DELETE") {
@@ -254,9 +276,9 @@ async function sessionRoute(ctx: Context, method: string): Promise<Response> {
 
 async function meRoute(ctx: Context, method: string): Promise<Response> {
   if (method !== "DELETE") fail("method_not_allowed", 405, "That method isn't allowed here.");
-  const wallet = await requireViewer(ctx);
-  limitWrite(ctx, wallet);
-  const deleted = await eraseWallet(ctx.db, ctx.app.projectId, wallet);
+  const viewer = await requireViewer(ctx);
+  limitWrite(ctx, viewer);
+  const deleted = await eraseWallet(ctx.db, ctx.app.projectId, viewer.subject);
   return json({ deleted }, 200, { "Set-Cookie": sessionCookie("", 0) });
 }
 
@@ -284,11 +306,24 @@ async function checkSiteRoom(ctx: Context) {
 }
 
 async function write(ctx: Context, collection: string, key: string): Promise<Response> {
-  const wallet = await requireViewer(ctx);
-  limitWrite(ctx, wallet);
+  const rule = ruleFor(ctx.app.rules, collection);
+  let viewer = await viewerOf(ctx);
+  if (!viewer && rule.create === "anyone") {
+    // A visitor who didn't sign in gets an id of their own, separate from the cookie's secret, so they can see what they sent.
+    viewer = { subject: `${ANON_PREFIX}${randomUUID()}`, signedIn: false, isOwner: false };
+    limitWrite(ctx, viewer);
+    const value = await valueFrom(ctx);
+    await checkSiteRoom(ctx);
+    const record = await putRecord(ctx.db, ctx.app, { collection, owner: viewer.subject, key, json: value }, ctx.limits, new Date(), viewer);
+    const session = await createSession(ctx.db, ctx.app.projectId, viewer.subject);
+    return json(record, 200, { "Set-Cookie": sessionCookie(session.token, SESSION_TTL_SECONDS) });
+  }
+  if (!viewer) fail("unauthenticated", 401, "Connect your wallet and sign in first.");
+  if (!canCreate(rule, viewer) && rule.create === "owner") fail("forbidden", 403, "Only this app's owner can add records here.");
+  limitWrite(ctx, viewer);
   const value = await valueFrom(ctx);
   await checkSiteRoom(ctx);
-  return json(await putRecord(ctx.db, ctx.app, { collection, owner: wallet, key, json: value }, ctx.limits));
+  return json(await putRecord(ctx.db, ctx.app, { collection, owner: viewer.subject, key, json: value }, ctx.limits, new Date(), viewer));
 }
 
 async function collectionRoute(ctx: Context, method: string, collection: string): Promise<Response> {
@@ -297,7 +332,7 @@ async function collectionRoute(ctx: Context, method: string, collection: string)
   if (method !== "GET") fail("method_not_allowed", 405, "That method isn't allowed here.");
   limit(ctx, `r:ip:${ctx.ip}`, ctx.limits.readsPerIpPerMinute);
   const viewer = await viewerOf(ctx);
-  if (!viewer && accessFor(ctx.app.rules, collection) === "private") fail("unauthenticated", 401, "Connect your wallet and sign in first.");
+  if (!viewer && !openToVisitors(ruleFor(ctx.app.rules, collection))) fail("unauthenticated", 401, "Connect your wallet and sign in first.");
   const owner = ownerParam(ctx.url);
   return json(await listRecords(ctx.db, ctx.app, collection, viewer, { owner, ...pageParams(ctx.url) }));
 }
@@ -307,17 +342,21 @@ async function recordRoute(ctx: Context, method: string, collection: string, key
   checkKey(key);
   if (method === "PUT") return write(ctx, collection, key);
   if (method === "DELETE") {
-    const wallet = await requireViewer(ctx);
-    limitWrite(ctx, wallet);
-    // The owner is always the signed-in wallet. Any owner in the request is ignored.
-    if (!(await deleteRecord(ctx.db, ctx.app, collection, wallet, key))) fail("not_found", 404, "There's no such record of yours.");
+    const viewer = await requireViewer(ctx);
+    limitWrite(ctx, viewer);
+    const rule = ruleFor(ctx.app.rules, collection);
+    // Someone else's record only for the app's owner, and only where the rule lets them. Otherwise it's always your own.
+    const named = ownerParam(ctx.url);
+    const target = named && named !== viewer.subject && viewer.isOwner && rule.delete.includes("owner") ? named : viewer.subject;
+    if (target === viewer.subject && !rule.delete.includes("writer") && !(viewer.isOwner && rule.delete.includes("owner"))) fail("forbidden", 403, "Records here can't be deleted.");
+    if (!(await deleteRecord(ctx.db, ctx.app, collection, target, key))) fail("not_found", 404, "There's no such record of yours.");
     return json({ ok: true });
   }
   if (method !== "GET") fail("method_not_allowed", 405, "That method isn't allowed here.");
   limit(ctx, `r:ip:${ctx.ip}`, ctx.limits.readsPerIpPerMinute);
   const viewer = await viewerOf(ctx);
-  if (!viewer && accessFor(ctx.app.rules, collection) === "private") fail("unauthenticated", 401, "Connect your wallet and sign in first.");
-  const owner = ownerParam(ctx.url) ?? viewer ?? fail("invalid_owner", 400, "Say whose record this is with owner=<address>.");
+  if (!viewer && !openToVisitors(ruleFor(ctx.app.rules, collection))) fail("unauthenticated", 401, "Connect your wallet and sign in first.");
+  const owner = ownerParam(ctx.url) ?? viewer?.subject ?? fail("invalid_owner", 400, "Say whose record this is with owner=<address>.");
   // A private record of someone else's looks the same as one that doesn't exist.
   const record = await getRecord(ctx.db, ctx.app, collection, owner, key, viewer);
   return record ? json(record) : fail("not_found", 404, "There's no such record.");

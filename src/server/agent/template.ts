@@ -341,15 +341,17 @@ import { chain, connectWallet } from "./chain";
 import rules from "./dataRules.json";
 
 /**
- * Saved data for this app: each visitor's own records, kept on GoodBuild's servers once the app is
- * published. Visitors sign in with their wallet (a signature, no transaction and no gas).
- * Collections are private to each wallet unless src/lib/dataRules.json says "public-read".
- * In the preview nothing reaches a server: records stay in this browser and sign-in needs no signature.
+ * Saved data for this app, kept on GoodBuild's servers once the app is published. Visitors sign in
+ * with their wallet (a signature, no transaction and no gas). src/lib/dataRules.json says, for each
+ * collection, who can add, read and delete records, which fields everyone sees, and which values
+ * must be unique. A collection with "create": "anyone" takes records from visitors who never sign in.
+ * In the preview nothing reaches a server: records stay in this browser, sign-in needs no signature,
+ * and you are treated as the app's owner so you can see what visitors would send you.
  */
 export interface DbRecord<T = unknown> {
   key: string;
-  /** The wallet that wrote it. Only that wallet can change or delete it. */
-  owner: string;
+  /** Who wrote it: a wallet, or "anon:..." for a visitor who didn't sign in. Null when you only see its public fields. */
+  owner: string | null;
   value: T;
   public: boolean;
   createdAt: string;
@@ -429,7 +431,18 @@ const savePreview = (records: Stored[]) => {
     // Private windows may refuse. Nothing else depends on it.
   }
 };
-const isPublicCollection = (name: string) => (rules as { collections?: Record<string, string> }).collections?.[name] === "public-read";
+type Rule = { create: string; read: string[]; public: string[]; fields: Record<string, string> | null; unique: string[] };
+/** The same reading of dataRules.json as the server's, for the preview. */
+function ruleOf(name: string): Rule {
+  const raw = (rules as { collections?: Record<string, unknown> }).collections?.[name];
+  const base: Rule = { create: "signed-in", read: ["writer"], public: [], fields: null, unique: [] };
+  if (raw === "public-read") return { ...base, read: ["anyone"] };
+  if (!raw || typeof raw !== "object") return base;
+  const r = raw as Partial<Record<keyof Rule, unknown>>;
+  const arr = (v: unknown, d: string[]) => (typeof v === "string" ? [v] : Array.isArray(v) ? (v as string[]) : d);
+  return { create: typeof r.create === "string" ? r.create : "signed-in", read: arr(r.read, ["writer"]), public: arr(r.public, []), fields: (r.fields as Record<string, string>) ?? null, unique: arr(r.unique, []) };
+}
+const PREVIEW_ANON = "anon:00000000-0000-4000-8000-000000000000";
 
 function showPreviewNote() {
   if (document.querySelector("[data-goodbuild-preview-note]")) return;
@@ -447,22 +460,41 @@ function requirePreviewWallet(): string {
 }
 
 function previewPut<T>(collection: string, key: string, value: T): DbRecord<T> {
-  const owner = requirePreviewWallet();
+  const rule = ruleOf(collection);
+  const owner = previewWallet ?? (rule.create === "anyone" ? PREVIEW_ANON : requirePreviewWallet());
   showPreviewNote();
   const now = new Date().toISOString();
   const all = previewRecords();
   const found = all.find((r) => r.key === key && r.owner === owner && r.collection === collection);
-  const record: DbRecord<T> & { collection: string } = { key, owner, value, public: isPublicCollection(collection), createdAt: found?.createdAt ?? now, updatedAt: now, collection };
+  const v = value as unknown as Record<string, unknown>;
+  if (rule.fields && v && typeof v === "object") {
+    const extra = Object.keys(v).filter((f) => !(f in rule.fields!));
+    if (extra.length) throw new DbError("invalid_value", "These fields aren't part of this collection: " + extra.join(", ") + ".", 400);
+  }
+  if (rule.unique.length && all.some((r) => r.collection === collection && r !== found && rule.unique.every((f) => JSON.stringify((r.value as Record<string, unknown>)?.[f]) === JSON.stringify(v?.[f])))) {
+    throw new DbError("duplicate", "That " + rule.unique.join(" and ") + " is already taken.", 409);
+  }
+  const record: DbRecord<T> & { collection: string } = { key, owner, value, public: rule.read.includes("anyone"), createdAt: found?.createdAt ?? now, updatedAt: now, collection };
   savePreview([record, ...all.filter((r) => r !== found)]);
   return record;
 }
 
-function previewVisible(collection: string, owner?: string) {
-  if (!previewWallet && !isPublicCollection(collection)) throw new DbError("unauthenticated", "Connect your wallet and sign in first.", 401);
-  return previewRecords().filter((r) => r.collection === collection && (r.public || r.owner === previewWallet) && (!owner || r.owner === owner.toLowerCase()));
+/** In the preview you are the owner, so you see what the owner would. */
+function previewVisible(collection: string, owner?: string): DbRecord[] {
+  const rule = ruleOf(collection);
+  return previewRecords()
+    .filter((r) => r.collection === collection)
+    .map((r) => (rule.read.some((x) => x === "anyone" || x === "owner" || (x === "signed-in" && previewWallet) || (x === "writer" && r.owner === (previewWallet ?? PREVIEW_ANON))) ? r : null))
+    .filter((r): r is Stored => r !== null && (!owner || r.owner === owner.toLowerCase()));
 }
 
 // --- The API ------------------------------------------------------------------------------------
+
+/** True when the signed-in wallet owns this app on GoodBuild. Always true in the preview. */
+export async function isAppOwner(): Promise<boolean> {
+  if (isPreview) return true;
+  return (await api<{ owner?: boolean }>("/session")).owner === true;
+}
 
 /** The wallet signed in to this app, or null. */
 export async function currentWallet(): Promise<string | null> {
@@ -508,7 +540,7 @@ export async function deleteMyData(): Promise<void> {
 export function collection<T = unknown>(name: string) {
   const path = "/c/" + encodeURIComponent(name);
   return {
-    /** Newest first. Your own records, plus everyone's if the collection is public-read. */
+    /** Newest first: what the rules let you read, in full or only its public fields. */
     async list(options: { owner?: string; limit?: number; cursor?: string } = {}): Promise<DbPage<T>> {
       if (isPreview) {
         showPreviewNote();
@@ -540,26 +572,26 @@ export function collection<T = unknown>(name: string) {
       if (isPreview) return previewPut(name, key, value);
       return api<DbRecord<T>>(path + "/" + encodeURIComponent(key), { method: "PUT", body: JSON.stringify({ value }) });
     },
-    /** Save a new record with a generated key. */
+    /** Save a new record with a generated key. Works without sign-in where the rule says "create": "anyone". */
     async add(value: T): Promise<DbRecord<T>> {
       if (isPreview) return previewPut(name, crypto.randomUUID(), value);
       return api<DbRecord<T>>(path, { method: "POST", body: JSON.stringify({ value }) });
     },
-    /** Delete your own record. */
-    async remove(key: string): Promise<void> {
+    /** Delete your own record. The app's owner can pass owner to delete someone else's, where the rule allows it. */
+    async remove(key: string, options: { owner?: string | null } = {}): Promise<void> {
       if (isPreview) {
-        const owner = requirePreviewWallet();
+        const owner = options.owner ?? previewWallet ?? PREVIEW_ANON;
         savePreview(previewRecords().filter((r) => !(r.key === key && r.owner === owner && r.collection === name)));
         return;
       }
-      await api(path + "/" + encodeURIComponent(key), { method: "DELETE" });
+      await api(path + "/" + encodeURIComponent(key) + (options.owner ? "?owner=" + encodeURIComponent(options.owner) : ""), { method: "DELETE" });
     },
   };
 }
 `;
 
 const USE_DB = `import { useCallback, useEffect, useState } from "react";
-import { collection, currentWallet, isPreview, signIn as dbSignIn, signOut as dbSignOut, type DbRecord } from "./db";
+import { collection, currentWallet, isAppOwner, isPreview, signIn as dbSignIn, signOut as dbSignOut, type DbRecord } from "./db";
 import { errorMessage } from "./format";
 import { useRead } from "./hooks";
 
@@ -569,12 +601,14 @@ import { useRead } from "./hooks";
  */
 export function useDbSession() {
   const [wallet, setWallet] = useState<string | null>(null);
+  const [isOwner, setIsOwner] = useState(false);
   const [loading, setLoading] = useState(true);
   const [signingIn, setSigningIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     currentWallet().then(setWallet).catch(() => setWallet(null)).finally(() => setLoading(false));
+    isAppOwner().then(setIsOwner).catch(() => setIsOwner(false));
     const eth = (window as unknown as { ethereum?: { on?: (e: string, f: (a: string[]) => void) => void; removeListener?: (e: string, f: (a: string[]) => void) => void } }).ethereum;
     const onChange = (accounts: string[]) => setWallet((w) => (w && w !== (accounts[0] ?? "").toLowerCase() ? null : w));
     eth?.on?.("accountsChanged", onChange);
@@ -586,6 +620,7 @@ export function useDbSession() {
     setError(null);
     try {
       setWallet(await dbSignIn());
+      setIsOwner(await isAppOwner().catch(() => false));
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -597,9 +632,11 @@ export function useDbSession() {
     setError(null);
     await dbSignOut().catch(() => {});
     setWallet(null);
+    setIsOwner(isPreview);
   }, []);
 
-  return { wallet, loading, signingIn, error, signIn, signOut, isPreview };
+  /** isOwner: the app's owner is signed in, so show the owner's view (for example, every booking). */
+  return { wallet, isOwner, loading, signingIn, error, signIn, signOut, isPreview };
 }
 
 /**
@@ -628,7 +665,7 @@ export function useCollection<T>(name: string, options: { owner?: string; limit?
     refresh: read.refresh,
     add: (value: T) => after(store.add(value)),
     put: (key: string, value: T) => after(store.put(key, value)),
-    remove: (key: string) => after(store.remove(key)),
+    remove: (key: string, owner?: string | null) => after(store.remove(key, { owner })),
   };
 }
 `;
@@ -832,10 +869,19 @@ export function starterFiles(): Record<string, string> {
  * are missing (never overwrite), so the prompt's list of available files is always true.
  */
 export function withStarterHelpers(files: Record<string, string>): Record<string, string> {
-  const out = { ...files };
+  const out = withCurrentDataHelpers(files);
   for (const [p, content] of Object.entries(starterFiles())) {
     if (/^src\/(lib|components\/ui)\//.test(p) && !(p in out)) out[p] = content;
   }
+  return out;
+}
+
+/** The data helpers are GoodBuild's, and the builder can't edit them, so every project always gets the current ones (D34). */
+export const DATA_HELPERS: Record<string, string> = { "src/lib/db.ts": DB, "src/lib/useDb.ts": USE_DB };
+
+export function withCurrentDataHelpers(files: Record<string, string>): Record<string, string> {
+  const out = { ...files };
+  for (const [p, content] of Object.entries(DATA_HELPERS)) if (p in out) out[p] = content;
   return out;
 }
 
