@@ -81,13 +81,21 @@ A rollback also doesn't change `.env.production` or the files in `/opt/goodbuild
 **How far this is tested:** `deploy/test-release.sh` runs both scripts against real Docker in CI, on a throwaway project. UNVERIFIED on the production server until the owner runs the test below. Disk use per image is also UNVERIFIED. The first production run (6 Nov) failed with "No such image" when it tagged the old image by its ID after the build, though CI had passed. Nothing restarted. `release.sh` now holds the old image by name (`outgoing`) before building. Why the server lost the ID is UNVERIFIED (a different Docker image store is likely).
 
 ### Test it once on production (owner, before step B of the launch plan)
-Do this right after the first deploy that includes these scripts, at a quiet time. That deploy adds no migration, so going back is safe. Run these in `/opt/goodbuild/deploy`:
+Do this at a quiet time, since each restart interrupts a running build and the site answers 503 for a few seconds. Run these in `/opt/goodbuild/deploy`:
+
+**Part 1: the same image, so the database isn't at risk.**
 1. `df -h /` and `docker system df`. Note the free disk.
 2. `./rollback.sh`, to see the list. `previous` should be there. Note the `sha-` tag that has the same image ID as `latest`.
-3. `./rollback.sh previous`
+3. `./rollback.sh sha-<the tag from step 2>`. This restarts `web` and `worker` on the image they already run, and proves the script works on this server.
 4. `docker compose --env-file .env.production ps`, and open https://goodbuildit.xyz/. Both containers should be up and the site should load.
-5. `./rollback.sh sha-<the tag from step 2>`, to return. Repeat step 4.
-6. Record the date and how long the site was down in this file.
+
+**Part 2: really going back, only if the migrations allow it.** `previous` is older code running against the newer database.
+5. Note the commit in the tag from step 2. Find what `previous` was built from, using the `sha-` tag with its image ID. If it has no such tag, stop here and try again after the next deploy. Otherwise run `git diff --stat <previous commit> <latest commit> -- drizzle` in a checkout of the repo, and check any new migration against the table above. **If one isn't safe, stop here** and try again after a deploy that adds no migration.
+6. `./rollback.sh previous`, then repeat step 4.
+7. `./rollback.sh sha-<the tag from step 2>`, to return. Repeat step 4.
+8. Record the date and how long the site was down in this file.
+
+**If `previous` is older than `0010` (the ledger, D46):** by reading the SQL, old code should work. Its inserts get the new `funding` columns' default, which the new checks accept, and it ignores the new tables. `0010` also changed the `usage_events` user foreign key from cascade to restrict, and a text search found no code before it that deletes users. This hasn't been run, so it's UNVERIFIED until step 6 passes.
 
 ## Everyday commands (on the server, in /opt/goodbuild/deploy)
 ```bash
