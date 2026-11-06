@@ -65,6 +65,7 @@ export async function createTestDb(): Promise<Db> {
   })();
   const { client, db } = await testDb;
   const { rows } = await client.query<{ tablename: string }>("select tablename from pg_tables where schemaname = 'public'");
-  await client.exec(`TRUNCATE ${rows.map((r) => `"${r.tablename}"`).join(", ")} RESTART IDENTITY CASCADE`);
+  // Migration 0010 refuses TRUNCATE on money records. This throwaway database turns triggers off to reset.
+  await client.exec(`SET session_replication_role = replica; TRUNCATE ${rows.map((r) => `"${r.tablename}"`).join(", ")} RESTART IDENTITY CASCADE; SET session_replication_role = DEFAULT;`);
   return db;
 }

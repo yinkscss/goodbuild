@@ -71,6 +71,13 @@
       "when": 1793957272709,
       "tag": "0009_app_email_sign_in",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793973685513,
+      "tag": "0010_credits_ledger",
+      "breakpoints": true
     }
   ]
 }

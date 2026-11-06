@@ -277,6 +277,17 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - **Remaining bypass:** `deploy/deploy.sh` by hand skips the checks, kept for when GitHub Actions is down.
 - **Not verified (UNVERIFIED):** rollback on the production server and disk use per image. The scripts are tested on real Docker in CI only.
 
+### D46. The credits ledger (M1): append-only entries, a checked balance, money records that outlive deletes
+- Date: 6 Nov 2026 · Decided by: Claude, building step M1 of the launch plan for the user's session, reviewed by the advisor. Numbered D46 because PR 33 takes D45.
+- **Tables (migration 0010):** `ledger_entries` (kinds `deposit`, `usage`, `refund`, `adjust`; integer micro-USD; unique `idempotency_key`; `balance_after_micro` on each row) and `balances`, a cached sum per user. `usage_events` and `turn_jobs` get `funding` (`free`, `paid`, `exempt`, `platform`), default `free`, so every existing row is free and the free counters and the $4 total read the same. A test migrates a database at 0009 with rows to 0010 and compares them, on PGlite and real Postgres.
+- **Single entry per user, not double entry** as CREDITS.md section 3 says. There's no counter-account; the provider side is reconciled in M7. `bonus` and `free_tier` kinds are dropped: free AI is counted from `usage_events` (D28 to D30) and never enters the ledger. `balances.reserved_micro` waits for holds in M3.
+- **Enforced by the database, not just the code:** triggers refuse UPDATE, DELETE and TRUNCATE on `ledger_entries`, and DELETE and TRUNCATE on `balances`. A deferred constraint trigger refuses to commit any change where a user's balance differs from the sum of their entries. Checks tie each kind to its sign.
+- **Going below zero:** a debit that would take a balance below zero is refused and writes nothing. `allowNegative` lifts that for `usage` and `adjust` only, for costs already incurred or a chargeback already taken. A `refund` never goes below zero. A credit is always accepted, even if the balance stays negative. Blocking builds while negative is M2 and M3's job.
+- **Concurrency and replay:** one user's posts are serialised by a row lock on their `balances` row. The same key posted again returns the first entry and changes nothing; the same key with different details, or another user's key, is refused as a conflict.
+- **No cascade delete on money records.** `ledger_entries` and `balances` reference users with RESTRICT and never reference projects. `usage_events.user_id` changes from CASCADE to RESTRICT, so **a user with any usage can no longer be deleted.** No app code deletes users today, so nothing visible changes, but a future "delete my account" must anonymise instead: an owner decision. Deleting a project still works and sets `usage_events.project_id` to null as before. A trigger refuses to delete a `paid` turn job, which refuses the delete of its project or user. Clearing an app's data (owner clear and takedowns, `deleteProjectData`) touches no money record.
+- **Open for M2:** nothing yet stops `funding` being changed from `paid` to `free` before a delete, which would get past that trigger. Section 5 says a job keeps one source for life, so M2 should make it unchangeable.
+- **No visible change:** `getCredits` reads the real balance as `balanceMicro`, which nothing displays. `balanceGd` stays null so the pill keeps saying the beta is free. No code posts entries yet, so every balance is zero.
+
 ## Recommended decisions (Ego; adopted unless changed)
 
 
