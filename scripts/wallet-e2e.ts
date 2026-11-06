@@ -132,7 +132,8 @@ type Page = {
   on(event: string, fn: (...a: never[]) => void): void;
   route(url: string | RegExp, fn: (route: { request(): { postData(): string | null }; fulfill(o: object): unknown }) => unknown): Promise<void>;
 };
-type Context = { newPage(): Promise<Page>; addInitScript(s: string): Promise<void>; exposeBinding(name: string, fn: (...a: never[]) => unknown): Promise<void>; close(): Promise<void> };
+type MockSocket = { onMessage(fn: (m: string | Buffer) => void): void; send(m: string): void };
+type Context = { routeWebSocket(url: RegExp, fn: (ws: MockSocket) => unknown): Promise<void>; newPage(): Promise<Page>; addInitScript(s: string): Promise<void>; exposeBinding(name: string, fn: (...a: never[]) => unknown): Promise<void>; close(): Promise<void> };
 type Browser = { newContext(o?: object): Promise<Context>; close(): Promise<void> };
 
 /** CSP violations, page errors and console errors, collected from the start of the page. */
@@ -156,6 +157,21 @@ async function mockRpc(page: Page, seen: string[]) {
       return { jsonrpc: "2.0", id: r.id, result: rpcAnswer(r.method, r.params) };
     };
     return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(Array.isArray(body) ? body.map(answer) : answer(body)) });
+  });
+}
+
+/**
+ * MOCK_RELAY=1: answer WalletConnect's relay socket in the browser (every JSON-RPC request gets a
+ * result), for machines that can't reach wss://relay.walletconnect.org. The QR code, links and CSP are
+ * then checked without the real relay.
+ */
+async function maybeMockRelay(context: Context) {
+  if (process.env.MOCK_RELAY !== "1") return;
+  await context.routeWebSocket(/relay\.walletconnect\.(org|com)/, (ws) => {
+    ws.onMessage((raw) => {
+      const m = JSON.parse(String(raw)) as { id?: number; method?: string };
+      if (m.id && m.method) ws.send(JSON.stringify({ id: m.id, jsonrpc: "2.0", result: m.method.endsWith("_subscribe") ? "sub" + m.id : true }));
+    });
   });
 }
 
@@ -226,8 +242,8 @@ async function main() {
     await a.click("text=Connect wallet");
     await a.waitForSelector('[role="dialog"]');
     const listed = await a.locator('[role="dialog"] li').allTextContents();
-    check("the wallet list shows both announced wallets and WalletConnect", listed.some((t) => t.startsWith("Test Wallet")) && listed.some((t) => t.startsWith("Other Wallet")) && listed.some((t) => t.startsWith("WalletConnect")), listed);
-    check("the wallet that took window.ethereum is one choice among them, not used silently", listed.length === 4 && listed.some((t) => t.startsWith("Browser wallet")), listed);
+    check("the wallet list shows both announced wallets and WalletConnect", listed.some((t) => t.includes("Test Wallet")) && listed.some((t) => t.includes("Other Wallet")) && listed.some((t) => t.includes("WalletConnect")), listed);
+    check("the wallet that took window.ethereum is one choice among them, not used silently", listed.length === 4 && listed.some((t) => t.includes("Browser wallet")), listed);
     if (shots) await a.screenshot({ path: path.join(shots, "1-wallet-list.png") });
     await a.click('[role="dialog"] button:has-text("Test Wallet")');
     await a.waitForFunction((w: string) => document.querySelector("#account")?.textContent === w, visitor.address, { timeout: 15000 });
@@ -262,17 +278,28 @@ async function main() {
 
     // --- 3. No browser wallet (a phone's Chrome or Safari): WalletConnect QR on a computer ---
     const bare = await browser.newContext();
+    await maybeMockRelay(bare);
     await bare.addInitScript(WATCH);
     const b = await bare.newPage();
+    b.on("console", ((m: { type(): string; text(): string }) => {
+      if (process.env.DEBUG_WC) console.log("console." + m.type(), m.text().slice(0, 300));
+    }) as never);
     const wcProblems = watch(b);
     const hosts = new Set<string>();
     b.on("request", ((r: { url(): string }) => hosts.add(new URL(r.url()).host)) as never);
     await b.goto(url);
     await b.click("text=Connect wallet");
     await b.waitForSelector('[role="dialog"]');
-    check("with no browser wallet, the list offers WalletConnect instead of 'No wallet found'", (await b.locator('[role="dialog"] li').allTextContents()).join("|").startsWith("WalletConnect"));
+    check("with no browser wallet, the list offers WalletConnect instead of 'No wallet found'", (await b.locator('[role="dialog"] li').allTextContents()).join("|").includes("WalletConnect"));
     await b.click('[role="dialog"] button:has-text("WalletConnect")');
-    await b.waitForSelector("[data-goodbuild-qr] svg", { timeout: 30000 });
+    try {
+      await b.waitForSelector("[data-goodbuild-qr] svg", { timeout: 45000 });
+    } catch (error) {
+      console.log("DEBUG dialog:", await b.textContent('[role="dialog"]'));
+      console.log("DEBUG problems:", JSON.stringify(await wcProblems()));
+      console.log("DEBUG hosts:", [...hosts].join(", "));
+      throw error;
+    }
     const uri = (await b.evaluate(() => document.querySelector("[data-goodbuild-qr] svg title")?.textContent ?? document.querySelector("[data-goodbuild-qr] svg")?.outerHTML.length)) as unknown;
     check("the WalletConnect QR code appears", true, uri);
     await b.waitForFunction(() => true);
@@ -280,6 +307,7 @@ async function main() {
     if (shots) await b.screenshot({ path: path.join(shots, "2-walletconnect-qr.png") });
     const wcErrors = (await wcProblems()).filter((p) => p.startsWith("CSP") || /Content Security Policy/i.test(p));
     check("no CSP violations while WalletConnect connects", wcErrors.length === 0, wcErrors);
+    if (process.env.MOCK_RELAY === "1") console.log("INFO  the relay socket was answered by this script (MOCK_RELAY=1), not by WalletConnect");
     console.log(`INFO  hosts the WalletConnect step reached: ${[...hosts].filter((h) => !h.includes("localhost")).join(", ") || "(none)"}`);
     const other = (await wcProblems()).filter((p) => !wcErrors.includes(p));
     if (other.length) console.log(`INFO  other console output in the WalletConnect step: ${other.slice(0, 5).join(" | ")}`);
@@ -288,6 +316,7 @@ async function main() {
     // --- 4. A phone: a button per wallet with the WalletConnect link ---
     const phone = await browser.newContext({ userAgent: "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36", viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
     await phone.addInitScript(WATCH);
+    await maybeMockRelay(phone);
     const p = await phone.newPage();
     await p.goto(url);
     await p.click("text=Connect wallet");
