@@ -218,6 +218,17 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - **Without a project id:** no WalletConnect in published apps. They offer browser wallets and MiniPay, and a phone browser with no wallet still says "No wallet found". The id is read when an app is published, so apps already published get WalletConnect only when republished.
 - **Not verified (UNVERIFIED):** a real relay handshake, a real phone scan, the phone deep-link formats, bringing the wallet app forward for each request on a phone, reconnecting a WalletConnect session on a later visit, a wallet approving both an old and a new link (dropping the old session could also end the new one), real MetaMask, and MiniPay itself. See HANDOFF.md.
 
+### D44. Checks before every deploy, and tagged images for rollback
+- Date: 6 Nov 2026 · Decided by: Claude, building step O1 of the launch plan for the user's session, reviewed by the advisor. Numbered D44 because PR 31 claims D37 to D43.
+- **Gate:** `ci.yml` runs on every pull request, and `deploy.yml` calls it as a job that the deploy job needs. So the commit that ships is the one tested, and a failure there skips the deploy, with no GitHub setting involved. The trigger moved from a merged pull request to a push to `main`, because a merge commit doesn't exist until the merge. **A direct push to `main` now deploys too,** where before it didn't. The branch rule stops direct pushes.
+- **Not `workflow_run`:** it only fires from the default branch's copy, so it can't be exercised on a pull request, and it runs separately from the commit it deploys.
+- **The lock covers the whole Deploy run,** checks included, so an older commit whose checks finish late can't overwrite a newer one.
+- **Branch rule:** it adds that a failing pull request can't merge. Only the owner can set it (DEPLOY.md). Without it, a failing commit can still reach `main`, but it doesn't deploy.
+- **Docs filter:** Deploy skips pushes that only change `docs/`, which `.dockerignore` leaves out of the image. It's on the Deploy push and not on pull requests, since a required check that never reports blocks the merge. `src/server/agent/assets.test.ts` reads a file in `docs/`, so docs pull requests still need their checks. Root `*.md` files go into the image, so they aren't filtered.
+- **Rollback:** the compose file still runs `goodbuild:latest`, and rolling back moves that tag. Passing a tag through an env var was rejected: the documented `up -d` would then silently undo a rollback. `release.sh` moves `previous` only after a build succeeds, so a failed build can't lose the way back. Migrations only add, because a rollback can't undo one (DEPLOY.md).
+- **Remaining bypass:** `deploy/deploy.sh` by hand skips the checks, kept for when GitHub Actions is down.
+- **Not verified (UNVERIFIED):** rollback on the production server and disk use per image. The scripts are tested on real Docker in CI only.
+
 ## Recommended decisions (Ego; adopted unless changed)
 
 
