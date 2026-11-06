@@ -1,0 +1,335 @@
+// @vitest-environment jsdom
+/**
+ * The wallet layer generated apps get (D35), run as the app would run it: the template's files are
+ * bundled with esbuild (React 18 and viem from publish-runtime, like a published app) and loaded
+ * fresh for each test, so module state never leaks between tests.
+ */
+import { execFileSync } from "node:child_process";
+import { copyFileSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { WALLET_HELPERS, WALLET_PATHS } from "./wallet-template";
+
+type Request = { method: string; params?: unknown };
+type Fake = { request: ReturnType<typeof vi.fn>; on: ReturnType<typeof vi.fn>; removeListener: ReturnType<typeof vi.fn>; isMiniPay?: boolean; isMetaMask?: boolean };
+type WalletModule = {
+  browserWallets: () => Array<{ id: string; name: string; icon: string | null; kind: string }>;
+  walletOptions: () => Array<{ id: string; name: string; kind: string }>;
+  connectWallet: () => Promise<string>;
+  disconnectWallet: () => Promise<void>;
+  restoreWallet: () => Promise<void>;
+  walletState: () => { account: string | null; wallet: { id: string; name: string } | null; connecting: boolean };
+  walletProvider: () => unknown;
+  isMiniPay: () => boolean;
+  ensureChain: (p?: unknown) => Promise<void>;
+  safeIcon: (icon: unknown) => string | null;
+  discoverWallets: () => void;
+};
+type ChooserModule = { PHONE_WALLETS: Array<{ name: string; link: string }>; openWalletChooser: (args: unknown) => Promise<string> };
+
+const SEPOLIA_HEX = "0xaa044c"; // 11142220
+// Inside node_modules, so Vitest hands the bundles to Node as they are instead of transforming them.
+mkdirSync(path.join(process.cwd(), "node_modules", ".cache"), { recursive: true });
+const dir = realpathSync(mkdtempSync(path.join(process.cwd(), "node_modules", ".cache", "gb-wallet-test-")));
+const built = new Map<string, string>();
+let n = 0;
+
+/** A WalletConnect stand-in for tests: hands out a link, then connects when the test says so. */
+const FAKE_WALLETCONNECT = `
+export const walletConnectBuiltIn = true;
+export let approve = () => {};
+export const calls = [];
+export async function connectWalletConnect(args) {
+  calls.push("connect");
+  args.onUri("wc:abc@2?relay-protocol=irn&symKey=xyz");
+  await new Promise((r) => { approve = r; window.__approveWalletConnect = r; });
+  return { accounts: ["0x00000000000000000000000000000000000000Wc"], request: async () => SEPOLIA, on() {}, removeListener() {}, disconnect: async () => {} };
+}
+export async function restoreWalletConnect() { return null; }
+export function cancelWalletConnect() { calls.push("cancel"); }
+export function QrCode({ value }) { return <svg data-fake-qr={value} />; }
+const SEPOLIA = "${SEPOLIA_HEX}";
+`;
+
+/**
+ * esbuild can't run inside jsdom (its TextEncoder check fails), so the bundle is built by a small
+ * Node script in a child process and imported here.
+ */
+const BUILD_SCRIPT = `
+import { readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
+const [esbuildPath, input, output, runtimeDir] = process.argv.slice(2);
+const { build } = await import(esbuildPath);
+const files = JSON.parse(readFileSync(input, "utf8"));
+const result = await build({
+  stdin: { contents: files["<entry>"], loader: "ts", resolveDir: "/" },
+  bundle: true, write: false, format: "esm", platform: "browser", jsx: "automatic", logLevel: "silent",
+  define: { "process.env.NODE_ENV": '"development"' },
+  plugins: [{ name: "project", setup(b) {
+    b.onResolve({ filter: /.*/ }, (args) => {
+      if (args.namespace !== "project" && args.importer !== "<stdin>") return null;
+      if (args.path.startsWith(".")) {
+        const base = path.posix.join(args.importer === "<stdin>" ? "/" : path.posix.dirname(args.importer), args.path);
+        const hit = [base, base + ".ts", base + ".tsx"].find((c) => c.slice(1) in files);
+        return hit ? { path: hit, namespace: "project" } : { errors: [{ text: "missing " + base }] };
+      }
+      return b.resolve(args.path, { resolveDir: runtimeDir, kind: args.kind });
+    });
+    b.onLoad({ filter: /.*/, namespace: "project" }, (args) => ({ contents: files[args.path.slice(1)], loader: args.path.endsWith(".tsx") ? "tsx" : "ts" }));
+  } }],
+});
+writeFileSync(output, result.outputFiles[0].text);
+`;
+writeFileSync(path.join(dir, "build.mjs"), BUILD_SCRIPT);
+
+async function load(opts: { walletConnect?: boolean } = {}): Promise<{ wallet: WalletModule; chooser: ChooserModule }> {
+  const files: Record<string, string> = { ...WALLET_HELPERS };
+  if (opts.walletConnect) files[WALLET_PATHS.walletConnect] = FAKE_WALLETCONNECT;
+  files["<entry>"] = `export * as wallet from "./${WALLET_PATHS.wallet}"; export * as chooser from "./${WALLET_PATHS.chooser}";`;
+  const key = opts.walletConnect ? "wc" : "plain";
+  if (!built.has(key)) {
+    const input = path.join(dir, `files-${key}.json`);
+    const bundle = path.join(dir, `bundle-${key}.mjs`);
+    writeFileSync(input, JSON.stringify(files));
+    const esbuild = createRequire(import.meta.url).resolve("esbuild");
+    execFileSync(process.execPath, [path.join(dir, "build.mjs"), pathToFileURL(esbuild).href, input, bundle, path.join(process.cwd(), "publish-runtime")]);
+    built.set(key, bundle);
+  }
+  // A fresh copy per test, so each one starts with no wallet state.
+  const output = path.join(dir, `wallet-${n++}.mjs`);
+  copyFileSync(built.get(key)!, output);
+  return (await import(/* @vite-ignore */ pathToFileURL(output).href)) as { wallet: WalletModule; chooser: ChooserModule };
+}
+
+function fakeProvider(account: string, extra: Partial<Fake> = {}, chainId = SEPOLIA_HEX): Fake {
+  return {
+    request: vi.fn(async ({ method }: Request) => {
+      if (method === "eth_requestAccounts" || method === "eth_accounts") return [account];
+      if (method === "eth_chainId") return chainId;
+      return null;
+    }),
+    on: vi.fn(),
+    removeListener: vi.fn(),
+    ...extra,
+  };
+}
+
+function announce(provider: Fake, info: { rdns: string; name: string; icon?: string; uuid?: string }) {
+  const detail = Object.freeze({ info: { uuid: info.uuid ?? info.rdns, icon: info.icon ?? "data:image/svg+xml,<svg/>", ...info }, provider });
+  window.dispatchEvent(new CustomEvent("eip6963:announceProvider", { detail }));
+}
+
+/** Wallets answer every eip6963:requestProvider, like real extensions. */
+function install(provider: Fake, info: { rdns: string; name: string; icon?: string }) {
+  const answer = () => announce(provider, info);
+  window.addEventListener("eip6963:requestProvider", answer);
+  cleanups.push(() => window.removeEventListener("eip6963:requestProvider", answer));
+  answer();
+}
+
+const cleanups: Array<() => void> = [];
+const dialog = () => document.querySelector('[role="dialog"]');
+const until = async (check: () => unknown, ms = 2000) => {
+  const start = Date.now();
+  while (!check()) {
+    if (Date.now() - start > ms) throw new Error("timed out");
+    await new Promise((r) => setTimeout(r, 10));
+  }
+};
+const button = (text: string) => [...document.querySelectorAll<HTMLElement>("button, a")].find((b) => b.textContent?.includes(text));
+
+beforeEach(() => {
+  (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
+  delete (window as { ethereum?: unknown }).ethereum;
+  localStorage.clear();
+  document.head.innerHTML = "";
+  document.body.innerHTML = "";
+  Object.defineProperty(navigator, "userAgent", { value: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/130", configurable: true });
+});
+afterEach(() => cleanups.splice(0).forEach((f) => f()));
+afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+describe("EIP-6963 discovery", () => {
+  it("lists every wallet that announces itself, including ones that load after the page", async () => {
+    install(fakeProvider("0x1"), { rdns: "io.metamask", name: "MetaMask" });
+    const { wallet } = await load();
+    install(fakeProvider("0x2"), { rdns: "com.coinbase.wallet", name: "Coinbase Wallet" });
+    expect(wallet.browserWallets().map((w) => [w.id, w.name])).toEqual([
+      ["io.metamask", "MetaMask"],
+      ["com.coinbase.wallet", "Coinbase Wallet"],
+    ]);
+  });
+
+  it("keeps only data:image/ and https: icons, and ignores broken or reserved announcements", async () => {
+    const { wallet } = await load();
+    announce(fakeProvider("0x1"), { rdns: "a.good", name: "Good", icon: "data:image/png;base64,AAAA" });
+    announce(fakeProvider("0x2"), { rdns: "a.evil", name: "Evil", icon: "javascript:alert(1)" });
+    announce(fakeProvider("0x3"), { rdns: "walletconnect", name: "Fake WalletConnect" });
+    window.dispatchEvent(new CustomEvent("eip6963:announceProvider", { detail: { info: { rdns: "no.provider", name: "x" } } }));
+    expect(wallet.browserWallets().map((w) => [w.id, w.icon])).toEqual([
+      ["a.good", "data:image/png;base64,AAAA"],
+      ["a.evil", null],
+    ]);
+    expect(wallet.safeIcon("https://x.example/i.png")).toBe("https://x.example/i.png");
+    expect(wallet.safeIcon("http://x.example/i.png")).toBeNull();
+  });
+
+  it("falls back to window.ethereum when it doesn't announce, without listing it twice when it does", async () => {
+    const legacy = fakeProvider("0x1");
+    (window as { ethereum?: unknown }).ethereum = legacy;
+    const { wallet } = await load();
+    expect(wallet.browserWallets().map((w) => w.name)).toEqual(["Browser wallet"]);
+    announce(legacy, { rdns: "io.metamask", name: "MetaMask" });
+    expect(wallet.browserWallets().map((w) => w.name)).toEqual(["MetaMask"]);
+  });
+});
+
+describe("MiniPay", () => {
+  it("is detected and connects without a wallet list, even with other wallets around", async () => {
+    const minipay = fakeProvider("0x00000000000000000000000000000000000000aa", { isMiniPay: true });
+    (window as { ethereum?: unknown }).ethereum = minipay;
+    install(fakeProvider("0x2"), { rdns: "io.metamask", name: "MetaMask" });
+    const { wallet } = await load({ walletConnect: true });
+    expect(wallet.isMiniPay()).toBe(true);
+    expect(wallet.walletOptions().map((w) => w.id)).toEqual(["minipay"]);
+    expect(await wallet.connectWallet()).toBe("0x00000000000000000000000000000000000000aa");
+    expect(dialog()).toBeNull();
+    expect(minipay.request).toHaveBeenCalledWith({ method: "eth_requestAccounts" });
+    expect(wallet.walletState().wallet?.name).toBe("MiniPay");
+  });
+
+  it("connects on page load, so a MiniPay app never shows a connect step", async () => {
+    (window as { ethereum?: unknown }).ethereum = fakeProvider("0x00000000000000000000000000000000000000aa", { isMiniPay: true });
+    const { wallet } = await load();
+    await wallet.restoreWallet();
+    expect(wallet.walletState().account).toBe("0x00000000000000000000000000000000000000aa");
+  });
+});
+
+describe("the wallet list", () => {
+  it("opens when there's a choice, connects the picked wallet and closes", async () => {
+    const metamask = fakeProvider("0x00000000000000000000000000000000000000a1");
+    const rabby = fakeProvider("0x00000000000000000000000000000000000000b2");
+    install(metamask, { rdns: "io.metamask", name: "MetaMask" });
+    install(rabby, { rdns: "io.rabby", name: "Rabby" });
+    const { wallet } = await load();
+    const connecting = wallet.connectWallet();
+    await until(dialog);
+    expect(dialog()?.getAttribute("aria-modal")).toBe("true");
+    expect(document.activeElement?.textContent).toContain("MetaMask"); // focus starts in the list
+    button("Rabby")!.click();
+    expect(await connecting).toBe("0x00000000000000000000000000000000000000b2");
+    expect(metamask.request).not.toHaveBeenCalledWith({ method: "eth_requestAccounts" });
+    await until(() => !dialog());
+    expect(wallet.walletState()).toMatchObject({ account: "0x00000000000000000000000000000000000000b2", wallet: { name: "Rabby" }, connecting: false });
+    expect(wallet.walletProvider()).toBe(rabby);
+    expect(JSON.parse(localStorage.getItem("goodbuild-wallet")!)).toEqual({ id: "io.rabby", kind: "injected" });
+  });
+
+  it("rejects with code 4001 when closed with Escape, and shows a wallet's error in the list", async () => {
+    install(fakeProvider("0x1"), { rdns: "io.metamask", name: "MetaMask" });
+    const refusing = fakeProvider("0x2");
+    refusing.request.mockRejectedValue(Object.assign(new Error("User rejected the request."), { code: 4001 }));
+    install(refusing, { rdns: "io.rabby", name: "Rabby" });
+    const { wallet } = await load();
+    const first = wallet.connectWallet();
+    await until(dialog);
+    button("Rabby")!.click();
+    await until(() => document.querySelector('[role="alert"]'));
+    expect(document.querySelector('[role="alert"]')?.textContent).toBe("You cancelled the request in your wallet.");
+    dialog()!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    await expect(first).rejects.toMatchObject({ code: 4001 });
+    await until(() => !dialog());
+    expect(wallet.walletState()).toMatchObject({ account: null, connecting: false });
+  });
+
+  it("skips the list for a single browser wallet when WalletConnect is off (the preview)", async () => {
+    install(fakeProvider("0x00000000000000000000000000000000000000a1"), { rdns: "io.metamask", name: "MetaMask" });
+    const { wallet } = await load();
+    expect(await wallet.connectWallet()).toBe("0x00000000000000000000000000000000000000a1");
+    expect(dialog()).toBeNull();
+  });
+
+  it("says what to do when there's no wallet at all", async () => {
+    const { wallet } = await load();
+    await expect(wallet.connectWallet()).rejects.toThrow(/No wallet found/);
+  });
+
+  it("offers WalletConnect in a published app and shows its QR code on a computer", async () => {
+    document.head.innerHTML = '<meta name="goodbuild-walletconnect" content="testproject">';
+    install(fakeProvider("0x1"), { rdns: "io.metamask", name: "MetaMask" });
+    const { wallet } = await load({ walletConnect: true });
+    expect(wallet.walletOptions().map((w) => w.id)).toEqual(["io.metamask", "walletconnect"]);
+    const connecting = wallet.connectWallet();
+    await until(dialog);
+    button("WalletConnect")!.click();
+    await until(() => document.querySelector("[data-fake-qr]"));
+    expect(document.querySelector("[data-fake-qr]")?.getAttribute("data-fake-qr")).toBe("wc:abc@2?relay-protocol=irn&symKey=xyz");
+    expect(dialog()?.textContent).toContain("Scan with your phone");
+    (window as unknown as { __approveWalletConnect: () => void }).__approveWalletConnect();
+    expect(await connecting).toBe("0x00000000000000000000000000000000000000Wc");
+    expect(wallet.walletState().wallet?.name).toBe("WalletConnect");
+  });
+
+  it("shows a button per phone wallet with the WalletConnect link on a phone", async () => {
+    Object.defineProperty(navigator, "userAgent", { value: "Mozilla/5.0 (Linux; Android 14; Pixel 8) Mobile Chrome/130", configurable: true });
+    document.head.innerHTML = '<meta name="goodbuild-walletconnect" content="testproject">';
+    const { wallet, chooser } = await load({ walletConnect: true });
+    const connecting = wallet.connectWallet(); // WalletConnect is the only option, but it still needs the list
+    await until(dialog);
+    button("WalletConnect")!.click();
+    const link = (text: string) => [...document.querySelectorAll("a")].find((a) => a.textContent?.includes(text));
+    await until(() => link("Valora"));
+    const encoded = encodeURIComponent("wc:abc@2?relay-protocol=irn&symKey=xyz");
+    expect(link("MetaMask")?.getAttribute("href")).toBe("https://metamask.app.link/wc?uri=" + encoded);
+    expect(link("Valora")?.getAttribute("href")).toBe("https://valoraapp.com/wc?uri=" + encoded);
+    expect(link("Other wallet")?.getAttribute("href")).toBe("wc:abc@2?relay-protocol=irn&symKey=xyz");
+    expect(chooser.PHONE_WALLETS.map((w) => w.name)).toEqual(["MetaMask", "Valora", "Trust Wallet", "Rainbow"]);
+    expect(document.querySelector("[data-fake-qr]")).toBeNull();
+    (window as unknown as { __approveWalletConnect: () => void }).__approveWalletConnect();
+    await connecting;
+  });
+});
+
+describe("staying connected", () => {
+  it("reconnects the last wallet silently with eth_accounts, and forgets it on disconnect", async () => {
+    localStorage.setItem("goodbuild-wallet", JSON.stringify({ id: "io.rabby", kind: "injected" }));
+    const rabby = fakeProvider("0x00000000000000000000000000000000000000b2");
+    install(fakeProvider("0x1"), { rdns: "io.metamask", name: "MetaMask" });
+    install(rabby, { rdns: "io.rabby", name: "Rabby" });
+    const { wallet } = await load();
+    await wallet.restoreWallet();
+    expect(wallet.walletState().account).toBe("0x00000000000000000000000000000000000000b2");
+    expect(rabby.request).toHaveBeenCalledWith({ method: "eth_accounts" });
+    expect(rabby.request).not.toHaveBeenCalledWith({ method: "eth_requestAccounts" });
+    await wallet.disconnectWallet();
+    expect(wallet.walletState().account).toBeNull();
+    expect(localStorage.getItem("goodbuild-wallet")).toBeNull();
+  });
+
+  it("follows account changes in the wallet, and an empty list disconnects", async () => {
+    const metamask = fakeProvider("0x00000000000000000000000000000000000000a1");
+    install(metamask, { rdns: "io.metamask", name: "MetaMask" });
+    const { wallet } = await load();
+    await wallet.connectWallet();
+    const handler = metamask.on.mock.calls.find((c) => c[0] === "accountsChanged")![1] as (a: string[]) => void;
+    handler(["0x00000000000000000000000000000000000000a2"]);
+    expect(wallet.walletState().account).toBe("0x00000000000000000000000000000000000000a2");
+    handler([]);
+    await until(() => wallet.walletState().account === null);
+  });
+
+  it("only asks the wallet to switch chains when it's on another one", async () => {
+    const { wallet } = await load();
+    const same = fakeProvider("0x1");
+    await wallet.ensureChain(same);
+    expect(same.request).not.toHaveBeenCalledWith(expect.objectContaining({ method: "wallet_switchEthereumChain" }));
+    const other = fakeProvider("0x1", {}, "0xa4ec");
+    await wallet.ensureChain(other);
+    expect(other.request).toHaveBeenCalledWith({ method: "wallet_switchEthereumChain", params: [{ chainId: SEPOLIA_HEX }] });
+  });
+});
