@@ -67,7 +67,11 @@ export const GUIDES: Guide[] = [
     when: "the app must remember something between visits or show what other people wrote: notes, profiles, saved settings, posts, comments, lists, RSVPs, or any form that stores what people enter",
     body: `Saved data. Published apps can store data on GoodBuild's servers, with no setup. Use src/lib/db.ts and src/lib/useDb.ts (they exist already; don't edit them). Never invent a backend, an API route, or a third-party database: none of those will work.
 - Choose the store first. Money, ownership, votes, or anything people must be able to verify without trusting GoodBuild goes in a contract. Everything else (profiles, notes, comments, drafts, preferences, off-chain lists) goes here. Data here is not on-chain and can be removed, so never make it the record of who owns or owes what.
-- Sign-in is the wallet: useDbSession() gives {wallet, isOwner, loading, signingIn, error, signIn, signOut, isPreview}. signIn() connects the wallet if needed and asks for a signature (no transaction, no gas). Say that on the button or beside it. wallet is null until they sign in; connecting with useWallet alone doesn't sign in. isOwner is true when the app's owner is signed in (always in the preview), so show an owner view, such as every booking, behind it.
+- Sign-in: useDbSession() gives {wallet, email, signedIn, isOwner, emailSignIn, loading, signingIn, codeSentTo, error, signIn, sendCode, confirmCode, signOut, isPreview}. Use signedIn (not wallet) to decide what to show and for enabled.
+  Wallet: signIn() connects the wallet if needed and asks for a signature (no transaction, no gas). Say that on the button. Use it for apps about money, ownership or on-chain actions, and wherever a wallet is needed anyway.
+  Email: for regular apps where visitors may have no wallet (bookings, clubs, lists, a course). Add "signIn": {"email": true} at the top of src/lib/dataRules.json, beside "collections". Show an email field calling sendCode(email), then, once codeSentTo is set, a 6-digit code field (inputMode="numeric", autoComplete="one-time-code") calling confirmCode(code), with "Use a different email" and a resend link. Show error in a Notice. Offer both when the app has money and regular members. Never build passwords.
+  isOwner is true when the app's owner is signed in with their wallet (always in the preview), so show an owner view, such as every booking, behind it.
+  An email visitor's id isn't their address, and other people never see it. If the owner needs a way to contact someone, ask for it in a form field and say why.
 - Rules live in src/lib/dataRules.json. Design them for this app: add every collection you use. A rule is "private", "public-read", or an object:
     {"collections": {
       "notes": "private",
@@ -84,7 +88,7 @@ export const GUIDES: Guide[] = [
 - Each wallet has its own records. Two wallets using the same key get two separate records, so there's no shared record everyone edits, and no counter everyone increments: count by listing, or use a contract.
 - Reading and writing:
     const session = useDbSession();
-    const notes = useCollection<Note>("notes", { enabled: !!session.wallet, wallet: session.wallet });
+    const notes = useCollection<Note>("notes", { enabled: session.signedIn, wallet: session.wallet ?? session.email });
     await notes.add({ text });            // new record with a generated key
     await notes.put("profile", { name }); // your record under a key you pick; replaces your earlier one
     await notes.remove(record.key);

@@ -89,6 +89,30 @@ export default function App() {
 }
 `;
 
+const EMAIL_APP = `import { useCollection, useDbSession } from "./lib/useDb";
+import { useState } from "react";
+
+export default function App() {
+  const session = useDbSession();
+  const notes = useCollection<{ text: string }>("notes", { enabled: session.signedIn, wallet: session.wallet ?? session.email });
+  const [email, setEmail] = useState("");
+  const [code, setCode] = useState("");
+  return (
+    <main>
+      <input id="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+      <button id="send" onClick={() => void session.sendCode(email)}>Send</button>
+      <p id="sent">{session.codeSentTo}</p>
+      <input id="code" value={code} onChange={(e) => setCode(e.target.value)} />
+      <button id="confirm" onClick={() => void session.confirmCode(code)}>Confirm</button>
+      <p id="who">{session.email}</p>
+      <p id="err">{session.error}</p>
+      <button id="save" onClick={() => void notes.add({ text: "email note" })}>Save</button>
+      <ul id="notes">{notes.records.map((r) => <li key={r.key}>{r.value.text}</li>)}</ul>
+    </main>
+  );
+}
+`;
+
 let failures = 0;
 function check(name: string, ok: boolean, detail?: unknown) {
   console.log(`${ok ? "PASS" : "FAIL"}  ${name}${!ok && detail !== undefined ? `  -> ${JSON.stringify(detail)}` : ""}`);
@@ -427,6 +451,31 @@ async function browserPass(alice: PrivateKeyAccount, bob: PrivateKeyAccount) {
   await inboxPage.waitForFunction(() => document.querySelector("#error")?.textContent === "duplicate");
   check("preview: a form sent without signing in is saved, and the creator sees it in full as the owner", (await inboxPage.textContent("#list"))?.includes("Ada Mon") === true, await inboxPage.textContent("#list"));
   check("preview: a second booking of the same slot is refused", (await inboxPage.textContent("#error")) === "duplicate");
+  // D35 in the preview: email sign-in sends nothing, and any 6-digit code signs in.
+  const club = await buildPublishedApp({
+    files: { ...starterFiles(), "src/App.tsx": EMAIL_APP, "src/lib/dataRules.json": JSON.stringify({ signIn: { email: true }, collections: { notes: "private" } }) },
+    assets: [],
+    title: "Email preview",
+    hasUndeployedContracts: false,
+  });
+  const clubPage = await (await browser.newContext()).newPage();
+  await clubPage.route("https://club.invalid/**", (route: { request(): { url(): string }; fulfill(o: object): unknown }) => {
+    const path = new URL(route.request().url()).pathname.slice(1) || "index.html";
+    if (path.startsWith("__gb")) serverCalls.push(path);
+    const file = club.find((f) => f.path === path);
+    return route.fulfill(file ? { status: 200, contentType: file.mime, body: Buffer.from(file.bytes) } : { status: 404, body: "" });
+  });
+  await clubPage.goto("https://club.invalid/");
+  await clubPage.fill("#email", "ada@example.com");
+  await clubPage.click("#send");
+  await clubPage.waitForFunction(() => document.querySelector("#sent")?.textContent === "ada@example.com");
+  await clubPage.fill("#code", "123456");
+  await clubPage.click("#confirm");
+  await clubPage.waitForFunction(() => document.querySelector("#who")?.textContent === "ada@example.com");
+  await clubPage.click("#save");
+  await clubPage.waitForFunction(() => document.querySelector("#notes")?.textContent?.includes("email note"));
+  check("preview: email sign-in with any 6-digit code, and saving as that person", true);
+  check("preview: the note says no email is sent", (await clubPage.textContent("[data-goodbuild-preview-note]"))?.includes("no email is sent") === true);
   check("preview: still no request reaches a server", serverCalls.length === 0, serverCalls);
   await browser.close();
 }

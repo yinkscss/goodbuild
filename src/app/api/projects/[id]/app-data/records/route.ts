@@ -66,7 +66,7 @@ export async function DELETE(request: Request, ctx: Ctx) {
     const collection = url.searchParams.get("collection") ?? "";
     const owner = url.searchParams.get("owner") ?? "";
     const key = url.searchParams.get("key") ?? "";
-    if (!COLLECTION_NAME.test(collection) || !RECORD_KEY.test(key) || !/^(0x[0-9a-f]{40}|anon:[0-9a-f-]{36})$/.test(owner)) {
+    if (!COLLECTION_NAME.test(collection) || !RECORD_KEY.test(key) || !/^(0x[0-9a-f]{40}|(anon|email):[0-9a-f-]{36})$/.test(owner)) {
       return NextResponse.json({ error: "invalid_request" }, { status: 400 });
     }
     // Always allowed here, whatever the app's rules say: deleting exposes nothing, and the owner must be able to clear spam.

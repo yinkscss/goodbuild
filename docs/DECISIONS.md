@@ -73,7 +73,7 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - Users top up in NGN through Paystack (Starter Business, test mode only for now). A verified webhook (signature check, idempotent by reference) credits the USD ledger instantly at the day's NGN→USD rate minus Paystack fees. The UI shows only "Top up" in NGN and the credit balance: never G$ conversion, batching or treasury details. Copy says users buy GoodBuild credits, not crypto.
 - Treasury is admin-only: record NGN inflows, list unconverted totals, and a manual weekly batch (NGN→USDT off platform → USDT to the Celo treasury → G$ via the GoodDollar reserve with `minReturn`), logging each batch's tx hash against the top-ups it covers.
 - Keys: `PAYSTACK_SECRET_KEY`, `NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY`. Design and open points: [TOPUPS.md](TOPUPS.md) (written first; **no code until the user reviews it**). The conflict with D13 is settled in D24.
-- **Amended by D36 (6 Nov 2026):** the user pays Paystack's fee on top, so credit is no longer "minus Paystack fees".
+- **Amended by D37 and D38 (6 Nov 2026):** the user pays Paystack's fee on top, so credit is no longer "minus Paystack fees", and the treasury batch is parked for this launch.
 
 ### D22. Auth: Magic replaces Privy (supersedes P5 and P9's provider choice)
 - Date: 5 Nov 2026 · Decided by: user (Olayinka) · **Numbered D22 here:** the user wrote "D18", but D18 is already the Vercel AI SDK decision.
@@ -94,7 +94,7 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - Date: 5 Nov 2026 · Decided by: user (Olayinka) · Refines D21 and D23, resolves TOPUPS.md §10 points 1 and 2.
 - **Test G$:** deployed from the user's own browser wallet through the development-only page `/dev/test-gd`, so no private key is in a file or env var. `pnpm deploy:test-gd` stays as an alternative.
 - **G$ in the UI:** the user asked for "any option that promotes G$", which Claude took as this: D21's "never show G$" covers the top-up flow only (no conversion, batching or treasury details). D13 stands: the credits pill shows G$ beside USD, and the G$ vault deposit stays.
-- **Treasury:** the weekly batch keeps about one month of provider bills in USDT and converts only the surplus to G$, because credits are USD liabilities and provider bills are paid in USD.
+- **Treasury:** the weekly batch keeps about one month of provider bills in USDT and converts only the surplus to G$, because credits are USD liabilities and provider bills are paid in USD. **Parked by D38 (6 Nov 2026), along with the G$ vault deposit, for this launch.**
 - **Live test:** both the Magic email wallet and MetaMask, on Celo Sepolia.
 
 ### D25. Hosting: one Docker image on Railway or Fly.io
@@ -194,14 +194,52 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - **Not built:** owner edits of visitors' records (replies, "confirmed"), staff readers, email alerts, Turnstile on busy forms, email sign-in for visitors (next PR).
 - Terms and Privacy updated: owners can now read what visitors send them, where the form says so.
 
-### D36. M6 and mainnet launch together; TOPUPS.md §10 defaults accepted (amends D21)
-- Date: 5 and 6 Nov 2026 · Decided by: user (Olayinka): "I need to get this on mainnet, that would require M6 to begin." Claude recommended M6 first and the user chose together. Numbered D36 because open PR #30 uses D35. Plan: [MAINNET_PLAN.md](MAINNET_PLAN.md).
+### D35. Email-code sign-in for app visitors
+- Date: 6 Nov 2026 · Decided by: user (Olayinka): "Email sign-in", after GoodBuild's Magic account couldn't be shared with published apps. Provider: Resend (the user created the account, verified goodbuildit.xyz and put the key on the server). Design by Claude, reviewed by the advisor.
+- **Opt-in per app** (`"signIn": {"email": true}` in dataRules.json), so no app can be used to send email unless it asks for sign-in.
+- **A random id per app and address** (`email:<uuid>`), never derived from a rotatable secret and never shown to others. Email visitors are `signed-in`, never `owner`.
+- **Abuse:** codes are counted per IP, address, app and the whole site, in the database, plus a daily cap on wrong guesses per address. The attempt count is atomic. Refusals are honest (429, 502 or 503).
+- **Not built:** bounce handling, Turnstile, merging an email identity with a wallet. Details: APP_DATA.md.
+
+### D37. M6 and mainnet launch together; TOPUPS.md §10 defaults accepted (amends D21)
+- Date: 5 and 6 Nov 2026 · Decided by: user (Olayinka): "I need to get this on mainnet, that would require M6 to begin." Claude recommended M6 first and the user chose together. D36 is claimed by open PR #32 (wallets), which should merge first. Plan: [MAINNET_PLAN.md](MAINNET_PLAN.md).
 - **One launch:** paid credits and Celo mainnet ship together. Paystack has test keys only so far.
 - **Rate:** from a named public source with a 2% spread. Which source is still open.
 - **Fees:** the user pays Paystack's fee on top, so credit matches the amount shown. This changes D21's "minus fees".
 - **Email:** collected at top-up for wallet-only users.
 - **Admin:** a wallet allowlist.
 - **Refunds:** credits are non-refundable except for failed or disputed payments. The wording needs a lawyer before real money.
+
+### D38. Paystack buys AI credits only; treasury batch and G$ vault left out of this launch (amends D13, D21, D24)
+- Date: 6 Nov 2026 · Decided by: user (Olayinka).
+- Paystack buys AI credits, and those credits only pay for builds. There is no naira to crypto conversion at launch, so the treasury batch (D21, D24) is parked. Paystack money can never fund gas.
+- The G$ vault is left out of this launch, so credits show in USD only until it exists.
+- **Cost, for the owner to see, not blocking:** ROADMAP.md promises G$ payment "live from M6" and scores G$ volume and transactions per user (S5 criteria UNVERIFIED). Those numbers get nothing from credits until the vault ships.
+
+### D39. What GoodDollar verification does
+- Date: 6 Nov 2026 · Decided by: user (Olayinka). Replaces Claude's proposed "verified or paid" for mainnet.
+- Verification gives extra free credit (D30). Paying customers don't need it to buy or use credits.
+- Mainnet always needs it, including for paying customers.
+- Checked by the coordinating session on 6 Nov: face verification costs no gas. It's a signMessage (citizen-sdk 1.2.7), and GoodDollar registers verified addresses on all active chains. So gas pays for deploying, and verification comes first.
+
+### D40. A Sepolia and mainnet toggle per project
+- Date: 6 Nov 2026 · Decided by: user (Olayinka).
+- The flow: toggle, verify if needed, gas grant, AI review, typed confirmation, deploy.
+
+### D41. Gas grant: up to 1 CELO, once per person, sent automatically
+- Date: 6 Nov 2026 · Decided by: user (Olayinka). Design and red team: [MAINNET_PLAN.md](MAINNET_PLAN.md) section 7.
+- A dedicated wallet the owner funds in small amounts tops the signed-in wallet up to 1 CELO, once per GoodID root, with a global limit of 20 grants a day. Past the limit, or when gas runs out, people are pointed to the owner's Telegram, a setting the owner fills in later and hidden until set. No new Telegram bot: owner alerts go by email through Resend.
+- This is GoodBuild's first hot key. It is not a user key or a deploy key: deploys stay signed in the user's own wallet (D2, CLAUDE.md rule 8).
+- It covers the builder only. Visitors using a mainnet app need their own CELO and G$.
+
+### D42. AI review by DeepSeek before a mainnet deploy
+- Date: 6 Nov 2026 · Decided by: user (Olayinka), who chose DeepSeek over Sonnet. Design: [MAINNET_PLAN.md](MAINNET_PLAN.md) section 8.
+- It checks for vulnerabilities and whether the contract matches the brief. High-severity findings or a brief mismatch block the deploy, with a Try fix button and an owner-only override for wrong findings.
+- It's an AI review and is never called an audit. "Unaudited, may lose funds" and the typed confirmation stay. Nobody has yet shown DeepSeek catches anything, so a benchmark comes first.
+
+### D43. An app that receives payment is a web3 app
+- Date: 6 Nov 2026 · Decided by: user (Olayinka).
+- If an app needs to receive payment, it becomes a web3 app, and the builder tells people mainnet can be deployed if they're sure everything is ready and want to receive real money. Where that lives: [MAINNET_PLAN.md](MAINNET_PLAN.md) section 9.
 
 ## Recommended decisions (Ego; adopted unless changed)
 

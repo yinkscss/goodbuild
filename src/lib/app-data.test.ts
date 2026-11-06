@@ -44,3 +44,22 @@ describe("per-app rules (D34)", () => {
     expect(describeRule(parse({ a: "public-read" }).rules.a).who).toBe("Anyone can read it");
   });
 });
+
+describe("email sign-in settings (D35)", () => {
+  it("is off unless dataRules.json asks for it, and refuses anything else", async () => {
+    const { parseSignIn } = await import("./app-data");
+    expect(parseSignIn(undefined)).toEqual({ email: false, issues: [] });
+    expect(parseSignIn('{"collections":{}}').email).toBe(false);
+    expect(parseSignIn('{"signIn":{"email":true},"collections":{}}')).toEqual({ email: true, issues: [] });
+    expect(parseSignIn('{"signIn":{"email":"yes"}}').issues).toHaveLength(1);
+    expect(parseSignIn('{"signIn":{"email":true,"sms":true}}').issues).toHaveLength(1);
+    expect(parseSignIn('{"signIn":true}').issues).toHaveLength(1);
+  });
+
+  it("takes exactly one plain address", async () => {
+    const { normalizeEmail } = await import("./app-data");
+    expect(normalizeEmail("  Ada@Example.COM ")).toBe("ada@example.com");
+    expect(normalizeEmail("a.da+salon@mail.example.ng")).toBe("a.da+salon@mail.example.ng");
+    for (const bad of ["a@b", "a@@b.com", "a,b@c.com", "a@b.com\nbcc:x@y.com", "<a@b.com>", ".a@b.com", "a..b@c.com", "a@-b.com", "", 7]) expect(normalizeEmail(bad)).toBeNull();
+  });
+});

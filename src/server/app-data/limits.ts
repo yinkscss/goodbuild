@@ -25,13 +25,29 @@ export const DEFAULT_LIMITS = {
   noncesPerIpPerMinute: 30,
   noncesPerProjectPerMinute: 300,
   signInsPerIpPerMinute: 20,
+  /** Email codes (D35). Per minute in memory; the rest are counted in the database, so a restart doesn't reset them. */
+  emailCodesPerIpPerMinute: 5,
+  emailCodesPerProjectPerMinute: 30,
+  emailVerifiesPerIpPerMinute: 20,
+  emailCodesPerEmailPer10Minutes: 3,
+  emailCodesPerEmailPerDay: 10,
+  emailFailuresPerEmailPerDay: 10,
+  emailCodesPerIpPerDay: 20,
+  emailCodesPerProjectPerDay: 100,
+  /** Across every app, to stay inside the email provider's free tier. EMAIL_DAILY_CAP overrides it. */
+  emailCodesSitePerDay: 90,
 };
 
 export type AppDataLimits = typeof DEFAULT_LIMITS;
 
 export function limitsFromEnv(env: Record<string, string | undefined> = process.env): AppDataLimits {
   const total = Number(env.APP_DATA_MAX_TOTAL_BYTES);
-  return total > 0 ? { ...DEFAULT_LIMITS, maxTotalBytes: total } : DEFAULT_LIMITS;
+  const emailCap = env.EMAIL_DAILY_CAP ? Number(env.EMAIL_DAILY_CAP) : NaN;
+  return {
+    ...DEFAULT_LIMITS,
+    ...(total > 0 ? { maxTotalBytes: total } : {}),
+    ...(Number.isInteger(emailCap) && emailCap >= 0 ? { emailCodesSitePerDay: emailCap } : {}),
+  };
 }
 
 const MAX_TRACKED_KEYS = 50_000;

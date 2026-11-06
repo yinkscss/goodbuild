@@ -9,7 +9,7 @@ Written 4 Nov 2026 at the end of the first build session (claude.ai), for whoeve
 
 **App data (D31, merged in PR #19 and deployed by the workflow on 5 Nov 2026; not yet exercised on the live site):** published apps can save data for their visitors, and since D34 (PR #28) the builder writes each app's rules, forms work without a wallet, and owners read what visitors send in the Backend window. Design, limits and what isn't verified: [APP_DATA.md](APP_DATA.md).
 
-**Launch plan (6 Nov 2026, D36):** M6 and mainnet ship together. [MAINNET_PLAN.md](MAINNET_PLAN.md) replaces the order below, and notes what here is out of date.
+**Launch plan (6 Nov 2026, D37 to D43):** M6 and mainnet ship together. [MAINNET_PLAN.md](MAINNET_PLAN.md) replaces the order below, and notes what here is out of date.
 
 **Next: M6**, in this order, with design in [CREDITS.md](CREDITS.md) and [TOPUPS.md](TOPUPS.md):
 1. GoodDollar face verification. Read `getWhitelistedRoot` on Celo mainnet (`0xC361…2F42`) with plain viem on the server, even for testnet apps, because the SDK has no Celo Sepolia. Key allowances by root, not wallet. Don't trust the callback: re-read the chain. Verification expires. Use redirect mode on phones. No testnet exists, so a real verified wallet is needed for the live test.

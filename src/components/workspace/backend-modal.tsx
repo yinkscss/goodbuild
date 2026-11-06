@@ -74,6 +74,7 @@ const IDEAS: Partial<Record<ContractKind, BackendIdea[]>> = {
 };
 
 const GENERAL: BackendIdea[] = [
+  idea("Email sign-in", "Visitors sign in with a code sent to their email, no wallet", "let visitors sign in with a 6-digit code sent to their email, as well as with a wallet. Turn on email sign-in in the data rules, add a clear sign-in screen with the email and code steps, and keep each person's saved things private to them."),
   idea("Contact form", "Visitors send a message without signing in, only you read it", "add a contact form anyone can send without signing in or a wallet. Only I, the app's owner, can read the messages, and the form says so. Store name, email or phone, and the message."),
   idea("Profiles", "Each person saves their own details", "let each person save a display name and short bio, private to them, and show it once they sign in."),
   idea("Public posts", "People post things everyone can read", "let signed-in people post short entries that everyone can read, newest first, and delete their own."),
@@ -84,7 +85,7 @@ const DECIDE: BackendIdea = idea("Let the builder decide", "It adds saved data w
 /** Two ideas for this app, two general ones, and "let the builder decide". No typing needed. */
 export function backendIdeas(project: { name: string; templateId?: string | null }): BackendIdea[] {
   const kind = inferKind({ templateId: project.templateId, text: project.name });
-  return [...(IDEAS[kind] ?? []).slice(0, 2), ...GENERAL, DECIDE].slice(0, 6);
+  return [...[...(IDEAS[kind] ?? []).slice(0, 2), ...GENERAL].slice(0, 5), DECIDE];
 }
 
 export function BackendButton({ on, disabled, onOpen, compact, className }: { on: boolean; disabled: boolean; onOpen: () => void; compact?: boolean; className?: string }) {

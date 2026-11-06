@@ -165,3 +165,37 @@ export function describeRule(rule: CollectionRule): { who: string; publicFields:
           : "Only the person who saved it can read it";
   return { who, publicFields: r.has("anyone") ? [] : rule.public };
 }
+
+/** How visitors may sign in to this app (D35). Wallet sign-in is always on; email codes only when asked for. */
+export function parseSignIn(source: string | undefined): { email: boolean; issues: string[] } {
+  if (source === undefined) return { email: false, issues: [] };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(source);
+  } catch {
+    return { email: false, issues: [] };
+  }
+  const signIn = (parsed as { signIn?: unknown } | null)?.signIn;
+  if (signIn === undefined) return { email: false, issues: [] };
+  if (!signIn || typeof signIn !== "object" || Array.isArray(signIn) || Object.keys(signIn).some((k) => k !== "email") || typeof (signIn as { email?: unknown }).email !== "boolean") {
+    return { email: false, issues: [`${DATA_RULES_PATH}: "signIn" must look like {"email": true}.`] };
+  }
+  return { email: (signIn as { email: boolean }).email, issues: [] };
+}
+
+/**
+ * One email address, or null. Exactly one recipient: no lists, no display names, no header tricks.
+ * Dots and +tags are kept, because they can be different people.
+ */
+export function normalizeEmail(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const email = raw.trim().toLowerCase();
+  if (email.length < 3 || email.length > 254) return null;
+  if (/[\s,;<>()[\]\\"'\u0000-\u001f\u007f]/.test(email)) return null;
+  const parts = email.split("@");
+  if (parts.length !== 2) return null;
+  const [local, domain] = parts;
+  if (!local || local.length > 64 || !/^[a-z0-9.!#$%&*+/=?^_`{|}~-]+$/.test(local) || local.startsWith(".") || local.endsWith(".") || local.includes("..")) return null;
+  if (!/^(?=.{3,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/.test(domain)) return null;
+  return email;
+}
