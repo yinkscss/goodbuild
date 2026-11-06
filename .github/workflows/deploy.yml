@@ -1,4 +1,4 @@
-# Deploys to the production server after a commit on main passes the checks (docs/DEPLOY.md, D44).
+# Deploys to the production server after a commit on main passes the checks (docs/DEPLOY.md, D45).
 # Run it by hand from the Actions tab, on main, to redeploy. The checks run first then too.
 name: Deploy
 
