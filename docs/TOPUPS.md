@@ -98,6 +98,8 @@ The server refuses a live key (`sk_live_…`) unless `PAYSTACK_ALLOW_LIVE=true`,
 - D10 still applies: 18+, no US persons.
 
 ## 10. Open points for the user
+**Points 3 to 7 were decided in D37 (6 Nov 2026).** The defaults were accepted, but the named rate source is still open, and the fee is now paid on top, which replaces the `net_ngn` maths in §4. **D38 parks §6's treasury batch for this launch: no naira to crypto conversion.** See [MAINNET_PLAN.md](MAINNET_PLAN.md).
+
 1. **G$ in the UI: decided (D24).** "Never show G$" covers the top-up flow only: no conversion, batching or treasury details. The top-up modal shows NGN and USD credits. The credits pill keeps G$ beside USD (D13), and the G$ vault deposit stays.
 2. **What the batch converts: decided (D24).** Keep about one month of provider bills in USDT (CREDITS.md §6) and convert only the surplus to G$.
 3. **Rate source and spread (§4).** Which source, and what starting spread (proposal: 200 bps)?
