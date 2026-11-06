@@ -24,6 +24,7 @@ import { openPreviewChannel, type PreviewChannelMessage } from "@/lib/preview-ch
 import { cn } from "@/lib/utils";
 import type { WorkspaceState } from "@/server/workspace-state";
 import { ChatPanel } from "./chat-panel";
+import { BackendButton, BackendModal, backendState } from "./backend-modal";
 import { PublishButton, PublishModal } from "./publish-modal";
 import { usePublish } from "./use-publish";
 import { useAssetDataUrls, useWorkspace } from "./use-workspace";
@@ -48,6 +49,8 @@ export function Workspace({ initial }: { initial: WorkspaceState }) {
   const previewVersion = live?.record.version ?? state.project.currentVersion;
   useBroadcastPreview(state.project.id, files, previewVersion);
   const [publishOpen, setPublishOpen] = React.useState(false);
+  const [backendOpen, setBackendOpen] = React.useState(false);
+  const backendOn = backendState(files).on;
   const publish = usePublish(state.project.id, state.project.currentVersion, publishOpen);
 
   const hasContracts = Object.keys(files).some((p) => p.startsWith("contracts/") && p.endsWith(".sol") && !p.startsWith("contracts/test/"));
@@ -85,6 +88,7 @@ export function Workspace({ initial }: { initial: WorkspaceState }) {
         <div className="flex items-center gap-3">
           <CreditsPill balanceGd={null} usdPerGd={null} className="hidden xl:flex" />
           <NetworkBadge />
+          <BackendButton on={backendOn} disabled={running} onOpen={() => setBackendOpen(true)} compact className="hidden px-3.5 py-2.5 md:inline-flex 2xl:px-5" />
           <PublishButton publish={publish} onOpen={() => setPublishOpen(true)} disabled={running} className="hidden px-5 py-2.5 md:inline-flex" />
           <DeployButton className="hidden px-5 py-2.5 md:inline-flex" />
           <WalletButton showNetwork={false} />
@@ -93,6 +97,7 @@ export function Workspace({ initial }: { initial: WorkspaceState }) {
 
       {/* The header can't fit these on a phone, and MiniPay users are on phones. */}
       <div className="flex gap-2 md:hidden">
+        <BackendButton on={backendOn} disabled={running} onOpen={() => setBackendOpen(true)} className="flex-1 px-4 py-2.5" />
         <PublishButton publish={publish} onOpen={() => setPublishOpen(true)} disabled={running} className="flex-1 px-4 py-2.5" />
         <DeployButton className="flex-1 px-4 py-2.5" />
       </div>
@@ -132,6 +137,16 @@ export function Workspace({ initial }: { initial: WorkspaceState }) {
           />
         </div>
       </div>
+      <BackendModal
+        open={backendOpen}
+        onOpenChange={setBackendOpen}
+        projectId={state.project.id}
+        project={{ name: state.project.name }}
+        files={files}
+        published={Boolean(publish.info?.live)}
+        busy={running}
+        onSend={(prompt) => ws.send(prompt, "build")}
+      />
       <PublishModal open={publishOpen} onOpenChange={setPublishOpen} publish={publish} projectBusy={running} onFix={(prompt) => ws.send(prompt, "build")} />
     </div>
     </DeployProvider>
