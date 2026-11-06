@@ -47,7 +47,7 @@ This stops a pull request with failing checks from being merged. Settings → Br
 4. Leave "Require branches to be up to date before merging" off. `main` is tested again before each deploy, so a stale pull request can't ship untested, and this avoids rerunning the checks after every merge.
 5. Tick "Do not allow bypassing the above settings" so the rule also binds admins.
 
-An open pull request from before CI existed shows the check as "Expected" until it merges in `main`.
+An open pull request from before CI existed shows the check as "Expected" until its next push, or until it's closed and reopened.
 
 ## Rollback
 Each deploy tags its image `goodbuild:sha-<first 12 of the commit>`, and the newest 5 stay. `goodbuild:previous` is the image that ran before the last deploy. `goodbuild:latest` is what's running.
@@ -68,10 +68,11 @@ It restarts `web` and `worker` from an image already on the server, in seconds, 
 |---|---|
 | Nothing | Yes |
 | Added a table, or a column that's nullable or has a default | Yes. Old code ignores them. Check that the new code didn't write values the old code can't read, such as a new status. |
+| Added a unique index, check or foreign key to an existing table | **Maybe not.** It still looks like an addition, but old code's writes fail if they break the new rule. Check that they can't. |
 | Added a `NOT NULL` column with no default | **No.** Old code's inserts fail. |
 | Dropped or renamed a table or column, or changed a type | **No.** Old code's queries fail. |
 
-So migrations only add. To remove or rename something, stop using it in one deploy and drop it in a later one, once rolling back past that point is no longer needed. Migrations `0000` to `0009` follow this: none drops, renames or changes a type. Before rolling back, check what's new with `git diff --stat <good commit> <bad commit> -- drizzle`.
+So migrations only add, and in ways old code can still write to. To remove or rename something, stop using it in one deploy and drop it in a later one, once rolling back past that point is no longer needed. Searching `0000` to `0009` found no drop, rename or type change, and no added `NOT NULL` column without a default. In `0005` to `0009`, the one constraint added to an existing table is the unique index `publications_client_idx` in `0006`. These were text searches of the SQL, not a test of old code against the new schema. Before rolling back, check what's new with `git diff --stat <good commit> <bad commit> -- drizzle`.
 
 If the migration itself is the problem, a rollback won't fix it. The options are a new forward migration, which is the normal answer, or restoring a backup (below), which **loses everything written since that backup**. Once real money is in the database, don't restore without reconciling against Paystack and the chain.
 
