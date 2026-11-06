@@ -42,7 +42,7 @@ services:
       timeout: 5s
       retries: 30
   minio:
-    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
     command: ["server", "/data"]
     environment:
       MINIO_ROOT_USER: $minio_user
