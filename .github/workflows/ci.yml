@@ -21,6 +21,21 @@ jobs:
     name: Lint, types, tests, build
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # A real Postgres for the money tests that need one: PGlite has a single connection, so it
+    # can't show races. A throwaway server on the runner; each test file makes and drops its own
+    # database (src/server/credits/test-backends.ts). It holds nothing but test data.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 127.0.0.1:5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
     steps:
       - uses: actions/checkout@v4
 
@@ -48,10 +63,12 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
-      # PGlite and solc run in-process, so no database service or compiler download is needed.
-      # Workers and timeouts come from vitest.config.mts.
+      # PGlite and solc run in-process. TEST_DATABASE_URL adds the Postgres service above, so the
+      # race tests also run on what production runs. Workers and timeouts come from vitest.config.mts.
       - name: Test
         run: pnpm test
+        env:
+          TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
         timeout-minutes: 20
 
       - name: Build
