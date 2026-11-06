@@ -105,8 +105,11 @@ Nightly backups keep deleted data for up to 7 days (DEPLOY.md). Nothing expires 
 - No queries beyond listing a collection newest first, optionally by owner. No shared records, files or images.
 - **UNVERIFIED:** the helper in the real Sandpack preview. It was run in Chromium on another origin with no server and no `goodbuild-data` tag, which is the same code path, but CodeSandbox's bundler wasn't part of that, so its handling of the JSON import is unchecked.
 - **UNVERIFIED:** Cloudflare passing `/__gb/data/` unchanged and not caching it. Every response says `no-store, private`, and nothing about this path has been tried on the live server.
+- **A few addresses can pause one app.** The limit of 1,500 requests a minute per app can be used up by about 5 addresses at the per-IP read limit, and that app's data API then answers 429 for up to a minute. Other apps aren't affected.
+- **Cloudflare rules:** a "Cache Everything" or similar rule on `*.goodbuildit.xyz` could override `no-store`. Check that none applies to `/__gb/data/*`, and add a bypass if one does.
 - Postgres row-level security isn't used. The app has one database role, so isolation rests on every query in `store.ts` taking the project from the handler.
 
 ## How it's tested
 - `src/server/app-data/attack.test.ts`: the attacker's suite, written first. It goes through the real proxy and handler, on PGlite, with real signatures.
+- In that script's browser attack from another app's page, Chromium's local-network check is turned off and the page is served without the published CSP, because over local http either would stop the request before it left. The write reaches the server and gets 403, but Playwright doesn't show whether the cookie went with it. The request with the cookie is checked over plain HTTP in the same script.
 - `scripts/app-data-e2e.ts`: a production build on Postgres, through the real publish API, and with Playwright through the real page and helper in Chromium. Usage is at the top of the file. It's for a throwaway database only.
