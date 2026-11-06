@@ -97,6 +97,8 @@ Do this at a quiet time, since each restart interrupts a running build and the s
 
 **If `previous` is older than `0010` (the ledger, D46):** by reading the SQL, old code should work. Its inserts get the new `funding` columns' default, which the new checks accept, and it ignores the new tables. `0010` also changed the `usage_events` user foreign key from cascade to restrict, and a text search found no code before it that deletes users. This hasn't been run, so it's UNVERIFIED until step 6 passes.
 
+**Rolling back past `0012` (holds, D49):** old code keeps working, tested with the old code's SQL. Migrations don't roll back, so the new columns and the running-total ledger check stay, and old code writes nothing that trips them. Old code refuses to start a paid job, which ends it and returns its hold.
+
 ## Everyday commands (on the server, in /opt/goodbuild/deploy)
 ```bash
 docker compose --env-file .env.production ps
