@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { AppDataRow } from "./app-data-row";
+import { backendState } from "./backend-modal";
 import type { Publish, PublishFailure } from "./use-publish";
 
 type SlugCheck = "idle" | "checking" | "free" | "taken" | "reserved" | "invalid";
@@ -55,6 +56,8 @@ export function PublishModal(props: {
   publish: Publish;
   projectBusy: boolean;
   onFix: (prompt: string) => void;
+  /** The app's files, to say before publishing what its saved data shows (D34). */
+  files?: Record<string, string>;
 }) {
   const [working, setWorking] = React.useState<"publish" | "unpublish" | null>(null);
   return (
@@ -74,11 +77,13 @@ function PublishBody({
   onFix,
   working,
   setWorking,
+  files,
 }: {
   onOpenChange: (open: boolean) => void;
   publish: Publish;
   projectBusy: boolean;
   onFix: (prompt: string) => void;
+  files?: Record<string, string>;
   working: "publish" | "unpublish" | null;
   setWorking: (w: "publish" | "unpublish" | null) => void;
 }) {
@@ -227,6 +232,8 @@ function PublishBody({
               </div>
             )}
 
+            {files && <SavedDataSummary files={files} />}
+
             <label className="mt-4 flex cursor-pointer items-start gap-3 text-sm">
               <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} disabled={Boolean(working)} className="mt-0.5 size-4 shrink-0 accent-violet" />
               <span className="text-grey-600">I understand this code hasn&apos;t been audited and is public. The app isn&apos;t for sports betting, and isn&apos;t aimed at anyone under 18 or at US persons.</span>
@@ -291,5 +298,27 @@ function PublishBody({
           </>
         )}
     </>
+  );
+}
+
+/** The AI writes the rules, so the creator sees in plain words what visitors' data will show before it goes live. */
+function SavedDataSummary({ files }: { files: Record<string, string> }) {
+  const { on, collections } = backendState(files);
+  if (!on || collections.length === 0) return null;
+  const open = collections.filter((c) => c.everyone || c.publicFields.length);
+  return (
+    <div className="mt-3 rounded-block bg-canvas p-4 text-sm" role="note">
+      <p className="font-medium">What your app&apos;s saved data shows</p>
+      <ul className="mt-1.5 space-y-1 text-grey-600">
+        {open.length === 0 && <li>Nothing visitors save is public.</li>}
+        {open.map((c) => (
+          <li key={c.name}>
+            Anyone can read: <span className="font-medium text-ink">{c.name}</span>
+            {c.everyone ? " (everything)" : ` (${c.publicFields.join(", ")})`}
+          </li>
+        ))}
+        {collections.some((c) => c.noSignIn) && <li>Some forms take entries from visitors who don&apos;t sign in. Only the readers listed in the Backend window see them.</li>}
+      </ul>
+    </div>
   );
 }

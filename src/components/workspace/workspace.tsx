@@ -88,7 +88,7 @@ export function Workspace({ initial }: { initial: WorkspaceState }) {
         <div className="flex items-center gap-3">
           <CreditsPill balanceGd={null} usdPerGd={null} className="hidden xl:flex" />
           <NetworkBadge />
-          <BackendButton on={backendOn} disabled={running} onOpen={() => setBackendOpen(true)} compact className="hidden px-3.5 py-2.5 md:inline-flex 2xl:px-5" />
+          <BackendButton on={backendOn} disabled={false} onOpen={() => setBackendOpen(true)} compact className="hidden px-3.5 py-2.5 md:inline-flex 2xl:px-5" />
           <PublishButton publish={publish} onOpen={() => setPublishOpen(true)} disabled={running} className="hidden px-5 py-2.5 md:inline-flex" />
           <DeployButton className="hidden px-5 py-2.5 md:inline-flex" />
           <WalletButton showNetwork={false} />
@@ -97,7 +97,7 @@ export function Workspace({ initial }: { initial: WorkspaceState }) {
 
       {/* The header can't fit these on a phone, and MiniPay users are on phones. */}
       <div className="flex gap-2 md:hidden">
-        <BackendButton on={backendOn} disabled={running} onOpen={() => setBackendOpen(true)} className="flex-1 px-4 py-2.5" />
+        <BackendButton on={backendOn} disabled={false} onOpen={() => setBackendOpen(true)} className="flex-1 px-4 py-2.5" />
         <PublishButton publish={publish} onOpen={() => setPublishOpen(true)} disabled={running} className="flex-1 px-4 py-2.5" />
         <DeployButton className="flex-1 px-4 py-2.5" />
       </div>
@@ -147,7 +147,7 @@ export function Workspace({ initial }: { initial: WorkspaceState }) {
         busy={running}
         onSend={(prompt) => ws.send(prompt, "build")}
       />
-      <PublishModal open={publishOpen} onOpenChange={setPublishOpen} publish={publish} projectBusy={running} onFix={(prompt) => ws.send(prompt, "build")} />
+      <PublishModal open={publishOpen} onOpenChange={setPublishOpen} publish={publish} projectBusy={running} files={files} onFix={(prompt) => ws.send(prompt, "build")} />
     </div>
     </DeployProvider>
   );

@@ -15,11 +15,104 @@ export const COLLECTION_NAME = /^[a-z][a-z0-9_-]{0,47}$/;
 /** Starts with a letter or digit, so "." and ".." can never be a key. */
 export const RECORD_KEY = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/;
 
-export type DataAccess = "private" | "public-read";
-export const DATA_ACCESS: readonly string[] = ["private", "public-read"];
+/**
+ * Who a permission is for (D34).
+ * - anyone: every visitor, signed in or not. For "create" this means no sign-in is needed.
+ * - signed-in: a visitor signed in with a wallet (later, email). Not an anonymous visitor.
+ * - writer: the visitor who saved the record.
+ * - owner: the app's owner, the wallet that owns the project on GoodBuild. Set by the server, never by the app.
+ */
+export type DataRole = "anyone" | "signed-in" | "writer" | "owner";
+export type FieldType = "string" | "number" | "boolean";
+
+export interface CollectionRule {
+  create: "anyone" | "signed-in" | "owner";
+  read: DataRole[];
+  update: ("writer")[];
+  delete: ("writer" | "owner")[];
+  /** Fields everyone can read, without who wrote the record. */
+  public: string[];
+  /** When set, records must be objects with exactly these fields. */
+  fields: Record<string, FieldType> | null;
+  /** No two records may share these field values. Each must be in `public`, or a refusal would reveal private data. */
+  unique: string[];
+}
+
+/** What a record was saved under. A record is never more visible than this, whatever the rule later says. */
+export interface RecordGrant {
+  read: DataRole[];
+  public: string[];
+}
+
+const ROLES: readonly DataRole[] = ["anyone", "signed-in", "writer", "owner"];
+const CREATE: readonly string[] = ["anyone", "signed-in", "owner"];
+const FIELD_TYPES: readonly string[] = ["string", "number", "boolean"];
+const FIELD_NAME = /^[A-Za-z][A-Za-z0-9_]{0,47}$/;
+
+export const PRIVATE_RULE: CollectionRule = { create: "signed-in", read: ["writer"], update: ["writer"], delete: ["writer"], public: [], fields: null, unique: [] };
+const PUBLIC_READ_RULE: CollectionRule = { ...PRIVATE_RULE, read: ["anyone"] };
+
+const RULE_EXAMPLE = `{"collections": {"notes": "private", "posts": "public-read", "bookings": {"create": "anyone", "read": ["writer", "owner"], "public": ["day"]}}}`;
+
+function list(value: unknown, allowed: readonly string[], where: string, issues: string[]): string[] | null {
+  const items = typeof value === "string" ? [value] : value;
+  if (!Array.isArray(items) || items.some((v) => typeof v !== "string" || !allowed.includes(v))) {
+    issues.push(`${where} must be one or more of: ${allowed.map((a) => `"${a}"`).join(", ")}.`);
+    return null;
+  }
+  return [...new Set(items as string[])];
+}
+
+/** One collection's rule from the file, or null with the reason added to issues. */
+function parseRule(name: string, raw: unknown, issues: string[]): CollectionRule | null {
+  if (raw === "private") return PRIVATE_RULE;
+  if (raw === "public-read") return PUBLIC_READ_RULE;
+  const at = `Collection "${name}" in ${DATA_RULES_PATH}:`;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    issues.push(`${at} the rule must be "private", "public-read" or an object like ${RULE_EXAMPLE}.`);
+    return null;
+  }
+  const r = raw as Record<string, unknown>;
+  const known = ["create", "read", "update", "delete", "public", "fields", "unique"];
+  const unknown = Object.keys(r).filter((k) => !known.includes(k));
+  if (unknown.length) issues.push(`${at} unknown setting ${unknown.map((k) => `"${k}"`).join(", ")}. Use ${known.join(", ")}.`);
+  const before = issues.length;
+  const create = r.create === undefined ? "signed-in" : typeof r.create === "string" && CREATE.includes(r.create) ? r.create : (issues.push(`${at} "create" must be "anyone", "signed-in" or "owner".`), null);
+  const read = r.read === undefined ? ["writer"] : list(r.read, ROLES, `${at} "read"`, issues);
+  const update = r.update === undefined ? ["writer"] : Array.isArray(r.update) && r.update.length === 0 ? [] : list(r.update, ["writer"], `${at} "update"`, issues);
+  const del = r.delete === undefined ? ["writer"] : list(r.delete, ["writer", "owner"], `${at} "delete"`, issues);
+  let fields: Record<string, FieldType> | null = null;
+  if (r.fields !== undefined && r.fields !== null) {
+    if (!r.fields || typeof r.fields !== "object" || Array.isArray(r.fields)) issues.push(`${at} "fields" must look like {"name": "string", "seats": "number"}.`);
+    else {
+      fields = {};
+      for (const [field, type] of Object.entries(r.fields)) {
+        if (!FIELD_NAME.test(field)) issues.push(`${at} field "${field}": use letters, numbers and _, starting with a letter.`);
+        else if (typeof type !== "string" || !FIELD_TYPES.includes(type)) issues.push(`${at} field "${field}" must be "string", "number" or "boolean".`);
+        else fields[field] = type as FieldType;
+      }
+    }
+  }
+  const names = (value: unknown, label: string) => {
+    if (value === undefined) return [];
+    if (!Array.isArray(value) || value.some((f) => typeof f !== "string" || !FIELD_NAME.test(f))) {
+      issues.push(`${at} "${label}" must be a list of field names.`);
+      return [];
+    }
+    const missing = fields ? value.filter((f) => !Object.hasOwn(fields!, f)) : [];
+    if (missing.length) issues.push(`${at} "${label}" names fields that aren't in "fields": ${missing.join(", ")}.`);
+    return [...new Set(value as string[])];
+  };
+  const pub = names(r.public, "public");
+  const unique = names(r.unique, "unique");
+  const hidden = unique.filter((f) => !pub.includes(f) && !(read ?? []).includes("anyone"));
+  if (hidden.length) issues.push(`${at} every "unique" field must also be in "public", because refusing a duplicate shows that it exists: ${hidden.join(", ")}.`);
+  if (issues.length > before || !create || !read || !update || !del) return null;
+  return { create: create as CollectionRule["create"], read: read as DataRole[], update: update as CollectionRule["update"], delete: del as CollectionRule["delete"], public: pub, fields, unique };
+}
 
 /** A rule for each declared collection, or what's wrong with the file. Undeclared collections are private. */
-export function parseDataRules(source: string | undefined): { rules: Record<string, DataAccess>; issues: string[] } {
+export function parseDataRules(source: string | undefined): { rules: Record<string, CollectionRule>; issues: string[] } {
   if (source === undefined) return { rules: {}, issues: [] };
   let parsed: unknown;
   try {
@@ -29,19 +122,46 @@ export function parseDataRules(source: string | undefined): { rules: Record<stri
   }
   const collections = (parsed as { collections?: unknown } | null)?.collections;
   if (!collections || typeof collections !== "object" || Array.isArray(collections)) {
-    return { rules: {}, issues: [`${DATA_RULES_PATH} must look like {"collections": {"posts": "public-read", "notes": "private"}}.`] };
+    return { rules: {}, issues: [`${DATA_RULES_PATH} must look like ${RULE_EXAMPLE}.`] };
   }
-  const rules: Record<string, DataAccess> = {};
+  const rules: Record<string, CollectionRule> = {};
   const issues: string[] = [];
-  for (const [name, access] of Object.entries(collections)) {
-    if (!COLLECTION_NAME.test(name)) issues.push(`Collection "${name}" in ${DATA_RULES_PATH}: use lowercase letters, numbers, - and _, starting with a letter (48 at most).`);
-    else if (typeof access !== "string" || !DATA_ACCESS.includes(access)) issues.push(`Collection "${name}" in ${DATA_RULES_PATH}: the rule must be "private" or "public-read".`);
-    else rules[name] = access as DataAccess;
+  for (const [name, raw] of Object.entries(collections)) {
+    if (!COLLECTION_NAME.test(name)) {
+      issues.push(`Collection "${name}" in ${DATA_RULES_PATH}: use lowercase letters, numbers, - and _, starting with a letter (48 at most).`);
+      continue;
+    }
+    const rule = parseRule(name, raw, issues);
+    if (rule) rules[name] = rule;
   }
   return { rules, issues };
 }
 
-/** The rule for a collection. Only a rule the file declares counts, so "constructor" isn't special. */
-export function accessFor(rules: Record<string, unknown>, collection: string): DataAccess {
-  return Object.hasOwn(rules, collection) && rules[collection] === "public-read" ? "public-read" : "private";
+/**
+ * The rule for a collection, from what was stored at publish. Only a rule the file declared counts,
+ * so "constructor" isn't special, and anything unreadable falls back to private.
+ */
+export function ruleFor(rules: Record<string, unknown>, collection: string): CollectionRule {
+  if (!Object.hasOwn(rules, collection)) return PRIVATE_RULE;
+  const issues: string[] = [];
+  return parseRule(collection, rules[collection], issues) ?? PRIVATE_RULE;
+}
+
+export function grantOf(rule: CollectionRule): RecordGrant {
+  return { read: [...rule.read], public: [...rule.public] };
+}
+
+/** Plain words for a rule, for the people building and using the app. */
+export function describeRule(rule: CollectionRule): { who: string; publicFields: string[] } {
+  const r = new Set(rule.read);
+  const who = r.has("anyone")
+    ? "Anyone can read it"
+    : r.has("signed-in")
+      ? "Anyone signed in can read it"
+      : r.has("owner") && r.has("writer")
+        ? "Only you and the person who sent it can read it"
+        : r.has("owner")
+          ? "Only you can read it"
+          : "Only the person who saved it can read it";
+  return { who, publicFields: r.has("anyone") ? [] : rule.public };
 }

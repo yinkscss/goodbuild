@@ -31,7 +31,7 @@ export const publications = pgTable(
       .notNull()
       .default(sql`'gbc_' || replace(gen_random_uuid()::text, '-', '')`),
     /** Access rule per collection, snapshotted from the app's rules file when it is published. */
-    dataRules: jsonb("data_rules").$type<Record<string, string>>().notNull().default({}),
+    dataRules: jsonb("data_rules").$type<Record<string, unknown>>().notNull().default({}),
   },
   (t) => [uniqueIndex("publications_project_idx").on(t.projectId), uniqueIndex("publications_slug_idx").on(t.slug), uniqueIndex("publications_client_idx").on(t.clientId)],
 );

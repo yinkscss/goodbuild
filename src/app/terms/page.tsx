@@ -20,12 +20,13 @@ export default function TermsPage() {
       <h2>Published apps</h2>
       <p>Published apps are public and made by their creators, not by GoodBuild. We can take down an app that breaks these terms. That removes its page, not its contracts.</p>
       <h2>Data your published app saves</h2>
-      <p>A published app can save data for its visitors, who sign in by connecting their wallet. GoodBuild stores that data for you. If your app saves visitors&apos; data:</p>
+      <p>A published app can save data for its visitors. Some parts need them to sign in with their wallet, and forms such as bookings or contact messages can be sent without signing in. GoodBuild stores that data for you. If your app saves visitors&apos; data:</p>
       <ul>
         <li>You are responsible for what your app asks for and how it uses it. Tell visitors what you save and why.</li>
         <li>Don&apos;t collect passwords, card or bank details, government ID numbers, health information, or anything about people under 18.</li>
         <li>Only collect what the app needs. Don&apos;t sell visitors&apos; data or use it to deceive them.</li>
-        <li>You can&apos;t read visitors&apos; private records through GoodBuild. You see totals, and you can delete all of your app&apos;s data from the publish window.</li>
+        <li>You can read what visitors send to you, such as bookings and messages, in the Backend window, only where your app&apos;s rules make you a reader and the form tells visitors so. You can&apos;t read visitors&apos; private records. You can delete entries, or all of your app&apos;s data.</li>
+        <li>Keep what visitors send you private. Use it only for the reason they sent it.</li>
         <li>Each app has limits on how much it can store. We can refuse writes over those limits.</li>
         <li>If we take down your app, its data stays for review, and we can delete it. Data is also deleted if your project is deleted.</li>
       </ul>

@@ -47,7 +47,7 @@ export function AppDataRow({ projectId }: { projectId: string }) {
       <dt className="text-grey-600">Saved data</dt>
       <dd className="flex flex-wrap items-center justify-end gap-2 text-right">
         <span className="font-medium">
-          {plural(stats.records, "record")} from {plural(stats.wallets, "wallet")}
+          {plural(stats.records, "record")} from {stats.wallets === 1 ? "1 person" : `${stats.wallets.toLocaleString("en-US")} people`}
         </span>
         {failed && (
           <span className="flex items-center gap-1.5 text-xs" role="alert">

@@ -183,6 +183,16 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - **Follow-ups, not built:** a delay before upgrades take effect (OpenZeppelin `TimelockController` as ProxyAdmin owner; skipped because testnet funds aren't real and it adds a third transaction); EIP-5792 batching; an upgrade history view; a way to set new variables during the switch.
 - **UNVERIFIED on Celo Sepolia:** all of it. It's proved in a local EVM only. Steps for the live test are in HANDOFF.md.
 
+### D34. Each app's builder writes its data rules; forms work without a wallet
+- Date: 6 Nov 2026 · Decided by: user (Olayinka) chose "rules, then email" over AI-written SQL. Design by Claude, reviewed by the advisor.
+- **Why not SQL:** Lovable's generated SQL runs in a separate Supabase database per project. GoodBuild's apps share one database, so one bad AI-written query or policy could cross tenants. The builder writes a declarative rule per collection instead, and one server enforces every app's rules (APP_DATA.md).
+- **Roles:** anyone, signed-in, writer, owner. Owner is the project owner's wallet, from GoodBuild's own records. Settings: create, read, update, delete, public fields, field types, unique fields. `private` and `public-read` keep their exact meaning, and the existing attack suite passes unchanged.
+- **Forms without a wallet:** `create: "anyone"` takes entries from visitors who don't sign in, with an anonymous per-app id, tighter rate limits and a separate cap per app.
+- **Owner's view in GoodBuild:** the Backend window lists entries the owner may read, with delete and a CSV download that escapes formulas. It uses GoodBuild's sign-in, so email-wallet owners can use it.
+- **Saved grants:** a record is never more visible than the rule it was saved under (migration 0008 adds `access`).
+- **Not built:** owner edits of visitors' records (replies, "confirmed"), staff readers, email alerts, Turnstile on busy forms, email sign-in for visitors (next PR).
+- Terms and Privacy updated: owners can now read what visitors send them, where the form says so.
+
 ## Recommended decisions (Ego; adopted unless changed)
 
 
