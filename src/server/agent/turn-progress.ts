@@ -1,4 +1,5 @@
 import type { Db } from "@/server/db/client";
+import type { FundingSource } from "@/server/db/schema";
 import type { TurnRecord } from "@/lib/turn-types";
 import type { ContractCheckOptions } from "./checks";
 import type { ChatMessage, ToolCall } from "./model";
@@ -94,6 +95,8 @@ export class ResumeFailedError extends Error {}
 export interface TurnJobContext {
   /** True when the caller holds the project's turn lock (the job lease). */
   lockHeld: boolean;
+  /** Who funds the job, fixed when it was created (D48). Without a job, the runner decides it. */
+  funding?: FundingSource;
   signal?: AbortSignal;
   /** An earlier attempt of this job got this far. */
   resume?: { assistantMessageId?: string | null; setup?: TurnSetup | null; calls: LoggedCall[]; attempt: number };

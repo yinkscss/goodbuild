@@ -78,6 +78,13 @@
       "when": 1793973685513,
       "tag": "0010_credits_ledger",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1793981575669,
+      "tag": "0011_funding_fixed",
+      "breakpoints": true
     }
   ]
 }

@@ -142,7 +142,7 @@ export class TurnWorker {
     try {
       const jobs = await db.select({ id: turnJobs.id }).from(turnJobs).where(eq(turnJobs.projectId, job.projectId)).limit(2);
       if (jobs.length > 1) return;
-      await nameProject(db, model, { projectId: job.projectId, userId: job.userId, prompt: job.prompt, messageId: job.userMessageId });
+      await nameProject(db, model, { projectId: job.projectId, userId: job.userId, prompt: job.prompt, messageId: job.userMessageId, funding: job.funding });
     } catch (e) {
       console.warn(`[worker] couldn't name project ${job.projectId}: ${(e as Error).message}`);
     }
@@ -179,7 +179,7 @@ export class TurnWorker {
     }
     // A queued follow-up may have been overtaken by the build ahead of it. A resumed build may finish.
     if (job.attempt === 1) {
-      const allowance = await checkAiAllowance(db, { userId: job.userId, startingJobId: job.id });
+      const allowance = await checkAiAllowance(db, { userId: job.userId, startingJobId: job.id, funding: job.funding });
       if (!allowance.allowed) {
         await failJob(db, job, allowance.message);
         sink.push({ type: "error", message: allowance.message });

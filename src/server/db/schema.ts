@@ -225,7 +225,7 @@ export const turnJobs = pgTable(
     /** Next turn_events seq. */
     nextSeq: integer("next_seq").notNull().default(0),
     error: text("error"),
-    /** Who funds this build. M2 sets it; until then every job takes the default. */
+    /** Who funds this build: decided when the job is created and never changed (D48). Its usage rows take it. */
     funding: text("funding").$type<FundingSource>().notNull().default("free"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     startedAt: timestamp("started_at", { withTimezone: true }),
