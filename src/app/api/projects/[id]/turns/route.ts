@@ -3,10 +3,9 @@ import { z } from "zod";
 
 import { PROMPT_MAX_LENGTH } from "@/lib/prompt";
 import { errorResponse, requireSession } from "@/server/auth/http";
-import { checkAiAllowance } from "@/server/credits/cap";
 import { getDb } from "@/server/db/client";
 import { kickWorker } from "@/server/jobs";
-import { enqueueTurn } from "@/server/jobs/jobs";
+import { startTurn } from "@/server/jobs/jobs";
 import { shouldPlanFirst } from "@/server/agent/plan-first";
 import { getOwnedProject } from "@/server/projects";
 
@@ -38,12 +37,13 @@ export async function POST(request: Request, ctx: RouteContext<"/api/projects/[i
     if (parsed.data.userMessageId && !owned.messages.some((m) => m.id === parsed.data.userMessageId && m.role === "user")) {
       return NextResponse.json({ error: "message_not_found" }, { status: 404 });
     }
-    const allowance = await checkAiAllowance(db, { userId: session.user.id, projectId: id });
-    if (!allowance.allowed) return NextResponse.json({ error: allowance.reason, message: allowance.message }, { status: 402 });
     const { skipPlan, mode, prompt, userMessageId } = parsed.data;
     // First send plans first (D32), whichever screen it came from: the server decides, not the client.
     const intake = await shouldPlanFirst(db, { projectId: id, userId: session.user.id, prompt, skipPlan });
-    const job = await enqueueTurn(db, { projectId: id, userId: session.user.id, mode: intake ? "plan" : mode, prompt, userMessageId, intake });
+    // The check, the hold and the queueing are one step, under a lock on this user's balance (D49).
+    const started = await startTurn(db, { projectId: id, userId: session.user.id, mode: intake ? "plan" : mode, prompt, userMessageId, intake });
+    if ("refused" in started) return NextResponse.json({ error: started.refused.reason, message: started.refused.message }, { status: 402 });
+    const { job } = started;
     kickWorker();
     return NextResponse.json({ jobId: job.id, messageId: job.userMessageId, status: job.status }, { status: 202 });
   } catch (error) {

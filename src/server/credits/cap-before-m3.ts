@@ -189,3 +189,43 @@ export async function shouldOfferVerification(db: Db, userId: string, env: Recor
   if ((await spentMicro(db, userId)) < capMicro(env)) return false;
   return budgetHasRoom(db, undefined, env);
 }
+
+/**
+ * The turns route's queueing as it was (`enqueueTurn` and its caller on main at 0ffaa7c81): check, then
+ * queue, with no lock. Nothing is committed if the caller rolls back, so the test can compare it with
+ * the new code on the same rows.
+ */
+export async function routeBeforeM3(
+  db: Db,
+  args: { projectId: string; userId: string; mode: string; prompt?: string; userMessageId?: string; intake?: boolean },
+  env: Record<string, string | undefined>,
+): Promise<{ job: TurnJob } | { refused: Extract<CapDecision, { allowed: false }> }> {
+  const allowance = await checkAiAllowance(db, { userId: args.userId, projectId: args.projectId }, env);
+  if (!allowance.allowed) return { refused: allowance };
+  return db.transaction(async (tx) => {
+    let messageId = args.userMessageId;
+    let prompt = args.prompt?.trim() ?? "";
+    if (messageId) {
+      const [existing] = await tx.select().from(turnJobs).where(eq(turnJobs.userMessageId, messageId)).limit(1);
+      if (existing) return { job: existing };
+      const [m] = await tx
+        .select()
+        .from(messages)
+        .where(and(eq(messages.id, messageId), eq(messages.projectId, args.projectId)))
+        .limit(1);
+      if (!m || m.role !== "user") throw new Error("message_not_found");
+      prompt = m.content;
+      if (m.status !== "queued") await tx.update(messages).set({ status: "queued" }).where(eq(messages.id, m.id));
+    } else {
+      const [m] = await tx
+        .insert(messages)
+        .values({ projectId: args.projectId, role: "user", content: prompt, status: "queued", meta: { mode: args.mode } })
+        .returning({ id: messages.id });
+      messageId = m.id;
+    }
+    const funding = await decideFunding(tx as unknown as Db, args.userId, env);
+    const [job] = await tx.insert(turnJobs).values({ projectId: args.projectId, userId: args.userId, mode: args.mode, prompt, userMessageId: messageId, funding }).returning();
+    await tx.update(messages).set({ meta: sql`coalesce(${messages.meta}, '{}'::jsonb) || ${JSON.stringify({ mode: args.mode, jobId: job.id, ...(args.intake ? { intake: true } : {}) })}::jsonb` }).where(eq(messages.id, messageId));
+    return { job };
+  });
+}

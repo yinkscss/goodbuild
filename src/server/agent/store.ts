@@ -5,6 +5,7 @@ import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import type { Db } from "@/server/db/client";
 import { messages, projectFiles, projects, usageEvents, versions, type FundingSource, type Version } from "@/server/db/schema";
 import { withCurrentAddresses } from "@/server/deploy/addresses";
+import { recordPaidUsage } from "@/server/credits/holds";
 import { MARKUP_BPS } from "@/config/model-pricing";
 import { chargedMicro, costMicro } from "@/lib/pricing";
 
@@ -98,6 +99,9 @@ export async function releaseTurn(db: Db, projectId: string, status: string): Pr
 /**
  * Record one model call's usage, priced with our table (D13). Idempotent on callId. `funding` is
  * required: a turn's calls take their job's (D48), and calls outside a turn decide it when they run.
+ * A `paid` call is charged to the ledger in the same transaction, only if its row was really inserted
+ * (D49). `jobId` says whose hold it comes out of. The cost is returned even for a duplicate: `inserted`
+ * says whether this call recorded it.
  */
 export async function recordUsage(
   db: Db,
@@ -112,13 +116,21 @@ export async function recordUsage(
     outputTokens: number;
     cachedInputTokens: number;
     funding: FundingSource;
+    /** The paid job this call belongs to. */
+    jobId?: string | null;
   },
-): Promise<{ providerCostMicro: number; chargedMicro: number }> {
+): Promise<{ providerCostMicro: number; chargedMicro: number; inserted: boolean }> {
+  const { jobId, ...row } = args;
   const provider = costMicro(args.model, args);
   const charged = chargedMicro(provider);
-  await db
-    .insert(usageEvents)
-    .values({ ...args, providerCostMicro: provider, chargedMicro: charged, markupBps: MARKUP_BPS })
-    .onConflictDoNothing({ target: usageEvents.callId });
-  return { providerCostMicro: provider, chargedMicro: charged };
+  const insertUsage = async (tx: Db) => {
+    const rows = await tx
+      .insert(usageEvents)
+      .values({ ...row, providerCostMicro: provider, chargedMicro: charged, markupBps: MARKUP_BPS })
+      .onConflictDoNothing({ target: usageEvents.callId })
+      .returning({ id: usageEvents.id });
+    return rows.length > 0;
+  };
+  const inserted = args.funding === "paid" ? await recordPaidUsage(db, { userId: args.userId, jobId, callId: args.callId, chargedMicro: charged, insertUsage }) : await insertUsage(db);
+  return { providerCostMicro: provider, chargedMicro: charged, inserted };
 }

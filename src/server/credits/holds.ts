@@ -2,11 +2,11 @@ import "server-only";
 
 import { createHash } from "node:crypto";
 
-import { and, eq, gt, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 import type { Db } from "@/server/db/client";
 import { balances, ledgerEntries, turnJobs } from "@/server/db/schema";
-import { CHARS_PER_TOKEN, MARKUP_BPS } from "@/config/model-pricing";
+import { MARKUP_BPS } from "@/config/model-pricing";
 import { chargedMicro, priceFor } from "@/lib/pricing";
 import { postLedgerEntry } from "./ledger";
 
@@ -22,14 +22,29 @@ import { postLedgerEntry } from "./ledger";
  * the balances row and inserts the job, so it never waits on an existing job's row.
  */
 
-/** The least a paid build needs free to start: about one worst-case strong call (D49, D29's $0.35). */
+/**
+ * The least a paid build needs free to start: about one worst-case call to the strong model on a
+ * large project, so it can afford at least one fix (D49). Below $1 on purpose: the smallest top-up
+ * (MAINNET_PLAN decision 7, about N1,000) may buy less than $1, and it must be able to build.
+ */
 export const PAID_MIN_START_MICRO = 350_000;
 
-/** The most reserved when a paid build is queued: plan section 5 item 5's $1. Less if less is free. */
+/**
+ * The most set aside when a paid build is queued: plan section 5 item 5's $1, twice the dearest
+ * build on record (D19's $0.50). Less if less is free. The checks before each call keep the spending
+ * safe at any size, so this only decides how many builds one balance can have going at once.
+ * To be checked against real paid builds (UNVERIFIED): change it with PAID_HOLD_MICRO.
+ */
 export const PAID_HOLD_MICRO = 1_000_000;
+
+/** Free credit a paid call outside a build needs: well above the dearest upload or visual check. */
+export const PAID_MIN_DIRECT_MICRO = 50_000;
 
 /** A payer who can't start a build (plan section 5 item 4). Shown by the existing 402 handling. */
 export const OUT_OF_CREDITS_MESSAGE = "You're out of credits. Top up to keep building.";
+
+/** A payer with credit, all of it set aside for builds already queued or running. */
+export const CREDIT_HELD_MESSAGE = "Your credit is set aside for builds in progress. Wait for one to finish, then try again.";
 
 /** A paid build stopped because the next call could cost more than is left. */
 export const OUT_OF_CREDITS_BUILD_MESSAGE = "This build stopped because your credits ran out. Your project is unchanged. Top up, then retry.";
@@ -42,12 +57,19 @@ export class OutOfCreditsError extends Error {
   }
 }
 
-export function minStartMicro(env: Record<string, string | undefined>) {
-  return Number(env.PAID_MIN_START_MICRO) || PAID_MIN_START_MICRO;
+/** A whole number of micro-USD above zero from the settings, or the default. */
+function setting(raw: string | undefined, fallback: number) {
+  const value = Number(raw);
+  return Number.isSafeInteger(value) && value > 0 ? value : fallback;
 }
 
+export function minStartMicro(env: Record<string, string | undefined>) {
+  return setting(env.PAID_MIN_START_MICRO, PAID_MIN_START_MICRO);
+}
+
+/** The hold a new paid build aims for. Never below the minimum to start. */
 export function holdMicro(env: Record<string, string | undefined>) {
-  return Math.max(Number(env.PAID_HOLD_MICRO) || PAID_HOLD_MICRO, minStartMicro(env));
+  return Math.max(setting(env.PAID_HOLD_MICRO, PAID_HOLD_MICRO), minStartMicro(env));
 }
 
 export interface LockedBalance {
@@ -67,6 +89,14 @@ export async function lockBalance(tx: Db, userId: string): Promise<LockedBalance
   return { ...row, availableMicro: row.balanceMicro - row.reservedMicro };
 }
 
+/** The balance without taking the lock, for checks that don't move money. No row reads as zero. */
+export async function readBalance(db: Db, userId: string): Promise<LockedBalance> {
+  const [row] = await db.select({ balanceMicro: balances.balanceMicro, reservedMicro: balances.reservedMicro }).from(balances).where(eq(balances.userId, userId)).limit(1);
+  const balanceMicro = row?.balanceMicro ?? 0;
+  const reservedMicro = row?.reservedMicro ?? 0;
+  return { balanceMicro, reservedMicro, availableMicro: balanceMicro - reservedMicro };
+}
+
 /** Has this user ever bought credit? Then refusals say they're out of credits, not out of free AI. */
 export async function hasPaid(db: Db, userId: string): Promise<boolean> {
   const [row] = await db
@@ -77,22 +107,31 @@ export async function hasPaid(db: Db, userId: string): Promise<boolean> {
   return Boolean(row);
 }
 
+/**
+ * Characters a token, for the worst case. Below the usual 2.5 (CHARS_PER_TOKEN) because that's an
+ * average: hex addresses and non-Latin text pack more tokens into each character.
+ */
+const WORST_CHARS_PER_TOKEN = 2;
 /** Tokens allowed for each image in a request. Claude's largest standard image is about 1,600. */
 const IMAGE_TOKENS = 2_000;
 /** Per-message framing the providers add, generously. */
 const MESSAGE_TOKENS = 10;
 
-type EstimatedMessage =
-  | { role: string; content: string | null | Array<{ type: string; text?: string }>; tool_calls?: Array<{ function: { name: string; arguments: string } }>; tool_call_id?: string }
-  | { role: string; content: string };
+interface EstimatedMessage {
+  role: string;
+  content: string | null | Array<{ type: string; text?: string }>;
+  tool_calls?: Array<{ function: { name: string; arguments: string } }>;
+  tool_call_id?: string;
+}
 
 /**
  * The most a model call could be charged, in micro-USD: every input token at the uncached price
- * (2.5 characters a token, conservative), the full output limit, and the markup. Thinking counts as
- * output, inside the limit. Priced from the model the tier asks for. A reply from a model missing
- * from the price table is priced higher than this, the one way a charge can pass the estimate.
+ * (2 characters a token), the full output limit, and the markup. Thinking counts as output, inside the
+ * limit (measured for DeepSeek in HARNESS.md, UNVERIFIED for Claude). Priced from the model the tier
+ * asks for. A reply naming a model missing from the price table is billed at the strong model's
+ * price, which can pass this: the one known way past the estimate (D49).
  */
-export function worstCaseCallMicro(model: string, request: { messages: EstimatedMessage[]; tools?: unknown[]; maxTokens: number }): number {
+export function worstCaseCallMicro(model: string, request: { messages: readonly EstimatedMessage[]; tools?: readonly unknown[]; maxTokens: number }): number {
   let chars = request.tools?.length ? JSON.stringify(request.tools).length : 0;
   let images = 0;
   for (const m of request.messages) {
@@ -103,10 +142,10 @@ export function worstCaseCallMicro(model: string, request: { messages: Estimated
         else images++;
       }
     }
-    if ("tool_calls" in m && m.tool_calls) for (const c of m.tool_calls) chars += c.function.name.length + c.function.arguments.length;
-    if ("tool_call_id" in m && m.tool_call_id) chars += m.tool_call_id.length;
+    for (const c of m.tool_calls ?? []) chars += c.function.name.length + c.function.arguments.length;
+    chars += m.tool_call_id?.length ?? 0;
   }
-  const inputTokens = Math.ceil(chars / CHARS_PER_TOKEN) + images * IMAGE_TOKENS + request.messages.length * MESSAGE_TOKENS;
+  const inputTokens = Math.ceil(chars / WORST_CHARS_PER_TOKEN) + images * IMAGE_TOKENS + request.messages.length * MESSAGE_TOKENS;
   const p = priceFor(model);
   const usd = (inputTokens * p.inputPerMTok + request.maxTokens * p.outputPerMTok) / 1_000_000;
   return chargedMicro(Math.ceil(usd * 1_000_000), MARKUP_BPS);
@@ -118,6 +157,7 @@ export function worstCaseCallMicro(model: string, request: { messages: Estimated
  * job's fenced transaction, which has already locked the job's row.
  */
 export async function ensureHold(tx: Db, jobId: string, worstMicro: number): Promise<boolean> {
+  // Lock order: job row, then balances row. The fence has usually locked this row already.
   const [job] = await tx.select({ userId: turnJobs.userId, holdMicro: turnJobs.holdMicro, funding: turnJobs.funding }).from(turnJobs).where(eq(turnJobs.id, jobId)).for("update");
   if (!job || job.funding !== "paid") return true;
   if (job.holdMicro >= worstMicro) return true;
@@ -135,32 +175,40 @@ export function usageKey(callId: string): string {
 }
 
 /**
- * Charge one paid usage row that has just been inserted. In the same transaction as the insert.
- * The cost is already incurred, so it's posted even if it takes the balance below zero (D46's
- * `allowNegative` for usage): refusing would roll back the saved response with it, and a resume
- * would then pay the provider again. It comes out of the job's hold first. A job that has ended
- * has no hold, so a late charge (the project-name call, which runs beside the build) only lowers
- * the balance.
+ * Record one paid call: insert its usage row and, only if that really inserted a row, charge it.
+ * Run in one transaction, so a crash can't leave a saved response unbilled or a charge with no
+ * response. The cost is already incurred, so it's posted even if it takes the balance below zero
+ * (D46's `allowNegative` for usage): refusing would roll back the saved response with it, and a resume
+ * would then pay the provider again. It comes out of the job's hold first. A job that has ended has no
+ * hold, so a late charge (the project-name call, which runs beside the build) only lowers the balance.
+ * A hold can't race it: both lock the job's row first.
  */
-export async function chargePaidUsage(tx: Db, input: { userId: string; jobId?: string | null; callId: string; chargedMicro: number }): Promise<void> {
-  if (input.chargedMicro <= 0) return;
-  // Job row before balances row: the ledger post below takes the balances lock.
-  const [job] = input.jobId ? await tx.select({ holdMicro: turnJobs.holdMicro, status: turnJobs.status }).from(turnJobs).where(eq(turnJobs.id, input.jobId)).for("update") : [];
-  await postLedgerEntry(tx, {
-    userId: input.userId,
-    kind: "usage",
-    amountMicro: -input.chargedMicro,
-    idempotencyKey: usageKey(input.callId),
-    refType: "usage_event",
-    refId: input.callId,
-    allowNegative: true,
+export async function recordPaidUsage(
+  db: Db,
+  input: { userId: string; jobId?: string | null; callId: string; chargedMicro: number; insertUsage: (tx: Db) => Promise<boolean> },
+): Promise<boolean> {
+  return db.transaction(async (raw) => {
+    const tx = raw as unknown as Db;
+    const [job] = input.jobId ? await tx.select({ holdMicro: turnJobs.holdMicro }).from(turnJobs).where(eq(turnJobs.id, input.jobId)).for("update") : [];
+    if (!(await input.insertUsage(tx))) return false;
+    if (input.chargedMicro <= 0) return true;
+    await postLedgerEntry(tx, {
+      userId: input.userId,
+      kind: "usage",
+      amountMicro: -input.chargedMicro,
+      idempotencyKey: usageKey(input.callId),
+      refType: "usage_event",
+      refId: input.callId,
+      allowNegative: true,
+    });
+    if (job && job.holdMicro > 0) {
+      await tx
+        .update(turnJobs)
+        .set({ holdMicro: Math.max(0, job.holdMicro - input.chargedMicro) })
+        .where(eq(turnJobs.id, input.jobId!));
+    }
+    return true;
   });
-  if (job && job.holdMicro > 0) {
-    await tx
-      .update(turnJobs)
-      .set({ holdMicro: Math.max(0, job.holdMicro - input.chargedMicro) })
-      .where(eq(turnJobs.id, input.jobId!));
-  }
 }
 
 export interface ReservationMismatch {
@@ -176,8 +224,8 @@ function rowsOf<T>(result: unknown): T[] {
 
 /**
  * Reconciliation (D49): each user's reserved credit must equal the holds of their queued and
- * running jobs, and no finished job may still hold any. Should always be empty. The worker logs
- * any it finds, and M7's reconciliation reports on it.
+ * running jobs, and no finished job may still hold any. Should always be empty. The worker's regular
+ * check corrects the first kind and logs both, and M7's reconciliation can report on it.
  */
 export async function findReservationMismatches(db: Db): Promise<ReservationMismatch[]> {
   const rows = rowsOf<{ user_id: string; reserved_micro: string; open_micro: string }>(
@@ -192,12 +240,29 @@ export async function findReservationMismatches(db: Db): Promise<ReservationMism
   return rows.map((r) => ({ userId: r.user_id, reservedMicro: Number(r.reserved_micro), openHoldsMicro: Number(r.open_micro) }));
 }
 
-/** Total credit reserved across everyone, and the open paid jobs' holds: equal when all is well. */
-export async function reservationTotals(db: Db): Promise<{ reservedMicro: number; openHoldsMicro: number }> {
-  const [b] = await db.select({ total: sql<string>`coalesce(sum(${balances.reservedMicro}), 0)` }).from(balances);
-  const [j] = await db
-    .select({ total: sql<string>`coalesce(sum(${turnJobs.holdMicro}), 0)` })
-    .from(turnJobs)
-    .where(and(sql`${turnJobs.status} IN ('queued', 'running')`, gt(turnJobs.holdMicro, 0)));
-  return { reservedMicro: Number(b?.total ?? 0), openHoldsMicro: Number(j?.total ?? 0) };
+/**
+ * Put each mismatched user's reserved total back to the sum of their open holds (D49). Nothing should
+ * ever need this: it's for a hand edit or a bug, because a total that's too high would strand someone's
+ * credit. Reading the holds under the balance lock is safe against a hold changing at the same moment:
+ * the trigger updates the balances row first, so that change has either committed and is seen here, or
+ * is waiting for this lock and will add itself on top. Returns what it changed.
+ */
+export async function repairReservations(db: Db): Promise<ReservationMismatch[]> {
+  const repaired: ReservationMismatch[] = [];
+  const users = new Set((await findReservationMismatches(db)).map((m) => m.userId));
+  for (const userId of users) {
+    await db.transaction(async (raw) => {
+      const tx = raw as unknown as Db;
+      const { reservedMicro } = await lockBalance(tx, userId);
+      const [open] = await tx
+        .select({ total: sql<string>`coalesce(sum(${turnJobs.holdMicro}), 0)` })
+        .from(turnJobs)
+        .where(and(eq(turnJobs.userId, userId), sql`${turnJobs.status} IN ('queued', 'running')`));
+      const openHoldsMicro = Number(open?.total ?? 0);
+      if (openHoldsMicro === reservedMicro) return;
+      await tx.update(balances).set({ reservedMicro: openHoldsMicro, updatedAt: sql`now()` }).where(eq(balances.userId, userId));
+      repaired.push({ userId, reservedMicro, openHoldsMicro });
+    });
+  }
+  return repaired;
 }

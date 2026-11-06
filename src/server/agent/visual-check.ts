@@ -8,7 +8,7 @@ import type { TurnRecord, VisualCheck } from "@/lib/turn-types";
 import { sniffType, visionImage } from "./assets";
 import { TIER_FOR, type ModelClient } from "./model";
 import { recordUsage } from "./store";
-import { decideFunding } from "@/server/credits/cap";
+import { decideDirectFunding } from "@/server/credits/cap";
 
 const MAX_ISSUES = 4;
 
@@ -62,7 +62,7 @@ export async function runVisualCheck(args: {
   const image = await visionImage(args.png, "image/png");
   let charged = 0;
   // Outside any turn, so who funds it is decided now (D48).
-  const funding = await decideFunding(args.db, args.userId);
+  const funding = await decideDirectFunding(args.db, args.userId);
   let parsed: ReturnType<typeof parseVisualCheck> = null;
   // One retry: a reply can still come back empty or not as JSON.
   for (let attempt = 0; attempt < 2 && !parsed; attempt++) {

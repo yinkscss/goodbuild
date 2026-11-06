@@ -9,11 +9,12 @@ import { runContractTests } from "./contract-tests";
 import { dbAssetStore, type AssetStore } from "./asset-store";
 import { ASSETS_MODULE, assetManifest, assetsModule, visionImage } from "./assets";
 import { HISTORY_WINDOW, memoryBlock, updateMemory, type Memory, type MemoryMessage } from "./memory";
-import { TIER_FOR, ModelUnavailableError, type ChatMessage, type ModelClient, type ModelEvent, type ModelTier, type ToolCall, type UserPart } from "./model";
+import { MODEL_IDS, TIER_FOR, ModelUnavailableError, type ChatMessage, type ModelClient, type ModelEvent, type ModelTier, type ToolCall, type UserPart } from "./model";
 import { INTAKE_MAX_TOKENS, INTAKE_PROMPT, INTAKE_TOOLS, fallbackIntake, intakeContext, latestIntake, parseIntake, planBrief } from "./plan-intake";
 import { BUILD_TOOLS, PLAN_TOOLS, contextWithPicks, systemPrompt } from "./prompt";
 import { checkpoint, claimTurn, loadFiles, recordUsage, releaseTurn } from "./store";
 import { decideFunding } from "@/server/credits/cap";
+import { OutOfCreditsError, ensureHold, worstCaseCallMicro } from "@/server/credits/holds";
 import { deploymentsBlock, loadDeployedAddresses } from "@/server/deploy/addresses";
 import { isUpgradeableProject, liveStorage, upgradeChecksFor } from "@/server/deploy/upgradeable";
 import { upgradeableRules } from "./upgradeable-rules";
@@ -85,8 +86,9 @@ export class TurnBusyError extends Error {
  * `snapshot` event. Stop is checked between rounds, before compiling and before tests.
  */
 export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEvent) => void): Promise<TurnRecord> {
-  const { db, model } = deps;
+  const { db } = deps;
   const job = deps.job ?? directJob(db);
+  const model = checkedAgainstHold(deps.model, job);
   const compileWith = deps.checkContracts ?? checkContracts;
   // The saved turn setup only says "upgradeable" (it has to stay JSON); the checks are wired here.
   const compile: typeof checkContracts = (files, options = {}) => compileWith(files, options.upgradeable ? { ...options, upgradeChecks: upgradeChecksFor(db, input.projectId) } : options);
@@ -268,6 +270,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
               outputTokens: ev.outputTokens,
               cachedInputTokens: ev.cachedInputTokens,
               funding,
+              jobId: job.jobId,
             });
             rows.push({ model: ev.model, inputTokens: ev.inputTokens, outputTokens: ev.outputTokens, cachedInputTokens: ev.cachedInputTokens, callId, chargedMicro: cost.chargedMicro });
           }
@@ -663,6 +666,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
           outputTokens: ev.outputTokens,
           cachedInputTokens: ev.cachedInputTokens,
           funding,
+          jobId: job.jobId,
         });
         record.chargedMicro += cost.chargedMicro;
       }
@@ -731,6 +735,25 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     if (!s.imageAssetIds.length) return;
     await (deps.assets ?? dbAssetStore(tx)).markAttached(input.projectId, s.imageAssetIds, assistantId);
   }
+}
+
+/**
+ * On a paid job, every live model call is checked first (D49): its hold must cover the most the call
+ * could be charged, extended from the rest of the balance if it can be. Otherwise the build stops here,
+ * before paying for a call it can't cover, and ends like any failed build, which returns the hold. It
+ * wraps the client so that nothing can miss it: the build, fix and wrap-up calls, the memory call and a
+ * retry. Saved responses replayed after a crash never reach the model, so they never reach this.
+ */
+function checkedAgainstHold(model: ModelClient, job: TurnJobContext): ModelClient {
+  if (job.funding !== "paid" || !job.jobId) return model;
+  const jobId = job.jobId;
+  return {
+    async *stream(request) {
+      const worst = worstCaseCallMicro(MODEL_IDS[request.tier], request);
+      if (!(await job.commit((tx) => ensureHold(tx, jobId, worst)))) throw new OutOfCreditsError();
+      yield* model.stream(request);
+    },
+  };
 }
 
 function rethrowLease(error: unknown): never | void {

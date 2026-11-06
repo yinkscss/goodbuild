@@ -3,8 +3,9 @@ import "server-only";
 import { and, asc, eq, gt, inArray, sql } from "drizzle-orm";
 
 import type { Db } from "@/server/db/client";
-import { messages, projects, turnEvents, turnJobCalls, turnJobs, type TurnJob } from "@/server/db/schema";
-import { decideFunding } from "@/server/credits/cap";
+import { messages, projects, turnEvents, turnJobCalls, turnJobs, type FundingSource, type TurnJob } from "@/server/db/schema";
+import { decideFunding, decideStart, type CapRefusal } from "@/server/credits/cap";
+import { findReservationMismatches, repairReservations, type ReservationMismatch } from "@/server/credits/holds";
 import { LeaseLostError, type LoggedCall, type TurnJobContext, type TurnSetup } from "@/server/agent/turn-progress";
 import type { TurnEvent, TurnMode } from "@/lib/turn-types";
 
@@ -19,47 +20,83 @@ export const EVENTS_GRACE_MS = 2 * 60_000;
 export type JobStatus = "queued" | "running" | "done" | "error" | "stopped" | "cancelled";
 export const ACTIVE: JobStatus[] = ["queued", "running"];
 
+/**
+ * When a paid job's hold counts as stuck (D49). A worker picks up an expired lease within seconds
+ * unless it's full or down, and a queued job waits only for the builds ahead of it, so these are far
+ * past anything normal. There's no other limit on how long a build runs: its worker renews the lease
+ * however long the model takes, so the last is what stops one hung for good from keeping the credit.
+ */
+export const HOLD_STUCK_LEASE_MS = 30 * 60_000;
+export const HOLD_STUCK_QUEUED_MS = 6 * 60 * 60_000;
+export const HOLD_MAX_RUN_MS = 3 * 60 * 60_000;
+
+const STUCK_MESSAGE = "This build was stopped because it stalled. The credit set aside for it has been returned. Retry to run it again.";
+
 function rowsOf<T>(result: unknown): T[] {
   // postgres-js returns an array; PGlite returns { rows }.
   return (Array.isArray(result) ? result : ((result as { rows?: T[] }).rows ?? [])) as T[];
 }
 
+type QueueArgs = { projectId: string; userId: string; mode: TurnMode; prompt?: string; userMessageId?: string; intake?: boolean };
+
 /**
  * Queue a turn. The user message is saved now (queued), so a reload before the job starts
  * still shows the prompt. Answering an existing queued message (the landing page's first
  * prompt) reuses it; the unique index on user_message_id makes a double submit harmless.
- * Who funds the job is decided here and never changes (D48).
+ * Who funds the job is decided before this and never changes (D48).
  */
-export async function enqueueTurn(
-  db: Db,
-  args: { projectId: string; userId: string; mode: TurnMode; prompt?: string; userMessageId?: string; intake?: boolean },
-  env: Record<string, string | undefined> = process.env,
-): Promise<TurnJob> {
-  return db.transaction(async (tx) => {
-    let messageId = args.userMessageId;
-    let prompt = args.prompt?.trim() ?? "";
-    if (messageId) {
-      const [existing] = await tx.select().from(turnJobs).where(eq(turnJobs.userMessageId, messageId)).limit(1);
-      if (existing) return existing;
-      const [m] = await tx
-        .select()
-        .from(messages)
-        .where(and(eq(messages.id, messageId), eq(messages.projectId, args.projectId)))
-        .limit(1);
-      if (!m || m.role !== "user") throw new Error("message_not_found");
-      prompt = m.content;
-      if (m.status !== "queued") await tx.update(messages).set({ status: "queued" }).where(eq(messages.id, m.id));
-    } else {
-      const [m] = await tx
-        .insert(messages)
-        .values({ projectId: args.projectId, role: "user", content: prompt, status: "queued", meta: { mode: args.mode } })
-        .returning({ id: messages.id });
-      messageId = m.id;
+async function queueTurn(tx: Db, args: QueueArgs, funding: FundingSource, holdMicro: number): Promise<TurnJob> {
+  let messageId = args.userMessageId;
+  let prompt = args.prompt?.trim() ?? "";
+  if (messageId) {
+    const [existing] = await tx.select().from(turnJobs).where(eq(turnJobs.userMessageId, messageId)).limit(1);
+    if (existing) return existing;
+    const [m] = await tx
+      .select()
+      .from(messages)
+      .where(and(eq(messages.id, messageId), eq(messages.projectId, args.projectId)))
+      .limit(1);
+    if (!m || m.role !== "user") throw new Error("message_not_found");
+    prompt = m.content;
+    if (m.status !== "queued") await tx.update(messages).set({ status: "queued" }).where(eq(messages.id, m.id));
+  } else {
+    const [m] = await tx
+      .insert(messages)
+      .values({ projectId: args.projectId, role: "user", content: prompt, status: "queued", meta: { mode: args.mode } })
+      .returning({ id: messages.id });
+    messageId = m.id;
+  }
+  const [job] = await tx.insert(turnJobs).values({ projectId: args.projectId, userId: args.userId, mode: args.mode, prompt, userMessageId: messageId, funding, holdMicro }).returning();
+  await tx.update(messages).set({ meta: sql`coalesce(${messages.meta}, '{}'::jsonb) || ${JSON.stringify({ mode: args.mode, jobId: job.id, ...(args.intake ? { intake: true } : {}) })}::jsonb` }).where(eq(messages.id, messageId));
+  return job;
+}
+
+export type StartResult = { job: TurnJob } | { refused: CapRefusal };
+
+/**
+ * Start a turn for someone: the check, the hold and the queueing as one step, under a lock on that
+ * user's balance (D49). What the turns route uses. Builds sent at the same moment take turns here,
+ * and each sees the jobs and holds of those before it. Only a job's first submit sets anything aside.
+ */
+export async function startTurn(db: Db, args: QueueArgs, env: Record<string, string | undefined> = process.env): Promise<StartResult> {
+  return db.transaction(async (raw) => {
+    const tx = raw as unknown as Db;
+    const decision = await decideStart(tx, { userId: args.userId, projectId: args.projectId }, env);
+    if (args.userMessageId) {
+      // Already queued and paid for: a double submit gets the same job, even if nothing's left for a second.
+      const [existing] = await tx.select().from(turnJobs).where(eq(turnJobs.userMessageId, args.userMessageId)).limit(1);
+      if (existing?.funding === "paid") return { job: existing };
     }
-    const funding = await decideFunding(tx as unknown as Db, args.userId, env);
-    const [job] = await tx.insert(turnJobs).values({ projectId: args.projectId, userId: args.userId, mode: args.mode, prompt, userMessageId: messageId, funding }).returning();
-    await tx.update(messages).set({ meta: sql`coalesce(${messages.meta}, '{}'::jsonb) || ${JSON.stringify({ mode: args.mode, jobId: job.id, ...(args.intake ? { intake: true } : {}) })}::jsonb` }).where(eq(messages.id, messageId));
-    return job;
+    if (!decision.allowed) return { refused: decision };
+    return { job: await queueTurn(tx, args, decision.funding, decision.holdMicro) };
+  });
+}
+
+/** Queue a free or exempt turn with no start check. For tests and scripts: people go through startTurn. */
+export async function enqueueTurn(db: Db, args: QueueArgs, env: Record<string, string | undefined> = process.env): Promise<TurnJob> {
+  return db.transaction(async (raw) => {
+    const tx = raw as unknown as Db;
+    return queueTurn(tx, args, await decideFunding(tx, args.userId, env), 0);
   });
 }
 
@@ -133,6 +170,7 @@ export async function jobContext(db: Db, job: TurnJob, owner: string, signal: Ab
   };
   return {
     lockHeld: true,
+    jobId: job.id,
     funding: job.funding,
     signal,
     resume: job.attempt > 1 ? { assistantMessageId: job.assistantMessageId, setup: (job.setup as unknown as TurnSetup | null) ?? null, calls: log, attempt: job.attempt } : undefined,
@@ -232,6 +270,40 @@ export async function sweep(db: Db): Promise<void> {
     DELETE FROM turn_events e USING turn_jobs j
     WHERE e.job_id = j.id AND j.status NOT IN ('queued', 'running')
       AND j.finished_at < now() - ${`${EVENTS_GRACE_MS} milliseconds`}::interval`);
+}
+
+/**
+ * The regular check on holds (D49), run by the worker. Ends paid jobs whose hold is stuck, which
+ * returns it, and corrects a reserved total that has drifted from the open holds, logging both. A
+ * job that's still live isn't touched, and free and exempt jobs hold nothing, so they aren't either.
+ * Each job is re-checked under its own lock, and one that's busy is left for the next pass.
+ */
+export async function checkHolds(db: Db): Promise<{ failed: string[]; repaired: ReservationMismatch[] }> {
+  const stuck = sql`j.hold_micro > 0 AND (
+    (j.status = 'queued' AND j.created_at < now() - ${`${HOLD_STUCK_QUEUED_MS} milliseconds`}::interval)
+    OR (j.status = 'running' AND (
+      j.lease_expires_at < now() - ${`${HOLD_STUCK_LEASE_MS} milliseconds`}::interval
+      OR j.started_at < now() - ${`${HOLD_MAX_RUN_MS} milliseconds`}::interval
+    ))
+  )`;
+  const candidates = rowsOf<{ id: string }>(await db.execute(sql`SELECT j.id FROM turn_jobs j WHERE ${stuck}`));
+  const failed: string[] = [];
+  for (const { id } of candidates) {
+    await db.transaction(async (raw) => {
+      const tx = raw as unknown as Db;
+      const locked = rowsOf<{ id: string }>(await tx.execute(sql`SELECT j.id FROM turn_jobs j WHERE j.id = ${id} AND ${stuck} FOR UPDATE SKIP LOCKED`));
+      if (!locked.length) return;
+      const [job] = await tx.select().from(turnJobs).where(eq(turnJobs.id, id));
+      await failJob(tx, job, STUCK_MESSAGE);
+      failed.push(id);
+      console.warn(`[holds] ended stuck job ${id}, returning its hold of ${job.holdMicro}`);
+    });
+  }
+  const repaired = await repairReservations(db);
+  for (const r of repaired) console.warn(`[holds] reserved total for user ${r.userId} was ${r.reservedMicro}, open holds ${r.openHoldsMicro}: corrected`);
+  // A finished job still holding credit can't be corrected here, only reported: the trigger forbids it.
+  for (const m of await findReservationMismatches(db)) console.warn(`[holds] mismatch left for user ${m.userId}: reserved ${m.reservedMicro}, holds ${m.openHoldsMicro}`);
+  return { failed, repaired };
 }
 
 /** The project's running job and queued follow-ups, oldest first (for the workspace state). */

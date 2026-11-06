@@ -129,7 +129,7 @@ describe.each(testBackends())("holds and charging on $name", (backend) => {
     if (userId) {
       const m = await money(userId);
       expect(m.reserved).toBe(m.open);
-      expect(m.debits).toBe(-m.charged);
+      expect(m.debits + m.charged).toBe(0);
       expect(m.balance).toBe(await balanceFromEntriesMicro(db, userId));
     }
   }
@@ -422,7 +422,7 @@ describe.each(testBackends())("holds and charging on $name", (backend) => {
       await runJob(refJob.id, scriptedModel(OK_BUILD).client);
       const expected = (await money(straight.userId)).charged;
 
-      for (let crashAfter = 0; crashAfter < 8; crashAfter++) {
+      for (let crashAfter = 0; crashAfter < 9; crashAfter++) {
         const a = await payer(5_000_000);
         const job = queued(await start(a.userId, a.projectId));
         const label = `crash after commit ${crashAfter}`;
@@ -449,7 +449,7 @@ describe.each(testBackends())("holds and charging on $name", (backend) => {
     it("a build that crashes too many times ends, and its hold goes back once", async () => {
       const a = await payer(5_000_000);
       const job = queued(await start(a.userId, a.projectId));
-      await runJob(job.id, scriptedModel(OK_BUILD).client, 3).catch(() => undefined);
+      await runJob(job.id, scriptedModel(OK_BUILD).client, 5).catch(() => undefined);
       const charged = (await money(a.userId)).charged;
       await db.update(turnJobs).set({ attempt: MAX_ATTEMPTS, leaseExpiresAt: sql`now() - interval '1 second'` }).where(eq(turnJobs.id, job.id));
       const worker = new TurnWorker({ getDb: async () => db, model: () => scriptedModel([]).client });
@@ -573,7 +573,8 @@ describe.each(testBackends())("holds and charging on $name", (backend) => {
     it("a resumed build doesn't re-check or re-charge calls it already paid for", async () => {
       const a = await payer(5_000_000);
       const job = queued(await start(a.userId, a.projectId));
-      await runJob(job.id, scriptedModel(OK_BUILD).client, 3).catch(() => undefined);
+      // Commits: the reply, the setup, then a check and a saved response per call.
+      await runJob(job.id, scriptedModel(OK_BUILD).client, 5).catch(() => undefined);
       const before = await money(a.userId);
       expect(before.charged).toBeGreaterThan(0);
       await db.update(turnJobs).set({ leaseExpiresAt: sql`now() - interval '1 second'` }).where(eq(turnJobs.id, job.id));
