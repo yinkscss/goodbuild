@@ -97,6 +97,8 @@ export interface TurnJobContext {
   lockHeld: boolean;
   /** Who funds the job, fixed when it was created (D48). Without a job, the runner decides it. */
   funding?: FundingSource;
+  /** The job itself, for its hold (D49). Direct runs have none, so they can't spend credit. */
+  jobId?: string;
   signal?: AbortSignal;
   /** An earlier attempt of this job got this far. */
   resume?: { assistantMessageId?: string | null; setup?: TurnSetup | null; calls: LoggedCall[]; attempt: number };

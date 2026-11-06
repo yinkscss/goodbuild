@@ -4,6 +4,7 @@ import { and, eq, inArray, ne, sql } from "drizzle-orm";
 
 import type { Db } from "@/server/db/client";
 import { turnJobs, usageEvents, users, type FundingSource } from "@/server/db/schema";
+import { CREDIT_HELD_MESSAGE, OUT_OF_CREDITS_MESSAGE, PAID_MIN_DIRECT_MICRO, hasPaid, holdMicro, lockBalance, minStartMicro, readBalance } from "./holds";
 
 /**
  * Free AI for accounts that haven't verified with GoodDollar (D28). One account is one wallet, and
@@ -38,9 +39,19 @@ export const BUDGET_MESSAGE = "The free trial is full right now. Please check ba
 
 export const FUNDING_UNAVAILABLE_MESSAGE = "This build can't start yet. Please try again later.";
 
-export type CapDecision =
-  | { allowed: true }
-  | { allowed: false; reason: "free_limit" | "verified_limit" | "one_build_at_a_time" | "budget_full" | "funding_unavailable"; message: string };
+/** A free job's free AI ran out while it waited, and they have credit. A job keeps one source (D48). */
+export const FREE_RAN_OUT_MESSAGE = "Your free AI ran out before this build started. Retry to run it on your credits.";
+
+export type CapRefusal = {
+  allowed: false;
+  reason: "free_limit" | "verified_limit" | "one_build_at_a_time" | "budget_full" | "funding_unavailable" | "out_of_credits" | "credit_held";
+  message: string;
+};
+
+export type CapDecision = { allowed: true } | CapRefusal;
+
+/** A build may start, on this funding, with this much of the balance set aside for it (D49). */
+export type StartDecision = { allowed: true; funding: Extract<FundingSource, "free" | "exempt" | "paid">; holdMicro: number } | CapRefusal;
 
 /**
  * Which usage uses up what (D48). A person's free allowance (D28, D30) is used only by `free` usage.
@@ -113,30 +124,17 @@ async function budgetHasRoom(db: Db, startingJobId: string | undefined, env: Rec
 }
 
 /**
- * Who funds a build or AI call this user starts now (D48). Decided once, when a job is created, and
- * kept for the job's life. Exempt wallets are exempt. Everyone else is on free AI, because free comes
- * first (MAINNET_PLAN decision 5) and nothing can debit a paid balance until M3, so a balance unlocks
- * nothing yet: at the free limit a payer is refused exactly as before. M3 adds `paid` here.
+ * Free-or-exempt funding, for jobs queued without the start check (tests, scripts) and direct runs,
+ * neither of which sets anything aside, so neither may spend credit. The turns route uses `startTurn`,
+ * and calls outside a turn `decideDirectFunding`.
  */
 export async function decideFunding(db: Db, userId: string, env: Record<string, string | undefined> = process.env): Promise<Extract<FundingSource, "free" | "exempt">> {
   const [user] = await db.select({ wallet: users.wallet }).from(users).where(eq(users.id, userId)).limit(1);
   return user && isExempt(user.wallet, env) ? "exempt" : "free";
 }
 
-/**
- * May this user spend more AI? `projectId` is the build they're starting, if any. `startingJobId`
- * is set by the worker for the job it has just claimed, with that job's stored `funding`, which
- * decides over the worker's own settings: a job keeps one source for life.
- */
-export async function checkAiAllowance(
-  db: Db,
-  input: { userId: string; projectId?: string; startingJobId?: string; funding?: FundingSource },
-  env: Record<string, string | undefined> = process.env,
-): Promise<CapDecision> {
-  if (input.funding === "exempt") return { allowed: true };
-  // Nothing creates these jobs yet, and nothing could charge for them (M3), so they never run.
-  if (input.funding === "paid" || input.funding === "platform") return { allowed: false, reason: "funding_unavailable", message: FUNDING_UNAVAILABLE_MESSAGE };
-
+/** May this user spend free AI now? The free limits only: credit doesn't come into it. */
+async function freeAllowance(db: Db, input: { userId: string; projectId?: string; startingJobId?: string }, env: Record<string, string | undefined>): Promise<CapDecision> {
   const [user] = await db.select({ wallet: users.wallet, verifiedAt: users.verifiedAt, goodidRoot: users.goodidRoot }).from(users).where(eq(users.id, input.userId)).limit(1);
   if (!user || isExempt(user.wallet, env)) return { allowed: true };
 
@@ -160,6 +158,69 @@ export async function checkAiAllowance(
     if (other) return { allowed: false, reason: "one_build_at_a_time", message: "You have a build running on another project. Wait for it to finish, then try again." };
   }
   return { allowed: true };
+}
+
+/**
+ * What to tell someone who can't use free AI and hasn't enough free credit. Whoever has bought credit
+ * hears about credit, never about free limits (plan section 5 item 4). Everyone else, which today is
+ * everyone, gets the free-limit message they get now.
+ */
+async function creditRefusal(db: Db, userId: string, free: CapRefusal, balance: { balanceMicro: number }, needMicro: number): Promise<CapRefusal> {
+  if (!(await hasPaid(db, userId))) return free;
+  return balance.balanceMicro >= needMicro ? { allowed: false, reason: "credit_held", message: CREDIT_HELD_MESSAGE } : { allowed: false, reason: "out_of_credits", message: OUT_OF_CREDITS_MESSAGE };
+}
+
+/**
+ * Who funds the build this user wants to start, and what's set aside for it (MAINNET_PLAN section 5
+ * item 3, D49): exempt goes ahead, free comes first, then credit if enough of it is free. Run in the
+ * transaction that queues the job: this takes the user's balance lock and holds it until the job is
+ * in, so builds started at the same moment see each other's jobs and holds, for free builds too.
+ */
+export async function decideStart(tx: Db, input: { userId: string; projectId: string }, env: Record<string, string | undefined> = process.env): Promise<StartDecision> {
+  const balance = await lockBalance(tx, input.userId);
+  const free = await freeAllowance(tx, input, env);
+  if (free.allowed) return { allowed: true, funding: await decideFunding(tx, input.userId, env), holdMicro: 0 };
+  if (free.reason === "one_build_at_a_time") return free;
+  if (balance.availableMicro >= minStartMicro(env)) return { allowed: true, funding: "paid", holdMicro: Math.min(holdMicro(env), balance.availableMicro) };
+  return creditRefusal(tx, input.userId, free, balance, minStartMicro(env));
+}
+
+/**
+ * Who funds an AI call outside a build: an upload or a visual check, decided when it runs (D48). Free
+ * first, then credit. There's no job to hold anything against, so it needs only enough free credit
+ * for one such call, and simultaneous ones can take a balance slightly below zero, which plan section
+ * 5 item 6 writes off. Someone with no free credit stays on `free`, the route having checked already.
+ */
+export async function decideDirectFunding(db: Db, userId: string, env: Record<string, string | undefined> = process.env): Promise<Extract<FundingSource, "free" | "exempt" | "paid">> {
+  const funding = await decideFunding(db, userId, env);
+  if (funding === "exempt") return funding;
+  if ((await readBalance(db, userId)).availableMicro < PAID_MIN_DIRECT_MICRO) return "free";
+  return (await freeAllowance(db, { userId }, env)).allowed ? "free" : "paid";
+}
+
+/**
+ * May this user spend more AI? Used for calls outside a build, with neither job field, and by the
+ * worker for the job it has just claimed, with that job's stored `funding`, which decides over the
+ * worker's own settings: a job keeps one source for life. A paid job always passes here, since its
+ * hold was taken when it was queued and every call is checked against it as it runs. Queueing a build
+ * goes through `decideStart`, which also does this under the balance lock.
+ */
+export async function checkAiAllowance(
+  db: Db,
+  input: { userId: string; projectId?: string; startingJobId?: string; funding?: FundingSource },
+  env: Record<string, string | undefined> = process.env,
+): Promise<CapDecision> {
+  if (input.funding === "exempt" || input.funding === "paid") return { allowed: true };
+  // Nothing creates these jobs yet: the AI review, when it's built, decides how they run.
+  if (input.funding === "platform") return { allowed: false, reason: "funding_unavailable", message: FUNDING_UNAVAILABLE_MESSAGE };
+
+  const free = await freeAllowance(db, input, env);
+  if (free.allowed || free.reason === "one_build_at_a_time") return free;
+  const balance = await readBalance(db, input.userId);
+  const need = input.startingJobId || input.projectId ? minStartMicro(env) : PAID_MIN_DIRECT_MICRO;
+  // A free job can't turn into a paid one, so someone with credit is told to send it again.
+  if (input.funding === "free") return balance.availableMicro >= need || (await hasPaid(db, input.userId)) ? { ...free, message: FREE_RAN_OUT_MESSAGE } : free;
+  return balance.availableMicro >= need ? { allowed: true } : creditRefusal(db, input.userId, free, balance, need);
 }
 
 /**

@@ -13,7 +13,7 @@ import { LeaseLostError } from "@/server/agent/turn-progress";
 import type { TurnEvent, TurnMode } from "@/lib/turn-types";
 import { nameProject } from "@/server/agent/project-name";
 import { checkAiAllowance } from "@/server/credits/cap";
-import { MAX_ATTEMPTS, RENEW_MS, appendEvents, claimJob, failJob, jobContext, renewLease, sweep } from "./jobs";
+import { MAX_ATTEMPTS, RENEW_MS, appendEvents, checkHolds, claimJob, failJob, jobContext, renewLease, sweep } from "./jobs";
 
 /** Jobs one worker runs at once (different projects; one per project is enforced by the DB). */
 const CONCURRENCY = 3;
@@ -82,6 +82,8 @@ export class TurnWorker {
   private wake: (() => void) | null = null;
   private listeners = new Map<string, Set<Listener>>();
   private lastSweep = 0;
+  /** From when the worker started, so it can pick up crashed builds before anything counts them as stuck. */
+  private lastHoldCheck = Date.now();
   private loop: Promise<void> | null = null;
 
   constructor(private readonly opts: WorkerOptions) {}
@@ -117,6 +119,10 @@ export class TurnWorker {
       this.lastSweep = Date.now();
       await sweep(db).catch(() => undefined);
     }
+    if (Date.now() - this.lastHoldCheck > 60_000) {
+      this.lastHoldCheck = Date.now();
+      await checkHolds(db).catch((e) => console.warn(`[worker] the check on holds failed: ${(e as Error).message}`));
+    }
     const started: TurnJob[] = [];
     while (this.running.size < (this.opts.concurrency ?? (Number(process.env.TURN_CONCURRENCY) || CONCURRENCY))) {
       const job = await claimJob(db, this.id);
@@ -142,7 +148,7 @@ export class TurnWorker {
     try {
       const jobs = await db.select({ id: turnJobs.id }).from(turnJobs).where(eq(turnJobs.projectId, job.projectId)).limit(2);
       if (jobs.length > 1) return;
-      await nameProject(db, model, { projectId: job.projectId, userId: job.userId, prompt: job.prompt, messageId: job.userMessageId, funding: job.funding });
+      await nameProject(db, model, { projectId: job.projectId, userId: job.userId, prompt: job.prompt, messageId: job.userMessageId, funding: job.funding, jobId: job.id });
     } catch (e) {
       console.warn(`[worker] couldn't name project ${job.projectId}: ${(e as Error).message}`);
     }

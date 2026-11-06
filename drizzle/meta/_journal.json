@@ -85,6 +85,13 @@
       "when": 1793981575669,
       "tag": "0011_funding_fixed",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1793991455327,
+      "tag": "0012_m3_holds",
+      "breakpoints": true
     }
   ]
 }

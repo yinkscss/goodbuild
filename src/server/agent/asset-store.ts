@@ -18,7 +18,7 @@ import {
 } from "./assets";
 import { TIER_FOR, type ModelClient } from "./model";
 import { recordUsage } from "./store";
-import { decideFunding } from "@/server/credits/cap";
+import { decideDirectFunding } from "@/server/credits/cap";
 import { sanitizeSvgDocument } from "./svg-sanitize";
 
 /**
@@ -200,7 +200,7 @@ async function describeImage(
   if (!args.model) return "";
   const image = await visionImage(bytes, mime);
   // Outside any turn, so who funds it is decided now (D48).
-  const funding = await decideFunding(args.db, args.userId);
+  const funding = await decideDirectFunding(args.db, args.userId);
   let text = "";
   for await (const ev of args.model.stream({
     tier: TIER_FOR.build,
