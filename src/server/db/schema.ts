@@ -227,6 +227,15 @@ export const turnJobs = pgTable(
     error: text("error"),
     /** Who funds this build: decided when the job is created and never changed (D48). Its usage rows take it. */
     funding: text("funding").$type<FundingSource>().notNull().default("free"),
+    /**
+     * Paid jobs only (D49): credit still reserved for this build while it's queued or running, in
+     * micro-USD. Charges come out of it, and it can be extended before a call. A trigger in migration
+     * 0012 keeps `balances.reserved_micro` equal to the sum of these, and moves the hold to
+     * `releasedMicro` when the job ends, however it ends, so it's returned exactly once.
+     */
+    holdMicro: bigint("hold_micro", { mode: "number" }).notNull().default(0),
+    /** What was left of the hold when the job ended, returned to the user's available credit. */
+    releasedMicro: bigint("released_micro", { mode: "number" }).notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     startedAt: timestamp("started_at", { withTimezone: true }),
     finishedAt: timestamp("finished_at", { withTimezone: true }),
@@ -237,6 +246,7 @@ export const turnJobs = pgTable(
     uniqueIndex("turn_jobs_one_running_idx").on(t.projectId).where(sql`status = 'running'`),
     uniqueIndex("turn_jobs_user_message_idx").on(t.userMessageId),
     check("turn_jobs_funding_check", sql`${t.funding} IN ('free', 'paid', 'exempt', 'platform')`),
+    check("turn_jobs_hold_check", sql`${t.holdMicro} >= 0 AND ${t.releasedMicro} >= 0 AND (${t.funding} = 'paid' OR (${t.holdMicro} = 0 AND ${t.releasedMicro} = 0))`),
   ],
 );
 
@@ -320,13 +330,23 @@ export const ledgerEntries = pgTable(
  * trigger refuses to commit any change that makes it differ from the entries. It may be negative,
  * after a chargeback for example, so there's deliberately no check that it's at least zero.
  */
-export const balances = pgTable("balances", {
-  userId: uuid("user_id")
-    .primaryKey()
-    .references(() => users.id, { onDelete: "restrict" }),
-  balanceMicro: bigint("balance_micro", { mode: "number" }).notNull().default(0),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const balances = pgTable(
+  "balances",
+  {
+    userId: uuid("user_id")
+      .primaryKey()
+      .references(() => users.id, { onDelete: "restrict" }),
+    balanceMicro: bigint("balance_micro", { mode: "number" }).notNull().default(0),
+    /**
+     * Credit reserved for paid builds in progress (D49): the sum of their `turn_jobs.hold_micro`,
+     * kept by a trigger. Not a ledger amount: the balance only moves when a charge is posted. What a
+     * new build can reserve is `balanceMicro - reservedMicro`.
+     */
+    reservedMicro: bigint("reserved_micro", { mode: "number" }).notNull().default(0),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [check("balances_reserved_check", sql`${t.reservedMicro} >= 0`)],
+);
 
 export type LedgerEntry = typeof ledgerEntries.$inferSelect;
 export type TurnJob = typeof turnJobs.$inferSelect;
