@@ -110,4 +110,16 @@ tags="$(docker images "$image" --format '{{.Tag}}' | grep -c '^sha-')"
 bash rollback.sh previous >/dev/null 2>&1
 expect_running v8 "rollback after pruning"
 
+# Production before O1: "latest" is the only name the running image has. The next release must still
+# keep it as previous, and leave no holding tag behind.
+printf '%s\n' "$good_dockerfile" > Dockerfile
+echo v10 > VERSION
+"${compose[@]}" build >/dev/null 2>&1 && "${compose[@]}" up -d >/dev/null 2>&1 || fail "plain build of v10"
+expect_running v10 "plain build"
+deploy v11
+expect_running v11 "deploy over an image named only latest"
+docker image inspect "$image:outgoing" >/dev/null 2>&1 && fail "the holding tag was left behind"
+bash rollback.sh previous >/dev/null 2>&1
+expect_running v10 "rollback to an image that was named only latest"
+
 echo "release and rollback scripts: all checks passed"
