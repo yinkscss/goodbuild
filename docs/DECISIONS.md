@@ -193,6 +193,13 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - **Not built:** owner edits of visitors' records (replies, "confirmed"), staff readers, email alerts, Turnstile on busy forms, email sign-in for visitors (next PR).
 - Terms and Privacy updated: owners can now read what visitors send them, where the form says so.
 
+### D35. Email-code sign-in for app visitors
+- Date: 6 Nov 2026 · Decided by: user (Olayinka): "Email sign-in", after GoodBuild's Magic account couldn't be shared with published apps. Provider: Resend (the user created the account, verified goodbuildit.xyz and put the key on the server). Design by Claude, reviewed by the advisor.
+- **Opt-in per app** (`"signIn": {"email": true}` in dataRules.json), so no app can be used to send email unless it asks for sign-in.
+- **A random id per app and address** (`email:<uuid>`), never derived from a rotatable secret and never shown to others. Email visitors are `signed-in`, never `owner`.
+- **Abuse:** codes are counted per IP, address, app and the whole site, in the database, plus a daily cap on wrong guesses per address. The attempt count is atomic. Refusals are honest (429, 502 or 503).
+- **Not built:** bounce handling, Turnstile, merging an email identity with a wallet. Details: APP_DATA.md.
+
 ### D36. Generated apps get GoodBuild's own wallet layer: a wallet list, WalletConnect and MiniPay
 - Date: 6 Nov 2026 · Decided by: Claude, from the task the user's session set ("give apps proper wallet connection"), reviewed by the advisor. The user can change any part.
 - **Problem:** generated apps only read `window.ethereum`. On a phone in Chrome or Safari visitors saw "No wallet found", and with several extensions the app silently used whichever one took `window.ethereum`.
@@ -207,8 +214,8 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - **Older projects:** chain.ts, useWallet.ts and ConnectButton.tsx never changed before D36, so a copy whose sha256 matches the old text is untouched and is replaced with the new one, but never only some of them. chain.ts and useWallet.ts move together: if the builder edited either on the old path, all three stay on `window.ethereum`, so the wallet shown and the wallet that sends can't differ. An edited ConnectButton stays and works with the new hook. db.ts `signIn` is always on the layer, so in an app that stayed on the old path, data sign-in can still open the list and use a different wallet from its contract writes. A new check refuses `window.ethereum` in any other app file and points to `walletProvider()`. It runs on builder turns, not on publish.
 - **Bundle:** the starter app with a connect button, a contract write and data sign-in, built by the publish path: initial JS 534.0 KB raw / 166.5 KB gzip before, 538.9 KB / 173.4 KB gzip after (sum of the 9 files the page loads up front). WalletConnect adds 461.7 KB raw / 140.2 KB gzip, fetched only on demand.
 - **Changing your mind:** WalletConnect 2.26's `abortPairingAttempt` does nothing (read in `@walletconnect/universal-provider`), so the module counts attempts itself. If a wallet approves a link the visitor closed or went Back from, the session is disconnected and the app stays signed out. Looking at the list and closing it downloads nothing.
+- **Sign-in and the wallet:** `useDbSession` ends a wallet sign-in when the connected account switches or disconnects, not while no wallet has connected yet, because the session cookie outlives the page. An email sign-in (D35) isn't touched by wallet changes.
 - **Without a project id:** no WalletConnect in published apps. They offer browser wallets and MiniPay, and a phone browser with no wallet still says "No wallet found". The id is read when an app is published, so apps already published get WalletConnect only when republished.
-- **Numbering:** PR #30 (email sign-in for app visitors) also says D35 and was opened first, so this one is D36.
 - **Not verified (UNVERIFIED):** a real relay handshake, a real phone scan, the phone deep-link formats, bringing the wallet app forward for each request on a phone, reconnecting a WalletConnect session on a later visit, a wallet approving both an old and a new link (dropping the old session could also end the new one), real MetaMask, and MiniPay itself. See HANDOFF.md.
 
 ## Recommended decisions (Ego; adopted unless changed)

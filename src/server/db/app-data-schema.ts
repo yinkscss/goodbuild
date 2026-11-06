@@ -82,6 +82,8 @@ export const appDataSessions = pgTable(
       .notNull()
       .references(() => projects.id, { onDelete: "cascade" }),
     wallet: text("wallet").notNull(),
+    /** The address of a visitor signed in by email, shown only to them (D35). */
+    email: text("email"),
     tokenHash: text("token_hash").notNull(),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -90,3 +92,43 @@ export const appDataSessions = pgTable(
 );
 
 export type AppDataRecord = typeof appDataRecords.$inferSelect;
+
+/**
+ * Email sign-in for app visitors (D35). One row per app and address, so a visitor keeps the same
+ * id in that app and a different one in every other. The id is random, never derived from a secret
+ * that might be rotated, and the address never appears in records anyone else can read.
+ */
+export const appDataEmailIdentities = pgTable(
+  "app_data_email_identities",
+  {
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    /** Trimmed and lowercased. */
+    email: text("email").notNull(),
+    /** "email:<uuid>": what records and sessions name as the writer. */
+    subject: text("subject").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.projectId, t.email] }), uniqueIndex("app_data_email_identities_subject_idx").on(t.subject)],
+);
+
+/** One-time sign-in codes. Only an HMAC of the code is stored. */
+export const appDataEmailCodes = pgTable(
+  "app_data_email_codes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    email: text("email").notNull(),
+    codeHash: text("code_hash").notNull(),
+    /** A hash of the requesting IP, for the daily cap per IP. */
+    ipHash: text("ip_hash").notNull(),
+    attempts: integer("attempts").notNull().default(0),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("app_data_email_codes_lookup_idx").on(t.projectId, t.email, t.createdAt), index("app_data_email_codes_created_idx").on(t.createdAt), index("app_data_email_codes_ip_idx").on(t.ipHash, t.createdAt)],
+);

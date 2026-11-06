@@ -269,6 +269,23 @@ async function main() {
     await a.goto(url);
     await a.waitForFunction((w: string) => document.querySelector("#account")?.textContent === w, visitor.address, { timeout: 15000 });
     check("reconnects the same wallet on the next visit without asking", !(await a.evaluate(() => (window as unknown as { __walletCalls: string[] }).__walletCalls.includes("test:eth_requestAccounts"))));
+    // The data sign-in outlives the page. Only switching or disconnecting the wallet ends it.
+    const signedIn = visitor.address.toLowerCase();
+    await a.waitForFunction((w: string) => document.querySelector("#who")?.textContent === w, signedIn, { timeout: 15000 });
+    await new Promise((r) => setTimeout(r, 1000));
+    check("stays signed in to the app's data after a reload", (await a.textContent("#who")) === signedIn, await a.textContent("#who"));
+    await a.evaluate(() => localStorage.removeItem("goodbuild-wallet"));
+    await a.goto(url);
+    await a.waitForFunction((w: string) => document.querySelector("#who")?.textContent === w, signedIn, { timeout: 15000 });
+    await a.click("text=Connect wallet");
+    await a.waitForSelector('[role="dialog"]');
+    check("opening the wallet list doesn't end the sign-in", (await a.textContent("#who")) === signedIn, await a.textContent("#who"));
+    await a.click('[role="dialog"] button:has-text("Test Wallet")');
+    await a.waitForFunction((w: string) => document.querySelector("#account")?.textContent === w, visitor.address, { timeout: 15000 });
+    check("connecting the same wallet keeps the sign-in", (await a.textContent("#who")) === signedIn, await a.textContent("#who"));
+    await a.click('button[aria-label="Disconnect wallet"]');
+    await a.waitForFunction(() => document.querySelector("#who")?.textContent === "signed out", undefined, { timeout: 5000 });
+    check("disconnecting the wallet ends the sign-in", true);
     check("no CSP violations or errors in the browser-wallet flow", (await problems()).length === 0, await problems());
     await context.close();
 

@@ -64,6 +64,13 @@
       "when": 1793924536109,
       "tag": "0008_app_data_rules",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793957272709,
+      "tag": "0009_app_email_sign_in",
+      "breakpoints": true
     }
   ]
 }

@@ -355,13 +355,24 @@ function ruleOf(name: string): Rule {
   return { create: typeof r.create === "string" ? r.create : "signed-in", read: arr(r.read, ["writer"]), public: arr(r.public, []), fields: (r.fields as Record<string, string>) ?? null, unique: arr(r.unique, []) };
 }
 const PREVIEW_ANON = "anon:00000000-0000-4000-8000-000000000000";
+const PREVIEW_EMAIL_ID = "email:00000000-0000-4000-8000-000000000001";
+let previewEmail: string | null = null;
+/** Who the preview's visitor is: their wallet, their email id, or nobody. */
+const previewSubject = () => previewWallet ?? (previewEmail ? PREVIEW_EMAIL_ID : null);
+const emailOffered = () => (rules as { signIn?: { email?: unknown } }).signIn?.email === true;
 
-function showPreviewNote() {
-  if (document.querySelector("[data-goodbuild-preview-note]")) return;
+/** The default note never replaces a more specific one, such as the email sign-in note. */
+function showPreviewNote(special?: string) {
+  const text = special ?? "Preview: saved data stays in this browser. It's stored for real once you publish.";
+  const existing = document.querySelector("[data-goodbuild-preview-note]");
+  if (existing) {
+    if (special) existing.textContent = special;
+    return;
+  }
   const note = document.createElement("div");
   note.setAttribute("data-goodbuild-preview-note", "");
   note.setAttribute("role", "note");
-  note.textContent = "Preview: saved data stays in this browser. It's stored for real once you publish.";
+  note.textContent = text;
   note.style.cssText = "position:fixed;left:8px;bottom:8px;z-index:9999;max-width:calc(100vw - 16px);padding:6px 10px;border-radius:8px;font:500 12px/1.4 system-ui,sans-serif;background:#1a0d26;color:#fff";
   document.body.appendChild(note);
 }
@@ -373,7 +384,7 @@ function requirePreviewWallet(): string {
 
 function previewPut<T>(collection: string, key: string, value: T): DbRecord<T> {
   const rule = ruleOf(collection);
-  const owner = previewWallet ?? (rule.create === "anyone" ? PREVIEW_ANON : requirePreviewWallet());
+  const owner = previewSubject() ?? (rule.create === "anyone" ? PREVIEW_ANON : requirePreviewWallet());
   showPreviewNote();
   const now = new Date().toISOString();
   const all = previewRecords();
@@ -396,11 +407,58 @@ function previewVisible(collection: string, owner?: string): DbRecord[] {
   const rule = ruleOf(collection);
   return previewRecords()
     .filter((r) => r.collection === collection)
-    .map((r) => (rule.read.some((x) => x === "anyone" || x === "owner" || (x === "signed-in" && previewWallet) || (x === "writer" && r.owner === (previewWallet ?? PREVIEW_ANON))) ? r : null))
+    .map((r) => (rule.read.some((x) => x === "anyone" || x === "owner" || (x === "signed-in" && previewSubject()) || (x === "writer" && r.owner === (previewSubject() ?? PREVIEW_ANON))) ? r : null))
     .filter((r): r is Stored => r !== null && (!owner || r.owner === owner.toLowerCase()));
 }
 
 // --- The API ------------------------------------------------------------------------------------
+
+export interface DbSessionInfo {
+  /** The signed-in wallet, or null (also null for someone signed in by email). */
+  wallet: string | null;
+  /** The address of someone signed in by email, or null. Only they ever see it. */
+  email: string | null;
+  signedIn: boolean;
+  /** The app's owner is signed in (always true in the preview). */
+  owner: boolean;
+  /** This app offers email sign-in ("signIn": {"email": true} in dataRules.json). */
+  emailSignIn: boolean;
+}
+
+/** Everything about who is signed in to this app, in one request. */
+export async function sessionInfo(): Promise<DbSessionInfo> {
+  if (isPreview) {
+    const subject = previewSubject();
+    return { wallet: previewWallet, email: previewWallet ? null : previewEmail, signedIn: Boolean(subject), owner: true, emailSignIn: emailOffered() };
+  }
+  const s = await api<Partial<DbSessionInfo>>("/session");
+  return { wallet: s.wallet ?? null, email: s.email ?? null, signedIn: Boolean(s.signedIn ?? s.wallet), owner: s.owner === true, emailSignIn: s.emailSignIn === true };
+}
+
+/**
+ * Email sign-in, step 1: send a 6-digit code to this address. Only in apps whose dataRules.json has
+ * "signIn": {"email": true}. Throws with a message you can show (a wrong address, too many codes).
+ */
+export async function sendEmailCode(email: string): Promise<void> {
+  if (isPreview) {
+    showPreviewNote("Preview: no email is sent. Any 6-digit code signs you in.");
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) throw new DbError("invalid_email", "Enter one email address, like ada@example.com.", 400);
+    return;
+  }
+  await api("/session/email", { method: "POST", body: JSON.stringify({ email }) });
+}
+
+/** Email sign-in, step 2: the code from the email. Returns the address now signed in. */
+export async function verifyEmailCode(email: string, code: string): Promise<string> {
+  const clean = code.replace(/\s+/g, "");
+  if (isPreview) {
+    if (!/^[0-9]{6}$/.test(clean)) throw new DbError("code_invalid", "Enter the 6-digit code from the email.", 401);
+    previewWallet = null;
+    previewEmail = email.trim().toLowerCase();
+    return previewEmail;
+  }
+  return (await api<{ email: string }>("/session/email/verify", { method: "POST", body: JSON.stringify({ email, code: clean }) })).email;
+}
 
 /** True when the signed-in wallet owns this app on GoodBuild. Always true in the preview. */
 export async function isAppOwner(): Promise<boolean> {
@@ -432,6 +490,7 @@ export async function signIn(): Promise<string> {
 export async function signOut(): Promise<void> {
   if (isPreview) {
     previewWallet = null;
+    previewEmail = null;
     return;
   }
   await api("/session", { method: "DELETE" });
@@ -492,7 +551,7 @@ export function collection<T = unknown>(name: string) {
     /** Delete your own record. The app's owner can pass owner to delete someone else's, where the rule allows it. */
     async remove(key: string, options: { owner?: string | null } = {}): Promise<void> {
       if (isPreview) {
-        const owner = options.owner ?? previewWallet ?? PREVIEW_ANON;
+        const owner = options.owner ?? previewSubject() ?? PREVIEW_ANON;
         savePreview(previewRecords().filter((r) => !(r.key === key && r.owner === owner && r.collection === name)));
         return;
       }
@@ -503,7 +562,7 @@ export function collection<T = unknown>(name: string) {
 `;
 
 const USE_DB = `import { useCallback, useEffect, useState } from "react";
-import { collection, currentWallet, isAppOwner, isPreview, signIn as dbSignIn, signOut as dbSignOut, type DbRecord } from "./db";
+import { collection, isPreview, sendEmailCode, sessionInfo, signIn as dbSignIn, signOut as dbSignOut, verifyEmailCode, type DbRecord } from "./db";
 import { errorMessage } from "./format";
 import { subscribeWallet, walletState } from "./goodbuild/wallet";
 import { useRead } from "./hooks";
@@ -514,27 +573,41 @@ import { useRead } from "./hooks";
  */
 export function useDbSession() {
   const [wallet, setWallet] = useState<string | null>(null);
+  const [email, setEmail] = useState<string | null>(null);
   const [isOwner, setIsOwner] = useState(false);
+  const [emailSignIn, setEmailSignIn] = useState(false);
   const [loading, setLoading] = useState(true);
   const [signingIn, setSigningIn] = useState(false);
+  const [codeSentTo, setCodeSentTo] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    currentWallet().then(setWallet).catch(() => setWallet(null)).finally(() => setLoading(false));
-    isAppOwner().then(setIsOwner).catch(() => setIsOwner(false));
-    // Switching or disconnecting the wallet ends this sign-in.
-    return subscribeWallet(() => {
-      const account = (walletState().account ?? "").toLowerCase();
-      setWallet((w) => (w && w !== account ? null : w));
-    });
+  const refresh = useCallback(async () => {
+    const s = await sessionInfo();
+    setWallet(s.wallet);
+    setEmail(s.email);
+    setIsOwner(s.owner);
+    setEmailSignIn(s.emailSignIn);
   }, []);
 
-  const signIn = useCallback(async () => {
+  useEffect(() => {
+    refresh().catch(() => setWallet(null)).finally(() => setLoading(false));
+    // Switching or disconnecting the wallet ends a wallet sign-in. No wallet connected yet doesn't:
+    // the session outlives the page, and the wallet reconnects a moment after it loads.
+    let last = (walletState().account ?? "").toLowerCase();
+    return subscribeWallet(() => {
+      const account = (walletState().account ?? "").toLowerCase();
+      if (account === last) return;
+      last = account;
+      setWallet((w) => (w && w !== account ? null : w));
+    });
+  }, [refresh]);
+
+  /** Run one step, keeping signingIn and error in step. */
+  const step = useCallback(async (run: () => Promise<void>) => {
     setSigningIn(true);
     setError(null);
     try {
-      setWallet(await dbSignIn());
-      setIsOwner(await isAppOwner().catch(() => false));
+      await run();
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -542,22 +615,49 @@ export function useDbSession() {
     }
   }, []);
 
+  /** Wallet sign-in: connect if needed, then one signature (no transaction, no gas). */
+  const signIn = useCallback(() => step(async () => {
+    await dbSignIn();
+    await refresh();
+  }), [step, refresh]);
+
+  /** Email sign-in, step 1: send the code. Then show a code box and call confirmCode. */
+  const sendCode = useCallback((address: string) => step(async () => {
+    await sendEmailCode(address);
+    setCodeSentTo(address.trim().toLowerCase());
+  }), [step]);
+
+  /** Email sign-in, step 2: the 6 digits from the email. */
+  const confirmCode = useCallback((code: string) => step(async () => {
+    if (!codeSentTo) throw new Error("Ask for a code first.");
+    await verifyEmailCode(codeSentTo, code);
+    setCodeSentTo(null);
+    await refresh();
+  }), [step, refresh, codeSentTo]);
+
   const signOut = useCallback(async () => {
     setError(null);
     await dbSignOut().catch(() => {});
     setWallet(null);
+    setEmail(null);
+    setCodeSentTo(null);
     setIsOwner(isPreview);
   }, []);
 
-  /** isOwner: the app's owner is signed in, so show the owner's view (for example, every booking). */
-  return { wallet, isOwner, loading, signingIn, error, signIn, signOut, isPreview };
+  /**
+   * signedIn: by wallet or by email. Use it for enabled, not wallet, so email visitors see their records.
+   * isOwner: the app's owner is signed in (always in the preview), so show the owner view behind it.
+   * emailSignIn: this app offers email codes. codeSentTo: an address is waiting for its code.
+   */
+  const signedIn = Boolean(wallet || email);
+  return { wallet, email, signedIn, isOwner, emailSignIn, loading, signingIn, codeSentTo, error, signIn, sendCode, confirmCode, signOut, isPreview };
 }
 
 /**
  * The records of one collection, newest first, with loading and error state. Pass enabled=false to
  * wait (a private collection needs a signed-in wallet). Writes refresh the list; they throw on
  * failure, so wrap them in try/catch and show errorMessage(e).
- *   const notes = useCollection<Note>("notes", { enabled: !!session.wallet, wallet: session.wallet });
+ *   const notes = useCollection<Note>("notes", { enabled: session.signedIn, wallet: session.wallet ?? session.email });
  *   await notes.add({ text });
  */
 export function useCollection<T>(name: string, options: { owner?: string; limit?: number; enabled?: boolean; wallet?: string | null } = {}) {
