@@ -33,7 +33,7 @@ CREATE INDEX "ledger_entries_user_idx" ON "ledger_entries" USING btree ("user_id
 ALTER TABLE "usage_events" ADD CONSTRAINT "usage_events_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "turn_jobs" ADD CONSTRAINT "turn_jobs_funding_check" CHECK ("turn_jobs"."funding" IN ('free', 'paid', 'exempt', 'platform'));--> statement-breakpoint
 ALTER TABLE "usage_events" ADD CONSTRAINT "usage_events_funding_check" CHECK ("usage_events"."funding" IN ('free', 'paid', 'exempt', 'platform'));--> statement-breakpoint
--- Hand-written below this line: drizzle-kit doesn't model triggers. See D45.
+-- Hand-written below this line: drizzle-kit doesn't model triggers. See D46.
 -- Rollback note: old code never writes the new tables, takes the funding default and never deletes a user, so it keeps working after this migration.
 CREATE FUNCTION "money_record_refuse_change"() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN

@@ -6,7 +6,7 @@ import type { Db } from "@/server/db/client";
 import { LEDGER_KINDS, balances, ledgerEntries, type LedgerEntry, type LedgerKind } from "@/server/db/schema";
 
 /**
- * The credits ledger (D45). Amounts are integer micro-USD. Every change to a balance is one entry,
+ * The credits ledger (D46). Amounts are integer micro-USD. Every change to a balance is one entry,
  * posted here in one transaction with the balance. The balance is only a cached sum of the entries.
  *
  * The rule for going below zero:

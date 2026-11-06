@@ -3,7 +3,7 @@ import { bigint, boolean, check, customType, index, integer, jsonb, pgTable, pri
 
 /**
  * Stage 1 schema (D8: project code and chat in our DB; app data on-chain).
- * The credits ledger is at the end of this file (D45), deployments are in deploy-schema.ts.
+ * The credits ledger is at the end of this file (D46), deployments are in deploy-schema.ts.
  */
 
 /** Who pays for a model call or a build (MAINNET_PLAN.md section 5). Older rows are all `free`. */
@@ -127,7 +127,7 @@ export const versions = pgTable(
 
 /**
  * One row per model call, priced with GoodBuild's table (D13). A money record: the free total (D29)
- * adds these up and M3 debits from them, so deleting a user is refused rather than losing them (D45).
+ * adds these up and M3 debits from them, so deleting a user is refused rather than losing them (D46).
  */
 export const usageEvents = pgTable(
   "usage_events",
@@ -196,7 +196,7 @@ export const projectAssets = pgTable(
  * (FOR UPDATE SKIP LOCKED), runs the agent turn and commits the result. The lease is the only
  * turn lock: at most one running job per project (partial unique index).
  * Mostly a work queue, so jobs still go when their project or user is deleted. A `paid` job is a
- * money record: a trigger refuses to delete it, and that refuses the whole delete (D45).
+ * money record: a trigger refuses to delete it, and that refuses the whole delete (D46).
  */
 export const turnJobs = pgTable(
   "turn_jobs",
@@ -280,7 +280,7 @@ export const LEDGER_KINDS = ["deposit", "usage", "refund", "adjust"] as const;
 export type LedgerKind = (typeof LEDGER_KINDS)[number];
 
 /**
- * The credits ledger (D45, CREDITS.md section 3). Append-only: triggers in migration 0010 refuse
+ * The credits ledger (D46, CREDITS.md section 3). Append-only: triggers in migration 0010 refuse
  * UPDATE, DELETE and TRUNCATE, and only `postLedgerEntry` should write here. All amounts are integer
  * micro-USD. There's no link to projects, so deleting a project can't touch a money record.
  */

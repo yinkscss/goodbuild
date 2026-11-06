@@ -182,7 +182,7 @@ describe.each(testBackends())("credits ledger on $name", (backend) => {
     });
   });
 
-  describe("the rule for going below zero (D45)", () => {
+  describe("the rule for going below zero (D46)", () => {
     it("refuses by default and writes nothing, not even an empty balance row", async () => {
       const userId = await newUser();
       await expect(postLedgerEntry(db, { userId, kind: "usage", amountMicro: -1, idempotencyKey: key() })).rejects.toBeInstanceOf(InsufficientBalanceError);

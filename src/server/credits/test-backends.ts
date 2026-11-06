@@ -77,7 +77,9 @@ function postgresBackend(url: string): TestBackend {
   };
 }
 
-/** PGlite always. Real Postgres too when TEST_DATABASE_URL is set; docs/HANDOFF.md says how. */
+/** PGlite always. Real Postgres too when TEST_DATABASE_URL is set, for example
+ * `TEST_DATABASE_URL=postgres://postgres@127.0.0.1:54329/postgres pnpm vitest run src/server/credits` against a
+ * throwaway local server (`initdb` then `pg_ctl start`). Each test file makes and drops its own database. */
 export function testBackends(): TestBackend[] {
   const url = process.env.TEST_DATABASE_URL;
   return url ? [pglite, postgresBackend(url)] : [pglite];

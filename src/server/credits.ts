@@ -4,7 +4,7 @@ import { getDb, type Db } from "@/server/db/client";
 import { getBalanceMicro } from "@/server/credits/ledger";
 
 export interface CreditSnapshot {
-  /** The real ledger balance in micro-USD (D45). Null if it couldn't be read, which never means zero. */
+  /** The real ledger balance in micro-USD (D46). Null if it couldn't be read, which never means zero. */
   balanceMicro: number | null;
   /**
    * Always null for now. The UI reads null as "Testnet beta · free", and a 0 here would disable the
