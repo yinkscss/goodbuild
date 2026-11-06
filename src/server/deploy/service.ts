@@ -28,10 +28,12 @@ import {
   latestProxyRows,
   planProxyUpgrade,
   readAuthority,
+  minedTx,
   readProxy,
   recordProxyCreation,
   recordUpgrade,
   refusalError,
+  type ChainWait,
   type UpgradeRefusal,
 } from "./upgradeable";
 
@@ -294,7 +296,7 @@ export interface RecordInput {
 export async function recordDeployment(
   db: Db,
   input: RecordInput,
-  deps: { client?: PublicClient; compile?: typeof compileForDeploy } = {},
+  deps: { client?: PublicClient; compile?: typeof compileForDeploy; wait?: ChainWait } = {},
 ): Promise<Deployment> {
   assertChain(input.chainId);
   const client = deps.client ?? publicClientFor(input.chainId);
@@ -317,18 +319,13 @@ export async function recordDeployment(
     const proxiedInput = { ...input, implementationTxHash: input.proxied.implementationTxHash };
     const retried = await existingUpgrade(db, input);
     if (retried) return retried;
-    const row = input.proxied.kind === "upgrade" ? await recordUpgrade(db, proxiedInput, { client, compile: deps.compile }) : await recordProxyCreation(db, proxiedInput, { client, compile: deps.compile });
+    const row = input.proxied.kind === "upgrade" ? await recordUpgrade(db, proxiedInput, { client, compile: deps.compile, wait: deps.wait }) : await recordProxyCreation(db, proxiedInput, { client, compile: deps.compile, wait: deps.wait });
     await syncContractModules(db, input.projectId);
     await db.update(projects).set({ status: "deployed" }).where(eq(projects.id, input.projectId));
     return row;
   }
 
-  const [receipt, tx] = await Promise.all([
-    client.waitForTransactionReceipt({ hash: input.txHash, timeout: 45_000 }).catch(() => null),
-    client.getTransaction({ hash: input.txHash }).catch(() => null),
-  ]);
-  if (!receipt || !tx) throw new DeployError("tx_not_found", "The network doesn't know that transaction yet. Try again in a moment.");
-  if (receipt.status !== "success") throw new DeployError("tx_failed", "That deployment transaction failed on-chain.");
+  const { receipt, tx } = await minedTx(client, input.txHash, deps.wait, "That deployment transaction failed on-chain.");
   if (tx.to !== null || !receipt.contractAddress) throw new DeployError("not_contract_creation", "That transaction didn't create a contract.");
   if (tx.from.toLowerCase() !== input.wallet.toLowerCase()) {
     throw new DeployError("wrong_sender", "That transaction wasn't sent by your signed-in wallet.");

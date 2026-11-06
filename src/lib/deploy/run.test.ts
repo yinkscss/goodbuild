@@ -3,7 +3,7 @@ import type { Abi, Address, Hex } from "viem";
 
 import { classifyDeployError, errorDetail } from "./errors";
 import { newOpcodesUsed } from "./opcodes";
-import { runDeploy, StepFailure, usesGoodDollar, type DeployEnv, type DeployEvent, type DeployProgress, type Plan } from "./run";
+import { runDeploy, SIMULATE_TIMEOUT_MS, StepFailure, usesGoodDollar, withDeadline, type DeployEnv, type DeployEvent, type DeployProgress, type Plan } from "./run";
 import { chainSupportsOpcode, simulateCreation, UnsupportedOpcodeError } from "./simulate";
 import { encodeUpgrade } from "./upgradeable";
 
@@ -130,6 +130,38 @@ describe("runDeploy", () => {
     await runDeploy(plan({ steps: plan().steps.slice(0, 1) }), e, undefined, progress);
     expect(e.send).not.toHaveBeenCalled();
     expect(e.record).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops waiting on a chain check that never answers, so the modal can offer Try again", async () => {
+    // The Playwright run on 6 Nov 2026 sat on "Checking on Celo…" because the RPC fetch never settled.
+    vi.useFakeTimers();
+    try {
+      const { e } = env({ simulate: vi.fn(() => new Promise<never>(() => undefined)) });
+      const events: DeployEvent[] = [];
+      const run = runDeploy(plan({ steps: plan().steps.slice(0, 1) }), e, (ev) => events.push(ev)).catch((x: unknown) => x);
+      await vi.advanceTimersByTimeAsync(SIMULATE_TIMEOUT_MS + 10);
+      const err = (await run) as StepFailure;
+      expect(err).toBeInstanceOf(StepFailure);
+      expect(err.error.kind).toBe("timeout");
+      expect(err.error.message).toMatch(/nothing was sent/i);
+      expect(e.send).not.toHaveBeenCalled();
+      expect(events.at(-1)).toMatchObject({ phase: "failed" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a deadline rejects a promise that never settles, and passes a quick one through", async () => {
+    vi.useFakeTimers();
+    try {
+      const slow = withDeadline(new Promise<never>(() => undefined), 1000).catch((x: Error & { code?: string }) => x.code);
+      await vi.advanceTimersByTimeAsync(1001);
+      expect(await slow).toBe("rpc_timeout");
+      await expect(withDeadline(Promise.resolve(7), 1000)).resolves.toBe(7);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(classifyDeployError(new Error("The request took too long to respond.")).kind).toBe("timeout");
   });
 
   it("hands the wallet the simulation's gas estimate", async () => {
@@ -290,6 +322,52 @@ describe("runDeploy behind a proxy (D33)", () => {
     expect(sends.filter((x) => x.data === "0xc0de")).toHaveLength(1);
     expect(records).toEqual([{ tx: hash(2), code: hash(1) }]);
     expect(progress.sent).toEqual({});
+  });
+
+  it("a record the chain can't confirm yet is retried, and never shows Failed once both transactions mined", async () => {
+    // A load-balanced RPC answers from a node that hasn't seen the new block (the Celo Sepolia live test, 6 Nov 2026).
+    const behind = Object.assign(new Error("The network says that proxy uses different code."), { code: "chain_read_failed" });
+    const { env, sends, records } = harness();
+    let lagging = 2;
+    const record = env.record;
+    const naps: number[] = [];
+    const events: DeployEvent[] = [];
+    const out = await runDeploy(firstPlan, { ...env, sleep: async (ms: number) => void naps.push(ms), record: async (s: unknown, tx: Hex, code?: Hex) => (lagging-- > 0 ? Promise.reject(behind) : record(s, tx, code)) }, (e) => events.push(e));
+    expect(out).toEqual({ Vault: PROXY });
+    expect(sends).toHaveLength(2);
+    expect(records).toHaveLength(1);
+    expect(naps).toHaveLength(2);
+    expect(events.some((e) => e.type === "phase" && e.phase === "failed")).toBe(false);
+  });
+
+  it("when the chain still hasn't caught up, says both went through, and Try again only records", async () => {
+    const behind = Object.assign(new Error("We couldn't read the new proxy from the network."), { code: "chain_read_failed" });
+    const { env, sends, records } = harness();
+    const progress = { deployed: {}, sent: {} };
+    const events: DeployEvent[] = [];
+    const stuck = { ...env, sleep: async () => undefined, record: async () => Promise.reject(behind) };
+    const err = (await runDeploy(firstPlan, stuck, (e) => events.push(e), progress).catch((x) => x)) as StepFailure;
+    expect(err).toBeInstanceOf(StepFailure);
+    expect(err.error.kind).toBe("not_saved");
+    expect(err.error.message).toMatch(/Both transactions went through/);
+    expect(err.error.message).not.toMatch(/\u2014/);
+    const phases = events.filter((e) => e.type === "phase").map((e) => (e as { phase: string }).phase);
+    expect(phases).not.toContain("failed");
+    expect(phases.at(-1)).toBe("unsaved");
+
+    await runDeploy(firstPlan, env, undefined, progress);
+    expect(sends).toHaveLength(2); // nothing signed twice
+    expect(records).toHaveLength(1);
+  });
+
+  it("a record the server refuses still fails, with the server's reason", async () => {
+    const refused = Object.assign(new Error("That proxy gives the right to change it to another wallet, so GoodBuild won't use it."), { code: "wrong_upgrade" });
+    const { env } = harness();
+    const naps: number[] = [];
+    const err = (await runDeploy(firstPlan, { ...env, sleep: async (ms: number) => void naps.push(ms), record: async () => Promise.reject(refused) }).catch((x) => x)) as StepFailure;
+    expect(err.error.kind).toBe("unknown");
+    expect(err.error.message).toBe(refused.message);
+    expect(naps).toHaveLength(0);
   });
 
   it("a failed record retries without signing anything", async () => {

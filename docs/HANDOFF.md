@@ -83,6 +83,12 @@ A project's first message now asks questions before building. The chat no longer
 ### Upgradeable contracts trial (D33)
 Proved in a local EVM with real compiled contracts (`src/server/deploy/upgradeable.evm.test.ts`), and on Celo Sepolia on 6 Nov 2026 (section above). Modal states: `/dev/preview?deploy=upgradeable|upgrade|upgrading|refused|not-ready|upgraded`.
 
+**Fixed after the Celo Sepolia live test of 6 Nov 2026 (PR #25), in a local EVM and with fakes only:**
+- Recording a proxy or an upgrade right after mining no longer gets `wrong_upgrade` from a lagging RPC node. The server reads the proxy at the transaction's own block, fetches the transaction after its receipt, and asks again with backoff for up to 15s. A real mismatch is still refused at once. If the node still hasn't caught up, the modal retries the save twice and then says "Sent, not saved yet" with Try again, which signs nothing new. It never says Failed for transactions that mined.
+- Sourcify's "Cannot fetch bytecode" right after a deploy is now `pending`, never `failed`. The background check resubmits up to 3 times, 10s apart.
+- The check before signing ("Checking on Celo…") gives up after 30s and offers Try again. In a Playwright repro, viem's own timeout did work: an RPC that never answers fails each call after about 41s (4 tries of 10s), and the opcode probe then moves on to the next call. So the live-test stall was most likely the harness's Node proxy for every RPC request plus those long retries. That isn't proven.
+- **Still to check with MetaMask in a real browser:** one upgrade from the modal, the two new states above, and how forno answers a read at a block it doesn't have yet.
+
 **Live test, on Celo Sepolia, with your own wallet and test CELO (about 10 minutes):**
 1. Run the migration. Create a project with a small contract that holds G$, for example "a G$ savings jar where people deposit and withdraw". Let it build.
 2. Click Deploy. In the modal set "Can be changed later" to Turn on. It should say the contracts aren't ready; click "Ask the builder to convert them" and wait for the build.

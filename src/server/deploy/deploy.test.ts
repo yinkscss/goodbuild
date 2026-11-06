@@ -14,7 +14,7 @@ import { compileForDeploy, sourceKey } from "./compile";
 import { contractState } from "./contract-state";
 import { oldContractsWithFunds } from "./old-contracts";
 import { DeployError, prepareDeploy, recordDeployment } from "./service";
-import { verifyOnSourcify } from "./verify";
+import { verifyOnSourcify, verifyProxied } from "./verify";
 import { contractModule } from "@/server/agent/template";
 
 const HEADER = "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.24;\n";
@@ -289,6 +289,69 @@ describe("verifyOnSourcify", () => {
     const slow = (async (_u: string, init?: RequestInit) =>
       init?.method === "POST" ? Response.json({ verificationId: "550e8400-e29b-41d4-a716-446655440000" }, { status: 202 }) : Response.json({ isJobCompleted: false })) as typeof fetch;
     expect((await verifyOnSourcify(dep, slow, { pollMs: 1, polls: 2 })).status).toBe("pending");
+  });
+});
+
+describe("Sourcify right after a deploy", () => {
+  // The Celo Sepolia live test (6 Nov 2026): Sourcify's node hadn't seen the new contract yet.
+  const dep = {
+    chainId: 11142220,
+    address: "0x3333333333333333333333333333333333333333",
+    txHash: "0x" + "ab".repeat(32),
+    contractName: "RTXToken",
+    compilerVersion: "0.8.28+commit.7893614a",
+    stdJsonInput: { language: "Solidity", sources: { "contracts/RTXToken.sol": { content: "x" } } },
+  } as never;
+  const id = "550e8400-e29b-41d4-a716-446655440000";
+  const cannotFetch = { isJobCompleted: true, contract: { match: null }, error: { customCode: "cannot_fetch_bytecode", message: "Cannot fetch bytecode for chain #11142220 and address 0x3333333333333333333333333333333333333333" } };
+
+  /** A fake Sourcify: the job answers "Cannot fetch bytecode" for the first `misses` submissions, then matches. */
+  function sourcify(misses: number, where: "job" | "submit" = "job") {
+    let submits = 0;
+    const f = (async (_u: string, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        submits++;
+        if (where === "submit" && submits <= misses) return Response.json({ customCode: "cannot_fetch_bytecode", message: cannotFetch.error.message }, { status: 400 });
+        return Response.json({ verificationId: id }, { status: 202 });
+      }
+      return Response.json(submits <= misses ? cannotFetch : { isJobCompleted: true, contract: { match: "exact_match" } });
+    }) as typeof fetch;
+    return { f, submits: () => submits };
+  }
+
+  it("waits and resubmits, then reports the match", async () => {
+    const naps: number[] = [];
+    const s = sourcify(2);
+    const out = await verifyOnSourcify(dep, s.f, { pollMs: 1, bytecodeRetries: 3, retryMs: 5000, sleep: async (ms) => void naps.push(ms) });
+    expect(out).toEqual({ status: "verified", detail: "Exact match on Sourcify." });
+    expect(s.submits()).toBe(3);
+    expect(naps.filter((ms) => ms === 5000)).toHaveLength(2);
+  });
+
+  it("treats the same answer to the submission itself the same way", async () => {
+    const s = sourcify(1, "submit");
+    expect((await verifyOnSourcify(dep, s.f, { pollMs: 1, bytecodeRetries: 2, retryMs: 1 })).status).toBe("verified");
+  });
+
+  it("stays pending, never failed, while Sourcify still can't see the code", async () => {
+    const s = sourcify(99);
+    const out = await verifyOnSourcify(dep, s.f, { pollMs: 1, bytecodeRetries: 2, retryMs: 1 });
+    expect(out.status).toBe("pending");
+    expect(out.detail).not.toMatch(/\u2014/);
+    expect(s.submits()).toBe(3);
+    // The manual retry route doesn't wait: it is itself the later retry.
+    expect((await verifyOnSourcify(dep, sourcify(99).f, { pollMs: 1 })).status).toBe("pending");
+  });
+
+  it("a proxied contract whose code Sourcify can't see yet is pending, not failed", async () => {
+    const row = { ...(dep as object), id: "x", proxy: { implementation: "0x4444444444444444444444444444444444444444", implementationTx: "0x" + "cd".repeat(32), admin: "0x5", codeHash: "0x", layout: null } } as never;
+    const f = (async (u: string, init?: RequestInit) => {
+      if (init?.method === "POST") return Response.json({ verificationId: u.includes("0x4444") ? "code" : "proxy" }, { status: 202 });
+      return Response.json(u.endsWith("/code") ? cannotFetch : { isJobCompleted: true, contract: { match: "exact_match" } });
+    }) as typeof fetch;
+    const out = await verifyProxied(row, f, { pollMs: 1, bytecodeRetries: 1, retryMs: 1 });
+    expect(out.status).toBe("pending");
+    expect(out.detail).toMatch(/^The code: /);
   });
 });
 

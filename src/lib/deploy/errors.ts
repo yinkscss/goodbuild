@@ -1,5 +1,5 @@
 /** What went wrong in a simulation or a wallet request, in terms the deploy modal can act on. */
-export type DeployErrorKind = "opcode" | "user_rejected" | "insufficient_funds" | "wrong_chain" | "revert" | "unknown";
+export type DeployErrorKind = "opcode" | "user_rejected" | "insufficient_funds" | "wrong_chain" | "revert" | "timeout" | "not_saved" | "unknown";
 
 export interface ClassifiedError {
   kind: DeployErrorKind;
@@ -34,7 +34,7 @@ export function errorDetail(error: unknown, limit = 800): string {
 
 export function classifyDeployError(error: unknown): ClassifiedError {
   const text = textOf(error);
-  const code = (error as { code?: number } | null)?.code;
+  const code = (error as { code?: number | string } | null)?.code;
   if (code === 4001 || /user rejected|user denied|rejected the request|cancelled|canceled/i.test(text)) {
     return { kind: "user_rejected", message: "You cancelled the request in your wallet." };
   }
@@ -46,6 +46,9 @@ export function classifyDeployError(error: unknown): ClassifiedError {
   }
   if (/chain.*(mismatch|does not match)|wrong network|unrecognized chain/i.test(text)) {
     return { kind: "wrong_chain", message: "Your wallet is on a different network. Switch to the network you're deploying to." };
+  }
+  if (code === "rpc_timeout" || /took too long to respond|timed out|didn't answer in time/i.test(text)) {
+    return { kind: "timeout", message: "Celo didn't answer in time, so nothing was sent and nothing was spent. Try again." };
   }
   if (/revert|execution reverted/i.test(text)) {
     return { kind: "revert", message: "The contract's constructor reverted, so deploying it would fail. Check the values it was given." };

@@ -51,9 +51,71 @@ function addressFromSlot(word: Hex | undefined): Address {
   return getAddress(`0x${hex.slice(24)}`);
 }
 
-export async function readProxy(client: ChainReader, proxy: Address): Promise<{ implementation: Address; admin: Address }> {
-  const [implementation, admin] = await Promise.all([client.getStorageAt({ address: proxy, slot: IMPLEMENTATION_SLOT }), client.getStorageAt({ address: proxy, slot: ADMIN_SLOT })]);
+/** The proxy's EIP-1967 slots, at `latest` unless a block is given. */
+export async function readProxy(client: Pick<PublicClient, "getStorageAt">, proxy: Address, blockNumber?: bigint): Promise<{ implementation: Address; admin: Address }> {
+  const at = blockNumber === undefined ? {} : { blockNumber };
+  const [implementation, admin] = await Promise.all([client.getStorageAt({ address: proxy, slot: IMPLEMENTATION_SLOT, ...at }), client.getStorageAt({ address: proxy, slot: ADMIN_SLOT, ...at })]);
   return { implementation: addressFromSlot(implementation), admin: addressFromSlot(admin) };
+}
+
+/** How long to keep asking a node that hasn't caught up yet. Injectable so tests don't wait. */
+export interface ChainWait {
+  /** Total time spent waiting between attempts. Default 15s, so a record request stays well inside Cloudflare's 100s. */
+  timeoutMs?: number;
+  /** First wait; it doubles each time, up to 4s. */
+  delayMs?: number;
+  sleep?: (ms: number) => Promise<void>;
+}
+
+/**
+ * Celo's public RPC is load-balanced, so just after a block is mined some answers still come from a
+ * node that hasn't seen it: the transaction is unknown, the block is "not found", or storage reads
+ * return the old values (the Celo Sepolia live test, 6 Nov 2026). Ask again with backoff until the
+ * answer is settled or the time is up, then return the last answer (undefined if every read failed).
+ */
+async function untilSettled<T>(read: () => Promise<T>, settled: (value: T) => boolean, wait: ChainWait = {}): Promise<T | undefined> {
+  const timeout = wait.timeoutMs ?? 15_000;
+  const sleep = wait.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  let delay = wait.delayMs ?? 500;
+  let waited = 0;
+  for (;;) {
+    let last: T | undefined;
+    try {
+      last = await read();
+      if (settled(last)) return last;
+    } catch {
+      last = undefined;
+    }
+    if (waited >= timeout) return last;
+    const nap = Math.min(delay, 4000);
+    await sleep(nap);
+    waited += nap;
+    delay *= 2;
+  }
+}
+
+/**
+ * The proxy as of the block that mined its transaction. A slot that still reads as zero, or as code
+ * listed in `stale` (the code before an upgrade), means the node is behind, so it asks again. Any
+ * other address is the chain's real answer and is returned at once, so a wrong upgrade is refused
+ * straight away. Throws a retryable chain_read_failed if the node never catches up in time.
+ */
+export async function readProxyAt(
+  client: Pick<PublicClient, "getStorageAt">,
+  proxy: Address,
+  at: { blockNumber: bigint; expected: Address; stale?: Address[] },
+  wait?: ChainWait,
+): Promise<{ implementation: Address; admin: Address }> {
+  const behind = new Set([zeroAddress, ...(at.stale ?? [])].map((a) => a.toLowerCase()));
+  const live = await untilSettled(
+    () => readProxy(client, proxy, at.blockNumber),
+    (p) => p.implementation.toLowerCase() === at.expected.toLowerCase() || !behind.has(p.implementation.toLowerCase()),
+    wait,
+  );
+  if (!live || behind.has(live.implementation.toLowerCase())) {
+    throw new DeployError("chain_read_failed", "Your transactions went through, but the network hasn't caught up with them yet. Try again in a moment.");
+  }
+  return live;
 }
 
 export async function readAuthority(client: Pick<PublicClient, "readContract">, admin: Address, wallet?: string | null): Promise<UpgradeAuthority> {
@@ -234,16 +296,21 @@ export interface RecordProxiedInput {
 
 type RecordClient = Pick<PublicClient, "waitForTransactionReceipt" | "getTransaction" | "getStorageAt" | "readContract">;
 
-async function minedTx(client: RecordClient, hash: Hex) {
-  const [receipt, tx] = await Promise.all([client.waitForTransactionReceipt({ hash, timeout: 45_000 }).catch(() => null), client.getTransaction({ hash }).catch(() => null)]);
+/**
+ * A mined transaction and its receipt. The receipt comes first: asking for both at once let a lagging
+ * node answer "unknown transaction" for one that had just been mined.
+ */
+export async function minedTx(client: Pick<PublicClient, "waitForTransactionReceipt" | "getTransaction">, hash: Hex, wait?: ChainWait, failed = "That transaction failed on-chain.") {
+  const receipt = await client.waitForTransactionReceipt({ hash, timeout: 45_000 }).catch(() => null);
+  const tx = receipt ? await untilSettled(() => client.getTransaction({ hash }), Boolean, wait) : undefined;
   if (!receipt || !tx) throw new DeployError("tx_not_found", "The network doesn't know that transaction yet. Try again in a moment.");
-  if (receipt.status !== "success") throw new DeployError("tx_failed", "That transaction failed on-chain.");
+  if (receipt.status !== "success") throw new DeployError("tx_failed", failed);
   return { receipt, tx };
 }
 
 /** The new code's transaction: from this wallet, and exactly the bytecode GoodBuild compiled. */
-async function provenImplementation(client: RecordClient, input: RecordProxiedInput, artifact: DeployArtifact): Promise<Address> {
-  const { receipt, tx } = await minedTx(client, input.implementationTxHash);
+async function provenImplementation(client: RecordClient, input: RecordProxiedInput, artifact: DeployArtifact, wait?: ChainWait): Promise<Address> {
+  const { receipt, tx } = await minedTx(client, input.implementationTxHash, wait);
   if (tx.to !== null || !receipt.contractAddress) throw new DeployError("not_contract_creation", "That transaction didn't create a contract.");
   if (tx.from.toLowerCase() !== input.wallet.toLowerCase()) throw new DeployError("wrong_sender", "That transaction wasn't sent by your signed-in wallet.");
   if (tx.input.toLowerCase() !== artifact.bytecode.toLowerCase()) throw new DeployError("bytecode_mismatch", `That transaction didn't deploy GoodBuild's compiled ${input.contractName}.`);
@@ -262,9 +329,9 @@ async function compiledFor(db: Db, input: RecordProxiedInput, compile: typeof co
 }
 
 /** A first deploy behind a proxy: the proxy is OpenZeppelin's, the code is ours, the wallet holds the authority. */
-export async function recordProxyCreation(db: Db, input: RecordProxiedInput, deps: { client: RecordClient; compile?: typeof compileForDeploy }): Promise<Deployment> {
-  const { client } = deps;
-  const { receipt, tx } = await minedTx(client, input.txHash);
+export async function recordProxyCreation(db: Db, input: RecordProxiedInput, deps: { client: RecordClient; compile?: typeof compileForDeploy; wait?: ChainWait }): Promise<Deployment> {
+  const { client, wait } = deps;
+  const { receipt, tx } = await minedTx(client, input.txHash, wait);
   if (tx.to !== null || !receipt.contractAddress) throw new DeployError("not_contract_creation", "That transaction didn't create a contract.");
   if (tx.from.toLowerCase() !== input.wallet.toLowerCase()) throw new DeployError("wrong_sender", "That transaction wasn't sent by your signed-in wallet.");
 
@@ -278,7 +345,7 @@ export async function recordProxyCreation(db: Db, input: RecordProxiedInput, dep
   if (initialOwner.toLowerCase() !== input.wallet.toLowerCase()) {
     throw new DeployError("wrong_upgrade", "That proxy gives the right to change it to another wallet, so GoodBuild won't use it.");
   }
-  const implementation = await provenImplementation(client, input, artifact);
+  const implementation = await provenImplementation(client, input, artifact, wait);
   if (logic.toLowerCase() !== implementation.toLowerCase()) throw new DeployError("wrong_upgrade", "That proxy doesn't point at the code you just deployed.");
   const init = artifact.abi.find((i): i is AbiFunction => i.type === "function" && i.name === INITIALIZER);
   if (!init || !initData.toLowerCase().startsWith(toFunctionSelector(init).toLowerCase())) {
@@ -286,8 +353,7 @@ export async function recordProxyCreation(db: Db, input: RecordProxiedInput, dep
   }
 
   const address = getAddress(receipt.contractAddress);
-  const live = await readProxy(client, address).catch(() => null);
-  if (!live) throw new DeployError("chain_read_failed", "We couldn't read the new proxy from the network. Try again in a moment.");
+  const live = await readProxyAt(client, address, { blockNumber: receipt.blockNumber, expected: implementation }, wait);
   if (live.implementation.toLowerCase() !== implementation.toLowerCase()) throw new DeployError("wrong_upgrade", "The network says that proxy uses different code.");
   const proxy: ProxyRecord = {
     implementation: implementation.toLowerCase(),
@@ -324,17 +390,16 @@ export async function recordProxyCreation(db: Db, input: RecordProxiedInput, dep
 }
 
 /** An upgrade: the same proxy now uses code GoodBuild compiled and checked. Updates the row in place. */
-export async function recordUpgrade(db: Db, input: RecordProxiedInput, deps: { client: RecordClient; compile?: typeof compileForDeploy }): Promise<Deployment> {
-  const { client } = deps;
+export async function recordUpgrade(db: Db, input: RecordProxiedInput, deps: { client: RecordClient; compile?: typeof compileForDeploy; wait?: ChainWait }): Promise<Deployment> {
+  const { client, wait } = deps;
   const rows = await latestProxyRows(db, { id: input.projectId, chainId: input.chainId });
   const row = rows.get(input.contractName);
   if (!row?.proxy) throw new DeployError("wrong_contract", `${input.contractName} has no live proxy to upgrade.`);
 
-  const { tx } = await minedTx(client, input.txHash);
+  const { receipt, tx } = await minedTx(client, input.txHash, wait);
   if (tx.from.toLowerCase() !== input.wallet.toLowerCase()) throw new DeployError("wrong_sender", "That transaction wasn't sent by your signed-in wallet.");
-  const live = await readProxy(client, getAddress(row.address)).catch(() => null);
-  if (!live) throw new DeployError("chain_read_failed", `We couldn't read ${input.contractName} from the network. Try again in a moment.`);
-  if (!tx.to || tx.to.toLowerCase() !== live.admin.toLowerCase()) throw new DeployError("wrong_upgrade", `That transaction wasn't sent to ${input.contractName}'s ProxyAdmin.`);
+  // The ProxyAdmin never changes, so the recorded one is checked here, before reading the chain.
+  if (!tx.to || tx.to.toLowerCase() !== row.proxy.admin.toLowerCase()) throw new DeployError("wrong_upgrade", `That transaction wasn't sent to ${input.contractName}'s ProxyAdmin.`);
   let call;
   try {
     call = decodeFunctionData({ abi: proxyAdminAbi, data: tx.input });
@@ -347,9 +412,12 @@ export async function recordUpgrade(db: Db, input: RecordProxiedInput, deps: { c
   if (data !== "0x") throw new DeployError("wrong_upgrade", "GoodBuild's upgrades don't call a function during the switch.");
 
   const { compiled, build, artifact } = await compiledFor(db, input, deps.compile ?? compileForDeploy);
-  const implementation = await provenImplementation(client, input, artifact);
+  const implementation = await provenImplementation(client, input, artifact, wait);
   if (implementationArg.toLowerCase() !== implementation.toLowerCase()) throw new DeployError("wrong_upgrade", "That upgrade doesn't point at the code you just deployed.");
+  // As of the switch's own block. Reading the code from before the switch means the node is behind.
+  const live = await readProxyAt(client, getAddress(row.address), { blockNumber: receipt.blockNumber, expected: implementation, stale: [getAddress(row.proxy.implementation)] }, wait);
   if (live.implementation.toLowerCase() !== implementation.toLowerCase()) throw new DeployError("wrong_upgrade", "The network says that proxy uses different code.");
+  if (live.admin.toLowerCase() !== row.proxy.admin.toLowerCase()) throw new DeployError("wrong_upgrade", `${input.contractName}'s ProxyAdmin isn't the one GoodBuild recorded.`);
 
   // Prepare checked this too. Checking again means a hand-made request can't record a refused upgrade.
   const comparison = await compareLayouts(row.proxy.layout, build.analyses[input.contractName].layout);
