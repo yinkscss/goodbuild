@@ -94,7 +94,7 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - Date: 5 Nov 2026 · Decided by: user (Olayinka) · Refines D21 and D23, resolves TOPUPS.md §10 points 1 and 2.
 - **Test G$:** deployed from the user's own browser wallet through the development-only page `/dev/test-gd`, so no private key is in a file or env var. `pnpm deploy:test-gd` stays as an alternative.
 - **G$ in the UI:** the user asked for "any option that promotes G$", which Claude took as this: D21's "never show G$" covers the top-up flow only (no conversion, batching or treasury details). D13 stands: the credits pill shows G$ beside USD, and the G$ vault deposit stays.
-- **Treasury:** the weekly batch keeps about one month of provider bills in USDT and converts only the surplus to G$, because credits are USD liabilities and provider bills are paid in USD. **Parked by D38 (6 Nov 2026), along with the G$ vault deposit, for this launch.**
+- **Treasury:** the weekly batch keeps about one month of provider bills in USDT and converts only the surplus to G$, because credits are USD liabilities and provider bills are paid in USD.
 - **Live test:** both the Magic email wallet and MetaMask, on Celo Sepolia.
 
 ### D25. Hosting: one Docker image on Railway or Fly.io
@@ -219,3 +219,269 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - **Without a project id:** no WalletConnect in published apps. They offer browser wallets and MiniPay, and a phone browser with no wallet still says "No wallet found". The id is read when an app is published, so apps already published get WalletConnect only when republished.
 - **Not verified (UNVERIFIED):** a real relay handshake, a real phone scan, the phone deep-link formats, bringing the wallet app forward for each request on a phone, reconnecting a WalletConnect session on a later visit, a wallet approving both an old and a new link (dropping the old session could also end the new one), real MetaMask, and MiniPay itself. See HANDOFF.md.
 
+### D37. M6 and mainnet launch together; TOPUPS.md §10 defaults accepted (amends D21)
+- Date: 5 and 6 Nov 2026 · Decided by: user (Olayinka): "I need to get this on mainnet, that would require M6 to begin." Claude recommended M6 first and the user chose together. D36 is claimed by open PR #32 (wallets), which should merge first. Plan: [MAINNET_PLAN.md](MAINNET_PLAN.md).
+- **One launch:** paid credits and Celo mainnet ship together. Paystack has test keys only so far.
+- **Rate:** from a named public source with a 2% spread. Which source is still open.
+- **Fees:** the user pays Paystack's fee on top, so credit matches the amount shown. This changes D21's "minus fees".
+- **Email:** collected at top-up for wallet-only users.
+- **Admin:** a wallet allowlist.
+- **Refunds:** credits are non-refundable except for failed or disputed payments. The wording needs a lawyer before real money.
+
+### D38. Paystack buys AI credits only; treasury batch and G$ vault left out of this launch (amends D13, D21, D24)
+- Date: 6 Nov 2026 · Decided by: user (Olayinka).
+- Paystack buys AI credits, and those credits only pay for builds. There is no naira to crypto conversion at launch, so the treasury batch (D21, D24) is parked. Paystack money can never fund gas.
+- The G$ vault is left out of this launch, so credits show in USD only until it exists.
+- **Cost, for the owner to see, not blocking:** ROADMAP.md promises G$ payment "live from M6" and scores G$ volume and transactions per user (S5 criteria UNVERIFIED). Those numbers get nothing from credits until the vault ships.
+
+### D39. What GoodDollar verification does
+- Date: 6 Nov 2026 · Decided by: user (Olayinka). Replaces Claude's proposed "verified or paid" for mainnet.
+- Verification gives extra free credit (D30). Paying customers don't need it to buy or use credits.
+- Mainnet always needs it, including for paying customers.
+- Checked by the coordinating session on 6 Nov: face verification costs no gas. It's a signMessage (citizen-sdk 1.2.7), and GoodDollar registers verified addresses on all active chains. So gas pays for deploying, and verification comes first.
+
+### D40. A Sepolia and mainnet toggle per project
+- Date: 6 Nov 2026 · Decided by: user (Olayinka).
+- The flow: toggle, verify if needed, gas grant, AI review, typed confirmation, deploy.
+
+### D41. Gas grant: up to 1 CELO, once per person, sent automatically
+- Date: 6 Nov 2026 · Decided by: user (Olayinka). Design and red team: [MAINNET_PLAN.md](MAINNET_PLAN.md) section 7.
+- A dedicated wallet the owner funds in small amounts tops the signed-in wallet up to 1 CELO, once per GoodID root, with a global limit of 20 grants a day. Past the limit, or when gas runs out, people are pointed to the owner's Telegram, a setting the owner fills in later and hidden until set. No new Telegram bot: owner alerts go by email through Resend.
+- This is GoodBuild's first hot key. It is not a user key or a deploy key: deploys stay signed in the user's own wallet (D2, CLAUDE.md rule 8).
+- It covers the builder only. Visitors using a mainnet app need their own CELO and G$.
+
+### D42. AI review by DeepSeek before a mainnet deploy
+- Date: 6 Nov 2026 · Decided by: user (Olayinka), who chose DeepSeek over Sonnet. Design: [MAINNET_PLAN.md](MAINNET_PLAN.md) section 8.
+- It checks for vulnerabilities and whether the contract matches the brief. High-severity findings or a brief mismatch block the deploy, with a Try fix button and an owner-only override for wrong findings.
+- It's an AI review and is never called an audit. "Unaudited, may lose funds" and the typed confirmation stay. Nobody has yet shown DeepSeek catches anything, so a benchmark comes first.
+
+### D43. An app that receives payment is a web3 app
+- Date: 6 Nov 2026 · Decided by: user (Olayinka).
+- If an app needs to receive payment, it becomes a web3 app, and the builder tells people mainnet can be deployed if they're sure everything is ready and want to receive real money. Where that lives: [MAINNET_PLAN.md](MAINNET_PLAN.md) section 9.
+
+### D44. Launch defaults accepted; gas after the review; how credits are funded
+- Date: 6 Nov 2026 · Decided by: user (Olayinka). Answers section 13 of [MAINNET_PLAN.md](MAINNET_PLAN.md): every recommendation there is accepted.
+- **Order changed:** toggle, verify if needed, AI review, gas grant, typed confirmation, deploy. The review comes before the grant, so nobody gets gas for a contract the review would block. This replaces the grant-then-review order in D40 to D42 and the plan.
+- **Benchmark approved:** up to $1 of real DeepSeek spend for the review benchmark.
+- **Legal and Paystack:** the owner states these are cleared, on the basis that GoodBuild sells usage only. Claude hasn't seen a written answer. The legal pages' "not reviewed by a lawyer" banner stays until a lawyer has actually reviewed them.
+- **Funding, proposed by Claude:** Paystack settles naira to a bank account, the owner buys dollars weekly through a virtual dollar card or a similar service, and pays the AI providers from it, keeping about one month of bills ahead. Credits are priced from the official NFEM rate plus 2%, with a floor the owner sets in admin so the price never falls below what dollars really cost. Worked example, using 6 Nov rates and an assumed cost of about N1,425 per dollar (UNVERIFIED): a $1 credit brings in about N1,376 and costs about N1,140 of AI at cost plus 25%, leaving about N236, or 17%, before free AI, gas and hosting. Which provider works with Anthropic and DeepSeek is UNVERIFIED, so test with a small amount first.
+
+## Recommended decisions (Ego; adopted unless changed)
+
+
+### D25. Official logo: glass 2x2 tile mark
+- Date: 5 Nov 2026 · Decided by: user (Olayinka)
+- The official GoodBuild logo is the glossy glass 2x2 tile mark (white, lilac, lilac, pink; palette purple / lilac / pink, no green). Dated 5 Nov 2026.
+- **Canonical assets:** `design/brand/logo-mark.png` (transparent master) and `design/brand/logo-mark-source.jpg` (original white-background render). App-served copies live under `public/brand/` (`logo-mark.png`, `logo.png`, `logo-32.png`, `logo-180.png`, `logo-192.png`, `logo-512.png`). Favicon / app icons: `src/app/favicon.ico`, `src/app/icon.png`, `src/app/apple-icon.png`. Landing mock uses `design/landing/assets/logo.png`.
+- **UI:** `src/components/brand/logo.tsx` renders the PNG mark via `next/image` and keeps the "GoodBuild" wordmark text beside it. The previous inline SVG "G" mark is retired.
+- Rationale: user provided the new mark and asked to replace the logo everywhere and document it as official.
+
+### D5. In-browser preview via Sandpack
+- Date: 4 Nov 2026 · Recommended by: Ego
+- Use Sandpack (open source, free). No E2B or WebContainers for now.
+- Rationale: WebContainers needs a commercial licence for for-profit production use (https://webcontainers.io/enterprise). E2B Hobby has a $100 one-time credit and costs about $0.17/hr per default sandbox; Pro is $150/mo (figures as given, re-check https://e2b.dev/pricing). Stage 1 front ends are static React, which Sandpack handles.
+
+### D6. Build our own small builder; don't fork Open Lovable
+- Date: 4 Nov 2026 · Recommended by: Ego
+- Rationale: Open Lovable (https://github.com/firecrawl/open-lovable) is MIT but built around E2B/Vercel sandboxes and has no contract or wallet flow. Borrow ideas (prompting, file-edit format), not the codebase.
+
+### D7. Generated apps default to shadcn/ui + React Bits
+- Date: 4 Nov 2026 · Recommended by: Ego
+- Rationale: Lovable-quality UI out of the box.
+
+### D8. Persistence split
+- Date: 4 Nov 2026 · Recommended by: Ego
+- Project code and chat history live in our own DB. App data lives on-chain; the deployed contract address (and chain id) is stored per project.
+- Amended by D31 (5 Nov 2026): published apps can also keep off-chain data in our DB. Money and ownership stay on-chain.
+
+### D9. AI calls via GoodDollar AI credits if allowed, else providers via LiteLLM
+- Date: 4 Nov 2026 · Recommended by: Ego
+- Not OpenRouter: its ToS bans access "for purposes of reselling API access to Models or otherwise developing a competing service" (https://openrouter.ai/terms).
+- No public API exposing Claude without Anthropic approval (Anthropic Commercial Terms forbid reselling "except as expressly approved").
+
+### D10. 18+ only; block US persons
+- Date: 4 Nov 2026 · Recommended by: Ego
+- Rationale: GoodDollar ToS §6.2 (18+) and §8 "NO U.S. PERSONS MAY USE THE SERVICES". Gemini API also requires 18+. Also exclude sanctioned jurisdictions.
+
+### P19. Publishing: own subdomain, server build, immutable snapshots (address and build approach decided by the user; the rest proposed)
+- Date: 5 Nov 2026 · Decided by: user (`<app>.goodbuildit.xyz`, a real server build, a /docs page), as passed on by the session that built it. Claude proposed the rest.
+- **Domain (5 Nov 2026, user):** GoodBuild's domain is `goodbuildit.xyz`, so apps default to `<slug>.goodbuildit.xyz`. Claude took this to be the main site's domain too (`APP_DOMAIN`), which keeps apps same-site with it.
+- **Subdomain isolation:** generated JS must never be served from the main origin, where it could call the API as whoever is signed in. `src/proxy.ts` sends a published app's host only to `/published-app/<slug>`, that route exists on no other host, and the route repeats the Host check. Each app also gets its own wallet permissions.
+- **API writes:** the proxy refuses API writes from another site or subdomain (`Sec-Fetch-Site`, then `Origin`). A subdomain is same-site, so the browser still sends the session cookie with its requests; `SameSite` and `__Host-` don't stop that. A separate registrable domain for published apps (as GitHub does with github.io) would be stronger, and the user may want to weigh it.
+- **Cookies:** `__Host-` session and nonce cookies in production, so a subdomain can neither read nor overwrite them. Plain names in development, because the prefix needs a secure context.
+- **Server build:** esbuild plus a Tailwind compile. Project code gets no filesystem access, and only `ALLOWED_DEPENDENCIES` resolve, from `publish-runtime/`.
+- **Immutable snapshots:** publishing stores built files in the database, so later edits don't change a live app until the user publishes again. If a build fails, the old files stay live.
+- **Undeployed contracts:** an app can go live before its contracts are deployed, with a demo notice, using `deployments.sourceHash` and `sourceKey` to tell.
+- **Region block:** published app hosts return 451 for blocked regions (Q31), the same list as the API.
+- **Verified on a production build, 5 Nov 2026:** see HANDOFF.md. Not verified on a real host.
+
+## Proposed decisions (not adopted; Claude and the user may change them)
+
+### P1. Testnet is Celo Sepolia, not Alfajores (proposed)
+- Date: 4 Nov 2026 · Proposed by: Grok Bot · Alfajores retired 30 Sep 2025 (https://docs.celo.org/operate/notices/archive/celo-sepolia-launch).
+
+### P2. Audited-template-first contracts, non-upgradeable by default (proposed)
+- Date: 4 Nov 2026 · Proposed by: Grok Bot · See CONTRACTS_AND_DEPLOYMENT.md §4. Open: Q1, Q4, Q15.
+- Amended 5 Nov 2026 by D33: projects that opt in on testnet deploy behind a proxy. Non-upgradeable stays the default.
+
+### D19. DeepSeek builds first, Claude fixes
+- Date: 4 Nov 2026 · Decided by: user (Olayinka) · Refines D14 and D18
+- Routing: `deepseek-flash` for planning and the first build pass; `claude-sonnet-5-5` for every auto-fix attempt (compile errors, guardrail and app-check failures). The fallback wrapper still retries a failed strong call on cheap.
+- Why: the first live runs cost about $0.02 on DeepSeek and $0.10 on Sonnet for a similar small contract, and both compiled clean. Claude is kept for the step where a cheap model has already failed.
+- Amendment (4 Nov 2026, decided by: user, implemented with the model.ts owner): when every failure is a contract test (P16), the first auto-fix attempt uses `TIER_FOR.testFix` (cheap). Mixed failures and any later attempt still use `TIER_FOR.fix` (strong). Why: in the RTX eval run 4, Sonnet's five fix calls cost $0.44 of $0.50, and most were test fixes. See [evals/RTX.md](evals/RTX.md). Runner: `fixTier()` in `runner.ts`.
+- **Second amendment (proposed by Claude on 4 Nov 2026; approved by the user (Olayinka) in chat on 5 Nov 2026):** a compile error inside a contract test file (`contracts/test/`) also counts as a test failure, so when every failure is a test or a test compile error, the first fix attempt uses `TIER_FOR.testFix` (cheap). Mixed failures and later attempts still use `TIER_FOR.fix` (strong). Why: in HARNESS.md E5, Sonnet's fix of a test compile error was $0.20 of a $0.26 build. It is already in the code (`fixTier()` in `runner.ts`, commit 2a690fe, covered by unit tests), `TIER_FOR` in `model.ts` is unchanged, and it has not been measured live yet.
+- Open: whether follow-up edits (reprompts on an existing project) should use Claude. Claude recommends yes, see AI_AGENT.md. One line in `TIER_FOR` (`src/server/agent/model.ts`).
+
+### D20. Websites and pages are in scope alongside dApps
+- Date: 4 Nov 2026 · Decided by: user (Olayinka), in chat: vibe-coding a website is also something GoodBuild does · Widens D2 (Stage 1 = dApps only).
+- The agent builds plain websites and pages (landing, about, signup, event or shop sites) as well as dApps, and writes a contract only when the app needs on-chain state or payments. Still no backend or database (D3): forms that must store data either use an on-chain registry or say storage is coming later.
+- Amended by D31 (5 Nov 2026): forms can now save to the app data store, within its rules. See the `forms-and-signup` and `app-data` guides.
+- Flag for the user: CLAUDE.md item 3 still reads "Stage 1 = dApps only"; update it if this stands.
+
+### P3. Off-chain deployments table is the source of truth; on-chain factory optional later (proposed)
+- Date: 4 Nov 2026 · Proposed by: Grok Bot · See CONTRACTS_AND_DEPLOYMENT.md §3. Open: Q11.
+
+### P4. Agent uses tool-based diff edits, checks + auto-fix (max 3), checkpoint per prompt, plan/build modes (proposed)
+- Date: 4 Nov 2026 · Proposed by: Grok Bot · See AI_AGENT.md. Open: Q14.
+
+### P5. Auth: Privy (email embedded wallets + external wallets + SIWE), fallback thirdweb (SUPERSEDED by D22: Magic)
+- Date: 4 Nov 2026 · Proposed by: Ego · User requirement: wallet sign-in before sending a prompt, plus email login.
+- Privy supports Celo mainnet and Celo Sepolia (any EVM chain), email OTP that creates an embedded wallet, external wallets, built-in SIWE and user key export. Free up to 499 MAU, then $299/mo.
+- Fallback: thirdweb in-app wallets (1,000 MAU free, $0.015/MAU). Keep providers behind a wagmi-based adapter.
+- Details and sources: [AUTH.md](AUTH.md).
+
+### P6. Tailwind v4 with tokens in CSS `@theme` (proposed)
+- Date: 4 Nov 2026 · Proposed by: Claude · DESIGN_SYSTEM §6 tokens mapped 1:1 into `src/app/globals.css`; default palette reset. See Q23.
+
+### P7. Self-hosted fonts (proposed)
+- Date: 4 Nov 2026 · Proposed by: Claude · Unbounded, Inter and JetBrains Mono are vendored variable woff2 files (OFL) loaded with `next/font/local`, so builds and page loads don't depend on Google Fonts.
+
+### P8. Postgres via Drizzle, embedded PGlite for development (proposed)
+- Date: 4 Nov 2026 · Proposed by: Claude · Pulled forward from M4 because M2 needs `users` and `sessions`, and the gated prompt needs `projects`/`messages` (D8). `DATABASE_URL` selects Postgres; without it, dev and tests use PGlite (in `.data/`, or in memory for tests), so there's nothing to install. Production refuses to start without `DATABASE_URL`.
+
+### P9. GoodBuild owns the session; the wallet provider only connects wallets (adopted; provider is Magic per D22)
+- Date: 4 Nov 2026 · Proposed by: Claude · Implements P5. Privy handles email OTP, embedded wallets and the external-wallet connectors. The session is ours: SIWE (EIP-4361) verified server-side, a signed httpOnly cookie (7 days, rotated daily, revocable via a `sessions` row). Every API route checks this session, never a client-supplied address. Keeping Privy out of the session is what makes the thirdweb fallback a one-folder swap (`src/lib/auth/privy`).
+- The sign-in signature is silent for email wallets; all other embedded-wallet signatures (deploys, top-ups) keep Privy's confirmation screen.
+
+### P10. Generated apps use viem directly, not wagmi (adopted: D16)
+- Date: 4 Nov 2026 · Proposed by: Claude · Generated apps run in Sandpack's in-browser bundler, where wagmi's dependency tree is heavy and slow to resolve. The starter template ships `src/lib/chain.ts` (viem clients, connect, chain switch, simulate-then-write) and a `useWallet` hook. CONTRACTS_AND_DEPLOYMENT §5 says "uses wagmi hooks"; revisit when apps get a real build step (publishing).
+
+### P11. Agent checks: solc + guardrails, syntax and imports; no full type-check (proposed)
+- Date: 4 Nov 2026 · Proposed by: Claude · Implements P4. After the model's edits: solc 0.8.28 (OpenZeppelin 5.6.1 vendored, EVM cancun, in a child process so it never blocks the server), the CONTRACTS §4 guardrails on the compiler AST, a TypeScript syntax check, and import resolution against project files and the package allowlist. A full `tsc` type-check is left out: the in-browser bundler has no node_modules types, and Sandpack's own errors reach the agent through "Fix it". Auto-fix: up to 3 attempts, the first on the cheap model; identical errors twice stop the loop.
+
+### P12. Preview uses Sandpack's hosted bundler (proposed)
+- Date: 4 Nov 2026 · Proposed by: Claude · Implements D5. Sandpack's classic `react-ts` bundler is loaded from CodeSandbox's servers, and generated apps get Tailwind from the `@tailwindcss/browser` CDN build. Fine for previews; it is an external dependency (Q36).
+
+### P13. Designed-per-prompt output: layout-free starter, helper hooks, follow-ups, quiet fix passes (proposed)
+- Date: 4 Nov 2026 · Proposed by: Claude · The user reported generated pages looked hardcoded: the starter `App.tsx` (header bar with "My dApp" plus a card) was being copied. The starter is now a one-line placeholder, and the system prompt gains design rules (layout by app type, verb-labelled main action, real copy, per-app accent colour) plus `useRead`/`useTx`/`formatAmount`/`errorMessage`, `Skeleton` and `Notice` so a cheap model gets loading, error and success states right. Build and plan replies end with one or two follow-up questions (Lovable style). Auto-fix passes no longer add text to the reply, so the follow-ups stay last; the fix steps already show what happened.
+- Runner changes, each from a live DeepSeek run: (1) fix passes are quiet, because a fix note appended after the follow-ups buried them; (2) text that comes with tool calls in build mode ("I'll start by planning this out.") is dropped as narration, because DeepSeek kept writing it despite the prompt; (3) if a pass runs out of tool rounds or ends with nothing shown, one more call asks for the reply (plan summary as a last resort), because a turn that looped on no-op edits saved an empty reply; (4) an `edit_file` that changes nothing returns "No change ... stop and reply" so the model breaks the loop. Plan answers are capped at about 120 words with no code blocks.
+- `checkApp` now rejects using `<Name>Address` (a chain-id map) as an address; it must be indexed (`TipJarAddress[chain.id]`). This was the cause of viem's `Address "[object Object]" is invalid` in the preview.
+
+### P14. Front-end guides loaded on demand (proposed)
+- Date: 4 Nov 2026 · Proposed by: Claude · `src/server/agent/guides.ts` holds short guides (pages-and-routing, landing-page, forms-and-signup, design-tokens, content-pages, dashboard-and-data). The system prompt lists each with one line on when it applies; the model picks them in `set_plan` (`guides` field, so no extra round) or with `read_guide`, and the runner logs which were loaded. No regex classification of the request: the model decides, the guide teaches. Modelled on Dyad's AI_RULES and the Lovable prompt's design-system rules (semantic tokens, variants, SEO-ish single h1), kept small for a cheap model.
+- Multi-page apps use react-router-dom 6.30.6 with HashRouter (now a base dependency), pages in `src/pages/`, a shared `Layout`. Starter `@theme` gains card, ring, accent-foreground and display-font tokens; the guides ban raw palette classes.
+
+### P15. Follow-ups are clickable chips from a suggest_next tool (proposed)
+- Date: 4 Nov 2026 · Proposed by: Claude · Requested by the user (Lovable-style follow-ups). The model calls `suggest_next` with one or two next steps, phrased as the request the user would send, in the same response as its final reply. The runner keeps that reply (not treated as narration), ends the pass without another round, saves the chips on the turn record and appends them to later history so "yes, the first one" resolves. The chat shows them on the newest turn only; a click sends the step as a build prompt. Structured, so nothing parses the reply text. Fix passes can't change them.
+
+### P16. Contract tests in a local EVM, plus checks for complex apps (proposed)
+- Date: 4 Nov 2026 · Proposed by: Claude · From the RTX eval ([evals/RTX.md](evals/RTX.md)): a buy/sell/swap contract compiled cleanly, but every sell and every liquidity add would have reverted. Compiling proves nothing about behaviour.
+- The agent writes `contracts/test/<Name>.t.sol` for contracts that move tokens. GoodBuild compiles it with the project and runs each `test*()` in a fresh in-memory EVM, using `@ethereumjs/evm` 10.1.3 with Cancun, in a child process with a 60s timeout. Platform helpers live under `@goodbuild/`: `Test` (asserts and expectRevert), `Actor` (acts as another wallet) and `MockGoodDollar` (ERC-20 plus `transferAndCall`). Reverts are decoded by name from every compiled ABI. Failures feed the existing auto-fix loop. Test contracts are never deployable, never written to `src/contracts/`, and don't count for G$ guardrails.
+- Not M5: nothing touches a network. M5's pre-deploy simulation against Celo stays separate.
+- Also added:
+  - an AST guardrail: an ERC20 contract may not call its own public `transfer` or `transferFrom`;
+  - an EIP-170 size check (24,576 bytes of runtime code);
+  - recovery for responses cut off at the output limit;
+  - the guides `tokens`, `swaps-and-markets`, `multi-contract`, `cross-chain` and `contract-tests`;
+  - `Math`, `ERC20Burnable` and `ERC20Capped` on the import list.
+- Open for M5: deploy order and constructor wiring between project contracts (for example RTXPool needs the RTXToken address), and a test G$ on Sepolia (Q39).
+
+### P17. Agent harness: assets, code search, selective context, rolling memory, naming (proposed)
+- Date: 4 Nov 2026 · Proposed by: Claude, scope (L1) approved by the user (Olayinka) in chat · Evals: [evals/HARNESS.md](evals/HARNESS.md)
+- **Assets.** Users upload logos, images and design references (PNG, JPEG, WebP, SVG, up to 5 MB, 20 per project) from the composer. The type is sniffed from the bytes. SVGs with scripts, entities, `foreignObject`, external refs, `@import` or `javascript:` are rejected; event handlers, doctypes and stylesheet PIs are stripped before anything parses them. Bytes live in a new `project_assets` table behind an `AssetStore` interface (object storage later). sharp (0.35.5, now a direct dependency) reads dimensions and a 5-colour palette that discounts near-white and near-black.
+- **How apps reference assets: a stable path, a data URL in the preview only.** Code uses `/assets/<name>`, directly or through the GoodBuild-written `src/assets/index.ts` (`assets.logo.src`, width, height, alt). The preview swaps those literal paths for data URLs in `toSandpack`. Why not a platform URL: measured on 4 Nov 2026, an `<img>` on an https page (Sandpack's origin) failed to load `http://localhost:3001/...`, while a data URL loaded. Chrome blocks public pages from loading localhost resources. Binaries stay out of the model's file map, checkpoints and context. Publishing later copies real files to `/assets/`. A check rejects `/assets/` paths that weren't uploaded. Design references are never shipped.
+- **Vision.** Measured the same day: both `deepseek-flash` and `claude-sonnet-5-5` read an image through the AI SDK. Each upload is described once with the cheap model (`TIER_FOR.build`): a sentence for logos and images, and a text layout spec for references. The model sees a manifest of name, kind, size, palette and description. A reference's image is also attached to the next turn's message, once. D19 routing is unchanged, and `model.ts` gained image parts (its owner made that change).
+- **Code search.** New tools: `search_code` (literal or regex, `file:line: text`), `find_symbol` (components, hooks, routes, contract functions, events, errors, plus the files that use them), and `read_file` with line ranges. `list_files` returns a manifest with a one-line summary per file. Summaries are computed from the code (exports, routes, h1, sections, contract functions) and cached by content hash, so they cost no model calls. Reads and searches are logged, so evals can count them.
+- **Selective context.** The context block has a manifest of every file, then the files picked for the request. If the whole project fits the 40k-char budget it is sent whole, because a read round trip re-sends the conversation and costs more than the files. Otherwise the block holds:
+  - the entry, the theme, contracts and the assets module;
+  - files ranked by request terms matched against path, symbols and text;
+  - files changed last turn, then import neighbours;
+  - small starter helpers, smallest first, with whatever budget is left.
+
+  Platform ABI modules (`src/contracts/*.ts`) are left out, because the contract source is in and the manifest names their exports.
+
+  Measured: a realistic 30-file project is about 28k chars, so most projects today are sent whole. This replaces "everything up to 100k".
+- **No vector search.** Lexical search plus the symbol index found the file in every case of the offline 10-request set and the live E3 run, so embeddings would add a provider, a cost and staleness for no measured gain. Revisit if projects outgrow the 80-file cap or a request misses in evals.
+- **Rolling memory.** The last 8 messages are sent verbatim. Older ones are folded by the cheap model into `projects.memory`: a summary under 120 words, plus a separate list of the user's decisions and constraints with exact values. A prose summary alone is what loses an early decision. This costs at most one cheap call per turn, and the user's own words are kept as a fallback if that call fails.
+- **File naming.** A `file-structure` guide covers:
+  - `src/pages/PascalCase.tsx`;
+  - `src/components/PascalCase.tsx` (sections in `src/components/sections/`);
+  - `src/lib/useCamelCase.ts` and `src/lib/camelCase.ts`;
+  - `contracts/PascalCase.sol` and `contracts/test/PascalCase.t.sol`;
+  - uploads at `/assets/`.
+
+  `namingProblem()` in `checks.ts` enforces these for new files and renames only, so older projects keep working. `pathProblem()` also blocks `src/assets/`.
+- **Design guides.** Deeper `landing-page` (six archetypes, a section library, imagery), `pages-and-routing` (responsive sticky nav, multi-page dApp layout) and `design-tokens` (font pairings via `--font-display`, a type scale). New guides: `brand-and-assets`, `match-reference`, `ui-states` and `file-structure`. The model still picks which to load; nothing classifies the request.
+- **Also found by the evals:** lucide-react 1.68 has no brand icons, so `import { Instagram }` is `undefined` and blanks the preview. The app check now rejects icon names lucide doesn't export, and a test keeps the platform's lucide version equal to the one apps pin.
+- **Additions after the first evals (commit 2a690fe and later).** See the gap checklist in [evals/HARNESS.md](evals/HARNESS.md#gap-checklist) for how each was tested.
+  - **Uploads:** the attach menu's Logo, Image and Design reference items set the kind; drag-and-drop and paste upload images; each chip's "Use as" menu re-classifies a file, which re-describes it and, for a new reference, attaches the image to the next turn.
+  - **SVG sanitising:** DOMPurify on jsdom with checks before and after, replacing the regex rules. New runtime dependencies: `dompurify` and `jsdom`.
+  - **Signed asset URLs:** `/a/<token>` on a public https deployment; local development keeps data URLs.
+  - **Preview auto-fix:** a runtime error right after a build is fixed automatically, once per version, never for network or bundler errors.
+  - **Visual check:** after a ready build the workspace captures the preview from inside the iframe, and the cheap model lists visible defects. The result is saved on the turn; "Fix these" sends the issues as a prompt. It never edits on its own.
+  - **No DeepSeek thinking for image questions:** `visionClient()` in `agent/index.ts` wraps `deepseek-flash` with thinking off for the visual check and upload descriptions. Routing in `model.ts` is unchanged. Measured: with thinking on, 500, 2,500 and 6,000 output tokens all ended at `length` with no text; with it off, 2 s and about 150 tokens. This was why the v12 visual check never appeared, and why some image descriptions came back empty.
+  - **Memory:** each kept decision is tagged with its turn (`[t1] ...`), so "what did I say first" keeps its order.
+  - **Context ranking:** a short synonym list (404 and NotFound, home and index, nav and Layout or Header).
+  - **Style:** no em dashes in replies (prompt line, plus `plainDashes` as a backstop).
+  - **Reads of uploads:** `read_file` on an uploaded image's path returns a pointer to `/assets/<name>` instead of "missing".
+
+### P18. Background turn runner: jobs, leases, resumable turns, Stop (proposed)
+- Date: 5 Nov 2026 · Design agreed with the user (Olayinka), who decided resume (option C) and Stop (cancels queued follow-ups); built by Claude · Code: `src/server/jobs/`, `src/server/agent/turn-progress.ts`, `runner.ts`
+- **Jobs.** `POST /turns` saves the prompt as a queued user message and inserts a `turn_jobs` row; it returns the job id.
+  - A worker claims the oldest runnable job with `FOR UPDATE SKIP LOCKED`.
+  - A partial unique index allows one running job per project; a race on it counts as "not claimed".
+  - A unique index on `user_message_id` stops the same prompt being queued twice (landing page auto-run, two tabs).
+  - Follow-ups queue on the server in send order. The client sends one at a time: three quick sends raced and were queued out of order in the live test.
+- **The lease is the only lock.**
+  - The lease is renewed every 5 s and expires 30 s after the last renewal.
+  - Claiming sets `projects.turnStartedAt`, so the revert route and the UI keep working. The final commit clears it.
+  - `claimTurn` lost its 10-minute stale expiry; it remains only for direct runs (tests).
+  - Every commit a job makes is fenced: one transaction checks `lease_owner` and `attempt` with `FOR UPDATE`. That covers creating the reply message, the memory commit, the setup save, every logged response and the final commit. A worker whose lease expired (a laptop that slept, say) can't commit beside the worker that took over. The plain setup writes before that (the user message's status, reading files) are idempotent.
+- **Resume (user decision: option C), as a replay log rather than serialised loop state.**
+  - **Setup is saved once:** the reply message, the conversation prefix (context text included, design references as asset ids), base files, asset names, contract options and the project's prior status. Setup is never redone on resume, so the memory call isn't billed twice.
+  - **Each completed model response** (text deltas, tool calls, finish reason, priced usage) goes into `turn_job_calls` in the same transaction as its `usage_events` rows.
+  - **A resumed run** rebuilds the setup and replays the logged responses through the unchanged loop, emitting nothing. Tools are pure workspace operations and checks are deterministic, so both simply run again. The model is called only after the log is used up, and a `snapshot` event then replaces the client's view.
+  - **A crash mid-stream** leaves no log row and no usage row, so that call is asked again. The provider may still have charged for the lost call, and GoodBuild bills nothing for it; M6 should account for that.
+  - **A diverged replay is detected.** Each logged response records the tier and conversation length it was made at. If a replay reaches a call where either differs (the code or a check result changed between attempts), it stops instead of feeding the response to the wrong step.
+  - **The memory call** is committed with `projects.memory` in one transaction, so a crash between them re-runs it, never bills it twice.
+  - **An unusable save** (another format version, a deleted design reference, a diverged replay) ends the job with a visible error and Retry. After 3 attempts a job ends with Retry too. The contract-test EVM uses a constant block timestamp, so checks replay deterministically.
+  - **Why replay:** serialising every local of the loop (fix attempt, round, previous issues) was error-prone, while the replay keeps the loop as the single source of truth.
+- **Final commit.** One transaction holds the checkpoint, the final message, design references marked as seen, the cleared lock and the job's end state. A job that crashed after it is finished, not run again.
+  - `markAttached` moved from the start of the turn to this commit, so a stopped, failed or retried turn attaches the image again.
+  - Step ids include the model-call number (`tool:<n>:<id>`): in the replay test, a provider reusing a tool call id overwrote an earlier step.
+- **Stop (user decision).**
+  - `POST /turns/[jobId]/stop` sets `stop_requested`; the lease renewal turns that into an `AbortController.abort()`. The signal reaches `model.stream`, and the runner checks it between rounds and before compile, tests and the final commit (solc and the test EVM can't be interrupted mid-run).
+  - Every queued follow-up of the project is cancelled. Cancelled prompts stay in the chat with Resend.
+  - Stop saves no checkpoint (edits discarded) and marks the message `stopped`. Usage already recorded stays.
+- **Events.**
+  - `turn_events` holds `(job_id, seq, event)`. The worker batches about every 200 ms and merges text deltas. The file map goes in once, at the end. An `end` marker closes the stream.
+  - `GET /turns/[jobId]/events?after=seq` streams `id:`-numbered SSE (with `connection()` outside `try`), closes every 60 s, and the client reconnects with backoff.
+  - Workspace state lists the active jobs; a reload attaches to the oldest and replays from the start. Events are deleted 2 minutes after the job ends; the message keeps the final record.
+  - A queued prompt's message moves to the moment its turn starts, so each reply sits under its prompt.
+- **Worker.** Started from `src/instrumentation.ts` (Node runtime only, skipped during `next build`, off with `GOODBUILD_INLINE_WORKER=0`) as a `globalThis` singleton that runs 3 jobs at once.
+  - `pnpm worker` runs the same worker standalone for hosting where builds shouldn't run in the web process (Q31). It is tsx plus `scripts/worker-preload.cjs`, which stubs only `server-only`, and needs `DATABASE_URL`.
+    - `--conditions=react-server` was tried first and broke it: it swaps `react` for its server build, so lucide-react's `createContext` crashed.
+    - Verified live on Postgres beside the inline worker: with four projects queued at once, the inline worker claimed three, the standalone worker claimed the fourth project's two jobs one after the other, and no project ever ran two jobs at the same time.
+    - The unique-index race (error 23505) never occurred, so that path is unit-only.
+  - Both need a long-lived Node host: a serverless function can't keep a worker alive.
+  - Dev gotcha: the singleton survives hot reload, so restart the dev server after editing `runner.ts` or `src/server/jobs/`.
+- **Measured payloads (live, Postgres):** a one-page site's setup row was 14.9 KB, and its 11 logged responses were 16 KB in all (largest 2.1 KB) with 64 batched events. The contract build in the crash test logged 19 responses. Images are never stored, only asset ids.
+- **Tests:**
+  - `src/server/jobs/jobs.test.ts` runs a build with a fix pass, crashes it after every save point in turn, and resumes. It asserts identical files, record (apart from the resume log line), usage row count and model requests.
+  - It also covers fencing, Stop with a queued follow-up, two prompts on one project, the unusable-save Retry and a tampered (diverged) replay.
+  - A design reference is tested through crash and resume (the resumed call still carries the image), completion (marked seen) and Stop (left unattached).
+  - Live results are in [evals/HARNESS.md](evals/HARNESS.md).
+
+### P3. GoodDollar AI credits via AntSeed gateway behind LiteLLM (DEFERRED by D11)
+- Status: deferred. GoodDollar/AntSeed is an optional future provider only, revisit once GoodDollar ships its proxy/API keys.
+- Date: 4 Nov 2026 · Proposed by: Grok Bot · Users fund credits with the GoodWidget AI credits widget; GoodBuild runs an AntSeed gateway registered as an OpenAI-compatible LiteLLM provider, falling back to direct providers. Blocked on buyer-key custody / GoodDollar proxy (see [GOODDOLLAR_AI_CREDITS.md](GOODDOLLAR_AI_CREDITS.md), Q17).
