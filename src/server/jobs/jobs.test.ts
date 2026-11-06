@@ -244,6 +244,22 @@ describe("background turn jobs", { timeout: 60_000 }, () => {
     expect((await store.unattached(projectId)).map((a) => a.id)).toEqual([ref.id]);
   });
 
+  it("every usage row of a job takes the job's funding, even on a worker without the exempt setting (D48)", async () => {
+    const { client } = scriptedModel(SCRIPT);
+    const job = await enqueueTurn(db, { projectId, userId, mode: "build", prompt: "Build the club page" }, { UNCAPPED_WALLETS: "0xABC" });
+    expect(job.funding).toBe("exempt");
+    const w = worker(() => client);
+    await w.tick();
+    await w.idle();
+    await waitForStatus(job.id, ["done"]);
+    const rows = await db.select().from(usageEvents);
+    expect(rows.length).toBeGreaterThan(0);
+    expect(new Set(rows.map((r) => r.funding))).toEqual(new Set(["exempt"]));
+
+    const free = await enqueueTurn(db, { projectId, userId, mode: "build", prompt: "Again" }, {});
+    expect(free.funding).toBe("free");
+  });
+
   it("refuses commits from a worker that lost its lease (fencing)", async () => {
     const job = await enqueueTurn(db, { projectId, userId, mode: "build", prompt: "x" });
     const claimed = (await claimJob(db, "old"))!;

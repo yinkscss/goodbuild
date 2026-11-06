@@ -7,7 +7,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { sql } from "drizzle-orm";
 
 import type { Db } from "@/server/db/client";
-import { checkAiAllowance, spentMicro } from "./cap";
+import * as capNow from "./cap";
+import * as capBeforeM2 from "./cap-before-m2";
 import { getBalanceMicro } from "./ledger";
 import { MIGRATIONS, testBackends, type TestDatabase } from "./test-backends";
 
@@ -51,8 +52,12 @@ async function rows<T>(db: Db, query: ReturnType<typeof sql>): Promise<T[]> {
   return (Array.isArray(result) ? result : (result as { rows: T[] }).rows) as T[];
 }
 
-/** Everything the free limits (D28 to D30) decide from. None of it may move. */
-async function freeCounters(db: Db) {
+/**
+ * Everything the free limits (D28 to D30) decide from. None of it may move. The database before 0010
+ * has no funding column, so it is read with the cap code of that time, and after with today's (M2).
+ */
+async function freeCounters(db: Db, cap: Pick<typeof capNow, "checkAiAllowance" | "spentMicro">) {
+  const { checkAiAllowance, spentMicro } = cap;
   const [total] = await rows<{ provider: string; charged: string; count: string }>(db, sql`SELECT sum(provider_cost_micro) AS provider, sum(charged_micro) AS charged, count(*) AS count FROM usage_events`);
   const tight = { FREE_AI_BUDGET_MICRO: "1000000", VERIFIED_CAP_MICRO: "5000000" };
   const room = { FREE_AI_BUDGET_MICRO: "4000000", VERIFIED_CAP_MICRO: "5000000" };
@@ -82,7 +87,7 @@ describe.each(testBackends())("migration 0010 over existing rows on $name", (bac
     db = database.db;
     await database.migrate(old.folder);
     await seed(db);
-    before = await freeCounters(db);
+    before = await freeCounters(db, capBeforeM2);
     await database.migrate(MIGRATIONS);
   }, 120_000);
 
@@ -104,7 +109,7 @@ describe.each(testBackends())("migration 0010 over existing rows on $name", (bac
   });
 
   it("today's free counters, the $4 total and the decisions from them don't change", async () => {
-    expect(await freeCounters(db)).toEqual(before);
+    expect(await freeCounters(db, capNow)).toEqual(before);
   });
 
   it("nobody has a balance, and the money tables start empty", async () => {
