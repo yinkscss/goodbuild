@@ -1,0 +1,15 @@
+[Unit]
+Description=GoodBuild encrypted off-site database backup (D47)
+After=docker.service network-online.target
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/goodbuild-backup/offsite-backup.sh
+# 75 means the previous run still holds the lock. The health check reports a stuck run.
+SuccessExitStatus=75
+Nice=10
+IOSchedulingClass=idle
+PrivateTmp=yes
+TimeoutStartSec=50min

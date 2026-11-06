@@ -62,3 +62,11 @@ jobs:
       - name: Test the release and rollback scripts
         run: bash deploy/test-release.sh
         timeout-minutes: 5
+
+      # Real Postgres, age and MinIO in a throwaway project, with keys made up for the run (D47).
+      - name: Test the off-site backup and restore drill
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq age >/dev/null
+          bash deploy/test-offsite-backup.sh
+        timeout-minutes: 8

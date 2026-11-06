@@ -288,6 +288,20 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - **Open for M2:** nothing yet stops `funding` being changed from `paid` to `free` before a delete, which would get past that trigger. Section 5 says a job keeps one source for life, so M2 should make it unchangeable.
 - **No visible change:** `getCredits` reads the real balance as `balanceMicro`, which nothing displays. `balanceGd` stays null so the pill keeps saying the beta is free. No code posts entries yet, so every balance is zero.
 
+### D47. Encrypted off-site backups every hour, with a restore drill
+- Date: 6 Nov 2026 · Decided by: Claude, building step O2 of the launch plan (decision 8 in MAINNET_PLAN.md section 13, accepted by D44), reviewed by the advisor. **The owner still picks the destination** and creates the account. Setup and drill: "Off-site backups" in DEPLOY.md.
+- **age with the owner's public key,** not restic. Restic needs its repository password on the server, so anyone who takes over the server could read every old backup. With age, the server can only encrypt. The private key stays with the owner.
+- **Plain `curl --aws-sigv4`** for the bucket, not the aws CLI or rclone. curl is already on the server, and the key reaches it on stdin.
+- **Retention by the bucket's lifecycle rules,** not the script: 48 hours of hourly copies, 30 days of dailies. The server's key then only needs to write, so a server that's taken over can't delete the off-site copies.
+- **Figures in the same snapshot.** `pg_dump --snapshot` reads one exported snapshot, and the row counts and ledger totals are taken inside it. A restore must then match exactly, not roughly.
+- **Recommended destination: Backblaze B2,** for its write-only keys. Cloudflare R2 is the alternative, already the DNS provider, with free downloads. Prices, card requirements and key scopes are UNVERIFIED.
+- **Alert: a healthchecks.io dead-man switch** (1 hour period, 1 hour grace), not Resend. A check on the server can't report the server being down. Email through Resend for other alerts is left to O3, along with:
+  - a check that reads the bucket's newest copy independently, since the ping only proves the script said it succeeded;
+  - disk space.
+- **The nightly local backup stays,** for fast local restores.
+- **Tested in CI** (`deploy/test-offsite-backup.sh`), with real Postgres, age and MinIO. Not yet against B2, R2 or the server.
+- **Risk:** the MinIO stand-in is Bitnami's archived image, since MinIO's own images are gone. If it disappears, the required check fails and blocks deploys until it is swapped for a maintained one, such as versitygw or rustfs.
+
 ## Recommended decisions (Ego; adopted unless changed)
 
 

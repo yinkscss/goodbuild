@@ -102,12 +102,140 @@ docker compose --env-file .env.production restart web worker
 - `NEXT_PUBLIC_*` values are fixed at build time, so changing one needs a deploy. Other values need a restart with `up -d`.
 
 ## Backups
-`deploy/backup.sh` runs nightly from root's crontab and keeps 7 days in `/var/backups/goodbuild`. They're on the same server, so a lost server loses them too. Since D31 these also hold what published apps' visitors saved, including records deleted in the last 7 days. Copy one off with `scp` before ending a term or changing anything risky.
+Two kinds run side by side. Keep both.
 
-Restore into an empty database:
+**Nightly, on the server:** `deploy/backup.sh` runs from root's crontab and keeps 7 days in `/var/backups/goodbuild`. A lost server loses them too. Since D31 they also hold what published apps' visitors saved, including records deleted in the last 7 days. They're the quickest way back from a bad migration, with no key or download. On 6 Nov a read-only check found one cron entry and one systemd timer for backups. Whether both run `backup.sh` is UNVERIFIED (`crontab -l`, `systemctl list-timers`). If they do, remove one.
+
+Restore a nightly copy into an empty database:
 ```bash
 docker compose --env-file .env.production exec -T goodbuild-postgres pg_restore -U goodbuild -d goodbuild --clean --if-exists < /var/backups/goodbuild/<file>.dump
 ```
+
+### Off-site backups (D47)
+**Not running until the owner does the setup below.**
+
+`deploy/offsite-backup.sh` runs every hour from `goodbuild-offsite-backup.timer`:
+1. It takes a `pg_dump` (custom format) of `goodbuild-postgres`. In the same database snapshot it records the figures in `deploy/backup-checks.sql`: rows per table and the ledger totals (D46).
+2. It encrypts the dump and figures with [age](https://age-encryption.org) to the owner's **public** key. The private key never goes on the server, so someone who takes over the server can't read old backups.
+3. It uploads the file twice: as `hourly/goodbuild-<UTC time>.tar.age`, and over `daily/goodbuild-<date>.tar.age`, so each day keeps its last good copy. `curl` signs the upload, and the bucket key reaches it on stdin, never on the command line or in logs.
+4. It pings a health check at start, on success and on failure.
+
+| What | Kept for | Why |
+|---|---|---|
+| `hourly/` | 48 hours | Recent mistakes lose at most an hour. Two days covers a weekend's late discovery. |
+| `daily/` | 30 days | Covers problems noticed late, such as a slow data bug. Longer keeps deleted user data longer than needed (D31). |
+| Nightly on the server | 7 days | Fast local restore. Unchanged. |
+
+The bucket's own lifecycle rules delete old copies, not the script. So the server's key only needs to write. A server that's taken over can't delete the off-site copies.
+
+**Size and cost:** each copy is about the size of the nightly dump (about 760 KB on 6 Nov), so 78 copies come to well under 1 GB.
+
+**Recommended destination: Backblaze B2** (the owner still has to choose, D47). B2 application keys can be made **write-only**, which suits the design above. Cloudflare R2 works with the same scripts, and the domain is already on Cloudflare. All prices below are UNVERIFIED, so check before signing up:
+- **B2:** the first 10 GB is free, then about $6 to $7 per TB a month. It's UNVERIFIED whether signing up needs a card.
+- **R2:** the first 10 GB a month is free, then about $0.015 per GB, with no download fees. Cloudflare asks for a payment method before turning R2 on (UNVERIFIED). D27 records a declined card at another vendor. Whether R2 tokens can be write-only is also UNVERIFIED.
+
+At this size either should cost $0 a month.
+
+#### Setup (owner)
+These files reach `/opt/goodbuild/deploy` with the first deploy after this is merged.
+
+**1. Make the encryption key on your own computer, not the server.**
+```bash
+brew install age            # or: apt install age
+age-keygen -o ~/goodbuild-backup.agekey
+```
+It prints `Public key: age1...`. That public key goes on the server. The file holds the private key:
+- Store it in your password manager.
+- Keep a second copy offline, such as printed or on a USB stick kept elsewhere.
+- **If the private key is lost, every backup is unreadable.** If it leaks, make a new key, put the new public key on the server, and treat old backups as readable by whoever has it.
+- Optionally, add a second person's public key on another line of the recipients file. Either key can then restore.
+
+**2. Make the bucket (B2):**
+- Create a private bucket, such as `goodbuild-db-backups`, with default encryption on.
+- Lifecycle rules (Lifecycle Settings, custom), all UNVERIFIED against B2's current screens:
+  - `hourly/`: hide after 2 days, delete 1 day after hiding.
+  - `daily/`: hide after 30 days, delete 1 day after hiding.
+  - The day's copy is overwritten every hour. Hiding then deletion also removes those older versions.
+- Create two application keys, both limited to this bucket:
+  - **Write Only,** for the server.
+  - **Read Only,** for restore drills, kept on your computer.
+- Note the S3 endpoint shown on the bucket page, such as `s3.us-west-004.backblazeb2.com`. The region is the part after `s3.`.
+
+**3. Make the alert:** a free [healthchecks.io](https://healthchecks.io) account (free plan UNVERIFIED). Add a check with period **1 hour** and grace **1 hour**, and email yourself. You'll then hear within about 2 hours of the last good backup. This also works when the server itself is down, which a check run on the server can't do. Copy its ping URL.
+- A failed run pings `/fail`, which marks the check down straight away. So one bad hour emails you, not only 2 hours of silence.
+- A blank `HEALTHCHECK_URL` turns the alert off without any warning.
+
+**4. Install on the server, as root:**
+```bash
+apt-get install -y age
+curl --version | head -1    # needs 7.75 or newer, for --aws-sigv4
+install -d -m 755 /usr/local/lib/goodbuild-backup
+install -m 755 /opt/goodbuild/deploy/offsite-backup.sh /usr/local/lib/goodbuild-backup/
+install -m 644 /opt/goodbuild/deploy/backup-checks.sql /usr/local/lib/goodbuild-backup/
+install -d -m 700 /etc/goodbuild
+install -m 600 /opt/goodbuild/deploy/offsite-backup.env.example /etc/goodbuild/offsite-backup.env
+nano /etc/goodbuild/offsite-backup.env   # endpoint, region, bucket, the WRITE-ONLY key, ping URL
+echo 'age1...your public key...' > /etc/goodbuild/backup-recipients.txt
+/usr/local/lib/goodbuild-backup/offsite-backup.sh   # by hand first: expect "ok: hourly/..."
+install -m 644 /opt/goodbuild/deploy/goodbuild-offsite-backup.service /opt/goodbuild/deploy/goodbuild-offsite-backup.timer /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now goodbuild-offsite-backup.timer
+systemctl list-timers goodbuild-offsite-backup.timer
+```
+- **Why not `.env.production`:** the keys live in `/etc/goodbuild`, because `.env.production` is passed to the web and worker containers.
+- **Why `/usr/local/lib`:** the script runs from there, so a deploy can't replace it mid-run. After a change to `offsite-backup.sh` or `backup-checks.sql`, run the two `install -m` lines again.
+- **Logs:** `journalctl -u goodbuild-offsite-backup -n 50`.
+- **Exit codes:** 75 means the previous run still held the lock, and that run did nothing.
+
+**5. Run the first restore drill** (below) within a day, and record it.
+
+#### Restore drill (owner, monthly, and before step B of the launch plan)
+`deploy/restore-drill.sh` downloads a backup and decrypts it with your private key. It restores the backup into a new, throwaway Postgres container, with no network and a random name, deleted afterwards. Then it checks that every figure taken at backup time comes out the same. It never connects to production or any other database.
+
+Run it on your own computer, which needs Docker, `age` and `curl`. The private key then never touches the server. It has only been run on Ubuntu (in CI). Running it on a Mac is UNVERIFIED. macOS's built-in bash is 3.2, so if it fails there, run it with `/opt/homebrew/bin/bash` or `/usr/local/bin/bash` (`brew install bash`).
+1. Copy `deploy/offsite-backup.env.example` to `~/.config/goodbuild/restore.env` and `chmod 600` it.
+2. Fill in the endpoint, region, bucket and the **read-only** key. Leave the server-only lines.
+3. Run:
+```bash
+deploy/restore-drill.sh --identity ~/goodbuild-backup.agekey --latest
+```
+- It ends with `PASS` or `FAIL` and prints a record line. Add the line to the table below.
+- For a chosen copy, use `--key daily/goodbuild-2026-11-06.tar.age`.
+- For a downloaded file, use `--file <path>`.
+
+| Date | Backup restored | Contents | Restore time | Result | By |
+|---|---|---|---|---|---|
+| YYYY-MM-DD | (first drill not yet run) | | | | |
+
+**Ledger totals:** the ledger (D46, migration 0010) is on `main`, so once it has been deployed the figures also include the ledger total, the balance total, the last entry number, and how many balances differ from their entries (must be 0). Before 0010 runs, those lines are simply absent.
+
+#### Recovering production from an off-site copy (not yet drilled)
+1. Decrypt on your computer:
+```bash
+age -d -i ~/goodbuild-backup.agekey -o payload.tar <file>.tar.age && tar -xf payload.tar goodbuild.dump
+```
+   - `--latest` only looks in `hourly/`, so after about 48 hours with no backups it finds nothing. Name a daily copy instead: `--key daily/goodbuild-<date>.tar.age`, or download it.
+2. Copy `goodbuild.dump` to the server.
+3. Stop `web` and `worker`, restore it with the nightly command above, and start them again.
+4. This **loses everything written since that backup.** With real money in the database, reconcile against Paystack and the chain before reopening.
+
+#### How far this is tested
+`deploy/test-offsite-backup.sh` runs in CI on every pull request. It uses real Postgres 16, real `age`, MinIO standing in for the bucket, and keys made up for the run. It covers:
+- The backup and restore cycle, with exact matching of the figures.
+- Picking the newest copy.
+- The wrong key, a corrupted file and a truncated file.
+- A refused upload, a held lock and the database being down. Each of these fails cleanly, pings `/fail` where it should, and leaves no plain dump behind.
+- A readable config, and a private key put where the public one belongs. Both are refused.
+
+**The deploy gate depends on an archived image.** MinIO's own images have left Docker Hub, and quay.io refused the pull. So the test uses `bitnamilegacy/minio`, which gets no updates and may be removed. This test is part of the required check, so if that pull starts failing, deploys are blocked. The fix is to swap in a maintained stand-in, such as versitygw or rustfs.
+
+UNVERIFIED until the owner's first run:
+- B2's (or R2's) acceptance of these signed uploads.
+- That B2's write-only key allows the upload.
+- The lifecycle rules.
+- The server's curl version.
+- The timer on the server.
+- The drill on a Mac.
 
 ## DNS (Cloudflare)
 `goodbuildit.xyz` and `*` are `A` records to the server, `www` is a `CNAME` to the root, all Proxied. SSL/TLS is Full. The `MX` and SPF `TXT` records are Namecheap email forwarding and were left alone.
@@ -128,4 +256,4 @@ docker compose --env-file .env.production exec -T goodbuild-postgres pg_restore 
 The throwaway wallet in `.data/throwaway-wallet.key` (Celo Sepolia only) can sign in and deploy from a script. A real build costs real AI money, about $0.35 for a one-contract app. Delete its test data afterwards. Its address is in `HANDOFF.md`.
 
 ## Status of this setup
-See "Hosting" in `HANDOFF.md`. It has one server and no failover, which suits the one-month testnet beta. Before M6 takes real money, move the database off the box and copy backups elsewhere.
+See "Hosting" in `HANDOFF.md`. It has one server and no failover, which suits the one-month testnet beta. Before M6 takes real money, set up the off-site backups (D47) and record a restore drill. Moving the database off the box is challenged in MAINNET_PLAN.md section 10.

@@ -1,0 +1,10 @@
+[Unit]
+Description=Hourly GoodBuild off-site database backup (D47)
+
+[Timer]
+OnCalendar=hourly
+RandomizedDelaySec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
