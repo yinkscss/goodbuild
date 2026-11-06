@@ -561,7 +561,7 @@ export function collection<T = unknown>(name: string) {
 }
 `;
 
-const USE_DB = `import { useCallback, useEffect, useState } from "react";
+const USE_DB = `import { useCallback, useEffect, useRef, useState } from "react";
 import { collection, isPreview, sendEmailCode, sessionInfo, signIn as dbSignIn, signOut as dbSignOut, verifyEmailCode, type DbRecord } from "./db";
 import { errorMessage } from "./format";
 import { subscribeWallet, walletState } from "./goodbuild/wallet";
@@ -580,6 +580,8 @@ export function useDbSession() {
   const [signingIn, setSigningIn] = useState(false);
   const [codeSentTo, setCodeSentTo] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const walletSession = useRef<string | null>(null);
+  walletSession.current = wallet;
 
   const refresh = useCallback(async () => {
     const s = await sessionInfo();
@@ -591,14 +593,19 @@ export function useDbSession() {
 
   useEffect(() => {
     refresh().catch(() => setWallet(null)).finally(() => setLoading(false));
-    // Switching or disconnecting the wallet ends a wallet sign-in. No wallet connected yet doesn't:
-    // the session outlives the page, and the wallet reconnects a moment after it loads.
+    // Switching or disconnecting the wallet ends a wallet sign-in, on the server too, so a reload
+    // doesn't bring it back. No wallet connected yet doesn't: the session outlives the page, and the
+    // wallet reconnects a moment after it loads. An email sign-in has no wallet here, so it's untouched.
     let last = (walletState().account ?? "").toLowerCase();
     return subscribeWallet(() => {
       const account = (walletState().account ?? "").toLowerCase();
       if (account === last) return;
       last = account;
-      setWallet((w) => (w && w !== account ? null : w));
+      if (!walletSession.current || walletSession.current === account) return;
+      walletSession.current = null;
+      setWallet(null);
+      setIsOwner(isPreview);
+      void dbSignOut().catch(() => {});
     });
   }, [refresh]);
 

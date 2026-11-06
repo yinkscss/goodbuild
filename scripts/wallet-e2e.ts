@@ -285,7 +285,9 @@ async function main() {
     check("connecting the same wallet keeps the sign-in", (await a.textContent("#who")) === signedIn, await a.textContent("#who"));
     await a.click('button[aria-label="Disconnect wallet"]');
     await a.waitForFunction(() => document.querySelector("#who")?.textContent === "signed out", undefined, { timeout: 5000 });
-    check("disconnecting the wallet ends the sign-in", true);
+    await a.goto(url);
+    await a.waitForFunction(() => { const who = document.querySelector("#who")?.textContent; return who && who !== "loading"; }, undefined, { timeout: 15000 });
+    check("disconnecting the wallet ends the sign-in on the server: a reload stays signed out", (await a.textContent("#who")) === "signed out", await a.textContent("#who"));
     check("no CSP violations or errors in the browser-wallet flow", (await problems()).length === 0, await problems());
     await context.close();
 
