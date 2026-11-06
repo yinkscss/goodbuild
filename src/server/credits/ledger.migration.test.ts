@@ -127,7 +127,9 @@ describe.each(testBackends())("migration 0010 over existing rows on $name", (bac
   });
 
   it("a funding value outside the four is refused on both tables", async () => {
-    await expect(db.execute(sql`UPDATE usage_events SET funding = 'gift'`)).rejects.toThrow();
-    await expect(db.execute(sql`UPDATE turn_jobs SET funding = 'gift'`)).rejects.toThrow();
+    // INSERT, since an UPDATE of funding is now refused by 0011's trigger before the CHECK is reached.
+    await expect(db.execute(sql`INSERT INTO usage_events (user_id, call_id, model, input_tokens, output_tokens, provider_cost_micro, charged_micro, markup_bps, funding) VALUES (${ALICE}, 'gift', 'm', 1, 1, 1, 1, 0, 'gift')`).catch((e: { cause?: { constraint_name?: string; constraint?: string } }) => e.cause?.constraint_name ?? e.cause?.constraint)).resolves.toMatch(/_funding_check$/);
+    await expect(db.execute(sql`INSERT INTO messages (id, project_id, role, content) VALUES ('00000000-0000-4000-8000-0000000000bd', ${PROJECT}, 'user', 'gift')`)).resolves.toBeDefined();
+    await expect(db.execute(sql`INSERT INTO turn_jobs (project_id, user_id, mode, prompt, user_message_id, funding) VALUES (${PROJECT}, ${ALICE}, 'build', 'gift', '00000000-0000-4000-8000-0000000000bd', 'gift')`).catch((e: { cause?: { constraint_name?: string; constraint?: string } }) => e.cause?.constraint_name ?? e.cause?.constraint)).resolves.toMatch(/_funding_check$/);
   });
 });
