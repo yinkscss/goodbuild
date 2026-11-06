@@ -5,7 +5,7 @@ import { DATA_RULES_PATH, PRIVATE_RULE, parseDataRules, ruleFor } from "@/lib/ap
 import { checkApp, dataIssues, namingProblem, pathProblem } from "@/server/agent/checks";
 import { guideNames, loadGuides } from "@/server/agent/guides";
 import { contextMessage, systemPrompt } from "@/server/agent/prompt";
-import { starterFiles, withStarterHelpers } from "@/server/agent/template";
+import { DATA_HELPERS, starterFiles, withStarterHelpers } from "@/server/agent/template";
 import { Workspace } from "@/server/agent/workspace";
 import { buildPublishedApp } from "@/server/publish/build";
 
@@ -122,4 +122,14 @@ describe("the published page", () => {
     const files = await buildPublishedApp({ files: app, assets: [], title: "T", hasUndeployedContracts: false });
     expect(new TextDecoder().decode(files.find((f) => f.path === "index.html")!.bytes)).not.toContain("goodbuild-data");
   }, 60_000);
+});
+
+describe("projects made before D34", () => {
+  it("get today's data helpers on their next turn, and nothing else they wrote changes", () => {
+    const old = { ...starterFiles(), "src/lib/db.ts": "// the helper from last week", "src/App.tsx": "mine" };
+    const next = withStarterHelpers(old);
+    expect(next["src/lib/db.ts"]).toBe(DATA_HELPERS["src/lib/db.ts"]);
+    expect(next["src/lib/db.ts"]).toContain('"create": "anyone"');
+    expect(next["src/App.tsx"]).toBe("mine");
+  });
 });

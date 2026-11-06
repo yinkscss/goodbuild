@@ -198,6 +198,16 @@ describe("a form sent without signing in", () => {
     expect((await add(undefined, "bookings", "just text")).status).toBe(400);
   });
 
+  it("refuses a write missing a unique field, even when the rule names no fields", async () => {
+    const loose = JSON.stringify({ collections: { ...JSON.parse(SALON).collections, slots: { create: "anyone", read: ["owner"], public: ["day"], unique: ["day"] } } });
+    await saveFiles(db, salon.id, { "src/App.tsx": "x", "src/main.tsx": "x", "public/index.html": "<html>", "src/lib/dataRules.json": loose });
+    await publishApp(db, salon, "x-app", { build: BUILT });
+    expect((await add(undefined, "slots", { note: "no day" })).status).toBe(400);
+    expect((await add(undefined, "slots", "Mon")).status).toBe(400);
+    expect((await add(undefined, "slots", { day: "Mon" })).status).toBe(200);
+    expect((await add(undefined, "slots", { day: "Mon" })).status).toBe(409);
+  });
+
   it("can't be edited once sent, when the rule says update: []", async () => {
     const res = await add(undefined, "bookings", booking("Ada"));
     const anon = cookieFrom(res);

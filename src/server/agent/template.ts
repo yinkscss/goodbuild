@@ -869,10 +869,19 @@ export function starterFiles(): Record<string, string> {
  * are missing (never overwrite), so the prompt's list of available files is always true.
  */
 export function withStarterHelpers(files: Record<string, string>): Record<string, string> {
-  const out = { ...files };
+  const out = withCurrentDataHelpers(files);
   for (const [p, content] of Object.entries(starterFiles())) {
     if (/^src\/(lib|components\/ui)\//.test(p) && !(p in out)) out[p] = content;
   }
+  return out;
+}
+
+/** The data helpers are GoodBuild's, and the builder can't edit them, so every project always gets the current ones (D34). */
+export const DATA_HELPERS: Record<string, string> = { "src/lib/db.ts": DB, "src/lib/useDb.ts": USE_DB };
+
+export function withCurrentDataHelpers(files: Record<string, string>): Record<string, string> {
+  const out = { ...files };
+  for (const [p, content] of Object.entries(DATA_HELPERS)) if (p in out) out[p] = content;
   return out;
 }
 

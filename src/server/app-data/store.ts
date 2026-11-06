@@ -232,9 +232,13 @@ export function canCreate(rule: CollectionRule, viewer: Viewer | null): boolean 
 
 /** The value checked against the rule's fields. Returns a message a person can read, or null. */
 export function fieldProblem(rule: CollectionRule, json: string): string | null {
-  if (!rule.fields) return null;
+  if (!rule.fields && !rule.unique.length) return null;
   const value = JSON.parse(json) as unknown;
   if (!value || typeof value !== "object" || Array.isArray(value)) return "Send an object with the fields this collection uses.";
+  for (const field of rule.unique) {
+    if ((value as Record<string, unknown>)[field] === undefined) return `"${field}" is needed here.`;
+  }
+  if (!rule.fields) return null;
   const fields = rule.fields;
   const extra = Object.keys(value).filter((f) => !Object.hasOwn(fields, f));
   if (extra.length) return `These fields aren't part of this collection: ${extra.join(", ")}.`;
@@ -242,9 +246,6 @@ export function fieldProblem(rule: CollectionRule, json: string): string | null 
     const v = (value as Record<string, unknown>)[field];
     if (v === undefined || v === null) continue;
     if (typeof v !== type || (type === "number" && !Number.isFinite(v))) return `"${field}" must be a ${type}.`;
-  }
-  for (const field of rule.unique) {
-    if ((value as Record<string, unknown>)[field] === undefined) return `"${field}" is needed here.`;
   }
   return null;
 }

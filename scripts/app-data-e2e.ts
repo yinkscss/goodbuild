@@ -71,6 +71,24 @@ export default function App() {
 }
 `;
 
+const INBOX_APP = `import { useState } from "react";
+import { useCollection } from "./lib/useDb";
+
+export default function App() {
+  const bookings = useCollection<{ name: string; day: string }>("bookings");
+  const [error, setError] = useState("");
+  const book = () => bookings.add({ name: "Ada", day: "Mon" }).catch((e) => setError((e as { code?: string }).code ?? "error"));
+  return (
+    <main>
+      <button id="book" onClick={() => void book()}>Book</button>
+      <button id="again" onClick={() => void book()}>Book again</button>
+      <p id="error">{error}</p>
+      <ul id="list">{bookings.records.map((r) => <li key={r.key}>{r.value.name} {r.value.day}</li>)}</ul>
+    </main>
+  );
+}
+`;
+
 let failures = 0;
 function check(name: string, ok: boolean, detail?: unknown) {
   console.log(`${ok ? "PASS" : "FAIL"}  ${name}${!ok && detail !== undefined ? `  -> ${JSON.stringify(detail)}` : ""}`);
@@ -383,6 +401,33 @@ async function browserPass(alice: PrivateKeyAccount, bob: PrivateKeyAccount) {
   await preview.waitForFunction(() => document.querySelector("#notes")?.textContent?.includes("only in this browser"));
   check("preview: sign-in, write and reload work with no server, and no request reaches one", serverCalls.length === 0, serverCalls);
   check("preview: the note says the data stays in this browser", Boolean(await preview.textContent("[data-goodbuild-preview-note]")));
+
+  // D34 in the preview: a form sent without signing in, a unique slot, and the creator seeing it as the owner.
+  const inbox = await buildPublishedApp({
+    files: {
+      ...starterFiles(),
+      "src/App.tsx": INBOX_APP,
+      "src/lib/dataRules.json": JSON.stringify({ collections: { bookings: { create: "anyone", read: ["writer", "owner"], public: ["day"], fields: { name: "string", day: "string" }, unique: ["day"] } } }),
+    },
+    assets: [],
+    title: "Inbox preview",
+    hasUndeployedContracts: false,
+  });
+  const inboxPage = await (await browser.newContext()).newPage();
+  await inboxPage.route("https://inbox.invalid/**", (route: { request(): { url(): string }; fulfill(o: object): unknown }) => {
+    const path = new URL(route.request().url()).pathname.slice(1) || "index.html";
+    if (path.startsWith("__gb")) serverCalls.push(path);
+    const file = inbox.find((f) => f.path === path);
+    return route.fulfill(file ? { status: 200, contentType: file.mime, body: Buffer.from(file.bytes) } : { status: 404, body: "" });
+  });
+  await inboxPage.goto("https://inbox.invalid/");
+  await inboxPage.click("#book");
+  await inboxPage.waitForFunction(() => document.querySelector("#list")?.textContent?.includes("Ada Mon"));
+  await inboxPage.click("#again");
+  await inboxPage.waitForFunction(() => document.querySelector("#error")?.textContent === "duplicate");
+  check("preview: a form sent without signing in is saved, and the creator sees it in full as the owner", (await inboxPage.textContent("#list"))?.includes("Ada Mon") === true, await inboxPage.textContent("#list"));
+  check("preview: a second booking of the same slot is refused", (await inboxPage.textContent("#error")) === "duplicate");
+  check("preview: still no request reaches a server", serverCalls.length === 0, serverCalls);
   await browser.close();
 }
 
