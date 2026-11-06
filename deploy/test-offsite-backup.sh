@@ -9,11 +9,10 @@ here="$(cd "$(dirname "$0")" && pwd)"
 dir="$(mktemp -d)"
 project=goodbuild-o2test
 compose=(docker compose -f "$dir/docker-compose.yml" --env-file "$dir/.env.production")
-hc_pid="" holder_pid=""
+hc_pid=""
 
 cleanup() {
   set +e
-  [ -z "$holder_pid" ] || kill "$holder_pid" 2>/dev/null
   [ -z "$hc_pid" ] || kill "$hc_pid" 2>/dev/null
   "${compose[@]}" down -v --remove-orphans >/dev/null 2>&1
   rm -rf "$dir"
@@ -215,11 +214,11 @@ pass "upload failure reported"
 
 # 7. A second run while one holds the lock does nothing and exits 75, without pinging.
 : >"$dir/pings.log"
-flock "$dir/backup.lock" sleep 60 &
-holder_pid=$!
-sleep 1
+# Held by this shell on its own descriptor, so closing it releases the lock with no child left holding it.
+exec 8>"$dir/backup.lock"
+flock -n 8 || fail "couldn't take the test lock"
 backup "$dir/backup.env"
-kill "$holder_pid"; wait "$holder_pid" 2>/dev/null || true; holder_pid=""
+exec 8>&-
 [ "$rc" = 75 ] && grep -q 'still running' "$dir/out.log" || fail "a held lock didn't stop the run (exit $rc)"
 [ ! -s "$dir/pings.log" ] || fail "a locked-out run pinged"
 [ "$(count_objects hourly/)" = 2 ] || fail "a locked-out run uploaded"
