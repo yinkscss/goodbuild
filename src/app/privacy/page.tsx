@@ -22,13 +22,13 @@ export default function PrivacyPage() {
       <h2>What is public</h2>
       <p>Anything on a blockchain is public and permanent, including deployed contracts and your wallet address. Verified source code and published apps are public too.</p>
       <h2>When you use an app published on GoodBuild</h2>
-      <p>Apps on GoodBuild addresses are made by their creators. Some save data for you after you connect your wallet. For those apps:</p>
+      <p>Apps on GoodBuild addresses are made by their creators. Some save data for you after you connect your wallet, and some forms, such as bookings, can be sent without signing in. For those apps:</p>
       <ul>
         <li>
-          <strong>What is stored:</strong> your wallet address, what you save in the app, and when you saved it. GoodBuild stores it on its own server, separately for each app.
+          <strong>What is stored:</strong> your wallet address if you signed in, what you save or send in the app, and when. If you didn&apos;t sign in, the app gets a random id for your browser instead, kept in a cookie. GoodBuild stores it on its own server, separately for each app.
         </li>
         <li>
-          <strong>Who can see it:</strong> you, and the app itself while you are signed in to it. The app&apos;s code can use what you saved, so only save what you&apos;re happy to share with that app. Some apps have public parts, such as posts, which anyone can read. The app&apos;s creator sees totals only, not your private records. People who run GoodBuild can access the server.
+          <strong>Who can see it:</strong> you, and the app itself while you are signed in to it. The app&apos;s code can use what you saved, so only save what you&apos;re happy to share with that app. Some apps have public parts, such as posts, which anyone can read. If you send something to the app&apos;s owner, such as a booking or a message, the owner can read it, and the form should say so. Otherwise the owner sees totals only, not your private records. People who run GoodBuild can access the server.
         </li>
         <li>
           <strong>Your IP address</strong> is used for a short time to stop abuse, for example too many requests in a minute, and is not saved with your data.

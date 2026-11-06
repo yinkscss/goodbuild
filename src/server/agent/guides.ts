@@ -55,9 +55,10 @@ export const GUIDES: Guide[] = [
     name: "forms-and-signup",
     when: "signup, login, join, waitlist, contact, booking or any form that collects input",
     body: `Forms and signup.
-- "Sign up" / "join" / "log in" means connecting a wallet and signing in: a Signup page that explains what joining gives, a big button calling useDbSession().signIn() (or ConnectButton if nothing is saved), and a success state with the shortAddress that sends them on (Link to the app page). Never build passwords or a fake account system.
+- A form people send to the app's owner (contact, booking, enquiry, waitlist) needs no wallet: give its collection "create": "anyone" and "read": ["writer", "owner"] (see the app-data guide). Above the submit button say plainly who reads it, for example "Only the salon owner sees your name and phone number."
+- "Sign up" / "join" / "log in" for a personal area means connecting a wallet and signing in: a Signup page that explains what joining gives, a big button calling useDbSession().signIn() (or ConnectButton if nothing is saved), and a success state with the shortAddress that sends them on (Link to the app page). Never build passwords or a fake account system.
 - A form that must save what people enter uses the app-data guide: sign in, then save to a collection. Never pretend a form was sent, never save to localStorage as if it were stored, and never send form data to third-party URLs.
-- Who can read the entries matters. A private collection means only the person who wrote an entry can read it: the app's creator can't, so a contact, booking or waitlist form the creator needs to read can't work that way yet. public-read shows entries to everyone with the writer's wallet address, so never use it for emails, phone numbers or anything personal. If the user wants to read private submissions themselves, say in your reply that this isn't available yet and keep the form honest ("Sign-ups open soon"), or record a member list on-chain with a small contract if the entries may be public.
+- Who can read the entries matters. The owner reads what was sent in GoodBuild's Backend window (and in the app, when signed in with the owning wallet, through session.isOwner). Never put emails, phone numbers or anything personal in a collection that "anyone" reads, or in its "public" fields.
 - Form craft: Label + Input pairs (htmlFor/id), helpful placeholder, required fields marked, inline validation on blur and submit (text-danger text-xs under the field), the submit button disabled while pending with a "Joining…" label, and a Notice for success or failure. type="email", inputMode="decimal" for amounts, autoComplete where it helps.
 - Keep forms short: ask only for what the app uses. One column on mobile, max-w-md.`,
   },
@@ -66,11 +67,20 @@ export const GUIDES: Guide[] = [
     when: "the app must remember something between visits or show what other people wrote: notes, profiles, saved settings, posts, comments, lists, RSVPs, or any form that stores what people enter",
     body: `Saved data. Published apps can store data on GoodBuild's servers, with no setup. Use src/lib/db.ts and src/lib/useDb.ts (they exist already; don't edit them). Never invent a backend, an API route, or a third-party database: none of those will work.
 - Choose the store first. Money, ownership, votes, or anything people must be able to verify without trusting GoodBuild goes in a contract. Everything else (profiles, notes, comments, drafts, preferences, off-chain lists) goes here. Data here is not on-chain and can be removed, so never make it the record of who owns or owes what.
-- Sign-in is the wallet: useDbSession() gives {wallet, loading, signingIn, error, signIn, signOut, isPreview}. signIn() connects the wallet if needed and asks for a signature (no transaction, no gas). Say that on the button or beside it. wallet is null until they sign in; connecting with useWallet alone doesn't sign in. Writes always need sign-in.
-- Rules live in src/lib/dataRules.json: {"collections": {"posts": "public-read", "notes": "private"}}. Add every collection you use, with its rule.
-  private (the default, and for anything undeclared): only the wallet that wrote a record can read it. Not even the app's creator can. Use it unless the app is clearly about sharing.
-  public-read: anyone can read, even without signing in, along with the writer's wallet address; only the writer can change or delete it. Only for things people mean to publish (posts, comments, listings). Never emails, phone numbers, addresses or anything personal.
-  Changing a rule only takes effect when the app is published again. A record written while its collection was private stays private. Making a collection private hides its records at once.
+- Sign-in is the wallet: useDbSession() gives {wallet, isOwner, loading, signingIn, error, signIn, signOut, isPreview}. signIn() connects the wallet if needed and asks for a signature (no transaction, no gas). Say that on the button or beside it. wallet is null until they sign in; connecting with useWallet alone doesn't sign in. isOwner is true when the app's owner is signed in (always in the preview), so show an owner view, such as every booking, behind it.
+- Rules live in src/lib/dataRules.json. Design them for this app: add every collection you use. A rule is "private", "public-read", or an object:
+    {"collections": {
+      "notes": "private",
+      "posts": "public-read",
+      "bookings": {"create": "anyone", "read": ["writer", "owner"], "delete": ["writer", "owner"], "public": ["day", "time"],
+                   "fields": {"name": "string", "phone": "string", "day": "string", "time": "string"}, "unique": ["day", "time"]}
+    }}
+  create: who can add a record. "signed-in" (the default) needs wallet sign-in; "anyone" takes records from visitors who never sign in (forms sent to the owner); "owner" means only the app's owner adds them (announcements, menus).
+  read: who sees whole records, any of "writer" (the default), "owner" (the app's owner), "signed-in", "anyone". The owner reads only where you list "owner".
+  delete: "writer" and/or "owner". update: ["writer"] (the default) or [] so records can't be edited once sent.
+  public: fields everyone sees without who wrote them, for example which time slots are taken. fields: the allowed fields and their types ("string", "number", "boolean"); a write with other fields is refused. unique: field values no two records may share (no double booking); they must also be in public.
+  "private" equals {"read": ["writer"]}. "public-read" equals {"read": ["anyone"]}. Only list "anyone" in read for things people mean to publish (posts, comments, listings), never personal details.
+  A rule takes effect when the app is published again. A record is never more visible than the rule it was saved under, so loosening a rule doesn't expose older records.
 - Each wallet has its own records. Two wallets using the same key get two separate records, so there's no shared record everyone edits, and no counter everyone increments: count by listing, or use a contract.
 - Reading and writing:
     const session = useDbSession();
@@ -78,7 +88,9 @@ export const GUIDES: Guide[] = [
     await notes.add({ text });            // new record with a generated key
     await notes.put("profile", { name }); // your record under a key you pick; replaces your earlier one
     await notes.remove(record.key);
-  notes.records is newest first; each has key, owner (lowercase), value, createdAt, updatedAt. Show a public feed with useCollection<Post>("posts") and no sign-in; add { owner: address } for one person's records. For one record outside React: const r = await collection<Profile>("profiles").get("me") from src/lib/db.ts (null if there's none; { owner } reads someone else's public record).
+    const bookings = useCollection<Booking>("bookings");   // a form sent without sign-in: no enabled check needed to add
+    await bookings.add({ name, phone, day, time });        // a taken slot throws with code "duplicate": say it's taken
+  notes.records is newest first; each has key, owner (lowercase, or null when you only see its public fields), value, createdAt, updatedAt. The owner removes someone else's record with remove(record.key, record.owner). Show a public feed with useCollection<Post>("posts") and no sign-in; add { owner: address } for one person's records. For one record outside React: const r = await collection<Profile>("profiles").get("me") from src/lib/db.ts (null if there's none; { owner } reads someone else's public record).
 - Names: collections use lowercase letters, numbers, - and _, starting with a letter. Keys use letters, numbers, _ . : -, starting with a letter or number, and at most 128 characters.
 - Limits: 16 KB per value, 1,000 records and 2 MB per wallet, 20,000 records and 20 MB per app. Values are JSON: no files or images. Writes throw when a limit is reached, with a message you can show: wrap them in try/catch and show errorMessage(e) in a Notice. list() returns 50 at a time, 100 at most; pass nextCursor as cursor for more.
 - Offer a "Delete my data" action (deleteMyData() from src/lib/db.ts) somewhere reasonable, such as a settings or profile area, in any app that stores anything personal.

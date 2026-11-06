@@ -19,7 +19,7 @@ describe("AppDataRow", () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(ok({ records: 1200, wallets: 1, bytes: 9 }));
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
     const { container } = render(<AppDataRow projectId="p1" />);
-    expect(await screen.findByText("1,200 records from 1 wallet")).toBeInTheDocument();
+    expect(await screen.findByText("1,200 records from 1 person")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /delete all/i }));
     expect(confirm).toHaveBeenCalled();
@@ -38,6 +38,6 @@ describe("AppDataRow", () => {
     render(<AppDataRow projectId="p1" />);
     fireEvent.click(await screen.findByRole("button", { name: /delete all/i }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't delete it");
-    expect(screen.getByText("2 records from 2 wallets")).toBeInTheDocument();
+    expect(screen.getByText("2 records from 2 people")).toBeInTheDocument();
   });
 });

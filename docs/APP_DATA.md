@@ -31,19 +31,33 @@ The session is a random 32-byte token in an httpOnly cookie, `__Host-gbapp_sessi
 **Smart accounts:** ERC-1271 and ERC-6492 signatures work through the check `verifySignIn` already has, on Celo and Celo Sepolia. It makes an RPC call, so it runs only after the nonce check and under the sign-in rate limit. Checked with a stand-in for the chain call; UNVERIFIED with a real smart account.
 
 ## Who can read and write
-Rules come from `src/lib/dataRules.json` in the project, are validated by the agent's checks and when publishing, and are saved with the publication. Nothing in a request can change them.
+Rules come from `src/lib/dataRules.json` in the project. The agent writes them for each app (D34). They're validated by the agent's checks and when publishing, and saved with the publication. Nothing in a request can change them.
 
-| Rule | Read | Write |
+A rule is `"private"`, `"public-read"`, or an object:
+
+| Setting | Values | Default |
 |---|---|---|
-| `private` (default, and for anything undeclared) | The wallet that wrote the record | That wallet |
-| `public-read` | Anyone, with no sign-in, including the writer's address | The wallet that wrote the record |
+| `create` | `anyone` (no sign-in: forms sent to the owner), `signed-in` (wallet), `owner` | `signed-in` |
+| `read` | any of `anyone`, `signed-in`, `writer`, `owner` | `["writer"]` |
+| `update` | `["writer"]` or `[]` (can't be edited once sent) | `["writer"]` |
+| `delete` | `writer` and/or `owner` | `["writer"]` |
+| `public` | fields everyone sees, without who wrote the record | none |
+| `fields` | allowed fields and their types (`string`, `number`, `boolean`) | any JSON |
+| `unique` | fields no two records may share; must also be public | none |
 
-- Each record also stores whether it was public when written, and every read checks that. Making a collection public later doesn't expose what visitors wrote while it was private. Making one private hides its records when you publish.
-- Two wallets using the same key get two records. There are no shared records, by design.
+`private` is `{"read": ["writer"]}` and `public-read` is `{"read": ["anyone"]}`, exactly as before D34.
+
+- **Owner** is the wallet that owns the project on GoodBuild, looked up by the server. The app can't name anyone else. The owner reads what visitors sent in GoodBuild's Backend window (signed in to GoodBuild, so email wallets work), and in the app itself when signed in with that wallet.
+- **Visitors who don't sign in** get a random id of their own (`anon:<uuid>`), held through an app-scoped session cookie whose secret is separate from the id. They see what they sent from that browser. Their entries don't merge into an account if they later sign in. They can't satisfy `signed-in`.
+- **Saved grants:** each record stores who could read it when it was saved (`access`). A reader must pass both that grant and the rule now, so loosening a rule never exposes older records, and tightening one applies at once. Records saved before D34 have no grant: they follow `is_public`, otherwise only their writer reads them, even where the owner now reads.
+- **Public fields never name the writer.** The `owner` filter and lookups by writer only match records the viewer sees in full.
+- **Unique values** are checked under the project's write lock, so two bookings of one slot can't both succeed. A refused duplicate shows the value exists, which is why unique fields must be public.
+- **Abuse:** writes without sign-in are limited to 10 a minute per IP and 60 a minute per app, and to 2,000 records per app (`maxAnonRowsPerProject`), well below the app's 20,000. The owner can delete any entry from the Backend window, whatever the rules say.
+- Two visitors using the same key get two records. There are no shared records, by design. The owner can't edit visitors' records yet.
 
 **What `private` doesn't mean:**
 - The app's own code runs on the same origin, so while a visitor is signed in it can read their records and send them anywhere its CSP allows (any https address). Private means private from other wallets, not from the app.
-- The app's creator can't read private records through GoodBuild, but GoodBuild's operators can, because they run the database.
+- The app's creator can't read private records through GoodBuild, only collections whose rule lists `owner`, but GoodBuild's operators can, because they run the database.
 - It isn't encrypted beyond whatever the server's disk does. UNVERIFIED: whether the VPS disk is encrypted.
 
 ## Other apps in the same browser
