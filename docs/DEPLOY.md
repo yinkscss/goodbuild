@@ -78,7 +78,7 @@ If the migration itself is the problem, a rollback won't fix it. The options are
 
 A rollback also doesn't change `.env.production` or the files in `/opt/goodbuild`, including the compose file. `NEXT_PUBLIC_*` values go back with the image, since they're fixed at build time.
 
-**How far this is tested:** `deploy/test-release.sh` runs both scripts against real Docker in CI, on a throwaway project. UNVERIFIED on the production server until the owner runs the test below. Disk use per image is also UNVERIFIED.
+**How far this is tested:** `deploy/test-release.sh` runs both scripts against real Docker in CI, on a throwaway project. UNVERIFIED on the production server until the owner runs the test below. Disk use per image is also UNVERIFIED. The first production run (6 Nov) failed with "No such image" when it tagged the old image by its ID after the build, though CI had passed. Nothing restarted. `release.sh` now holds the old image by name (`outgoing`) before building. Why the server lost the ID is UNVERIFIED (a different Docker image store is likely).
 
 ### Test it once on production (owner, before step B of the launch plan)
 Do this right after the first deploy that includes these scripts, at a quiet time. That deploy adds no migration, so going back is safe. Run these in `/opt/goodbuild/deploy`:
