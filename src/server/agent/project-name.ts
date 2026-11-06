@@ -3,7 +3,7 @@ import "server-only";
 import { and, eq, ne } from "drizzle-orm";
 
 import type { Db } from "@/server/db/client";
-import { projects } from "@/server/db/schema";
+import { projects, type FundingSource } from "@/server/db/schema";
 import { TIER_FOR, type ModelClient } from "./model";
 import { recordUsage } from "./store";
 
@@ -29,7 +29,7 @@ export function uniqueName(name: string, taken: string[]): string {
  * Give a new project its own name, from a cheap call with no thinking. Best effort: it runs beside
  * the first build, and on any failure the name made from the prompt stays. The call counts as usage.
  */
-export async function nameProject(db: Db, model: ModelClient, input: { projectId: string; userId: string; prompt: string; messageId?: string | null }): Promise<string | null> {
+export async function nameProject(db: Db, model: ModelClient, input: { projectId: string; userId: string; prompt: string; messageId?: string | null; funding: FundingSource }): Promise<string | null> {
   const [project] = await db.select({ name: projects.name, ownerId: projects.ownerId }).from(projects).where(eq(projects.id, input.projectId)).limit(1);
   if (!project) return null;
 
@@ -53,6 +53,7 @@ export async function nameProject(db: Db, model: ModelClient, input: { projectId
         inputTokens: ev.inputTokens,
         outputTokens: ev.outputTokens,
         cachedInputTokens: ev.cachedInputTokens,
+        funding: input.funding,
       });
     }
   }

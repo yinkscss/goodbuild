@@ -3,7 +3,7 @@ import "server-only";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 
 import type { Db } from "@/server/db/client";
-import { messages, projectFiles, projects, usageEvents, versions, type Version } from "@/server/db/schema";
+import { messages, projectFiles, projects, usageEvents, versions, type FundingSource, type Version } from "@/server/db/schema";
 import { withCurrentAddresses } from "@/server/deploy/addresses";
 import { MARKUP_BPS } from "@/config/model-pricing";
 import { chargedMicro, costMicro } from "@/lib/pricing";
@@ -95,7 +95,10 @@ export async function releaseTurn(db: Db, projectId: string, status: string): Pr
   await db.update(projects).set({ turnStartedAt: null, status, updatedAt: sql`now()` }).where(eq(projects.id, projectId));
 }
 
-/** Record one model call's usage, priced with our table (D13). Idempotent on callId. */
+/**
+ * Record one model call's usage, priced with our table (D13). Idempotent on callId. `funding` is
+ * required: a turn's calls take their job's (D48), and calls outside a turn decide it when they run.
+ */
 export async function recordUsage(
   db: Db,
   args: {
@@ -108,6 +111,7 @@ export async function recordUsage(
     inputTokens: number;
     outputTokens: number;
     cachedInputTokens: number;
+    funding: FundingSource;
   },
 ): Promise<{ providerCostMicro: number; chargedMicro: number }> {
   const provider = costMicro(args.model, args);

@@ -3,7 +3,7 @@ import "server-only";
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
 
 import type { Db } from "@/server/db/client";
-import { turnJobs, usageEvents, users } from "@/server/db/schema";
+import { turnJobs, usageEvents, users, type FundingSource } from "@/server/db/schema";
 
 /**
  * Free AI for accounts that haven't verified with GoodDollar (D28). One account is one wallet, and
@@ -25,8 +25,9 @@ export const VERIFIED_CAP_MESSAGE = "You've used all your free AI. Top-ups are c
 
 /**
  * Total real provider spend the free trial may reach, across every account (D29). Set below the
- * provider balance, so builds already running can finish before the money runs out. A top-up means
- * raising FREE_AI_BUDGET_MICRO, because this counts all recorded spend.
+ * provider balance, so builds already running can finish before the money runs out. It counts free
+ * and exempt spend, all of it since the start (D48), and never paid or platform spend. A top-up of
+ * the provider account means raising FREE_AI_BUDGET_MICRO.
  */
 export const FREE_BUDGET_MICRO = 4_000_000;
 
@@ -35,7 +36,20 @@ export const RESERVED_PER_BUILD_MICRO = 350_000;
 
 export const BUDGET_MESSAGE = "The free trial is full right now. Please check back soon.";
 
-export type CapDecision = { allowed: true } | { allowed: false; reason: "free_limit" | "verified_limit" | "one_build_at_a_time" | "budget_full"; message: string };
+export const FUNDING_UNAVAILABLE_MESSAGE = "This build can't start yet. Please try again later.";
+
+export type CapDecision =
+  | { allowed: true }
+  | { allowed: false; reason: "free_limit" | "verified_limit" | "one_build_at_a_time" | "budget_full" | "funding_unavailable"; message: string };
+
+/**
+ * Which usage uses up what (D48). A person's free allowance (D28, D30) is used only by `free` usage.
+ * The free total (D29) protects the provider balance, which exempt usage draws on too, so it counts
+ * `free` and `exempt`. Paid usage is the payer's own money, and the platform pays for AI reviews
+ * (MAINNET_PLAN decision 3), so neither ever touches free AI.
+ */
+const PERSONAL_FREE: FundingSource[] = ["free"];
+const FREE_TOTAL: FundingSource[] = ["free", "exempt"];
 
 function capMicro(env: Record<string, string | undefined>) {
   return Number(env.UNVERIFIED_CAP_MICRO) || UNVERIFIED_CAP_MICRO;
@@ -52,7 +66,7 @@ function budgetMicro(env: Record<string, string | undefined>) {
 }
 
 /** Wallets exempt from the cap, for the people running the service. */
-function isExempt(wallet: string, env: Record<string, string | undefined>) {
+export function isExempt(wallet: string, env: Record<string, string | undefined>) {
   return (env.UNCAPPED_WALLETS ?? "")
     .toLowerCase()
     .split(",")
@@ -60,45 +74,69 @@ function isExempt(wallet: string, env: Record<string, string | undefined>) {
     .includes(wallet.toLowerCase());
 }
 
+/** The free AI this account has used. Paid, exempt and platform usage don't count (D48). */
 export async function spentMicro(db: Db, userId: string): Promise<number> {
   const [row] = await db
     .select({ total: sql<string>`coalesce(sum(${usageEvents.chargedMicro}), 0)` })
     .from(usageEvents)
-    .where(eq(usageEvents.userId, userId));
+    .where(and(eq(usageEvents.userId, userId), inArray(usageEvents.funding, PERSONAL_FREE)));
   return Number(row?.total ?? 0);
 }
 
-/** What this person has used: every account sharing their GoodDollar identity. */
+/** The free AI this person has used: every account sharing their GoodDollar identity. */
 async function identitySpentMicro(db: Db, goodidRoot: string): Promise<number> {
   const [row] = await db
     .select({ total: sql<string>`coalesce(sum(${usageEvents.chargedMicro}), 0)` })
     .from(usageEvents)
     .innerJoin(users, eq(usageEvents.userId, users.id))
-    .where(eq(users.goodidRoot, goodidRoot));
+    .where(and(eq(users.goodidRoot, goodidRoot), inArray(usageEvents.funding, PERSONAL_FREE)));
   return Number(row?.total ?? 0);
 }
 
 /**
  * Is there room left in the total budget? New requests also count queued builds. The worker starts
  * builds one by one, so it counts only the others already running: two queued builds near the limit
- * would otherwise each see the other's reservation and both fail.
+ * would otherwise each see the other's reservation and both fail. Only free and exempt spending and
+ * builds count (D48).
  */
 async function budgetHasRoom(db: Db, startingJobId: string | undefined, env: Record<string, string | undefined>): Promise<boolean> {
-  const [spent] = await db.select({ total: sql<string>`coalesce(sum(${usageEvents.providerCostMicro}), 0)` }).from(usageEvents);
-  const active = startingJobId ? and(eq(turnJobs.status, "running"), ne(turnJobs.id, startingJobId)) : inArray(turnJobs.status, ["queued", "running"]);
-  const [builds] = await db.select({ count: sql<string>`count(*)` }).from(turnJobs).where(active);
+  const [spent] = await db
+    .select({ total: sql<string>`coalesce(sum(${usageEvents.providerCostMicro}), 0)` })
+    .from(usageEvents)
+    .where(inArray(usageEvents.funding, FREE_TOTAL));
+  const status = startingJobId ? and(eq(turnJobs.status, "running"), ne(turnJobs.id, startingJobId)) : inArray(turnJobs.status, ["queued", "running"]);
+  const [builds] = await db
+    .select({ count: sql<string>`count(*)` })
+    .from(turnJobs)
+    .where(and(status, inArray(turnJobs.funding, FREE_TOTAL)));
   return Number(spent?.total ?? 0) + Number(builds?.count ?? 0) * RESERVED_PER_BUILD_MICRO < budgetMicro(env);
 }
 
 /**
+ * Who funds a build or AI call this user starts now (D48). Decided once, when a job is created, and
+ * kept for the job's life. Exempt wallets are exempt. Everyone else is on free AI, because free comes
+ * first (MAINNET_PLAN decision 5) and nothing can debit a paid balance until M3, so a balance unlocks
+ * nothing yet: at the free limit a payer is refused exactly as before. M3 adds `paid` here.
+ */
+export async function decideFunding(db: Db, userId: string, env: Record<string, string | undefined> = process.env): Promise<Extract<FundingSource, "free" | "exempt">> {
+  const [user] = await db.select({ wallet: users.wallet }).from(users).where(eq(users.id, userId)).limit(1);
+  return user && isExempt(user.wallet, env) ? "exempt" : "free";
+}
+
+/**
  * May this user spend more AI? `projectId` is the build they're starting, if any. `startingJobId`
- * is set by the worker for the job it has just claimed.
+ * is set by the worker for the job it has just claimed, with that job's stored `funding`, which
+ * decides over the worker's own settings: a job keeps one source for life.
  */
 export async function checkAiAllowance(
   db: Db,
-  input: { userId: string; projectId?: string; startingJobId?: string },
+  input: { userId: string; projectId?: string; startingJobId?: string; funding?: FundingSource },
   env: Record<string, string | undefined> = process.env,
 ): Promise<CapDecision> {
+  if (input.funding === "exempt") return { allowed: true };
+  // Nothing creates these jobs yet, and nothing could charge for them (M3), so they never run.
+  if (input.funding === "paid" || input.funding === "platform") return { allowed: false, reason: "funding_unavailable", message: FUNDING_UNAVAILABLE_MESSAGE };
+
   const [user] = await db.select({ wallet: users.wallet, verifiedAt: users.verifiedAt, goodidRoot: users.goodidRoot }).from(users).where(eq(users.id, input.userId)).limit(1);
   if (!user || isExempt(user.wallet, env)) return { allowed: true };
 

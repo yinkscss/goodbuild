@@ -7,7 +7,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { sql } from "drizzle-orm";
 
 import type { Db } from "@/server/db/client";
-import { checkAiAllowance, spentMicro } from "./cap";
+import * as capNow from "./cap";
+import * as capBeforeM2 from "./cap-before-m2";
 import { getBalanceMicro } from "./ledger";
 import { MIGRATIONS, testBackends, type TestDatabase } from "./test-backends";
 
@@ -51,8 +52,12 @@ async function rows<T>(db: Db, query: ReturnType<typeof sql>): Promise<T[]> {
   return (Array.isArray(result) ? result : (result as { rows: T[] }).rows) as T[];
 }
 
-/** Everything the free limits (D28 to D30) decide from. None of it may move. */
-async function freeCounters(db: Db) {
+/**
+ * Everything the free limits (D28 to D30) decide from. None of it may move. The database before 0010
+ * has no funding column, so it is read with the cap code of that time, and after with today's (M2).
+ */
+async function freeCounters(db: Db, cap: Pick<typeof capNow, "checkAiAllowance" | "spentMicro">) {
+  const { checkAiAllowance, spentMicro } = cap;
   const [total] = await rows<{ provider: string; charged: string; count: string }>(db, sql`SELECT sum(provider_cost_micro) AS provider, sum(charged_micro) AS charged, count(*) AS count FROM usage_events`);
   const tight = { FREE_AI_BUDGET_MICRO: "1000000", VERIFIED_CAP_MICRO: "5000000" };
   const room = { FREE_AI_BUDGET_MICRO: "4000000", VERIFIED_CAP_MICRO: "5000000" };
@@ -82,7 +87,7 @@ describe.each(testBackends())("migration 0010 over existing rows on $name", (bac
     db = database.db;
     await database.migrate(old.folder);
     await seed(db);
-    before = await freeCounters(db);
+    before = await freeCounters(db, capBeforeM2);
     await database.migrate(MIGRATIONS);
   }, 120_000);
 
@@ -104,7 +109,7 @@ describe.each(testBackends())("migration 0010 over existing rows on $name", (bac
   });
 
   it("today's free counters, the $4 total and the decisions from them don't change", async () => {
-    expect(await freeCounters(db)).toEqual(before);
+    expect(await freeCounters(db, capNow)).toEqual(before);
   });
 
   it("nobody has a balance, and the money tables start empty", async () => {
@@ -122,7 +127,9 @@ describe.each(testBackends())("migration 0010 over existing rows on $name", (bac
   });
 
   it("a funding value outside the four is refused on both tables", async () => {
-    await expect(db.execute(sql`UPDATE usage_events SET funding = 'gift'`)).rejects.toThrow();
-    await expect(db.execute(sql`UPDATE turn_jobs SET funding = 'gift'`)).rejects.toThrow();
+    // INSERT, since an UPDATE of funding is now refused by 0011's trigger before the CHECK is reached.
+    await expect(db.execute(sql`INSERT INTO usage_events (user_id, call_id, model, input_tokens, output_tokens, provider_cost_micro, charged_micro, markup_bps, funding) VALUES (${ALICE}, 'gift', 'm', 1, 1, 1, 1, 0, 'gift')`).catch((e: { cause?: { constraint_name?: string; constraint?: string } }) => e.cause?.constraint_name ?? e.cause?.constraint)).resolves.toMatch(/_funding_check$/);
+    await expect(db.execute(sql`INSERT INTO messages (id, project_id, role, content) VALUES ('00000000-0000-4000-8000-0000000000bd', ${PROJECT}, 'user', 'gift')`)).resolves.toBeDefined();
+    await expect(db.execute(sql`INSERT INTO turn_jobs (project_id, user_id, mode, prompt, user_message_id, funding) VALUES (${PROJECT}, ${ALICE}, 'build', 'gift', '00000000-0000-4000-8000-0000000000bd', 'gift')`).catch((e: { cause?: { constraint_name?: string; constraint?: string } }) => e.cause?.constraint_name ?? e.cause?.constraint)).resolves.toMatch(/_funding_check$/);
   });
 });

@@ -4,6 +4,7 @@ import { and, asc, eq, gt, inArray, sql } from "drizzle-orm";
 
 import type { Db } from "@/server/db/client";
 import { messages, projects, turnEvents, turnJobCalls, turnJobs, type TurnJob } from "@/server/db/schema";
+import { decideFunding } from "@/server/credits/cap";
 import { LeaseLostError, type LoggedCall, type TurnJobContext, type TurnSetup } from "@/server/agent/turn-progress";
 import type { TurnEvent, TurnMode } from "@/lib/turn-types";
 
@@ -27,10 +28,12 @@ function rowsOf<T>(result: unknown): T[] {
  * Queue a turn. The user message is saved now (queued), so a reload before the job starts
  * still shows the prompt. Answering an existing queued message (the landing page's first
  * prompt) reuses it; the unique index on user_message_id makes a double submit harmless.
+ * Who funds the job is decided here and never changes (D48).
  */
 export async function enqueueTurn(
   db: Db,
   args: { projectId: string; userId: string; mode: TurnMode; prompt?: string; userMessageId?: string; intake?: boolean },
+  env: Record<string, string | undefined> = process.env,
 ): Promise<TurnJob> {
   return db.transaction(async (tx) => {
     let messageId = args.userMessageId;
@@ -53,7 +56,8 @@ export async function enqueueTurn(
         .returning({ id: messages.id });
       messageId = m.id;
     }
-    const [job] = await tx.insert(turnJobs).values({ projectId: args.projectId, userId: args.userId, mode: args.mode, prompt, userMessageId: messageId }).returning();
+    const funding = await decideFunding(tx as unknown as Db, args.userId, env);
+    const [job] = await tx.insert(turnJobs).values({ projectId: args.projectId, userId: args.userId, mode: args.mode, prompt, userMessageId: messageId, funding }).returning();
     await tx.update(messages).set({ meta: sql`coalesce(${messages.meta}, '{}'::jsonb) || ${JSON.stringify({ mode: args.mode, jobId: job.id, ...(args.intake ? { intake: true } : {}) })}::jsonb` }).where(eq(messages.id, messageId));
     return job;
   });
@@ -129,6 +133,7 @@ export async function jobContext(db: Db, job: TurnJob, owner: string, signal: Ab
   };
   return {
     lockHeld: true,
+    funding: job.funding,
     signal,
     resume: job.attempt > 1 ? { assistantMessageId: job.assistantMessageId, setup: (job.setup as unknown as TurnSetup | null) ?? null, calls: log, attempt: job.attempt } : undefined,
     commit: (fn) =>

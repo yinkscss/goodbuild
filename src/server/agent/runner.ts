@@ -13,6 +13,7 @@ import { TIER_FOR, ModelUnavailableError, type ChatMessage, type ModelClient, ty
 import { INTAKE_MAX_TOKENS, INTAKE_PROMPT, INTAKE_TOOLS, fallbackIntake, intakeContext, latestIntake, parseIntake, planBrief } from "./plan-intake";
 import { BUILD_TOOLS, PLAN_TOOLS, contextWithPicks, systemPrompt } from "./prompt";
 import { checkpoint, claimTurn, loadFiles, recordUsage, releaseTurn } from "./store";
+import { decideFunding } from "@/server/credits/cap";
 import { deploymentsBlock, loadDeployedAddresses } from "@/server/deploy/addresses";
 import { isUpgradeableProject, liveStorage, upgradeChecksFor } from "@/server/deploy/upgradeable";
 import { upgradeableRules } from "./upgradeable-rules";
@@ -94,6 +95,8 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
   const lint = (files: Record<string, string>) => lintWith(files, { assets: assetNames });
 
   if (!job.lockHeld && !(await claimTurn(db, input.projectId, input.userId))) throw new TurnBusyError();
+  // Every usage row of the turn takes the job's funding (D48).
+  const funding = job.funding ?? (await decideFunding(db, input.userId));
 
   const saved = job.resume?.setup ?? null;
   const replayLog = saved ? (job.resume?.calls ?? []) : [];
@@ -264,6 +267,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
               inputTokens: ev.inputTokens,
               outputTokens: ev.outputTokens,
               cachedInputTokens: ev.cachedInputTokens,
+              funding,
             });
             rows.push({ model: ev.model, inputTokens: ev.inputTokens, outputTokens: ev.outputTokens, cachedInputTokens: ev.cachedInputTokens, callId, chargedMicro: cost.chargedMicro });
           }
@@ -658,6 +662,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
           inputTokens: ev.inputTokens,
           outputTokens: ev.outputTokens,
           cachedInputTokens: ev.cachedInputTokens,
+          funding,
         });
         record.chargedMicro += cost.chargedMicro;
       }

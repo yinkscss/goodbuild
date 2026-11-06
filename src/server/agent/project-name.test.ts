@@ -53,17 +53,17 @@ describe("nameProject", () => {
   it("renames the project, keeps names unique per owner, and counts the call as usage", async () => {
     const a = await project("I would like to build a fund for my club");
     const b = await project("I would like to build a fund for my other club");
-    await nameProject(db, replying("Club Fund"), { projectId: a, userId, prompt: "x" });
-    await nameProject(db, replying("Club Fund"), { projectId: b, userId, prompt: "y" });
+    await nameProject(db, replying("Club Fund"), { projectId: a, userId, prompt: "x", funding: "free" });
+    await nameProject(db, replying("Club Fund"), { projectId: b, userId, prompt: "y", funding: "free" });
     expect(await nameOf(a)).toBe("Club Fund");
     expect(await nameOf(b)).toBe("Club Fund 2");
-    expect(await db.select().from(usageEvents)).toHaveLength(1);
+    expect((await db.select().from(usageEvents)).map((u) => u.funding)).toEqual(["free"]);
   });
 
   it("keeps the current name when the reply isn't a name", async () => {
     const a = await project("Tip jar for the coach");
     const before = await nameOf(a);
-    await nameProject(db, replying("Sure! Here is a great name for your application, it is"), { projectId: a, userId, prompt: "x" });
+    await nameProject(db, replying("Sure! Here is a great name for your application, it is"), { projectId: a, userId, prompt: "x", funding: "free" });
     expect(await nameOf(a)).toBe(before);
   });
 });
