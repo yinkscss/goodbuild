@@ -17,6 +17,7 @@ export default function PrivacyPage() {
         <li>Magic handles email sign-in and your email wallet, so it receives your email address.</li>
         <li>WalletConnect, if you connect through it.</li>
         <li>Sourcify receives your contract&apos;s source code when it is verified.</li>
+        <li>Resend sends sign-in codes for apps that offer email sign-in, so it receives the email address and the code.</li>
         <li>Cloudflare sits in front of GoodBuild and its published apps, so it handles every request, including your IP address.</li>
       </ul>
       <h2>What is public</h2>
@@ -25,7 +26,7 @@ export default function PrivacyPage() {
       <p>Apps on GoodBuild addresses are made by their creators. Some save data for you after you connect your wallet, and some forms, such as bookings, can be sent without signing in. For those apps:</p>
       <ul>
         <li>
-          <strong>What is stored:</strong> your wallet address if you signed in, what you save or send in the app, and when. If you didn&apos;t sign in, the app gets a random id for your browser instead, kept in a cookie. GoodBuild stores it on its own server, separately for each app.
+          <strong>What is stored:</strong> your wallet address or email address if you signed in, what you save or send in the app, and when. Your email address is kept for that one app, and other visitors and the app&apos;s owner never see it unless you type it into a form. If you didn&apos;t sign in, the app gets a random id for your browser instead, kept in a cookie. GoodBuild stores it on its own server, separately for each app.
         </li>
         <li>
           <strong>Who can see it:</strong> you, and the app itself while you are signed in to it. The app&apos;s code can use what you saved, so only save what you&apos;re happy to share with that app. Some apps have public parts, such as posts, which anyone can read. If you send something to the app&apos;s owner, such as a booking or a message, the owner can read it, and the form should say so. Otherwise the owner sees totals only, not your private records. People who run GoodBuild can access the server.

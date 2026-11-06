@@ -6,7 +6,7 @@ import ts from "typescript";
 
 import * as Lucide from "lucide-react";
 
-import { COLLECTION_NAME, DATA_PATH_PREFIX, DATA_RULES_PATH, parseDataRules } from "@/lib/app-data";
+import { COLLECTION_NAME, DATA_PATH_PREFIX, DATA_RULES_PATH, parseDataRules, parseSignIn } from "@/lib/app-data";
 import { MANIFEST_PATH, parseManifest, planManifest } from "@/lib/deploy/manifest";
 
 import { assetRefs } from "./assets";
@@ -599,7 +599,7 @@ const COLLECTION_CALL = /\b(?:collection|useCollection)(?:<[^>()]*>)?\(\s*["'`](
  * a call to its own "/api/..." route only fails once published, and a hosted database sends visitors' data elsewhere.
  */
 export function dataIssues(files: Record<string, string>): CheckIssue[] {
-  const issues: CheckIssue[] = parseDataRules(files[DATA_RULES_PATH]).issues.map((message) => ({ file: DATA_RULES_PATH, message, source: "paths" }));
+  const issues: CheckIssue[] = [...parseDataRules(files[DATA_RULES_PATH]).issues, ...parseSignIn(files[DATA_RULES_PATH]).issues].map((message) => ({ file: DATA_RULES_PATH, message, source: "paths" }));
   for (const [file, content] of Object.entries(files)) {
     if (!/\.(tsx?|jsx?)$/.test(file) || file === "src/lib/db.ts" || file === "src/lib/useDb.ts" || file.startsWith(PLATFORM_DIR)) continue;
     const lineOf = (index: number) => content.slice(0, index).split("\n").length;

@@ -4,7 +4,7 @@ import { parseSiweMessage } from "viem/siwe";
 
 import { randomUUID } from "node:crypto";
 
-import { COLLECTION_NAME, DATA_CLIENT_HEADER, RECORD_KEY, ruleFor, type CollectionRule } from "@/lib/app-data";
+import { COLLECTION_NAME, DATA_CLIENT_HEADER, RECORD_KEY, normalizeEmail, ruleFor, type CollectionRule } from "@/lib/app-data";
 import { APP_SESSION_COOKIE } from "@/lib/auth/cookie-names";
 import { classifyHost, publishedAppUrl, publishedAppsDomain } from "@/lib/published-host";
 import { isProduction } from "@/server/auth/config";
@@ -12,6 +12,7 @@ import { AuthError } from "@/server/auth/errors";
 import { verifySignIn, type VerifySignInInput } from "@/server/auth/siwe";
 import type { Db } from "@/server/db/client";
 import { effectiveHost } from "@/server/edge";
+import { emailSender, requestEmailCode, verifyEmailCode, type EmailSender } from "./email";
 import { createRateLimiter, limitsFromEnv, type AppDataLimits, type RateLimiter } from "./limits";
 import {
   ANON_PREFIX,
@@ -29,6 +30,7 @@ import {
   liveApp,
   newRecordKey,
   putRecord,
+  sessionEmail,
   sessionWallet,
   totalStoredBytes,
   usableNonce,
@@ -45,6 +47,8 @@ export interface AppDataDeps {
   /** Contract-wallet signature check. Defaults to the on-chain one in verifySignIn. */
   verifyContractSignature?: VerifySignInInput["verifyContractSignature"];
   totalBytesCacheMs?: number;
+  /** Sends sign-in emails (D35). Defaults to Resend, or the server log in development. */
+  sendEmail?: EmailSender | null;
 }
 
 const defaultRate = createRateLimiter();
@@ -138,7 +142,7 @@ function checkKey(key: string) {
   if (!RECORD_KEY.test(key)) fail("invalid_key", 400, "Keys use letters, numbers, _ . : and -, start with a letter or number, and have at most 128 characters.");
 }
 
-const ANON_ID = /^anon:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const ANON_ID = /^(anon|email):[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /** Whose record: a wallet, or an anonymous visitor's id as the API showed it. */
 function ownerParam(url: URL): string | undefined {
@@ -262,8 +266,11 @@ async function sessionRoute(ctx: Context, method: string): Promise<Response> {
   if (method === "GET") {
     limit(ctx, `r:ip:${ctx.ip}`, ctx.limits.readsPerIpPerMinute);
     const viewer = await viewerOf(ctx);
-    // An anonymous visitor isn't signed in. `owner` lets the app show its owner view.
-    return json({ wallet: viewer?.signedIn ? viewer.subject : null, owner: Boolean(viewer?.isOwner) });
+    // An anonymous visitor isn't signed in. `owner` lets the app show its owner view. An email
+    // visitor gets their own address back, never their id, and `wallet` stays null for them.
+    const isWallet = Boolean(viewer?.signedIn && viewer.subject.startsWith("0x"));
+    const email = viewer?.signedIn && !isWallet ? await sessionEmail(ctx.db, ctx.app.projectId, readCookie(ctx.request)) : null;
+    return json({ wallet: isWallet ? viewer!.subject : null, email, signedIn: Boolean(viewer?.signedIn), owner: Boolean(viewer?.isOwner), emailSignIn: ctx.app.emailSignIn });
   }
   if (method === "POST") return signInRoute(ctx);
   if (method === "DELETE") {
@@ -272,6 +279,40 @@ async function sessionRoute(ctx: Context, method: string): Promise<Response> {
     return json({ ok: true }, 200, { "Set-Cookie": sessionCookie("", 0) });
   }
   return fail("method_not_allowed", 405, "That method isn't allowed here.");
+}
+
+async function emailBody(ctx: Context): Promise<Record<string, unknown>> {
+  requireJson(ctx.request);
+  const text = await readBody(ctx.request, 2048);
+  if (text === null) fail("body_too_large", 413, "That request is too large.");
+  return parseObject(text);
+}
+
+/** Send a sign-in code (D35). Honest about every refusal, because there are no accounts to discover. */
+async function emailCodeRoute(ctx: Context): Promise<Response> {
+  if (!ctx.app.emailSignIn) fail("email_not_enabled", 404, "This app doesn't offer email sign-in.");
+  limit(ctx, `e:ip:${ctx.ip}`, ctx.limits.emailCodesPerIpPerMinute);
+  limit(ctx, `e:project:${ctx.app.projectId}`, ctx.limits.emailCodesPerProjectPerMinute);
+  const email = normalizeEmail((await emailBody(ctx)).email);
+  if (!email) fail("invalid_email", 400, "Enter one email address, like ada@example.com.");
+  await checkSiteRoom(ctx);
+  const send = ctx.deps.sendEmail === undefined ? emailSender() : ctx.deps.sendEmail;
+  const { expiresAt } = await requestEmailCode(ctx.db, ctx.app, { email, ip: ctx.ip, appHost: new URL(publishedAppUrl(ctx.slug, ctx.host, publishedAppsDomain())).host }, ctx.limits, send);
+  return json({ sent: true, expiresAt });
+}
+
+async function emailVerifyRoute(ctx: Context): Promise<Response> {
+  if (!ctx.app.emailSignIn) fail("email_not_enabled", 404, "This app doesn't offer email sign-in.");
+  limit(ctx, `ev:ip:${ctx.ip}`, ctx.limits.emailVerifiesPerIpPerMinute);
+  const body = await emailBody(ctx);
+  const email = normalizeEmail(body.email);
+  if (!email) fail("invalid_email", 400, "Enter one email address, like ada@example.com.");
+  const code = typeof body.code === "string" ? body.code.replace(/\s+/g, "") : "";
+  const subject = await verifyEmailCode(ctx.db, ctx.app, { email, code }, ctx.limits);
+  // An anonymous session ends here. What it sent stays with that browser's old id (docs/APP_DATA.md).
+  await endSession(ctx.db, ctx.app.projectId, readCookie(ctx.request));
+  const session = await createSession(ctx.db, ctx.app.projectId, subject, new Date(), email);
+  return json({ email, expiresAt: session.expiresAt }, 200, { "Set-Cookie": sessionCookie(session.token, SESSION_TTL_SECONDS) });
 }
 
 async function meRoute(ctx: Context, method: string): Promise<Response> {
@@ -369,6 +410,10 @@ function route(ctx: Context, method: string, path: string[]): Promise<Response> 
   if (section === "session" && a === "nonce" && b === undefined) {
     if (method !== "GET") fail("method_not_allowed", 405, "That method isn't allowed here.");
     return nonceRoute(ctx);
+  }
+  if (section === "session" && a === "email" && (b === undefined || b === "verify")) {
+    if (method !== "POST") fail("method_not_allowed", 405, "That method isn't allowed here.");
+    return b === "verify" ? emailVerifyRoute(ctx) : emailCodeRoute(ctx);
   }
   if (section === "me" && a === undefined) return meRoute(ctx, method);
   if (section === "c" && a && b === undefined) return collectionRoute(ctx, method, a);

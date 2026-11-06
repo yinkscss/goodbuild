@@ -6,7 +6,7 @@ import { and, desc, eq, gt, isNull, lt, or, sql } from "drizzle-orm";
 
 import { grantOf, ruleFor, type CollectionRule, type DataRole, type RecordGrant } from "@/lib/app-data";
 import type { Db } from "@/server/db/client";
-import { appDataNonces, appDataRecords, appDataSessions, appDataUsage } from "@/server/db/app-data-schema";
+import { appDataEmailCodes, appDataEmailIdentities, appDataNonces, appDataRecords, appDataSessions, appDataUsage } from "@/server/db/app-data-schema";
 import { publications } from "@/server/db/publish-schema";
 import { projects, users } from "@/server/db/schema";
 import type { AppDataLimits } from "./limits";
@@ -18,6 +18,8 @@ export interface LiveApp {
   rules: Record<string, unknown>;
   /** The project owner's wallet, lowercase: the "owner" role (D34). From GoodBuild's own records, never the app. */
   ownerWallet: string;
+  /** The app asked for email sign-in in its dataRules.json (D35). */
+  emailSignIn: boolean;
 }
 
 const PROJECT_TOTAL = "*";
@@ -38,14 +40,14 @@ export class AppDataError extends Error {
 /** The app on this slug, only while it is live. Keyed to the project, so a later owner of the slug starts empty. */
 export async function liveApp(db: Db, slug: string): Promise<LiveApp | null> {
   const [row] = await db
-    .select({ projectId: publications.projectId, clientId: publications.clientId, rules: publications.dataRules, unpublishedAt: publications.unpublishedAt, disabledAt: publications.disabledAt, ownerWallet: users.wallet })
+    .select({ projectId: publications.projectId, clientId: publications.clientId, rules: publications.dataRules, unpublishedAt: publications.unpublishedAt, disabledAt: publications.disabledAt, ownerWallet: users.wallet, emailSignIn: publications.emailSignIn })
     .from(publications)
     .innerJoin(projects, eq(projects.id, publications.projectId))
     .innerJoin(users, eq(users.id, projects.ownerId))
     .where(eq(publications.slug, slug))
     .limit(1);
   if (!row || row.unpublishedAt || row.disabledAt) return null;
-  return { projectId: row.projectId, clientId: row.clientId, rules: row.rules, ownerWallet: row.ownerWallet.toLowerCase() };
+  return { projectId: row.projectId, clientId: row.clientId, rules: row.rules, ownerWallet: row.ownerWallet.toLowerCase(), emailSignIn: row.emailSignIn };
 }
 
 // ---------------------------------------------------------------------------
@@ -84,10 +86,10 @@ export async function consumeNonce(db: Db, projectId: string, nonce: string, now
   return rows.length === 1;
 }
 
-export async function createSession(db: Db, projectId: string, wallet: string, now = new Date()): Promise<{ token: string; expiresAt: Date }> {
+export async function createSession(db: Db, projectId: string, wallet: string, now = new Date(), email: string | null = null): Promise<{ token: string; expiresAt: Date }> {
   const token = randomBytes(32).toString("base64url");
   const expiresAt = new Date(now.getTime() + SESSION_TTL_MS);
-  await db.insert(appDataSessions).values({ projectId, wallet: wallet.toLowerCase(), tokenHash: hashToken(token), expiresAt, createdAt: now });
+  await db.insert(appDataSessions).values({ projectId, wallet: wallet.toLowerCase(), email, tokenHash: hashToken(token), expiresAt, createdAt: now });
   // Sign-in is rate limited, so this is a cheap place to keep both tables small.
   await db.delete(appDataNonces).where(lt(appDataNonces.expiresAt, now));
   await db.delete(appDataSessions).where(lt(appDataSessions.expiresAt, now));
@@ -103,6 +105,17 @@ export async function sessionWallet(db: Db, projectId: string, token: string | u
     .where(and(eq(appDataSessions.tokenHash, hashToken(token)), eq(appDataSessions.projectId, projectId), gt(appDataSessions.expiresAt, now)))
     .limit(1);
   return row?.wallet ?? null;
+}
+
+/** The address of a visitor signed in by email, for showing to them only (D35). */
+export async function sessionEmail(db: Db, projectId: string, token: string | undefined, now = new Date()): Promise<string | null> {
+  if (!token) return null;
+  const [row] = await db
+    .select({ email: appDataSessions.email })
+    .from(appDataSessions)
+    .where(and(eq(appDataSessions.tokenHash, hashToken(token)), eq(appDataSessions.projectId, projectId), gt(appDataSessions.expiresAt, now)))
+    .limit(1);
+  return row?.email ?? null;
 }
 
 export async function endSession(db: Db, projectId: string, token: string | undefined): Promise<void> {
@@ -362,6 +375,11 @@ export async function eraseWallet(db: Db, projectId: string, wallet: string): Pr
     if (gone.length && isAnonymous(wallet)) await tx.update(appDataUsage).set({ rows: sql`greatest(${appDataUsage.rows} - ${gone.length}, 0)`, bytes: sql`greatest(${appDataUsage.bytes} - ${bytes}, 0)` }).where(and(eq(appDataUsage.projectId, projectId), eq(appDataUsage.wallet, ANON_TOTAL)));
     await tx.delete(appDataUsage).where(and(eq(appDataUsage.projectId, projectId), eq(appDataUsage.wallet, wallet)));
     await tx.delete(appDataSessions).where(and(eq(appDataSessions.projectId, projectId), eq(appDataSessions.wallet, wallet)));
+    if (wallet.startsWith(EMAIL_PREFIX)) {
+      // The address goes too, with any codes sent to it in this app.
+      const [identity] = await tx.delete(appDataEmailIdentities).where(and(eq(appDataEmailIdentities.projectId, projectId), eq(appDataEmailIdentities.subject, wallet))).returning({ email: appDataEmailIdentities.email });
+      if (identity) await tx.delete(appDataEmailCodes).where(and(eq(appDataEmailCodes.projectId, projectId), eq(appDataEmailCodes.email, identity.email)));
+    }
     return gone.length;
   });
 }
@@ -394,6 +412,8 @@ export async function deleteProjectData(db: Db, projectId: string): Promise<void
     await tx.delete(appDataUsage).where(eq(appDataUsage.projectId, projectId));
     await tx.delete(appDataSessions).where(eq(appDataSessions.projectId, projectId));
     await tx.delete(appDataNonces).where(eq(appDataNonces.projectId, projectId));
+    await tx.delete(appDataEmailCodes).where(eq(appDataEmailCodes.projectId, projectId));
+    await tx.delete(appDataEmailIdentities).where(eq(appDataEmailIdentities.projectId, projectId));
   });
 }
 
@@ -402,8 +422,8 @@ export async function deleteProjectData(db: Db, projectId: string): Promise<void
 
 /** The app's rules and owner for its owner's own view, published or not. Null before the first publish. */
 export async function ownerApp(db: Db, projectId: string, ownerWallet: string): Promise<LiveApp | null> {
-  const [row] = await db.select({ clientId: publications.clientId, rules: publications.dataRules }).from(publications).where(eq(publications.projectId, projectId)).limit(1);
-  return row ? { projectId, clientId: row.clientId, rules: row.rules, ownerWallet: ownerWallet.toLowerCase() } : null;
+  const [row] = await db.select({ clientId: publications.clientId, rules: publications.dataRules, emailSignIn: publications.emailSignIn }).from(publications).where(eq(publications.projectId, projectId)).limit(1);
+  return row ? { projectId, clientId: row.clientId, rules: row.rules, ownerWallet: ownerWallet.toLowerCase(), emailSignIn: row.emailSignIn } : null;
 }
 
 /** The collections whose records the owner can read, from the published rules. */
@@ -430,7 +450,7 @@ export function recordsCsv(records: PublicRecord[]): string {
   const header = ["saved", "from", ...fields];
   const rows = records.map((r) => {
     const v = r.value && typeof r.value === "object" && !Array.isArray(r.value) ? (r.value as Record<string, unknown>) : { value: r.value };
-    return [r.createdAt.toISOString(), r.owner?.startsWith(ANON_PREFIX) ? "visitor" : r.owner, ...fields.map((f) => v[f])];
+    return [r.createdAt.toISOString(), r.owner?.startsWith(ANON_PREFIX) ? "visitor" : r.owner?.startsWith(EMAIL_PREFIX) ? "signed in by email" : r.owner, ...fields.map((f) => v[f])];
   });
   return [header, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n") + "\r\n";
 }

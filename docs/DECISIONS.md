@@ -193,6 +193,13 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - **Not built:** owner edits of visitors' records (replies, "confirmed"), staff readers, email alerts, Turnstile on busy forms, email sign-in for visitors (next PR).
 - Terms and Privacy updated: owners can now read what visitors send them, where the form says so.
 
+### D35. Email-code sign-in for app visitors
+- Date: 6 Nov 2026 · Decided by: user (Olayinka): "Email sign-in", after GoodBuild's Magic account couldn't be shared with published apps. Provider: Resend (the user created the account, verified goodbuildit.xyz and put the key on the server). Design by Claude, reviewed by the advisor.
+- **Opt-in per app** (`"signIn": {"email": true}` in dataRules.json), so no app can be used to send email unless it asks for sign-in.
+- **A random id per app and address** (`email:<uuid>`), never derived from a rotatable secret and never shown to others. Email visitors are `signed-in`, never `owner`.
+- **Abuse:** codes are counted per IP, address, app and the whole site, in the database, plus a daily cap on wrong guesses per address. The attempt count is atomic. Refusals are honest (429, 502 or 503).
+- **Not built:** bounce handling, Turnstile, merging an email identity with a wallet. Details: APP_DATA.md.
+
 ## Recommended decisions (Ego; adopted unless changed)
 
 
