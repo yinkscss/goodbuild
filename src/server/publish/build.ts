@@ -34,7 +34,7 @@ export interface BuildInput {
   /** The public id src/lib/db.ts reads from the page. Its presence is also how the helper knows it isn't in the preview. */
   dataClientId?: string;
   /**
-   * GoodBuild's WalletConnect project id (D35). With it, the app's wallet list offers phone wallets:
+   * GoodBuild's WalletConnect project id (D36). With it, the app's wallet list offers phone wallets:
    * the page gets a goodbuild-walletconnect meta tag and the real WalletConnect module, as a chunk
    * that only loads when a visitor picks it. Without it, only browser wallets and MiniPay.
    */

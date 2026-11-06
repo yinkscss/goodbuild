@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * The wallet layer generated apps get (D35), run as the app would run it: the template's files are
+ * The wallet layer generated apps get (D36), run as the app would run it: the template's files are
  * bundled with esbuild (React 18 and viem from publish-runtime, like a published app) and loaded
  * fresh for each test, so module state never leaks between tests.
  */
@@ -11,6 +11,8 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { WALLETCONNECT_MODULE } from "@/server/publish/walletconnect-module";
 
 import { WALLET_HELPERS, WALLET_PATHS } from "./wallet-template";
 
@@ -42,7 +44,7 @@ let n = 0;
 const FAKE_WALLETCONNECT = `
 export const walletConnectBuiltIn = true;
 export let approve = () => {};
-export const calls = [];
+export const calls = (window.__wcCalls = []);
 export async function connectWalletConnect(args) {
   calls.push("connect");
   args.onUri("wc:abc@2?relay-protocol=irn&symKey=xyz");
@@ -53,6 +55,30 @@ export async function restoreWalletConnect() { return null; }
 export function cancelWalletConnect() { calls.push("cancel"); }
 export function QrCode({ value }) { return <svg data-fake-qr={value} />; }
 const SEPOLIA = "${SEPOLIA_HEX}";
+`;
+
+/** Stands in for @walletconnect/ethereum-provider under the real module: each connect waits to be approved. */
+const FAKE_ETHEREUM_PROVIDER = `
+export const EthereumProvider = { init: async () => {
+  const handlers = new Set();
+  const provider = {
+    accounts: ["0x00000000000000000000000000000000000000Wc"],
+    session: {},
+    approvals: [],
+    disconnects: 0,
+    on: (event, f) => { if (event === "display_uri") handlers.add(f); },
+    removeListener: (event, f) => { handlers.delete(f); },
+    connect: () => new Promise((resolve) => {
+      provider.approvals.push(resolve);
+      const link = "wc:link" + provider.approvals.length + "@2?relay-protocol=irn&symKey=xyz";
+      for (const f of [...handlers]) f(link);
+    }),
+    disconnect: async () => { provider.disconnects++; },
+    request: async () => "${SEPOLIA_HEX}",
+  };
+  window.__wcProvider = provider;
+  return provider;
+} };
 `;
 
 /**
@@ -72,6 +98,7 @@ const result = await build({
   plugins: [{ name: "project", setup(b) {
     b.onResolve({ filter: /.*/ }, (args) => {
       if (args.namespace !== "project" && args.importer !== "<stdin>") return null;
+      if (args.path === "@walletconnect/ethereum-provider" && "fake-ethereum-provider.ts" in files) return { path: "/fake-ethereum-provider.ts", namespace: "project" };
       if (args.path.startsWith(".")) {
         const base = path.posix.join(args.importer === "<stdin>" ? "/" : path.posix.dirname(args.importer), args.path);
         const hit = [base, base + ".ts", base + ".tsx"].find((c) => c.slice(1) in files);
@@ -86,11 +113,15 @@ writeFileSync(output, result.outputFiles[0].text);
 `;
 writeFileSync(path.join(dir, "build.mjs"), BUILD_SCRIPT);
 
-async function load(opts: { walletConnect?: boolean } = {}): Promise<{ wallet: WalletModule; chooser: ChooserModule }> {
+async function load(opts: { walletConnect?: boolean; realWalletConnect?: boolean } = {}): Promise<{ wallet: WalletModule; chooser: ChooserModule }> {
   const files: Record<string, string> = { ...WALLET_HELPERS };
   if (opts.walletConnect) files[WALLET_PATHS.walletConnect] = FAKE_WALLETCONNECT;
+  if (opts.realWalletConnect) {
+    files[WALLET_PATHS.walletConnect] = WALLETCONNECT_MODULE;
+    files["fake-ethereum-provider.ts"] = FAKE_ETHEREUM_PROVIDER;
+  }
   files["<entry>"] = `export * as wallet from "./${WALLET_PATHS.wallet}"; export * as chooser from "./${WALLET_PATHS.chooser}";`;
-  const key = opts.walletConnect ? "wc" : "plain";
+  const key = opts.realWalletConnect ? "real-wc" : opts.walletConnect ? "wc" : "plain";
   if (!built.has(key)) {
     const input = path.join(dir, `files-${key}.json`);
     const bundle = path.join(dir, `bundle-${key}.mjs`);
@@ -292,6 +323,82 @@ describe("the wallet list", () => {
     expect(document.querySelector("[data-fake-qr]")).toBeNull();
     (window as unknown as { __approveWalletConnect: () => void }).__approveWalletConnect();
     await connecting;
+  });
+});
+
+describe("changing your mind about WalletConnect", () => {
+  type FakeWc = { approvals: Array<() => void>; disconnects: number };
+  const fakeWc = () => (window as unknown as { __wcProvider: FakeWc }).__wcProvider;
+  const wcCalls = () => (window as unknown as { __wcCalls: string[] }).__wcCalls;
+  const copyButton = () => [...document.querySelectorAll("button")].find((b) => b.classList.contains("gbw-copy"));
+
+  beforeEach(() => {
+    document.head.innerHTML = '<meta name="goodbuild-walletconnect" content="testproject">';
+    // The stand-in sets this when its module is first imported, which is what these tests watch for.
+    delete (window as unknown as { __wcCalls?: string[] }).__wcCalls;
+  });
+
+  it("closing the list without picking WalletConnect never touches its code", async () => {
+    install(fakeProvider("0x1"), { rdns: "io.metamask", name: "MetaMask" });
+    const { wallet } = await load({ walletConnect: true });
+    const connecting = wallet.connectWallet();
+    await until(dialog);
+    dialog()!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    await expect(connecting).rejects.toMatchObject({ code: 4001 });
+    await new Promise((r) => setTimeout(r, 20));
+    expect((window as unknown as { __wcCalls?: string[] }).__wcCalls).toBeUndefined();
+  });
+
+  it("Back stops the attempt in progress", async () => {
+    const { wallet } = await load({ walletConnect: true });
+    void wallet.connectWallet().catch(() => {});
+    await until(dialog);
+    button("WalletConnect")!.click();
+    await until(() => document.querySelector("[data-fake-qr]"));
+    button("Back")!.click();
+    await until(() => wcCalls().includes("cancel"));
+    button("Close")!.click();
+    await until(() => !dialog());
+  });
+
+  it("a wallet that approves a link the visitor closed doesn't connect, and the session is dropped", async () => {
+    const { wallet } = await load({ realWalletConnect: true });
+    const connecting = wallet.connectWallet();
+    await until(dialog);
+    button("WalletConnect")!.click();
+    await until(() => document.querySelector("[data-goodbuild-qr] svg"));
+    button("Close")!.click();
+    await expect(connecting).rejects.toMatchObject({ code: 4001 });
+    await until(() => !dialog());
+    fakeWc().approvals[0]();
+    await until(() => fakeWc().disconnects === 1);
+    expect(wallet.walletState()).toMatchObject({ account: null, wallet: null });
+    expect(localStorage.getItem("goodbuild-wallet")).toBeNull();
+  });
+
+  it("after Back, picking again uses the new link only, and the copy button starts over", async () => {
+    const writeText = vi.fn(async () => {});
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    const { wallet } = await load({ realWalletConnect: true });
+    const connecting = wallet.connectWallet();
+    await until(dialog);
+    button("WalletConnect")!.click();
+    await until(() => copyButton());
+    copyButton()!.click();
+    await until(() => copyButton()?.textContent === "Link copied");
+    expect(writeText).toHaveBeenLastCalledWith("wc:link1@2?relay-protocol=irn&symKey=xyz");
+    button("Back")!.click();
+    await until(() => button("WalletConnect"));
+    await new Promise((r) => setTimeout(r, 20));
+    button("WalletConnect")!.click();
+    await until(() => copyButton());
+    expect(copyButton()!.textContent).toBe("Copy link");
+    copyButton()!.click();
+    await until(() => copyButton()?.textContent === "Link copied");
+    expect(writeText).toHaveBeenLastCalledWith("wc:link2@2?relay-protocol=irn&symKey=xyz");
+    fakeWc().approvals[1]();
+    expect(await connecting).toBe("0x00000000000000000000000000000000000000Wc");
+    expect(wallet.walletState().wallet?.name).toBe("WalletConnect");
   });
 });
 

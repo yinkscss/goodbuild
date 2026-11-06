@@ -118,7 +118,7 @@ export async function publishApp(db: Db, project: Project, slug: string, deps: {
   const clientId = existing?.clientId ?? `gbc_${randomBytes(16).toString("hex")}`;
   const undeployed = await undeployedContracts(db, project, saved);
   // The current data helpers, so an app published from an older project gets today's rules support (D34).
-  // And the current wallet layer, so older projects get the wallet list, WalletConnect and MiniPay (D35).
+  // And the current wallet layer, so older projects get the wallet list, WalletConnect and MiniPay (D36).
   const files = withCurrentWalletHelpers(withCurrentDataHelpers(await withCurrentAddresses(db, project.id, saved)));
 
   const store = dbAssetStore(db);
@@ -179,7 +179,7 @@ export async function publishedFile(db: Db, slug: string, filePath: string): Pro
   return { mime: row.mime, bytes: row.bytes };
 }
 
-/** GoodBuild's WalletConnect project id, shared by every published app (D35). Public, like the main site's. */
+/** GoodBuild's WalletConnect project id, shared by every published app (D36). Public, like the main site's. */
 export function walletConnectProjectId(): string | undefined {
   // Read at run time: Next.js would otherwise inline the build's value for a NEXT_PUBLIC_ name.
   const id = process.env["NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID"]?.trim();

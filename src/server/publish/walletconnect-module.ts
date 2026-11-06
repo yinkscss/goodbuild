@@ -1,6 +1,6 @@
 /**
  * The real src/lib/goodbuild/walletConnect.tsx, swapped in when an app is published with a
- * WalletConnect project id (D35). Same exports as the stand-in in src/server/agent/wallet-template.ts.
+ * WalletConnect project id (D36). Same exports as the stand-in in src/server/agent/wallet-template.ts.
  * The app only reaches it through import(), so it ships as a separate chunk that loads when a
  * visitor picks WalletConnect (or comes back to a WalletConnect session).
  *
@@ -20,6 +20,8 @@ type WcProvider = Awaited<ReturnType<typeof EthereumProvider.init>>;
 export const walletConnectBuiltIn = true;
 
 let instance: Promise<WcProvider> | null = null;
+/** The attempt the visitor is still looking at. A wallet that approves an older link is turned away. */
+let latest = 0;
 
 /** Methods that need the visitor to look at their wallet. */
 const PROMPTS = new Set(["eth_sendTransaction", "personal_sign", "eth_sign", "eth_signTypedData", "eth_signTypedData_v4", "wallet_switchEthereumChain", "wallet_addEthereumChain", "wallet_watchAsset"]);
@@ -70,13 +72,22 @@ function init(projectId: string, chain: Chain): Promise<WcProvider> {
 }
 
 export async function connectWalletConnect(args: { projectId: string; chain: Chain; onUri: (uri: string) => void }): Promise<EIP1193Provider> {
+  const attempt = ++latest;
+  const closed = () => Object.assign(new Error("You closed the wallet list."), { code: 4001 });
   const provider = await init(args.projectId, args.chain);
-  const onUri = (uri: string) => args.onUri(uri);
+  if (attempt !== latest) throw closed();
+  const onUri = (uri: string) => {
+    if (attempt === latest) args.onUri(uri);
+  };
   provider.on("display_uri", onUri);
   try {
     await provider.connect({ optionalChains: [args.chain.id], rpcMap: { [args.chain.id]: args.chain.rpcUrls.default.http[0] } });
   } finally {
     provider.removeListener("display_uri", onUri);
+  }
+  if (attempt !== latest) {
+    await provider.disconnect().catch(() => {});
+    throw closed();
   }
   return provider as unknown as EIP1193Provider;
 }
@@ -87,8 +98,9 @@ export async function restoreWalletConnect(args: { projectId: string; chain: Cha
   return provider.session && provider.accounts.length ? (provider as unknown as EIP1193Provider) : null;
 }
 
+/** WalletConnect 2.26 can't abort a pairing (abortPairingAttempt is a no-op), so the old link just stops counting. */
 export function cancelWalletConnect(): void {
-  void instance?.then((provider) => provider.signer.abortPairingAttempt()).catch(() => {});
+  latest++;
 }
 
 export function QrCode({ value }: { value: string }) {

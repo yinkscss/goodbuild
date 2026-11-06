@@ -1,5 +1,5 @@
 /**
- * The wallet layer every generated app gets (D35). GoodBuild owns these files: the builder can't
+ * The wallet layer every generated app gets (D36). GoodBuild owns these files: the builder can't
  * edit them (checks.ts pathProblem), and every turn and every publish writes the current copy
  * (withCurrentWalletHelpers), like the data helpers (D34).
  *
@@ -78,6 +78,7 @@ let active: Provider | null = null;
 let pending: Promise<Address> | null = null;
 let restoring: Promise<void> | null = null;
 let listening = false;
+let walletConnectStarted = false;
 const listeners = new Set<() => void>();
 const announced = new Map<string, Announced>();
 
@@ -240,6 +241,7 @@ export async function connectWith(info: WalletInfo, onUri: (uri: string) => void
   if (info.kind === "walletconnect") {
     const projectId = walletConnectProjectId();
     if (!projectId) throw new WalletError("no_walletconnect", "Phone wallets connect once this app is published.");
+    walletConnectStarted = true;
     const wc = await import("./walletConnect");
     const provider = (await wc.connectWalletConnect({ projectId, chain: appChain, onUri })) as unknown as Provider;
     const account = provider.accounts?.[0] as Address | undefined;
@@ -253,7 +255,8 @@ export async function connectWith(info: WalletInfo, onUri: (uri: string) => void
 
 /** Stop a WalletConnect attempt the visitor walked away from. */
 export async function cancelWalletConnect(): Promise<void> {
-  if (!walletConnectAvailable()) return;
+  // Not started means nothing to stop, and WalletConnect's code stays undownloaded.
+  if (!walletConnectStarted) return;
   const wc = await import("./walletConnect");
   wc.cancelWalletConnect();
 }
@@ -450,12 +453,14 @@ export function WalletChooser({
   connect,
   onDone,
   onCancel,
+  onBack,
   phone = isPhone(),
 }: {
   options: WalletInfo[];
   connect: Connect;
   onDone: (account: Address) => void;
   onCancel: () => void;
+  onBack?: () => void;
   phone?: boolean;
 }) {
   const [view, setView] = useState<View>({ step: "list" });
@@ -472,6 +477,7 @@ export function WalletChooser({
   async function pick(info: WalletInfo) {
     const id = ++attempt.current;
     setError(null);
+    setCopied(false);
     if (info.kind === "walletconnect") {
       setView({ step: "walletconnect", uri: null });
       if (!phone) {
@@ -482,7 +488,10 @@ export function WalletChooser({
     }
     try {
       const account = await connect(info, (uri) => {
-        if (attempt.current === id) setView({ step: "walletconnect", uri });
+        if (attempt.current === id) {
+          setCopied(false);
+          setView({ step: "walletconnect", uri });
+        }
       });
       if (attempt.current === id) onDone(account);
     } catch (e) {
@@ -494,6 +503,7 @@ export function WalletChooser({
 
   function back() {
     attempt.current++;
+    onBack?.();
     setView({ step: "list" });
   }
 
@@ -647,7 +657,7 @@ export function openWalletChooser(args: { options: WalletInfo[]; connect: Connec
         reject(Object.assign(new Error("You closed the wallet list."), { code: 4001 }));
       }
     };
-    root.render(<WalletChooser options={args.options} connect={args.connect} onDone={(a) => finish(a)} onCancel={() => finish(null)} />);
+    root.render(<WalletChooser options={args.options} connect={args.connect} onDone={(a) => finish(a)} onCancel={() => finish(null)} onBack={() => void args.cancel().catch(() => {})} />);
   });
 }
 `;
@@ -786,7 +796,7 @@ export function ConnectButton() {
 `;
 
 /**
- * sha256 of the starter files from before D35, which only read window.ethereum. They never changed
+ * sha256 of the starter files from before D36, which only read window.ethereum. They never changed
  * until then, so a project whose copy still matches has never edited it and gets the new one.
  */
 const LEGACY: Record<string, { sha256: string; current: string }> = {
@@ -796,7 +806,7 @@ const LEGACY: Record<string, { sha256: string; current: string }> = {
 };
 
 /**
- * Every project always has the current wallet layer, and untouched pre-D35 copies of chain.ts,
+ * Every project always has the current wallet layer, and untouched pre-D36 copies of chain.ts,
  * useWallet.ts and ConnectButton.tsx move onto it. Copies the builder edited stay as they are (and keep
  * using window.ethereum).
  */

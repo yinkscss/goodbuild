@@ -16,7 +16,7 @@ import { publishedHeaders } from "@/server/publish/service";
 const LOCKED = Object.keys(WALLET_HELPERS);
 const sha = (s: string) => createHash("sha256").update(s).digest("hex");
 
-/** The pre-D35 starter files, exactly as projects saved them (they never changed before D35). */
+/** The pre-D36 starter files, exactly as projects saved them (they never changed before D36). */
 const OLD_CHAIN_SHA = "0608af3d230aefd28e613ef0c069d6e17fd43e348084151eec4288c739a8686a";
 
 describe("the wallet layer is GoodBuild's", () => {
@@ -75,8 +75,8 @@ describe("the wallet layer is GoodBuild's", () => {
     for (const p of LOCKED) expect(next[p]).toBe(WALLET_HELPERS[p]);
   });
 
-  it("moves untouched pre-D35 copies of chain.ts, useWallet.ts and ConnectButton.tsx onto the layer, and leaves edited ones alone", () => {
-    // What a project made before D35 saved (window.ethereum only).
+  it("moves untouched pre-D36 copies of chain.ts, useWallet.ts and ConnectButton.tsx onto the layer, and leaves edited ones alone", () => {
+    // What a project made before D36 saved (window.ethereum only).
     const oldChain = OLD_STARTER["src/lib/chain.ts"];
     expect(sha(oldChain)).toBe(OLD_CHAIN_SHA);
     const untouched = withStarterHelpers({ "src/App.tsx": "x", ...OLD_STARTER });
@@ -164,7 +164,7 @@ export default function App() { return <ConnectButton />; }
   });
 });
 
-/** chain.ts, useWallet.ts and ConnectButton.tsx as every project before D35 had them. */
+/** chain.ts, useWallet.ts and ConnectButton.tsx as every project before D36 had them. */
 const OLD_STARTER: Record<string, string> = {
   "src/lib/chain.ts": `import {
   createPublicClient,

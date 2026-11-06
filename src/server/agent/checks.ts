@@ -601,12 +601,12 @@ export function lucideIssues(files: Record<string, string>): CheckIssue[] {
 
 const HOSTED_BACKENDS = /\b(?:[a-z0-9-]+\.)*(?:firebaseio\.com|firebaseapp\.com|firestore\.googleapis\.com|supabase\.co|mongodb\.net|airtable\.com|sheetdb\.io|formspree\.io|getform\.io|web3forms\.com|jsonbin\.io|pantry\.cloud)\b/;
 const OWN_ROUTE_FETCH = /\b(?:fetch|axios(?:\.[a-z]+)?)\(\s*[`"'](\/(?!assets\/)[^`"']*)/g;
-/** Untouched-or-edited copies of these may still read window.ethereum (projects from before D35). */
+/** Untouched-or-edited copies of these may still read window.ethereum (projects from before D36). */
 const LEGACY_WALLET_FILES = new Set(["src/lib/chain.ts", "src/lib/useWallet.ts"]);
 const WINDOW_ETHEREUM = /\b(?:window|globalThis)\b[^;\n]{0,200}?\.ethereum\b/;
 
 /**
- * Wallets go through GoodBuild's wallet layer (D35), so visitors with several wallets get a choice,
+ * Wallets go through GoodBuild's wallet layer (D36), so visitors with several wallets get a choice,
  * phones get WalletConnect and MiniPay connects on its own. Reading window.ethereum directly skips all of it.
  */
 export function walletIssues(files: Record<string, string>): CheckIssue[] {

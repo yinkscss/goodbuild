@@ -35,7 +35,7 @@ export const ALLOWED_DEPENDENCIES: Record<string, string> = {
 
 /**
  * Packages only GoodBuild's own code uses: the WalletConnect module publishing swaps into
- * src/lib/goodbuild/walletConnect.tsx (D35). The builder can't import or add them.
+ * src/lib/goodbuild/walletConnect.tsx (D36). The builder can't import or add them.
  */
 export const PLATFORM_DEPENDENCIES: Record<string, string> = {
   "@walletconnect/ethereum-provider": "2.26.0",

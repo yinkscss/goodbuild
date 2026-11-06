@@ -1,16 +1,21 @@
-// End-to-end check of the wallet layer generated apps get (D35), on a real production build: an app
+// End-to-end check of the wallet layer generated apps get (D36), on a real production build: an app
 // is published through the real API and opened on <slug>.localhost in Chromium.
 //
 //   1. Start the server: NODE_ENV=production PUBLISHED_APPS_DOMAIN=localhost APP_DOMAIN=localhost:$PORT
 //      SESSION_SECRET=<32+ chars> DATABASE_URL=<throwaway database> GOODBUILD_INLINE_WORKER=0
 //      NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=<id> pnpm start -p $PORT
 //   2. PORT=$PORT DATABASE_URL=<same> PLAYWRIGHT_PATH=<playwright(-core) package> [CHROMIUM_PATH=<binary>] \
-//      [SHOTS=<folder for screenshots>] node --import tsx --require ./scripts/worker-preload.cjs scripts/wallet-e2e.ts
+//      [MOCK_RELAY=1] [SHOTS=<folder for screenshots>] [DEBUG_WC=1] \
+//      node --import tsx --require ./scripts/worker-preload.cjs scripts/wallet-e2e.ts
 //
 // Wallets are stand-ins injected into the page: EIP-6963 announcements with real signatures from keys
 // made here, and a MiniPay-style window.ethereum. Celo Sepolia's RPC is answered by this script, so
 // the contract write runs the app's whole path (simulate, send, wait for the receipt) without funds.
-// WalletConnect really talks to its relay: the check is that the QR code appears with no CSP errors.
+//
+// WalletConnect: with a real project id and no MOCK_RELAY it talks to the real relay. With MOCK_RELAY=1
+// (any id that passes the format check, no secret needed) this script answers the relay socket, so the
+// real WalletConnect code makes a real pairing link, but no relay and no wallet are involved. Either
+// way nothing here approves a session: a phone scanning the code has to be tried by hand.
 import http from "node:http";
 import path from "node:path";
 
@@ -120,6 +125,9 @@ function rpcAnswer(method: string, params: unknown[]): unknown {
   }
 }
 
+/** A pairing link as WalletConnect v2 writes it: topic, version, relay protocol and the symmetric key. */
+const WC_LINK = /^wc:[0-9a-f]{64}@2\?(?=.*relay-protocol=irn)(?=.*symKey=[0-9a-f]{64})/;
+
 type Page = {
   goto(url: string): Promise<unknown>;
   click(selector: string): Promise<void>;
@@ -133,7 +141,7 @@ type Page = {
   route(url: string | RegExp, fn: (route: { request(): { postData(): string | null }; fulfill(o: object): unknown }) => unknown): Promise<void>;
 };
 type MockSocket = { onMessage(fn: (m: string | Buffer) => void): void; send(m: string): void };
-type Context = { routeWebSocket(url: RegExp, fn: (ws: MockSocket) => unknown): Promise<void>; newPage(): Promise<Page>; addInitScript(s: string): Promise<void>; exposeBinding(name: string, fn: (...a: never[]) => unknown): Promise<void>; close(): Promise<void> };
+type Context = { grantPermissions(p: string[], o?: object): Promise<void>; routeWebSocket(url: RegExp, fn: (ws: MockSocket) => unknown): Promise<void>; newPage(): Promise<Page>; addInitScript(s: string): Promise<void>; exposeBinding(name: string, fn: (...a: never[]) => unknown): Promise<void>; close(): Promise<void> };
 type Browser = { newContext(o?: object): Promise<Context>; close(): Promise<void> };
 
 /** CSP violations, page errors and console errors, collected from the start of the page. */
@@ -278,31 +286,38 @@ async function main() {
 
     // --- 3. No browser wallet (a phone's Chrome or Safari): WalletConnect QR on a computer ---
     const bare = await browser.newContext();
+    await bare.grantPermissions(["clipboard-read", "clipboard-write"], { origin: url });
     await maybeMockRelay(bare);
     await bare.addInitScript(WATCH);
     const b = await bare.newPage();
-    b.on("console", ((m: { type(): string; text(): string }) => {
-      if (process.env.DEBUG_WC) console.log("console." + m.type(), m.text().slice(0, 300));
-    }) as never);
+    if (process.env.DEBUG_WC) b.on("console", ((m: { type(): string; text(): string }) => console.log("console." + m.type(), m.text().slice(0, 300))) as never);
     const wcProblems = watch(b);
     const hosts = new Set<string>();
     b.on("request", ((r: { url(): string }) => hosts.add(new URL(r.url()).host)) as never);
+    const fetched: string[] = [];
+    b.on("request", ((r: { url(): string }) => fetched.push(r.url())) as never);
     await b.goto(url);
+    // Just looking at the list and closing it must not download WalletConnect's code.
+    await b.click("text=Connect wallet");
+    await b.waitForSelector('[role="dialog"]');
+    await new Promise((r) => setTimeout(r, 500));
+    const before = fetched.length;
+    await b.click('[role="dialog"] button:has-text("Close")');
+    await b.waitForFunction(() => !document.querySelector('[role="dialog"]'), undefined, { timeout: 5000 });
+    await new Promise((r) => setTimeout(r, 1000));
+    check("looking at the list and closing it downloads nothing more", fetched.length === before, fetched.slice(before));
     await b.click("text=Connect wallet");
     await b.waitForSelector('[role="dialog"]');
     check("with no browser wallet, the list offers WalletConnect instead of 'No wallet found'", (await b.locator('[role="dialog"] li').allTextContents()).join("|").includes("WalletConnect"));
     await b.click('[role="dialog"] button:has-text("WalletConnect")');
-    try {
-      await b.waitForSelector("[data-goodbuild-qr] svg", { timeout: 45000 });
-    } catch (error) {
-      console.log("DEBUG dialog:", await b.textContent('[role="dialog"]'));
-      console.log("DEBUG problems:", JSON.stringify(await wcProblems()));
-      console.log("DEBUG hosts:", [...hosts].join(", "));
-      throw error;
-    }
-    const uri = (await b.evaluate(() => document.querySelector("[data-goodbuild-qr] svg title")?.textContent ?? document.querySelector("[data-goodbuild-qr] svg")?.outerHTML.length)) as unknown;
-    check("the WalletConnect QR code appears", true, uri);
-    await b.waitForFunction(() => true);
+    await b.waitForSelector("[data-goodbuild-qr] svg", { timeout: 45000 });
+    const copied = async () => {
+      await b.click('[role="dialog"] button:has-text("Copy link")');
+      await b.waitForSelector('[role="dialog"] button:has-text("Link copied")', { timeout: 5000 });
+      return (await b.evaluate(() => navigator.clipboard.readText())) as string;
+    };
+    const firstLink = await copied();
+    check("the QR code appears, and the link beside it is a real WalletConnect pairing link", WC_LINK.test(firstLink), firstLink);
     await new Promise((r) => setTimeout(r, 3000)); // let the relay and Verify settle
     if (shots) await b.screenshot({ path: path.join(shots, "2-walletconnect-qr.png") });
     const wcErrors = (await wcProblems()).filter((p) => p.startsWith("CSP") || /Content Security Policy/i.test(p));
@@ -311,6 +326,22 @@ async function main() {
     console.log(`INFO  hosts the WalletConnect step reached: ${[...hosts].filter((h) => !h.includes("localhost")).join(", ") || "(none)"}`);
     const other = (await wcProblems()).filter((p) => !wcErrors.includes(p));
     if (other.length) console.log(`INFO  other console output in the WalletConnect step: ${other.slice(0, 5).join(" | ")}`);
+
+    // Changing your mind: Back, then WalletConnect again, gives a fresh working link.
+    await b.click('[role="dialog"] button:has-text("Back")');
+    await b.click('[role="dialog"] button:has-text("WalletConnect")');
+    await b.waitForSelector("[data-goodbuild-qr] svg", { timeout: 45000 });
+    const secondLink = await copied();
+    check("Back, then WalletConnect again, gives a new pairing link", WC_LINK.test(secondLink) && secondLink !== firstLink, secondLink);
+    // Closing the list ends the attempt; connecting again works and no list is left behind.
+    await b.click('[role="dialog"] button:has-text("Close")');
+    await b.waitForFunction(() => !document.querySelector('[role="dialog"]'), undefined, { timeout: 5000 });
+    check("closing the list isn't shown as an error", (await b.textContent("#account")) === "none");
+    await b.click("text=Connect wallet");
+    await b.click('[role="dialog"] button:has-text("WalletConnect")');
+    await b.waitForSelector("[data-goodbuild-qr] svg", { timeout: 45000 });
+    const thirdLink = await copied();
+    check("connecting again after closing gives a new pairing link", WC_LINK.test(thirdLink) && thirdLink !== secondLink, thirdLink);
     await bare.close();
 
     // --- 4. A phone: a button per wallet with the WalletConnect link ---
@@ -322,8 +353,9 @@ async function main() {
     await p.click("text=Connect wallet");
     await p.click('[role="dialog"] button:has-text("WalletConnect")');
     await p.waitForSelector('a[href^="https://valoraapp.com/wc?uri=wc%3A"]', { timeout: 30000 });
-    const links = (await p.evaluate(() => [...document.querySelectorAll('[role="dialog"] a')].map((x) => (x as HTMLAnchorElement).getAttribute("href")?.split("?")[0]))) as string[];
-    check("on a phone: MetaMask, Valora, Trust Wallet, Rainbow and 'Other wallet' links carry the WalletConnect link", links.length === 5 && links.includes("https://metamask.app.link/wc") && links.at(-1)?.startsWith("wc:") === true, links);
+    const hrefs = (await p.evaluate(() => [...document.querySelectorAll('[role="dialog"] a')].map((x) => (x as HTMLAnchorElement).getAttribute("href") ?? ""))) as string[];
+    const carried = hrefs.map((h) => (h.startsWith("wc:") ? h : decodeURIComponent(h.split("?uri=")[1] ?? "")));
+    check("on a phone: MetaMask, Valora, Trust Wallet, Rainbow and 'Other wallet' links each carry the same pairing link", hrefs.length === 5 && hrefs.some((h) => h.startsWith("https://metamask.app.link/wc?uri=")) && hrefs.at(-1)?.startsWith("wc:") === true && carried.every((c) => WC_LINK.test(c) && c === carried[0]), hrefs);
     if (shots) await p.screenshot({ path: path.join(shots, "3-phone-wallets.png") });
     await phone.close();
   } finally {

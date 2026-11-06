@@ -14,7 +14,7 @@ const skip = /\.(map|d\.ts|d\.cts|d\.mts|md|tsbuildinfo)$/i;
 const hoisted = new Map(); // package name -> the version at the top level
 const done = new Set();
 // Reown AppKit is WalletConnect's own modal. Published apps draw their own QR code, and the publish build
-// replaces any AppKit import with a stub (src/server/publish/build.ts, D35), so it's never needed here.
+// replaces any AppKit import with a stub (src/server/publish/build.ts, D36), so it's never needed here.
 // It is about half of the pack.
 const NEVER_BUNDLED = new Set(["@reown/appkit"]);
 
