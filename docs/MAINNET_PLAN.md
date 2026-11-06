@@ -229,9 +229,9 @@ No legal conclusions here. All of this goes to the lawyer or the named party. **
 
 | # | Decision | Recommendation | Blocks |
 |---|---|---|---|
-| 1 | G$ vault deposits in this launch? (D13 and D24 keep them, and this brief lists only Paystack.) | **Leave out**, and show USD only until it exists. It adds a contract holding funds, an indexer and a price oracle. | M1, M8 |
+| 1 | G$ vault deposits in this launch? (D13 and D24 keep them, and this brief lists only Paystack.) | **Leave out**, and show USD only until it exists. It adds a contract holding funds, an indexer and a price oracle. **The cost:** ROADMAP.md promises G$ payment "live from M6" and lists G$ volume and transactions as scoring metrics (S5 criteria UNVERIFIED), so this could lower those numbers until the vault ships. | M1, M8 |
 | 2 | Convert naira to USDT and G$ at launch? (D21, D24) | **No.** Record inflows and hold naira until the lawyer and Paystack answer. Provider bills still need dollars, so plan how you'll buy them. | M9, lawyer's brief |
-| 3 | Which named rate source (D36), and foreign cards? | Whichever is closest to what you really pay for dollars. Try CBN's published rate if it can be fetched reliably (UNVERIFIED), with an owner override. Compare weekly, and raise the spread if 2% doesn't cover it. Keep foreign cards off at launch. | M4 |
+| 3 | Which named rate source (D36), and foreign cards? | Whichever is closest to what you really pay for dollars. **Check before launch:** compare the chosen source with what you actually pay per dollar for provider bills. If the source gives more dollars than you can really buy, by more than the spread, every top-up loses money, so use another source or raise the spread. An official rate may fail this check, and TOPUPS.md §4 warned about it (the size of the gap today is UNVERIFIED). Keep an owner override, compare weekly, and keep foreign cards off at launch. | M4 |
 | 4 | Use free AI first, or paid first? | **Free first.** People get what was promised, and it's simple. | M2 |
 | 5 | Who may deploy to mainnet? | **Verified or has paid.** Limits disposable scam contracts. Verified alone depends on an untested face check. | C4 |
 | 6 | Who pays gas? (Q12) | **The user brings their own CELO.** Add a clear guide, since email wallets start empty and no real faucet exists. | C4 |

@@ -194,6 +194,15 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - **Not built:** owner edits of visitors' records (replies, "confirmed"), staff readers, email alerts, Turnstile on busy forms, email sign-in for visitors (next PR).
 - Terms and Privacy updated: owners can now read what visitors send them, where the form says so.
 
+### D36. M6 and mainnet launch together; TOPUPS.md §10 defaults accepted (amends D21)
+- Date: 5 and 6 Nov 2026 · Decided by: user (Olayinka): "I need to get this on mainnet, that would require M6 to begin." Claude recommended M6 first and the user chose together. Numbered D36 because open PR #30 uses D35. Plan: [MAINNET_PLAN.md](MAINNET_PLAN.md).
+- **One launch:** paid credits and Celo mainnet ship together. Paystack has test keys only so far.
+- **Rate:** from a named public source with a 2% spread. Which source is still open.
+- **Fees:** the user pays Paystack's fee on top, so credit matches the amount shown. This changes D21's "minus fees".
+- **Email:** collected at top-up for wallet-only users.
+- **Admin:** a wallet allowlist.
+- **Refunds:** credits are non-refundable except for failed or disputed payments. The wording needs a lawyer before real money.
+
 ## Recommended decisions (Ego; adopted unless changed)
 
 
@@ -413,12 +422,3 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 ### P3. GoodDollar AI credits via AntSeed gateway behind LiteLLM (DEFERRED by D11)
 - Status: deferred. GoodDollar/AntSeed is an optional future provider only, revisit once GoodDollar ships its proxy/API keys.
 - Date: 4 Nov 2026 · Proposed by: Grok Bot · Users fund credits with the GoodWidget AI credits widget; GoodBuild runs an AntSeed gateway registered as an OpenAI-compatible LiteLLM provider, falling back to direct providers. Blocked on buyer-key custody / GoodDollar proxy (see [GOODDOLLAR_AI_CREDITS.md](GOODDOLLAR_AI_CREDITS.md), Q17).
-
-### D36. M6 and mainnet launch together; TOPUPS.md §10 defaults accepted (amends D21)
-- Date: 5 and 6 Nov 2026 · Decided by: user (Olayinka): "I need to get this on mainnet, that would require M6 to begin." Claude recommended M6 first and the user chose together. Numbered D36 because open PR #30 uses D35. Plan: [MAINNET_PLAN.md](MAINNET_PLAN.md).
-- **One launch:** paid credits and Celo mainnet ship together. Paystack has test keys only so far.
-- **Rate:** from a named public source with a 2% spread. Which source is still open.
-- **Fees:** the user pays Paystack's fee on top, so credit matches the amount shown. This changes D21's "minus fees".
-- **Email:** collected at top-up for wallet-only users.
-- **Admin:** a wallet allowlist.
-- **Refunds:** credits are non-refundable except for failed or disputed payments. The wording needs a lawyer before real money.
