@@ -42,8 +42,8 @@ services:
       timeout: 5s
       retries: 30
   minio:
-    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
-    command: ["server", "/data"]
+    # MinIO's own images left Docker Hub and quay.io refuses anonymous pulls, so Bitnami's archived build.
+    image: bitnamilegacy/minio:2025.7.23-debian-12-r5
     environment:
       MINIO_ROOT_USER: $minio_user
       MINIO_ROOT_PASSWORD: $minio_secret
