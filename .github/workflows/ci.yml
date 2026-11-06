@@ -1,0 +1,64 @@
+# Lint, typecheck, full tests and build (docs/DEPLOY.md, D45).
+# Runs on every pull request. The Deploy workflow also calls it, so the exact commit on main is
+# tested before it ships. Don't add a path filter here: a required check that never reports leaves
+# a pull request unable to merge.
+name: CI
+
+on:
+  pull_request:
+  workflow_call:
+
+# A new push to a pull request replaces its old run. A run called by Deploy is never cancelled.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Lint, types, tests, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show the runner's size
+        run: |
+          nproc
+          free -m
+
+      # Reads the version from packageManager in package.json.
+      - uses: pnpm/action-setup@v4
+
+      # The same major version as the Dockerfile.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      # Also installs the publish-runtime workspace, which the build packs.
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      # PGlite and solc run in-process, so no database service or compiler download is needed.
+      # Workers and timeouts come from vitest.config.mts.
+      - name: Test
+        run: pnpm test
+        timeout-minutes: 20
+
+      - name: Build
+        run: pnpm build
+        timeout-minutes: 10
+
+      # Starts real containers in a throwaway project. It never touches production.
+      - name: Test the release and rollback scripts
+        run: bash deploy/test-release.sh
+        timeout-minutes: 5

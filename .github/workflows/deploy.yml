@@ -1,14 +1,19 @@
-# Deploys to the production server whenever a pull request is merged to main (docs/DEPLOY.md).
-# Run it by hand from the Actions tab to redeploy.
+# Deploys to the production server after a commit on main passes the checks (docs/DEPLOY.md, D45).
+# Run it by hand from the Actions tab, on main, to redeploy. The checks run first then too.
 name: Deploy
 
 on:
-  pull_request:
-    types: [closed]
+  push:
     branches: [main]
+    # .dockerignore leaves docs out of the image, so a docs-only push can't change production.
+    paths-ignore:
+      - "docs/**"
   workflow_dispatch:
 
-# Deploys run one at a time, and a running one is never cancelled, so a merge can't interrupt a migration.
+# The whole run, checks included, takes the lock. If only the deploy job held it, an older commit
+# whose checks finished late could deploy over a newer one. Runs go one at a time, a running one is
+# never cancelled (so a merge can't interrupt a migration), and a newer waiting run replaces an older
+# waiting run, which it contains.
 concurrency:
   group: production-deploy
   cancel-in-progress: false
@@ -17,14 +22,17 @@ permissions:
   contents: read
 
 jobs:
+  # No secrets are passed to the checks.
+  checks:
+    uses: ./.github/workflows/ci.yml
+
   deploy:
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
+    needs: checks
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
 
       - name: Set up SSH
         env:
