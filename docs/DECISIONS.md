@@ -148,7 +148,7 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - **Store:** a small document store with no SQL, served from the app's own host. Collections are private to each wallet by default. `public-read` means anyone reads and only the writer changes.
 - **On-chain still decides money and ownership.** The agent's guide says so. This store is for what doesn't need to be verifiable without trusting GoodBuild.
 - **The preview uses a browser-only stand-in,** so it needs no CORS and preview data never reaches the real store.
-- **Open for the user:** see "Decisions for you" on the pull request, and APP_DATA.md. CLAUDE.md item 3 still says backend support is deferred; update it if this is merged.
+- **Open for the user:** see "Decisions for you" on PR #19, and "Known limits" in APP_DATA.md. Merged on 5 Nov 2026. CLAUDE.md item 3 still says backend support is deferred, and the owner should update it.
 - **Trade-offs Claude flagged:** GoodBuild now holds other people's data on one VPS with backups on the same server, which raises the stakes on D27's "revisit before M6". Apps stay on subdomains of the main domain, so same-site protections have to be built by hand (P19 noted a separate registrable domain would be stronger).
 
 ### D32. A project's first message plans before it builds
