@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { ALLOWED_DEPENDENCIES, starterFiles } from "@/server/agent/template";
+import { ALLOWED_DEPENDENCIES, PLATFORM_DEPENDENCIES, starterFiles } from "@/server/agent/template";
 import { buildPublishedApp, MAX_PUBLISH_BYTES, PublishBuildError } from "./build";
 
 const APP = `import { Wallet } from "lucide-react";
@@ -97,6 +97,6 @@ describe("buildPublishedApp", () => {
 describe("publish-runtime", () => {
   it("installs exactly the versions generated apps may use", () => {
     const pkg = JSON.parse(readFileSync(join(process.cwd(), "publish-runtime/package.json"), "utf8")) as { dependencies: Record<string, string> };
-    expect(pkg.dependencies).toEqual(ALLOWED_DEPENDENCIES);
+    expect(pkg.dependencies).toEqual({ ...ALLOWED_DEPENDENCIES, ...PLATFORM_DEPENDENCIES });
   });
 });

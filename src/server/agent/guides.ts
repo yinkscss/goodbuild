@@ -143,7 +143,7 @@ export const GUIDES: Guide[] = [
 - Only add a capped owner mint (ERC20Capped + Ownable) if the user asks for more tokens later; say in your reply who can mint.
 - No transfer taxes, blacklists, pause switches or owner-only transfer hooks unless the user explicitly asks; those are how scam tokens trap holders.
 - The deployer holds the whole supply after deploy. Say so in your reply, and if the app has a pool or sale, explain that the owner must add RTX (and G$) to it before anyone can buy.
-- Front end: a token card with name, symbol, total supply (formatAmount with decimals()), the connected wallet's balance, and a Send form (address + amount, validated with isAddress from viem). Add the token to the wallet with wallet_watchAsset (EIP-747) via a small "Add RTX to wallet" button once deployed.`,
+- Front end: a token card with name, symbol, total supply (formatAmount with decimals()), the connected wallet's balance, and a Send form (address + amount, validated with isAddress from viem). Add the token to the wallet with wallet_watchAsset (EIP-747) via a small "Add RTX to wallet" button once deployed: walletProvider()?.request({ method: "wallet_watchAsset", params: { type: "ERC20", options: { address, symbol, decimals } } } as never) with walletProvider from src/lib/chain.ts (never window.ethereum).`,
   },
   {
     name: "swaps-and-markets",
@@ -223,7 +223,7 @@ export const GUIDES: Guide[] = [
 - Empty: a short sentence that says what will appear and how to make it happen, plus the main action ("No tips yet. Be the first to tip the club." + button). Optional muted lucide icon above (size-8 text-muted-foreground). Lists, leaderboards, galleries and histories all need one.
 - Error: Notice tone="danger" with errorMessage(e) in plain words and a retry (refresh from useRead, or re-enable the form). Keep the rest of the page usable. A user rejecting the wallet prompt is not an error: show nothing or a quiet "Cancelled".
 - Not deployed: when the contract address is undefined, a friendly Notice ("Deploy the contract to go live") with the page shown in a disabled state and placeholder values labelled as examples.
-- Not connected: actions that need a wallet show the ConnectButton in place of the action button, with one line explaining why.
+- Not connected: actions that need a wallet show the ConnectButton in place of the action button, with one line explaining why. ConnectButton opens GoodBuild's wallet list (browser wallets, phone wallets by WalletConnect once published, MiniPay on its own); closing the list is not an error.
 - Success: Notice tone="success" after a write with what happened ("Tipped 50 G$"), then refresh reads. Clear the form.
 - 404 page and a fallback for unknown routes (pages-and-routing).`,
   },

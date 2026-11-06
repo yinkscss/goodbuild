@@ -10,7 +10,9 @@ import type { Message, Plugin } from "esbuild";
 import { publishRuntimeDir } from "./runtime";
 
 import { CAN_BE_CHANGED_LABEL } from "@/lib/deploy/upgradeable";
-import { ALLOWED_DEPENDENCIES } from "@/server/agent/template";
+import { ALLOWED_DEPENDENCIES, PLATFORM_DEPENDENCIES, WALLET_DIR } from "@/server/agent/template";
+
+import { WALLETCONNECT_MODULE } from "./walletconnect-module";
 
 export interface PublishedFile {
   path: string;
@@ -31,6 +33,12 @@ export interface BuildInput {
   reportUrl?: string;
   /** The public id src/lib/db.ts reads from the page. Its presence is also how the helper knows it isn't in the preview. */
   dataClientId?: string;
+  /**
+   * GoodBuild's WalletConnect project id (D36). With it, the app's wallet list offers phone wallets:
+   * the page gets a goodbuild-walletconnect meta tag and the real WalletConnect module, as a chunk
+   * that only loads when a visitor picks it. Without it, only browser wallets and MiniPay.
+   */
+  walletConnectProjectId?: string;
   /** Where the allowed packages are installed. */
   runtimeDir?: string;
 }
@@ -59,10 +67,20 @@ function packageName(specifier: string) {
  * Keeps the bundle to the project's own files and the allowed packages. Project code is untrusted:
  * it never gets the filesystem, and `react/../../.env` style specifiers are refused outright.
  */
-function projectPlugin(files: Record<string, string>, runtimeDir: string): Plugin {
+/** The project's stand-in, replaced with WALLETCONNECT_MODULE when WalletConnect is on. */
+export const WALLETCONNECT_PATH = `${WALLET_DIR}walletConnect.tsx`;
+
+function projectPlugin(files: Record<string, string>, runtimeDir: string, walletConnect: boolean): Plugin {
   return {
     name: "goodbuild-project",
     setup(build) {
+      // WalletConnect's own modal (Reown AppKit) is never used: the app draws its own QR code and
+      // wallet links, so AppKit's large bundle and its outside images, fonts and frames stay out.
+      build.onResolve({ filter: /^@reown\/appkit/ }, () => ({ path: "appkit", namespace: "goodbuild-empty" }));
+      build.onLoad({ filter: /.*/, namespace: "goodbuild-empty" }, () => ({
+        contents: "export function createAppKit() { throw new Error(\"WalletConnect's modal isn't included.\"); }",
+        loader: "js",
+      }));
       build.onResolve({ filter: /.*/ }, async (args) => {
         if (args.kind === "entry-point") return { path: args.path, namespace: "project" };
         if (args.namespace !== "project") return null; // inside an allowed package
@@ -73,13 +91,16 @@ function projectPlugin(files: Record<string, string>, runtimeDir: string): Plugi
           const match = [base, `${base}.tsx`, `${base}.ts`, `${base}.jsx`, `${base}.js`, `${base}/index.tsx`, `${base}/index.ts`].find((c) => c in files);
           return match ? { path: match, namespace: "project" } : { errors: [{ text: `Can't find "${args.path}" from ${args.importer}.` }] };
         }
-        if (args.path.split("/").includes("..") || !(packageName(args.path) in ALLOWED_DEPENDENCIES)) {
+        // Only GoodBuild's WalletConnect module may use the platform packages.
+        const platform = walletConnect && args.importer === WALLETCONNECT_PATH && packageName(args.path) in PLATFORM_DEPENDENCIES;
+        if (args.path.split("/").includes("..") || !(packageName(args.path) in ALLOWED_DEPENDENCIES || platform)) {
           return { errors: [{ text: `"${args.path}" isn't on the allowed package list.` }] };
         }
         return build.resolve(args.path, { resolveDir: runtimeDir, kind: args.kind });
       });
       build.onLoad({ filter: /.*/, namespace: "project" }, (args) => {
         const loader = LOADERS[path.extname(args.path).slice(1) as keyof typeof LOADERS];
+        if (walletConnect && args.path === WALLETCONNECT_PATH) return { contents: WALLETCONNECT_MODULE, loader: "tsx" };
         return loader ? { contents: files[args.path], loader } : { errors: [{ text: `Can't import ${args.path}.` }] };
       });
     },
@@ -90,7 +111,7 @@ function describeMessage(m: Message): string {
   return m.location ? `${m.location.file.replace(/^project:/, "")}:${m.location.line}: ${m.text}` : m.text;
 }
 
-async function bundle(files: Record<string, string>, runtimeDir: string) {
+async function bundle(files: Record<string, string>, runtimeDir: string, walletConnect: boolean) {
   const esbuild = await import("esbuild");
   try {
     const result = await esbuild.build({
@@ -103,11 +124,18 @@ async function bundle(files: Record<string, string>, runtimeDir: string) {
       minify: true,
       logLevel: "silent",
       outdir: "/",
-      define: { "process.env.NODE_ENV": '"production"' },
-      plugins: [projectPlugin(files, runtimeDir)],
+      // Code behind import() (WalletConnect) becomes its own file, fetched only when it's needed.
+      splitting: true,
+      entryNames: "entry",
+      chunkNames: "chunk.[hash]",
+      define: { "process.env.NODE_ENV": '"production"', global: "globalThis" },
+      plugins: [projectPlugin(files, runtimeDir, walletConnect)],
     });
-    const output = (ext: string) => result.outputFiles.find((f) => f.path.endsWith(ext))?.text ?? "";
-    return { js: output(".js"), css: output(".css") };
+    const name = (f: { path: string }) => f.path.replace(/^\//, "");
+    const js = result.outputFiles.find((f) => name(f) === "entry.js")?.text ?? "";
+    const chunks = result.outputFiles.filter((f) => /^chunk\.[A-Z0-9]+\.js$/.test(name(f))).map((f) => ({ path: name(f), text: f.text }));
+    const css = result.outputFiles.filter((f) => f.path.endsWith(".css")).map((f) => f.text).join("\n");
+    return { js, chunks, css };
   } catch (error) {
     const errors = (error as { errors?: Message[] }).errors;
     if (errors) throw new PublishBuildError("The app didn't build.", errors.slice(0, 8).map(describeMessage));
@@ -172,14 +200,16 @@ export async function buildPublishedApp(input: BuildInput): Promise<PublishedFil
 
   const theme = [...html.matchAll(THEME_BLOCK)].map((m) => m[1]).join("\n");
   const runtimeDir = input.runtimeDir ?? (await publishRuntimeDir());
-  const { js, css: bundledCss } = await bundle(files, runtimeDir);
+  const walletConnect = !!input.walletConnectProjectId;
+  const { js, chunks, css: bundledCss } = await bundle(files, runtimeDir, walletConnect);
   const css = (await compileTailwind(files, theme, runtimeDir)) + bundledCss;
 
   const jsName = hashed("app", "js", js);
   const cssName = hashed("app", "css", css);
   let page = html.replace(THEME_BLOCK, "").replace(/<title>[\s\S]*?<\/title>/, () => `<title>${escapeHtml(input.title)}</title>`);
   const dataMeta = input.dataClientId ? `<meta name="goodbuild-data" content="${escapeHtml(input.dataClientId)}" />\n` : "";
-  page = page.replace("</head>", () => `${dataMeta}<link rel="stylesheet" href="/${cssName}" />\n</head>`);
+  const walletMeta = input.walletConnectProjectId ? `<meta name="goodbuild-walletconnect" content="${escapeHtml(input.walletConnectProjectId)}" />\n` : "";
+  page = page.replace("</head>", () => `${dataMeta}${walletMeta}<link rel="stylesheet" href="/${cssName}" />\n</head>`);
   page = page.replace(/<body[^>]*>/, (open) => `${open}\n${bar(input.hasUndeployedContracts, input.reportUrl, input.changeableContract)}`);
   page = page.replace("</body>", () => `<script type="module" src="/${jsName}"></script>\n</body>`);
 
@@ -188,6 +218,7 @@ export async function buildPublishedApp(input: BuildInput): Promise<PublishedFil
     { path: "index.html", mime: "text/html; charset=utf-8", bytes: encoder.encode(page) },
     { path: jsName, mime: "text/javascript; charset=utf-8", bytes: encoder.encode(js) },
     { path: cssName, mime: "text/css; charset=utf-8", bytes: encoder.encode(css) },
+    ...chunks.map((c) => ({ path: c.path, mime: "text/javascript; charset=utf-8", bytes: encoder.encode(c.text) })),
     ...input.assets.map((a) => ({ path: `assets/${a.name}`, mime: a.mime, bytes: a.bytes })),
   ];
   const size = output.reduce((sum, f) => sum + f.bytes.length, 0);

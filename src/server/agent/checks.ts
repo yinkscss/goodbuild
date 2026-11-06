@@ -10,7 +10,7 @@ import { COLLECTION_NAME, DATA_PATH_PREFIX, DATA_RULES_PATH, parseDataRules, par
 import { MANIFEST_PATH, parseManifest, planManifest } from "@/lib/deploy/manifest";
 
 import { assetRefs } from "./assets";
-import { ALLOWED_DEPENDENCIES, PLATFORM_DIR, dependenciesOf } from "./template";
+import { ALLOWED_DEPENDENCIES, PLATFORM_DIR, WALLET_DIR, dependenciesOf } from "./template";
 
 /** Compiler settings, pinned (CONTRACTS_AND_DEPLOYMENT.md §2, §4). */
 export const SOLC_SETTINGS = {
@@ -61,6 +61,8 @@ export const MAX_FILE_BYTES = 120_000;
 export const MAX_CONTRACT_BYTES = 24_576;
 export const MAX_FILES = 80;
 
+const DATA_HELPER_STEMS = ["src/lib/db", "src/lib/useDb"];
+
 /** Where generated files may live. Everything else is refused. */
 export function pathProblem(p: string): string | null {
   if (!p || p.startsWith("/") || p.includes("\\") || p.split("/").some((seg) => seg === ".." || seg === "." || seg === "")) {
@@ -68,7 +70,13 @@ export function pathProblem(p: string): string | null {
   }
   if (p === "package.json") return "package.json is managed by GoodBuild. Use add_dependency.";
   if (p.startsWith(PLATFORM_DIR)) return `${PLATFORM_DIR} is written by GoodBuild from the compiled contracts. Import from it instead.`;
-  if (p === "src/lib/db.ts" || p === "src/lib/useDb.ts") return `${p} is written by GoodBuild, so an app can't quietly send visitors' data elsewhere. Use it as it is (see the app-data guide). Who can read what goes in ${DATA_RULES_PATH}.`;
+  // Any extension and any folder of the same name, so a src/lib/db.tsx can't shadow the real one in imports.
+  if (DATA_HELPER_STEMS.some((stem) => p.startsWith(stem + ".") || p.startsWith(stem + "/"))) {
+    return `${DATA_HELPER_STEMS.find((stem) => p.startsWith(stem))}.ts is written by GoodBuild, so an app can't quietly send visitors' data elsewhere. Use it as it is (see the app-data guide). Who can read what goes in ${DATA_RULES_PATH}.`;
+  }
+  if (p.startsWith(WALLET_DIR) || p === WALLET_DIR.slice(0, -1) || p.startsWith(WALLET_DIR.slice(0, -1) + ".")) {
+    return `${WALLET_DIR} is GoodBuild's wallet layer (wallet list, WalletConnect, MiniPay). Use connectWallet / writeContract from src/lib/chain.ts, useWallet and ConnectButton instead of changing it.`;
+  }
   if (p.startsWith("src/assets/")) return "src/assets/ is written by GoodBuild from the user's uploads. Import { assets } from it, or use the /assets/<name> path.";
   if (/^contracts\/[A-Za-z0-9_]+\.sol$/.test(p) || p === MANIFEST_PATH) return null;
   if (/^contracts\/test\/[A-Za-z0-9_]+\.t\.sol$/.test(p)) return null;
@@ -555,6 +563,7 @@ export function checkApp(files: Record<string, string>, opts: { assets?: string[
   if (opts.assets) errors.push(...assetRefIssues(files, opts.assets));
   errors.push(...lucideIssues(files));
   errors.push(...dataIssues(files));
+  errors.push(...walletIssues(files));
   return { ok: errors.length === 0, errors, warnings: [], contracts: [] };
 }
 
@@ -592,6 +601,31 @@ export function lucideIssues(files: Record<string, string>): CheckIssue[] {
 
 const HOSTED_BACKENDS = /\b(?:[a-z0-9-]+\.)*(?:firebaseio\.com|firebaseapp\.com|firestore\.googleapis\.com|supabase\.co|mongodb\.net|airtable\.com|sheetdb\.io|formspree\.io|getform\.io|web3forms\.com|jsonbin\.io|pantry\.cloud)\b/;
 const OWN_ROUTE_FETCH = /\b(?:fetch|axios(?:\.[a-z]+)?)\(\s*[`"'](\/(?!assets\/)[^`"']*)/g;
+/** Untouched-or-edited copies of these may still read window.ethereum (projects from before D36). */
+const LEGACY_WALLET_FILES = new Set(["src/lib/chain.ts", "src/lib/useWallet.ts"]);
+const WINDOW_ETHEREUM = /\b(?:window|globalThis)\b[^;\n]{0,200}?\.ethereum\b/;
+
+/**
+ * Wallets go through GoodBuild's wallet layer (D36), so visitors with several wallets get a choice,
+ * phones get WalletConnect and MiniPay connects on its own. Reading window.ethereum directly skips all of it.
+ */
+export function walletIssues(files: Record<string, string>): CheckIssue[] {
+  const issues: CheckIssue[] = [];
+  for (const [file, content] of Object.entries(files)) {
+    if (!/\.(tsx?|jsx?)$/.test(file) || file.startsWith(WALLET_DIR) || file.startsWith(PLATFORM_DIR) || LEGACY_WALLET_FILES.has(file)) continue;
+    const m = WINDOW_ETHEREUM.exec(content);
+    if (m) {
+      issues.push({
+        file,
+        line: content.slice(0, m.index).split("\n").length,
+        message: "Don't use window.ethereum: it ignores the visitor's wallet choice, phone wallets and MiniPay. Use connectWallet() / writeContract() from src/lib/chain.ts, useWallet() or ConnectButton; for other wallet requests (such as wallet_watchAsset) use walletProvider() from src/lib/chain.ts.",
+        source: "imports",
+      });
+    }
+  }
+  return issues;
+}
+
 const COLLECTION_CALL = /\b(?:collection|useCollection)(?:<[^>()]*>)?\(\s*["'`]([^"'`]*)["'`]/g;
 
 /**
@@ -601,7 +635,7 @@ const COLLECTION_CALL = /\b(?:collection|useCollection)(?:<[^>()]*>)?\(\s*["'`](
 export function dataIssues(files: Record<string, string>): CheckIssue[] {
   const issues: CheckIssue[] = [...parseDataRules(files[DATA_RULES_PATH]).issues, ...parseSignIn(files[DATA_RULES_PATH]).issues].map((message) => ({ file: DATA_RULES_PATH, message, source: "paths" }));
   for (const [file, content] of Object.entries(files)) {
-    if (!/\.(tsx?|jsx?)$/.test(file) || file === "src/lib/db.ts" || file === "src/lib/useDb.ts" || file.startsWith(PLATFORM_DIR)) continue;
+    if (!/\.(tsx?|jsx?)$/.test(file) || file === "src/lib/db.ts" || file === "src/lib/useDb.ts" || file.startsWith(PLATFORM_DIR) || file.startsWith(WALLET_DIR)) continue;
     const lineOf = (index: number) => content.slice(0, index).split("\n").length;
     const hosted = HOSTED_BACKENDS.exec(content);
     if (hosted) issues.push({ file, line: lineOf(hosted.index), message: `Don't send app data to ${hosted[0]}. Save it with src/lib/db.ts (load the app-data guide).`, source: "imports" });

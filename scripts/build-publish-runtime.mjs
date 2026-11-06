@@ -13,6 +13,10 @@ const root = path.join(out, "node_modules");
 const skip = /\.(map|d\.ts|d\.cts|d\.mts|md|tsbuildinfo)$/i;
 const hoisted = new Map(); // package name -> the version at the top level
 const done = new Set();
+// Reown AppKit is WalletConnect's own modal. Published apps draw their own QR code, and the publish build
+// replaces any AppKit import with a stub (src/server/publish/build.ts, D36), so it's never needed here.
+// It is about half of the pack.
+const NEVER_BUNDLED = new Set(["@reown/appkit"]);
 
 /** Each package's dependencies sit beside it in the pnpm store: .pnpm/<id>/node_modules/*. */
 function modulesOf(real, name) {
@@ -31,6 +35,7 @@ function install(name, real, into) {
   const pkg = JSON.parse(readFileSync(path.join(real, "package.json"), "utf8"));
   const beside = modulesOf(real, name);
   for (const dep of Object.keys({ ...pkg.dependencies, ...pkg.peerDependencies, ...pkg.optionalDependencies })) {
+    if (NEVER_BUNDLED.has(dep)) continue;
     const link = path.join(beside, dep);
     if (!existsSync(link)) continue; // an optional peer nobody installed
     const depReal = realpathSync(link);
