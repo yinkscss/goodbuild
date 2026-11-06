@@ -300,6 +300,7 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
   - disk space.
 - **The nightly local backup stays,** for fast local restores.
 - **Tested in CI** (`deploy/test-offsite-backup.sh`), with real Postgres, age and MinIO. Not yet against B2, R2 or the server.
+- **Risk:** the MinIO stand-in is Bitnami's archived image, since MinIO's own images are gone. If it disappears, the required check fails and blocks deploys until it is swapped for a maintained one, such as versitygw or rustfs.
 
 ## Recommended decisions (Ego; adopted unless changed)
 

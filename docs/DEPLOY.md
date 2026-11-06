@@ -162,6 +162,8 @@ It prints `Public key: age1...`. That public key goes on the server. The file ho
 - Note the S3 endpoint shown on the bucket page, such as `s3.us-west-004.backblazeb2.com`. The region is the part after `s3.`.
 
 **3. Make the alert:** a free [healthchecks.io](https://healthchecks.io) account (free plan UNVERIFIED). Add a check with period **1 hour** and grace **1 hour**, and email yourself. You'll then hear within about 2 hours of the last good backup. This also works when the server itself is down, which a check run on the server can't do. Copy its ping URL.
+- A failed run pings `/fail`, which marks the check down straight away. So one bad hour emails you, not only 2 hours of silence.
+- A blank `HEALTHCHECK_URL` turns the alert off without any warning.
 
 **4. Install on the server, as root:**
 ```bash
@@ -190,7 +192,7 @@ systemctl list-timers goodbuild-offsite-backup.timer
 #### Restore drill (owner, monthly, and before step B of the launch plan)
 `deploy/restore-drill.sh` downloads a backup and decrypts it with your private key. It restores the backup into a new, throwaway Postgres container, with no network and a random name, deleted afterwards. Then it checks that every figure taken at backup time comes out the same. It never connects to production or any other database.
 
-Run it on your own computer, which needs Docker, `age` and `curl`. The private key then never touches the server.
+Run it on your own computer, which needs Docker, `age` and `curl`. The private key then never touches the server. It has only been run on Ubuntu (in CI). Running it on a Mac is UNVERIFIED. macOS's built-in bash is 3.2, so if it fails there, run it with `/opt/homebrew/bin/bash` or `/usr/local/bin/bash` (`brew install bash`).
 1. Copy `deploy/offsite-backup.env.example` to `~/.config/goodbuild/restore.env` and `chmod 600` it.
 2. Fill in the endpoint, region, bucket and the **read-only** key. Leave the server-only lines.
 3. Run:
@@ -212,6 +214,7 @@ deploy/restore-drill.sh --identity ~/goodbuild-backup.agekey --latest
 ```bash
 age -d -i ~/goodbuild-backup.agekey -o payload.tar <file>.tar.age && tar -xf payload.tar goodbuild.dump
 ```
+   - `--latest` only looks in `hourly/`, so after about 48 hours with no backups it finds nothing. Name a daily copy instead: `--key daily/goodbuild-<date>.tar.age`, or download it.
 2. Copy `goodbuild.dump` to the server.
 3. Stop `web` and `worker`, restore it with the nightly command above, and start them again.
 4. This **loses everything written since that backup.** With real money in the database, reconcile against Paystack and the chain before reopening.
@@ -224,12 +227,15 @@ age -d -i ~/goodbuild-backup.agekey -o payload.tar <file>.tar.age && tar -xf pay
 - A refused upload, a held lock and the database being down. Each of these fails cleanly, pings `/fail` where it should, and leaves no plain dump behind.
 - A readable config, and a private key put where the public one belongs. Both are refused.
 
+**The deploy gate depends on an archived image.** MinIO's own images have left Docker Hub, and quay.io refused the pull. So the test uses `bitnamilegacy/minio`, which gets no updates and may be removed. This test is part of the required check, so if that pull starts failing, deploys are blocked. The fix is to swap in a maintained stand-in, such as versitygw or rustfs.
+
 UNVERIFIED until the owner's first run:
 - B2's (or R2's) acceptance of these signed uploads.
 - That B2's write-only key allows the upload.
 - The lifecycle rules.
 - The server's curl version.
 - The timer on the server.
+- The drill on a Mac.
 
 ## DNS (Cloudflare)
 `goodbuildit.xyz` and `*` are `A` records to the server, `www` is a `CNAME` to the root, all Proxied. SSL/TLS is Full. The `MX` and SPF `TXT` records are Namecheap email forwarding and were left alone.
