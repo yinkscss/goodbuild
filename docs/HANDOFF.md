@@ -22,6 +22,21 @@ Written 4 Nov 2026 at the end of the first build session (claude.ai), for whoeve
 - Whether the owner's wallet is exempt from the cap, and a wallet already verified with GoodDollar for testing.
 - Whether GoodDollar requires approval for third-party use of face verification. Its docs don't say.
 
+### Wallets in generated apps (D36, on branch `feat/app-wallet-connect`)
+Published apps now show a wallet list (every browser wallet, WalletConnect by QR code or phone link) and MiniPay connects by itself. Design: DECISIONS.md D36.
+
+**Needs the owner:** a real `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` in production's `.env.production`. The server reads it when an app is published, so the file matters, not the Docker build argument. Without it, published apps have no WalletConnect and everything else works. Apps already published need republishing to get any of this.
+
+**Checked:** `scripts/wallet-e2e.ts` on a local production build, with a fake project id, stand-in wallets, a mocked Celo RPC and `MOCK_RELAY=1` (the script answers the relay socket). So the pairing link is made by WalletConnect's real code, but no relay or wallet took part.
+
+**UNVERIFIED, try these by hand once the id is set:**
+1. Computer: Connect wallet, WalletConnect, scan the QR code with a phone wallet. It should connect, then sign in and send a contract write.
+2. Reload: it should reconnect without asking.
+3. Phone in Chrome or Safari: try each wallet button (MetaMask, Valora, Trust Wallet, Rainbow, Other wallet). The link formats are from memory of each wallet's universal link, not tested. Check the wallet app comes forward for each signature, and that coming back to the page works.
+4. Real MetaMask with a second extension installed: the list shows both, and the one you pick is the one asked.
+5. MiniPay: open a published app inside it. It should connect with no list.
+6. Reown's dashboard: whether its allowed-domains list accepts every `*.goodbuildit.xyz` host, and what Verify shows wallets for a published app. Unknown until a real id is used.
+
 ### Plan first (D32)
 A project's first message now asks questions before building. The chat no longer shows the build log or file chips. Tried with the demo model only: real model question quality is **UNVERIFIED**, because no real provider was called.
 

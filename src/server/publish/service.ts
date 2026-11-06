@@ -6,7 +6,7 @@ import { and, eq, ne } from "drizzle-orm";
 import type { PublicClient } from "viem";
 
 import { DATA_RULES_PATH, parseDataRules, parseSignIn } from "@/lib/app-data";
-import { withCurrentDataHelpers } from "@/server/agent/template";
+import { withCurrentDataHelpers, withCurrentWalletHelpers } from "@/server/agent/template";
 import { slugFromName, slugProblem } from "@/lib/published-host";
 import { dbAssetStore } from "@/server/agent/asset-store";
 import { loadFiles } from "@/server/agent/store";
@@ -121,7 +121,8 @@ export async function publishApp(db: Db, project: Project, slug: string, deps: {
   const clientId = existing?.clientId ?? `gbc_${randomBytes(16).toString("hex")}`;
   const undeployed = await undeployedContracts(db, project, saved);
   // The current data helpers, so an app published from an older project gets today's rules support (D34).
-  const files = withCurrentDataHelpers(await withCurrentAddresses(db, project.id, saved));
+  // And the current wallet layer, so older projects get the wallet list, WalletConnect and MiniPay (D36).
+  const files = withCurrentWalletHelpers(withCurrentDataHelpers(await withCurrentAddresses(db, project.id, saved)));
 
   const store = dbAssetStore(db);
   const assets: Array<{ name: string; mime: string; bytes: Uint8Array }> = [];
@@ -134,7 +135,7 @@ export async function publishApp(db: Db, project: Project, slug: string, deps: {
   let built: PublishedFile[];
   try {
     const changeableContract = await hasChangeableContracts(db, project, saved, deps.client ?? publicClientFor(project.chainId));
-    built = await (deps.build ?? buildPublishedApp)({ files, assets, title: project.name, reportUrl: reportUrl(slug), hasUndeployedContracts: undeployed.length > 0, dataClientId: clientId, changeableContract });
+    built = await (deps.build ?? buildPublishedApp)({ files, assets, title: project.name, reportUrl: reportUrl(slug), hasUndeployedContracts: undeployed.length > 0, dataClientId: clientId, changeableContract, walletConnectProjectId: walletConnectProjectId() });
   } catch (error) {
     if (error instanceof PublishBuildError) throw new PublishError("build_failed", error.message, error.details);
     throw error;
@@ -181,6 +182,13 @@ export async function publishedFile(db: Db, slug: string, filePath: string): Pro
   return { mime: row.mime, bytes: row.bytes };
 }
 
+/** GoodBuild's WalletConnect project id, shared by every published app (D36). Public, like the main site's. */
+export function walletConnectProjectId(): string | undefined {
+  // Read at run time: Next.js would otherwise inline the build's value for a NEXT_PUBLIC_ name.
+  const id = process.env["NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID"]?.trim();
+  return id && /^[A-Za-z0-9_-]{8,64}$/.test(id) ? id : undefined;
+}
+
 const CSP = [
   "default-src 'self'",
   "script-src 'self'",
@@ -188,7 +196,11 @@ const CSP = [
   "style-src 'self' 'unsafe-inline' https:",
   "font-src 'self' data: https:",
   "img-src 'self' data: https:",
+  // WalletConnect: the relay (wss://relay.walletconnect.org), its RPC and pulse endpoints are https:/wss:.
   "connect-src 'self' https: wss:",
+  // WalletConnect's Verify API loads a hidden iframe from this host to attest the app's domain to the
+  // wallet (@walletconnect/core 2.26). Otherwise the same as default-src.
+  "frame-src 'self' https://verify.walletconnect.org",
   "object-src 'none'",
   "base-uri 'none'",
   "form-action 'self'",

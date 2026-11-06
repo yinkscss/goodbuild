@@ -111,7 +111,7 @@ The preview runs on a CodeSandbox origin, and the app has no host before it's pu
 Nightly backups keep deleted data for up to 7 days (DEPLOY.md). Nothing expires by itself: data stays until one of the above happens.
 
 ## Known limits
-- **Wallets in published apps are injected only** (MetaMask, MiniPay and the like). WalletConnect and Magic email wallets aren't available on an app host, as was already true for contract calls there. So an owner with an email wallet can't sign in to their own app.
+- **Wallets in published apps** are browser wallets, MiniPay and, once `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` is set, WalletConnect (D36). Magic email wallets still aren't available on an app host, so an owner with an email wallet can't sign in to their own app.
 - No queries beyond listing a collection newest first, optionally by owner. No shared records, files or images.
 - **UNVERIFIED:** the helper in the real Sandpack preview. It was run in Chromium on another origin with no server and no `goodbuild-data` tag, which is the same code path, but CodeSandbox's bundler wasn't part of that, so its handling of the JSON import is unchecked.
 - **UNVERIFIED:** Cloudflare passing `/__gb/data/` unchanged and not caching it. Every response says `no-store, private`, and nothing about this path has been tried on the live server.

@@ -11,6 +11,10 @@
  * these files but not edit them, so the front end can't drift from the contract.
  */
 
+import { CHAIN, CONNECT_BUTTON, USE_WALLET, WALLET_HELPERS, withCurrentWalletHelpers } from "./wallet-template";
+
+export { WALLET_DIR, WALLET_HELPERS, withCurrentWalletHelpers } from "./wallet-template";
+
 export const PLATFORM_DIR = "src/contracts/";
 
 /** npm packages the generated app may use. The agent can add only from this list. */
@@ -27,6 +31,14 @@ export const ALLOWED_DEPENDENCIES: Record<string, string> = {
   "date-fns": "4.1.0",
   "canvas-confetti": "1.9.3",
   "qrcode.react": "4.2.0",
+};
+
+/**
+ * Packages only GoodBuild's own code uses: the WalletConnect module publishing swaps into
+ * src/lib/goodbuild/walletConnect.tsx (D36). The builder can't import or add them.
+ */
+export const PLATFORM_DEPENDENCIES: Record<string, string> = {
+  "@walletconnect/ethereum-provider": "2.26.0",
 };
 
 export const BASE_DEPENDENCIES = ["react", "react-dom", "react-router-dom", "viem", "lucide-react", "clsx", "tailwind-merge", "class-variance-authority"];
@@ -116,105 +128,7 @@ export function shortAddress(address?: string) {
 }
 `;
 
-const CHAIN = `import {
-  createPublicClient,
-  createWalletClient,
-  custom,
-  http,
-  type Abi,
-  type Address,
-  type EIP1193Provider,
-} from "viem";
-import { celo, celoSepolia } from "viem/chains";
 
-/** Stage 1 apps run on Celo Sepolia (testnet). */
-export const chain = celoSepolia;
-export const chains = { [celoSepolia.id]: celoSepolia, [celo.id]: celo } as const;
-
-export const publicClient = createPublicClient({ chain, transport: http() });
-
-function injected(): EIP1193Provider | undefined {
-  return (window as unknown as { ethereum?: EIP1193Provider }).ethereum;
-}
-
-export async function connectWallet(): Promise<Address> {
-  const provider = injected();
-  if (!provider) throw new Error("No wallet found. Install MetaMask or open this app in MiniPay.");
-  const [account] = (await provider.request({ method: "eth_requestAccounts" })) as Address[];
-  await ensureChain(provider);
-  return account;
-}
-
-async function ensureChain(provider: EIP1193Provider) {
-  const hex = "0x" + chain.id.toString(16);
-  try {
-    await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: hex }] });
-  } catch {
-    await provider.request({
-      method: "wallet_addEthereumChain",
-      params: [
-        {
-          chainId: hex,
-          chainName: chain.name,
-          nativeCurrency: chain.nativeCurrency,
-          rpcUrls: [chain.rpcUrls.default.http[0]],
-          blockExplorerUrls: chain.blockExplorers ? [chain.blockExplorers.default.url] : [],
-        },
-      ],
-    });
-  }
-}
-
-/** Send a contract write from the connected wallet and wait for the receipt. */
-export async function writeContract(args: {
-  address: Address;
-  abi: Abi;
-  functionName: string;
-  args?: readonly unknown[];
-  value?: bigint;
-}) {
-  const provider = injected();
-  if (!provider) throw new Error("No wallet found.");
-  const [account] = (await provider.request({ method: "eth_requestAccounts" })) as Address[];
-  await ensureChain(provider);
-  const wallet = createWalletClient({ account, chain, transport: custom(provider) });
-  const { request } = await publicClient.simulateContract({ ...args, account } as never);
-  const hash = await wallet.writeContract(request as never);
-  return publicClient.waitForTransactionReceipt({ hash });
-}
-`;
-
-const USE_WALLET = `import { useCallback, useEffect, useState } from "react";
-import type { Address } from "viem";
-import { connectWallet } from "./chain";
-
-/** The connected account, a connect function, and any connection error. */
-export function useWallet() {
-  const [account, setAccount] = useState<Address | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [connecting, setConnecting] = useState(false);
-
-  useEffect(() => {
-    const eth = (window as unknown as { ethereum?: { request: (a: { method: string }) => Promise<unknown>; on?: (e: string, f: (a: Address[]) => void) => void } }).ethereum;
-    eth?.request({ method: "eth_accounts" }).then((a) => setAccount(((a as Address[]) ?? [])[0] ?? null)).catch(() => {});
-    eth?.on?.("accountsChanged", (a) => setAccount(a[0] ?? null));
-  }, []);
-
-  const connect = useCallback(async () => {
-    setConnecting(true);
-    setError(null);
-    try {
-      setAccount(await connectWallet());
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not connect.");
-    } finally {
-      setConnecting(false);
-    }
-  }, []);
-
-  return { account, connect, connecting, error };
-}
-`;
 
 const FORMAT = `/** Token amount (smallest unit) to a short human string, e.g. 1234.5 G$. */
 export function formatAmount(value: bigint | undefined, decimals = 18, maxFraction = 2) {
@@ -336,8 +250,8 @@ const DATA_RULES = `{
 `;
 
 /** Written by GoodBuild. Talks to the published app's own host, and to a stand-in in the preview. */
-const DB = `import { createWalletClient, custom, getAddress, type EIP1193Provider } from "viem";
-import { chain, connectWallet } from "./chain";
+const DB = `import { createWalletClient, custom, getAddress } from "viem";
+import { appChain as chain, connectWallet, hasWallet, walletProvider } from "./goodbuild/wallet";
 import rules from "./dataRules.json";
 
 /**
@@ -393,8 +307,6 @@ async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (!res.ok) throw new DbError(body?.error ?? "error", body?.message ?? "Something went wrong. Try again.", res.status);
   return body as T;
 }
-
-const provider = () => (window as unknown as { ethereum?: EIP1193Provider }).ethereum;
 
 function signInMessage(a: { domain: string; address: string; uri: string; nonce: string }) {
   return [
@@ -564,13 +476,13 @@ export async function currentWallet(): Promise<string | null> {
 export async function signIn(): Promise<string> {
   if (isPreview) {
     showPreviewNote();
-    previewWallet = (provider() ? await connectWallet().catch(() => PREVIEW_VISITOR) : PREVIEW_VISITOR).toLowerCase();
+    previewWallet = (hasWallet() ? await connectWallet().catch(() => PREVIEW_VISITOR) : PREVIEW_VISITOR).toLowerCase();
     return previewWallet;
   }
   const account = getAddress(await connectWallet());
   const { nonce, domain, uri } = await api<{ nonce: string; domain: string; uri: string }>("/session/nonce");
   const message = signInMessage({ domain, address: account, uri, nonce });
-  const wallet = createWalletClient({ account, chain, transport: custom(provider()!) });
+  const wallet = createWalletClient({ account, chain, transport: custom(walletProvider()!) });
   const signature = await wallet.signMessage({ message });
   return (await api<{ wallet: string }>("/session", { method: "POST", body: JSON.stringify({ message, signature }) })).wallet;
 }
@@ -649,9 +561,10 @@ export function collection<T = unknown>(name: string) {
 }
 `;
 
-const USE_DB = `import { useCallback, useEffect, useState } from "react";
+const USE_DB = `import { useCallback, useEffect, useRef, useState } from "react";
 import { collection, isPreview, sendEmailCode, sessionInfo, signIn as dbSignIn, signOut as dbSignOut, verifyEmailCode, type DbRecord } from "./db";
 import { errorMessage } from "./format";
+import { subscribeWallet, walletState } from "./goodbuild/wallet";
 import { useRead } from "./hooks";
 
 /**
@@ -667,6 +580,8 @@ export function useDbSession() {
   const [signingIn, setSigningIn] = useState(false);
   const [codeSentTo, setCodeSentTo] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const walletSession = useRef<string | null>(null);
+  walletSession.current = wallet;
 
   const refresh = useCallback(async () => {
     const s = await sessionInfo();
@@ -678,10 +593,20 @@ export function useDbSession() {
 
   useEffect(() => {
     refresh().catch(() => setWallet(null)).finally(() => setLoading(false));
-    const eth = (window as unknown as { ethereum?: { on?: (e: string, f: (a: string[]) => void) => void; removeListener?: (e: string, f: (a: string[]) => void) => void } }).ethereum;
-    const onChange = (accounts: string[]) => setWallet((w) => (w && w !== (accounts[0] ?? "").toLowerCase() ? null : w));
-    eth?.on?.("accountsChanged", onChange);
-    return () => eth?.removeListener?.("accountsChanged", onChange);
+    // Switching or disconnecting the wallet ends a wallet sign-in, on the server too, so a reload
+    // doesn't bring it back. No wallet connected yet doesn't: the session outlives the page, and the
+    // wallet reconnects a moment after it loads. An email sign-in has no wallet here, so it's untouched.
+    let last = (walletState().account ?? "").toLowerCase();
+    return subscribeWallet(() => {
+      const account = (walletState().account ?? "").toLowerCase();
+      if (account === last) return;
+      last = account;
+      if (!walletSession.current || walletSession.current === account) return;
+      walletSession.current = null;
+      setWallet(null);
+      setIsOwner(isPreview);
+      void dbSignOut().catch(() => {});
+    });
   }, [refresh]);
 
   /** Run one step, keeping signingIn and error in step. */
@@ -771,22 +696,6 @@ const CONTRACTS_INDEX = `// Platform-owned. GoodBuild writes one module per comp
 export {};
 `;
 
-const CONNECT_BUTTON = `import { Wallet } from "lucide-react";
-import { Button } from "./ui/button";
-import { useWallet } from "../lib/useWallet";
-import { shortAddress } from "../lib/utils";
-
-export function ConnectButton() {
-  const { account, connect, connecting } = useWallet();
-  if (account) return <Button variant="outline">{shortAddress(account)}</Button>;
-  return (
-    <Button onClick={connect} disabled={connecting}>
-      <Wallet className="size-4" />
-      {connecting ? "Connecting…" : "Connect wallet"}
-    </Button>
-  );
-}
-`;
 
 const BUTTON = `import * as React from "react";
 import { cva, type VariantProps } from "class-variance-authority";
@@ -947,6 +856,7 @@ export function starterFiles(): Record<string, string> {
     "src/lib/db.ts": DB,
     "src/lib/useDb.ts": USE_DB,
     "src/lib/dataRules.json": DATA_RULES,
+    ...WALLET_HELPERS,
     "src/contracts/index.ts": CONTRACTS_INDEX,
     "src/components/ConnectButton.tsx": CONNECT_BUTTON,
     "src/components/ui/button.tsx": BUTTON,
@@ -965,7 +875,7 @@ export function starterFiles(): Record<string, string> {
  * are missing (never overwrite), so the prompt's list of available files is always true.
  */
 export function withStarterHelpers(files: Record<string, string>): Record<string, string> {
-  const out = withCurrentDataHelpers(files);
+  const out = withCurrentWalletHelpers(withCurrentDataHelpers(files));
   for (const [p, content] of Object.entries(starterFiles())) {
     if (/^src\/(lib|components\/ui)\//.test(p) && !(p in out)) out[p] = content;
   }

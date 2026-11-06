@@ -59,8 +59,8 @@ describe("context selection on a 30-file project (HARNESS.md eval 3, offline par
     expect(Object.keys(files).length).toBeGreaterThanOrEqual(30);
     const picks = selectContext(files, "Add a Twitter link to the footer").map((p) => p.path);
     expect(picks).toEqual(expect.arrayContaining(["src/pages/About.tsx", "src/components/sections/Faq.tsx", "src/lib/useTipJar.ts", "src/components/ui/button.tsx"]));
-    // Everything except the two data helpers, which the app-data guide documents.
-    expect(picks).toHaveLength(Object.keys(files).filter((p) => p !== "src/lib/db.ts" && p !== "src/lib/useDb.ts").length);
+    // Everything except the data helpers and the wallet layer, which the guides and prompt document.
+    expect(picks).toHaveLength(Object.keys(files).filter((p) => p !== "src/lib/db.ts" && p !== "src/lib/useDb.ts" && !p.startsWith("src/lib/goodbuild/")).length);
   });
   it("over budget: puts the file that needs the change in context for most requests, and one search finds the rest", () => {
     let inContext = 0;
