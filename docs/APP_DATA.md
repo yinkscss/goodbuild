@@ -30,6 +30,16 @@ The session is a random 32-byte token in an httpOnly cookie, `__Host-gbapp_sessi
 
 **Smart accounts:** ERC-1271 and ERC-6492 signatures work through the check `verifySignIn` already has, on Celo and Celo Sepolia. It makes an RPC call, so it runs only after the nonce check and under the sign-in rate limit. Checked with a stand-in for the chain call; UNVERIFIED with a real smart account.
 
+### Email sign-in (D35)
+For apps whose visitors may have no wallet. Off unless the app's `dataRules.json` has `"signIn": {"email": true}`, recorded at publish (`publications.email_sign_in`), so other apps can't be used to send email.
+1. `POST session/email` `{email}`: exactly one plain address (trimmed, lowercased, at most 254 characters, no lists, display names or control characters). A 6-digit code, good for 10 minutes and 5 tries, is sent through Resend from `EMAIL_FROM`. Only an HMAC of it is stored. The email names the app's address and the code, never text the app wrote, and says never to share it.
+2. `POST session/email/verify` `{email, code}`: each guess is counted in the same statement that reads the code, so parallel guesses can't share a try, and the code is spent in one atomic update, so it gives at most one session. An anonymous session in that browser ends.
+- **The visitor's id** is `email:<uuid>`, from `app_data_email_identities`: one per app and address, random, and never built from a secret that might be rotated. Records name the id, never the address. The address is kept only in that table and the visitor's own session row, and `GET session` shows it only to them. Email visitors count as `signed-in`, never `owner`.
+- **Limits:** 5 codes a minute per IP and 30 per app, in memory. Counted in the database: 3 per address every 10 minutes and 10 a day, per app; 20 a day per IP; 100 a day per app; 90 a day across the site (`EMAIL_DAILY_CAP`), to stay inside Resend's free tier (UNVERIFIED: its exact daily limit). 10 wrong guesses a day per address and app lock it until tomorrow, however many codes are asked for. Each refusal says what happened: 429, 503 or 502, never a pretend "sent".
+- **Without `RESEND_API_KEY`,** production answers 503 "not set up". Development prints a line to the server log instead of sending.
+- **Deleting:** Delete my data, the owner's Delete all, a takedown purge and project deletion all remove the address, its codes and its sessions.
+- **Known limits:** someone can use up one address's daily codes in one app and block that person's sign-in there for the day. Bounces aren't handled yet. Turnstile isn't built.
+
 ## Who can read and write
 Rules come from `src/lib/dataRules.json` in the project. The agent writes them for each app (D34). They're validated by the agent's checks and when publishing, and saved with the publication. Nothing in a request can change them.
 

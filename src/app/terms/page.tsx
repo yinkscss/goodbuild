@@ -20,7 +20,7 @@ export default function TermsPage() {
       <h2>Published apps</h2>
       <p>Published apps are public and made by their creators, not by GoodBuild. We can take down an app that breaks these terms. That removes its page, not its contracts.</p>
       <h2>Data your published app saves</h2>
-      <p>A published app can save data for its visitors. Some parts need them to sign in with their wallet, and forms such as bookings or contact messages can be sent without signing in. GoodBuild stores that data for you. If your app saves visitors&apos; data:</p>
+      <p>A published app can save data for its visitors. Some parts need them to sign in, with their wallet or with a code sent to their email, and forms such as bookings or contact messages can be sent without signing in. GoodBuild stores that data for you. If your app saves visitors&apos; data:</p>
       <ul>
         <li>You are responsible for what your app asks for and how it uses it. Tell visitors what you save and why.</li>
         <li>Don&apos;t collect passwords, card or bank details, government ID numbers, health information, or anything about people under 18.</li>

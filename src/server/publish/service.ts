@@ -5,7 +5,7 @@ import { randomBytes } from "node:crypto";
 import { and, eq, ne } from "drizzle-orm";
 import type { PublicClient } from "viem";
 
-import { DATA_RULES_PATH, parseDataRules } from "@/lib/app-data";
+import { DATA_RULES_PATH, parseDataRules, parseSignIn } from "@/lib/app-data";
 import { withCurrentDataHelpers } from "@/server/agent/template";
 import { slugFromName, slugProblem } from "@/lib/published-host";
 import { dbAssetStore } from "@/server/agent/asset-store";
@@ -112,7 +112,10 @@ export async function publishApp(db: Db, project: Project, slug: string, deps: {
   if (!(await slugAvailable(db, slug, project.id))) throw new PublishError("slug_taken", "That address is taken. Try another.");
 
   const saved = await loadFiles(db, project.id);
-  const { rules: dataRules, issues: ruleIssues } = parseDataRules(saved[DATA_RULES_PATH]);
+  const parsedRules = parseDataRules(saved[DATA_RULES_PATH]);
+  const signIn = parseSignIn(saved[DATA_RULES_PATH]);
+  const { rules: dataRules } = parsedRules;
+  const ruleIssues = [...parsedRules.issues, ...signIn.issues];
   if (ruleIssues.length) throw new PublishError("build_failed", "The app's data rules aren't valid.", ruleIssues);
   // Public (docs/APP_DATA.md). Keeps its value across republishing, so a built page never goes stale.
   const clientId = existing?.clientId ?? `gbc_${randomBytes(16).toString("hex")}`;
@@ -139,7 +142,7 @@ export async function publishApp(db: Db, project: Project, slug: string, deps: {
 
   try {
     await db.transaction(async (tx) => {
-      const values = { slug, versionNumber: project.currentVersion, hasUndeployedContracts: undeployed.length > 0, publishedAt: new Date(), unpublishedAt: null, dataRules };
+      const values = { slug, versionNumber: project.currentVersion, hasUndeployedContracts: undeployed.length > 0, publishedAt: new Date(), unpublishedAt: null, dataRules, emailSignIn: signIn.email };
       const [row] = await tx
         .insert(publications)
         .values({ projectId: project.id, clientId, ...values })

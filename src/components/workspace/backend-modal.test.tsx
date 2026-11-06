@@ -30,7 +30,7 @@ describe("backendIdeas", () => {
     const tips = backendIdeas({ name: "Ikeja FC tip jar" });
     expect(tips[0].label).toBe("Thank-you wall");
     expect(tips.at(-1)?.label).toBe("Let the builder decide");
-    expect(backendIdeas({ name: "Something else" }).map((i) => i.label)).toEqual(["Contact form", "Profiles", "Public posts", "Let the builder decide"]);
+    expect(backendIdeas({ name: "Something else" }).map((i) => i.label)).toEqual(["Email sign-in", "Contact form", "Profiles", "Public posts", "Let the builder decide"]);
   });
 });
 

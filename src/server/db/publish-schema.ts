@@ -32,6 +32,8 @@ export const publications = pgTable(
       .default(sql`'gbc_' || replace(gen_random_uuid()::text, '-', '')`),
     /** Access rule per collection, snapshotted from the app's rules file when it is published. */
     dataRules: jsonb("data_rules").$type<Record<string, unknown>>().notNull().default({}),
+    /** The app offers email sign-in to its visitors, from "signIn" in its dataRules.json (D35). Off unless asked for. */
+    emailSignIn: boolean("email_sign_in").notNull().default(false),
   },
   (t) => [uniqueIndex("publications_project_idx").on(t.projectId), uniqueIndex("publications_slug_idx").on(t.slug), uniqueIndex("publications_client_idx").on(t.clientId)],
 );
