@@ -11,6 +11,9 @@ import type { PlanAnswer, TurnRecord } from "@/lib/turn-types";
 
 import { latestIntake } from "./plan-intake";
 
+/** Planning turns a project gets before a send builds instead. */
+const MAX_PLAN_TRIES = 2;
+
 /**
  * Should this send plan first (D32)? Decided here on the server, so every way into a project gets
  * the same answer: the landing page and home both arrive as a queued first message.
@@ -19,6 +22,10 @@ import { latestIntake } from "./plan-intake";
  * plans again, and a request the model only answered in words ("what can you build?") doesn't use
  * up the plan. No once a build has been asked for, so its "Try again" stays a build. No for fixes,
  * whatever state the project is in. No near the free AI cap (see hasPlanHeadroom).
+ *
+ * No after two planning turns that ended without questions. Those turns show no card and no Skip,
+ * so a provider that keeps failing, or a model that keeps answering in words, would otherwise stop
+ * someone ever reaching a build. The second try is the last: the next send builds.
  */
 export async function shouldPlanFirst(db: Db, input: { projectId: string; userId: string; prompt?: string; skipPlan?: boolean }): Promise<boolean> {
   if (input.skipPlan) return false;
@@ -36,6 +43,7 @@ export async function shouldPlanFirst(db: Db, input: { projectId: string; userId
 
   const rows = await db.select({ role: messages.role, meta: messages.meta }).from(messages).where(eq(messages.projectId, input.projectId));
   if (latestIntake(rows)) return false;
+  if (jobs.filter((j) => j.mode === "plan" && (j.status === "done" || j.status === "error")).length >= MAX_PLAN_TRIES) return false;
 
   return hasPlanHeadroom(db, input.userId);
 }
