@@ -2,7 +2,7 @@ import "server-only";
 
 import { and, asc, desc, eq } from "drizzle-orm";
 
-import { NETWORKS, isMainnetEnabled, type NetworkId } from "@/config/networks";
+import { NETWORKS, type NetworkId } from "@/config/networks";
 import { getTemplate } from "@/config/templates";
 import type { Db } from "@/server/db/client";
 import { messages, projects, type Message, type Project } from "@/server/db/schema";
@@ -33,9 +33,9 @@ export function nameFromPrompt(prompt: string, templateId?: string | null): stri
   return cased.length > 40 ? `${cased.slice(0, 39)}…` : cased;
 }
 
-/** Mainnet only when the flag is on; otherwise everything targets Celo Sepolia. */
-export function chainIdFor(network: NetworkId, mainnetEnabled = isMainnetEnabled()): number {
-  return network === "celo" && mainnetEnabled ? NETWORKS.celo.chainId : NETWORKS["celo-sepolia"].chainId;
+/** Mainnet only when the mainnet switch lets this wallet (D50); otherwise a new project targets Celo Sepolia. */
+export function chainIdFor(network: NetworkId, mainnetAllowed = false): number {
+  return network === "celo" && mainnetAllowed ? NETWORKS.celo.chainId : NETWORKS["celo-sepolia"].chainId;
 }
 
 /**
@@ -45,7 +45,7 @@ export function chainIdFor(network: NetworkId, mainnetEnabled = isMainnetEnabled
 export async function createProjectFromPrompt(
   db: Db,
   ownerId: string,
-  input: { prompt: string; templateId?: string | null; network: NetworkId },
+  input: { prompt: string; templateId?: string | null; network: NetworkId; mainnetAllowed?: boolean },
 ): Promise<Project> {
   const [project] = await db
     .insert(projects)
@@ -53,7 +53,7 @@ export async function createProjectFromPrompt(
       ownerId,
       name: nameFromPrompt(input.prompt, input.templateId),
       templateId: input.templateId ?? null,
-      chainId: chainIdFor(input.network),
+      chainId: chainIdFor(input.network, input.mainnetAllowed),
       status: "draft",
     })
     .returning();

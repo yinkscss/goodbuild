@@ -1,5 +1,6 @@
 /**
- * Networks for Stage 1. Testnet first (Celo Sepolia, P1); mainnet stays behind a flag.
+ * Networks for Stage 1. Testnet first (Celo Sepolia, P1). Who may deploy to mainnet is a server
+ * setting that changes while the app runs (D50), so nothing here knows about it.
  * Alfajores was retired on 30 Sep 2025, so it is not offered anywhere.
  */
 export type NetworkId = "celo-sepolia" | "celo";
@@ -17,7 +18,3 @@ export const NETWORKS: Record<NetworkId, NetworkOption> = {
 };
 
 export const DEFAULT_NETWORK: NetworkId = "celo-sepolia";
-
-export function isMainnetEnabled(flag: string | undefined = process.env.NEXT_PUBLIC_ENABLE_MAINNET): boolean {
-  return flag === "true" || flag === "1";
-}

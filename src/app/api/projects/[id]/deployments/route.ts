@@ -47,10 +47,11 @@ export async function POST(request: Request, ctx: RouteContext<"/api/projects/[i
     if (!(await getOwnedProject(db, id, session.user.id))) return NextResponse.json({ error: "not_found" }, { status: 404 });
     try {
       const row = await recordDeployment(db, {
+        ...parsed.data,
+        // The session's fields come last so nothing in the request body can replace them.
         projectId: id,
         userId: session.user.id,
         wallet: session.user.wallet,
-        ...parsed.data,
         txHash: parsed.data.txHash as `0x${string}`,
         sourceHash: parsed.data.sourceHash as `0x${string}`,
         proxied: parsed.data.proxied && { kind: parsed.data.proxied.kind, implementationTxHash: parsed.data.proxied.implementationTxHash as `0x${string}` },

@@ -10,6 +10,7 @@ import { runContractTests } from "@/server/agent/contract-tests";
 import { loadFiles, saveFiles } from "@/server/agent/store";
 import { contractModule } from "@/server/agent/template";
 import { signInUser } from "@/server/auth/service";
+import { setMainnetMode } from "@/server/settings/mainnet-access";
 import { createTestDb, type Db } from "@/server/db/client";
 import { contractUpgrades, deployments } from "@/server/db/deploy-schema";
 import { loadDeployedAddresses } from "./addresses";
@@ -183,7 +184,6 @@ beforeEach(async () => {
   chain = await LocalChain.start();
   gd = await deployMockGd();
   process.env.NEXT_PUBLIC_TEST_GD_ADDRESS = gd;
-  delete process.env.NEXT_PUBLIC_ENABLE_MAINNET;
   const user = await signInUser(db, { wallet: WALLET.toLowerCase(), walletKind: "external", attestation: { ageOk: true, notUsPerson: true } });
   userId = user.id;
   const project = await createProjectFromPrompt(db, userId, { prompt: "G$ vault", network: "celo-sepolia" });
@@ -753,8 +753,8 @@ contract VaultTest is Test {
 
 describe("mainnet", () => {
   it("refuses the option at the server even with mainnet switched on, and other projects are untouched", { timeout: SECONDS }, async () => {
-    process.env.NEXT_PUBLIC_ENABLE_MAINNET = "true"; // so mainnet_disabled can't be why
-    const mainnetProject = await createProjectFromPrompt(db, userId, { prompt: "mainnet", network: "celo" });
+    await setMainnetMode(db, "everyone", null); // so mainnet_disabled can't be why
+    const mainnetProject = await createProjectFromPrompt(db, userId, { prompt: "mainnet", network: "celo", mainnetAllowed: true });
     expect((await refusal(() => setUpgradeable(db, mainnetProject, true))).code).toBe("upgradeable_testnet_only");
     expect(await isUpgradeableProject(db, mainnetProject.id)).toBe(false);
 

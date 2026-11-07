@@ -1,15 +1,14 @@
 "use client";
 
-import { WalletButton, expectedChainId } from "@/components/auth/wallet-button";
+import { DEFAULT_EXPECTED_CHAIN_ID, WalletButton } from "@/components/auth/wallet-button";
 import { Logo } from "@/components/brand/logo";
 import { CreditsPill } from "@/components/home/credits-pill";
 import { useWallet } from "@/lib/auth/context";
 import { chainName } from "@/lib/format";
 
-/** Network badge: green dot and the chain the app builds and deploys on. */
-export function NetworkBadge() {
+/** Network badge: green dot and the open project's chain (Celo Sepolia where there is no project), never a global flag. */
+export function NetworkBadge({ chainId: expected = DEFAULT_EXPECTED_CHAIN_ID }: { chainId?: number }) {
   const { wallet } = useWallet();
-  const expected = expectedChainId();
   const onExpected = !wallet || wallet.chainId === null || wallet.chainId === expected;
   if (!onExpected) return null; // the wallet pill shows "Switch to …" instead
   return (

@@ -20,7 +20,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/projects/[i
     const db = await getDb();
     if (!(await getOwnedProject(db, id, session.user.id))) return NextResponse.json({ error: "not_found" }, { status: 404 });
     try {
-      return NextResponse.json({ plan: await prepareDeploy(db, { projectId: id, wallet: session.user.wallet, ...parsed.data }) });
+      return NextResponse.json({ plan: await prepareDeploy(db, { ...parsed.data, projectId: id, wallet: session.user.wallet }) });
     } catch (error) {
       if (error instanceof DeployError) return NextResponse.json({ error: error.code, message: error.message, details: error.details }, { status: 422 });
       throw error;

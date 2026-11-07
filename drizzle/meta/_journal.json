@@ -92,6 +92,13 @@
       "when": 1793991455327,
       "tag": "0012_m3_holds",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1794016882356,
+      "tag": "0013_c1_app_settings",
+      "breakpoints": true
     }
   ]
 }

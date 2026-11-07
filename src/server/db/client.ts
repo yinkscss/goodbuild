@@ -13,8 +13,9 @@ import * as coreSchema from "./schema";
 import * as deploySchema from "./deploy-schema";
 import * as publishSchema from "./publish-schema";
 import * as appDataSchema from "./app-data-schema";
+import * as settingsSchema from "./settings-schema";
 
-const schema = { ...coreSchema, ...deploySchema, ...publishSchema, ...appDataSchema };
+const schema = { ...coreSchema, ...deploySchema, ...publishSchema, ...appDataSchema, ...settingsSchema };
 
 /** Driver-agnostic handle: postgres-js in production, PGlite in dev and tests. */
 export type Db = PgDatabase<PgQueryResultHKT, typeof schema>;
