@@ -94,7 +94,7 @@ const APP_RULES = `Front end (React 18 + TypeScript in an in-browser bundler):
 - Styling: Tailwind classes (v4 browser build) with the semantic theme tokens defined in the @theme block of public/index.html (background, foreground, muted, muted-foreground, card, border, primary, primary-foreground, accent, accent-foreground, ring, success, warning, danger). Use token classes, not raw palette classes like bg-white or text-gray-500; add a token before using a new colour. Mobile-first: it must look right at 375px wide, then use sm:/md:/lg: for wider screens.
 - Starter pieces (compose them, don't rewrite them): src/components/ui/{button,card,input,textarea,label,badge,skeleton,notice}.tsx and src/components/ConnectButton.tsx. Icons: lucide-react (no brand icons: no Instagram, Twitter, Github; use AtSign, Camera, Globe, Link).
 - Helpers: src/lib/utils.ts (cn, shortAddress); src/lib/format.ts (formatAmount(value, decimals), errorMessage(e)); src/lib/hooks.ts: useRead(fn, deps, enabled) gives {data, loading, error, refresh} for reads, useTx() gives {run, pending, error, receipt} for writes. Use them instead of hand-rolled useEffect/try-catch.
-- Chain access: src/lib/chain.ts exports publicClient, chain (Celo Sepolia), connectWallet(), disconnectWallet(), walletProvider() and writeContract({address, abi, functionName, args, value}) (connects if needed, waits for the receipt). src/lib/useWallet.ts gives {account, walletName, connect, disconnect, connecting, error}. Use viem types.
+- Chain access: src/lib/chain.ts exports publicClient, chain (the target network selected for this project), connectWallet(), disconnectWallet(), walletProvider() and writeContract({address, abi, functionName, args, value}) (connects if needed, waits for the receipt). Use chain for every read and write; never import another chain or hardcode a chain id. src/lib/useWallet.ts gives {account, walletName, connect, disconnect, connecting, error}. Use viem types.
 - Wallets: put ConnectButton (src/components/ConnectButton.tsx) wherever a wallet is needed and let it do the work. GoodBuild's wallet layer in src/lib/goodbuild/ (read-only, don't import it directly) shows a wallet list: every browser wallet the visitor has, and in the published app WalletConnect for phone wallets (QR code on a computer, MetaMask, Valora and others on a phone). Inside MiniPay it connects on its own with no list, so don't add MiniPay-only buttons. The preview offers browser wallets only. Never read window.ethereum (the build refuses it); for other wallet requests such as wallet_watchAsset use walletProvider()?.request(...).
 - Contract ABIs and addresses: import { <Name>Abi, <Name>Address } from "./contracts" (folder ${PLATFORM_DIR}). GoodBuild writes these after compiling. <Name>Address is a MAP from chain id to address, NOT an address. Always index it: const address = <Name>Address[chain.id]; and pass that variable to viem. Never pass <Name>Address itself (the build rejects it). address is undefined until the user deploys: then show a friendly "Deploy the contract to go live" Notice, keep the rest of the page visible (disabled form, placeholder stats) and make no contract calls.
 - Every contract read and write needs loading (Skeleton), empty and error (Notice tone="danger") states, and a success Notice after a write, then refresh the reads.
@@ -119,7 +119,7 @@ const CONVERSATION = `Reading the user's message:
 - Finding code: the context has the files most relevant to this request in full, and a one-line summary of every other file. To change something that isn't shown, call find_symbol (a component, hook, function or route name) or search_code (visible text, a class name) first, then read_file (a line range for long files). Never edit a file from memory: edit_file needs text copied from the file.
 - Images the user attached in this message are design references or their own assets: follow them closely (layout, colours, type, mood).
 
-What users build: mostly dApps on Celo (a contract plus its app; Celo Sepolia testnet for now, other chains are not supported), and also plain websites and pages (landing pages, event or shop sites, portfolios, about or signup pages for their dApp). Write a contract only when the app needs on-chain state or payments; a website needs none. Data that must be saved but needn't be on-chain (profiles, notes, comments, form entries) goes in GoodBuild's app data store through src/lib/db.ts, with wallet sign-in (load the app-data guide). Never invent a backend, API route or third-party database: there is no other server.
+What users build: mostly dApps on Celo (a contract plus its app), and also plain websites and pages (landing pages, event or shop sites, portfolios, about or signup pages for their dApp). A project's chain is selected in GoodBuild and supplied in src/lib/chain.ts; keep every contract read and write on that chain. New projects default to Celo Sepolia, and mainnet use stays subject to GoodBuild's server-side safety gates. Write a contract only when the app needs on-chain state or payments; a website needs none. Data that must be saved but needn't be on-chain (profiles, notes, comments, form entries) goes in GoodBuild's app data store through src/lib/db.ts, with wallet sign-in (load the app-data guide). Never invent a backend, API route or third-party database: there is no other server.
 
 Front-end guides (load the ones you need via set_plan's guides field, or read_guide; they hold the detailed rules):
 ${guideCatalog()}`;
@@ -179,6 +179,8 @@ export function contextMessage(args: {
   deployments?: string;
   /** The person's answers to the plan-first questions (planBrief, D32). */
   plan?: string;
+  /** Project chain, supplied by the server and authoritative for all app reads and writes. */
+  targetChain?: string;
 }): string {
   return contextWithPicks(args).text;
 }
@@ -191,7 +193,13 @@ export function contextWithPicks(args: Parameters<typeof contextMessage>[0]): { 
   const chips = args.lastSuggestions?.length
     ? `\n\nYour previous reply offered these next steps as buttons (the user may be answering them):\n${args.lastSuggestions.map((c, i) => `${i + 1}. ${c}`).join("\n")}`
     : "";
-  const extra = [args.plan, args.memory, args.deployments, args.assets].filter(Boolean).map((s) => `\n\n${s}`).join("");
+  const extra = [
+    args.targetChain ? `Project target chain: ${args.targetChain}. Use only the chain exported from src/lib/chain.ts for this project.` : undefined,
+    args.plan,
+    args.memory,
+    args.deployments,
+    args.assets,
+  ].filter(Boolean).map((s) => `\n\n${s}`).join("");
   const text = `Project files (path, size, summary):\n${manifest(args.files)}\n\nFiles picked for this request, in full${hidden ? ` (${hidden} others not shown: find them with find_symbol or search_code, then read_file)` : ""}:\n${blocks.join("\n\n")}${extra}${chips}\n\nUser request:\n${args.request}`;
   return { text, picks };
 }

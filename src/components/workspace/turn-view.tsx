@@ -5,6 +5,7 @@ import { ArrowUpRight, Check, Eye, Hexagon, RotateCw, Wrench } from "lucide-reac
 
 import { DeployButton, useDeployAction } from "@/components/deploy/deploy-trigger";
 import { Button } from "@/components/ui/button";
+import { chainLabel } from "@/lib/deploy/explorer";
 import { formatMicroUsd } from "@/lib/pricing";
 import type { Step, TurnRecord } from "@/lib/turn-types";
 import { PlanCard, type PlanActions } from "./plan-card";
@@ -61,7 +62,7 @@ export function StepRows({ steps, open = true }: { steps: Step[]; open?: boolean
 }
 
 /** "Ready to deploy contract" card; the button opens the deploy modal (M5). */
-export function DeployCard({ record }: { record: TurnRecord }) {
+export function DeployCard({ record, chainId }: { record: TurnRecord; chainId: number }) {
   const { deployed } = useDeployAction();
   const contracts = record.contracts ?? [];
   const main = contracts[0];
@@ -69,7 +70,7 @@ export function DeployCard({ record }: { record: TurnRecord }) {
   if (contracts.every((c) => deployed.includes(c.name))) {
     return (
       <p className="mt-4 flex items-center gap-2 rounded-[20px] bg-tint p-4 text-sm font-semibold">
-        <Check className="size-4 text-success" aria-hidden /> {contracts.map((c) => c.name).join(", ")} {contracts.length > 1 ? "are" : "is"} live on Celo Sepolia
+        <Check className="size-4 text-success" aria-hidden /> {contracts.map((c) => c.name).join(", ")} {contracts.length > 1 ? "are" : "is"} live on {chainLabel(chainId)}
       </p>
     );
   }
@@ -81,7 +82,7 @@ export function DeployCard({ record }: { record: TurnRecord }) {
       <div className="min-w-[60%] flex-1">
         <p className="text-sm font-semibold">Ready to deploy {contracts.map((c) => c.name).join(", ")}</p>
         <p className="text-xs text-grey-600">
-          Celo Sepolia · {contracts.length > 1 ? `${contracts.length} contracts, one signature each` : `${(main.bytecodeBytes / 1024).toFixed(1)} kB`} · you sign from your own wallet
+          {chainLabel(chainId)} · {contracts.length > 1 ? `${contracts.length} contracts, one signature each` : `${(main.bytecodeBytes / 1024).toFixed(1)} kB`} · you sign from your own wallet
         </p>
       </div>
       <DeployButton label="Deploy contract" size="sm" className="w-full px-4 py-2.5 text-sm sm:w-auto" />
@@ -195,6 +196,7 @@ export function VisualCheckNote({ record, checking, failed, onFix, disabled }: {
 export function TurnView({
   text,
   record,
+  chainId,
   live,
   onFix,
   fixDisabled,
@@ -206,6 +208,7 @@ export function TurnView({
 }: {
   text: string;
   record: TurnRecord;
+  chainId: number;
   live: boolean;
   onFix: () => void;
   fixDisabled: boolean;
@@ -235,7 +238,7 @@ export function TurnView({
       )}
       <StepRows steps={record.steps} open={live || record.status === "needs_fix" || record.status === "error" || record.status === "stopped"} />
       {record.intake && <PlanCard intake={record.intake} actions={plan} />}
-      {!live && record.status === "ready" && <DeployCard record={record} />}
+      {!live && record.status === "ready" && <DeployCard record={record} chainId={chainId} />}
       {showError && <TurnError record={record} onFix={onFix} disabled={fixDisabled} />}
       {!live && record.status === "stopped" && record.mode === "build" && (
         <p className="mt-3 flex items-center gap-2 text-xs text-grey-600" role="status">

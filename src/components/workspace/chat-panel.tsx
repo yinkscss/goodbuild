@@ -85,6 +85,7 @@ export function ChatPanel({ ws, assetUrls = {} }: { ws: UseWorkspace; assetUrls?
               key={m.id}
               text={m.content}
               record={record}
+              chainId={state.project.chainId}
               live={false}
               onFix={() => send(record.status === "error" && lastUserPrompt && m.id === lastAssistantId ? lastUserPrompt : FIX_PROMPT, "build")}
               fixDisabled={running}
@@ -103,6 +104,7 @@ export function ChatPanel({ ws, assetUrls = {} }: { ws: UseWorkspace; assetUrls?
           <TurnView
             text={live.text}
             record={live.record}
+            chainId={state.project.chainId}
             live={live.phase === "running"}
             onFix={() => send(FIX_PROMPT, "build")}
             fixDisabled={live.phase === "running"}
