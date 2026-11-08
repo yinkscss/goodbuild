@@ -608,7 +608,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
 
     let files = await loadFiles(db, input.projectId);
     const firstBuild = Object.keys(files).length === 0;
-    files = firstBuild ? starterFiles() : withStarterHelpers(files);
+    files = firstBuild ? starterFiles(project.chainId) : withStarterHelpers(files, project.chainId);
     // Uploaded assets: the platform-owned module is refreshed before the workspace snapshot,
     // so a new upload alone doesn't count as an edit.
     const assetStore = deps.assets ?? dbAssetStore(db);
@@ -693,6 +693,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       memory: memoryBlock(memory),
       deployments: [upgradeable ? upgradeableRules(await liveStorage(db, project)) : "", deploymentsBlock(await loadDeployedAddresses(db, input.projectId), { upgradeable })].filter(Boolean).join("\n\n"),
       plan: brief.text,
+      targetChain: project.chainId === 42220 ? "Celo Mainnet (42220)" : project.chainId === 11142220 ? "Celo Sepolia (11142220)" : `Unsupported chain ${project.chainId}`,
     });
     log(`context: ${ctx.picks.length} of ${Object.keys(files).length} files in full (${ctx.picks.map((p) => p.path.split("/").pop()).join(", ")})`);
     // Design references the model hasn't seen yet go in as images, once; the manifest keeps

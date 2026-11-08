@@ -7,7 +7,7 @@ import { publicAssetOrigin, publicAssetUrl } from "@/server/agent/asset-url";
 import type { AssetInfo } from "@/server/agent/assets";
 import { systemPrompt } from "@/server/agent/prompt";
 import { listVersions, loadFiles } from "@/server/agent/store";
-import { starterFiles } from "@/server/agent/template";
+import { starterFiles, withStarterHelpers } from "@/server/agent/template";
 import { activeJobs } from "@/server/jobs/jobs";
 import { shouldOfferVerification } from "@/server/credits/cap";
 import { contractState } from "@/server/deploy/contract-state";
@@ -50,11 +50,11 @@ export async function workspaceState(db: Db, projectId: string, ownerId: string)
   const owned = await getOwnedProject(db, projectId, ownerId);
   if (!owned) return null;
   const { project } = owned;
-  const files = await loadFiles(db, projectId);
+  const savedFiles = await loadFiles(db, projectId);
+  const firstBuild = Object.keys(savedFiles).length === 0;
+  const files = firstBuild ? starterFiles(project.chainId) : withStarterHelpers(savedFiles, project.chainId);
   const versions = await listVersions(db, projectId);
-  const basis = Object.keys(files).length ? files : starterFiles();
-  const contextChars = Object.values(basis).reduce((n, c) => n + c.length, 0) + systemPrompt("build").length + 2_000;
-  const firstBuild = Object.keys(files).length === 0;
+  const contextChars = Object.values(files).reduce((n, c) => n + c.length, 0) + systemPrompt("build").length + 2_000;
   const contracts = await contractState(db, project, files);
   return {
     project: {

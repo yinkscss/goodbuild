@@ -122,7 +122,7 @@ export async function publishApp(db: Db, project: Project, slug: string, deps: {
   const undeployed = await undeployedContracts(db, project, saved);
   // The current data helpers, so an app published from an older project gets today's rules support (D34).
   // And the current wallet layer, so older projects get the wallet list, WalletConnect and MiniPay (D36).
-  const files = withCurrentWalletHelpers(withCurrentDataHelpers(await withCurrentAddresses(db, project.id, saved)));
+  const files = withCurrentWalletHelpers(withCurrentDataHelpers(await withCurrentAddresses(db, project.id, saved)), project.chainId);
 
   const store = dbAssetStore(db);
   const assets: Array<{ name: string; mime: string; bytes: Uint8Array }> = [];
