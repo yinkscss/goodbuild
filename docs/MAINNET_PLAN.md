@@ -90,7 +90,7 @@ One build session at a time. Efforts are rough guesses in tokens, against about 
 | M9 | Admin and switches | Admin page by `ADMIN_WALLETS`: inflows, flagged top-ups, rates, what customers hold versus provider balance, three-setting switches. No batch tools (D38). | M5 | 150k |
 | | **Mainnet** | | | |
 | C1 | Mainnet switch | **Done, D50:** a database switch (off, admins, everyone) read at prepare, prepare split from record; the build arg was dropped, not added | none (M9 isn't needed) | 120k |
-| C2 | Apps follow their chain | Chain from the project, including older projects' locked helpers (as D34 did), prompt and guides. Both this and PR 32 rewrite the template's chain code. | **PR 32** | 250k |
+| C2 | Apps follow their chain | **Done:** generated and published app helpers follow the project's chain, including unchanged pre-D36 helpers; prompt and guide direct the model to that chain. New projects still default to Sepolia. | PR 32 (merged) | 250k |
 | T | Toggle and flow | Section 6 | C1, C2 | 200k |
 | C3 | Fund-safety checks | Withdraw rule and value cap at prepare | C1 | 300k |
 | R1 | Review benchmark | Fixtures and scoring, before building the block. Spends under $1 of real DeepSeek, with the owner's OK (decision 4). | | 150k |
@@ -166,7 +166,7 @@ Each gate must pass before step C. "Check" means something that can fail.
 | **Replace warning** | Warns and lists the old balance | **Visitors' funds stay in the old contract, and a republished app points at the new one.** Replacing a contract that holds funds, or whose balance couldn't be read, needs a second typed confirmation. A way for visitors to reach old contracts is a follow-up. |
 | **RPC** | One forno URL per chain, no fallback. PR 29 was tested only in a local EVM and with fakes. | Set `CELO_RPC_URL` with a fallback, and repeat a deploy in a real browser with MetaMask. A new RPC host needs adding to Magic's allowed list. |
 | **Free rules** | No difference by chain | D28 to D30 stay as they are. They limit AI money, not chains. |
-| **Testnet leftovers** | "Celo Sepolia for now", "Mainnet unlocks later" | Search for these strings. |
+| **Testnet leftovers** | C2 removes "Celo Sepolia for now" from generated-app instructions; the project-level network toggle and its truthful status copy are still part of T. | Keep Sepolia as the new-project default; the selected project chain drives its app helpers. |
 
 **Not gated:** no external audit or Slither run. Every contract stays labelled unaudited.
 

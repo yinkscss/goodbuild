@@ -29,10 +29,10 @@ const WALLET = String.raw`/**
  * wallet on a phone. The preview offers browser wallets only.
  */
 import type { Address, EIP1193Provider } from "viem";
-import { celoSepolia } from "viem/chains";
+import { celo, celoSepolia } from "viem/chains";
 import { openWalletChooser } from "./walletChooser";
 
-/** Stage 1 apps run on Celo Sepolia (testnet). */
+/** Written by GoodBuild for this project's target network. */
 export const appChain = celoSepolia;
 
 export interface WalletInfo {
@@ -693,11 +693,31 @@ export const WALLET_PATHS = {
 } as const;
 
 /** GoodBuild's wallet files: always present and always current in every project. */
-export const WALLET_HELPERS: Record<string, string> = {
-  [WALLET_PATHS.wallet]: WALLET,
-  [WALLET_PATHS.chooser]: CHOOSER,
-  [WALLET_PATHS.walletConnect]: WALLETCONNECT_STUB,
-};
+const SEPOLIA_CHAIN_ID = 11142220;
+const MAINNET_CHAIN_ID = 42220;
+
+function chainExportName(chainId: number): "celo" | "celoSepolia" {
+  if (chainId === MAINNET_CHAIN_ID) return "celo";
+  if (chainId === SEPOLIA_CHAIN_ID) return "celoSepolia";
+  throw new Error(`Unsupported project chain id ${chainId}.`);
+}
+
+function walletSourceFor(chainId: number): string {
+  const selected = chainExportName(chainId);
+  return WALLET
+    .replace('import { celo, celoSepolia } from "viem/chains";', `import { ${selected} } from "viem/chains";`)
+    .replace("export const appChain = celoSepolia;", `export const appChain = ${selected};`);
+}
+
+export function walletHelpersFor(chainId = SEPOLIA_CHAIN_ID): Record<string, string> {
+  return {
+    [WALLET_PATHS.wallet]: walletSourceFor(chainId),
+    [WALLET_PATHS.chooser]: CHOOSER,
+    [WALLET_PATHS.walletConnect]: WALLETCONNECT_STUB,
+  };
+}
+
+export const WALLET_HELPERS: Record<string, string> = walletHelpersFor();
 
 // --- Starter files that use the layer. The builder may edit these; untouched old copies are upgraded.
 
@@ -709,7 +729,7 @@ import { requireWallet } from "./goodbuild/wallet";
 // in src/lib/goodbuild/. These are the parts this app uses.
 export { connectWallet, disconnectWallet, walletProvider } from "./goodbuild/wallet";
 
-/** Stage 1 apps run on Celo Sepolia (testnet). */
+/** Written by GoodBuild for this project's target network. */
 export const chain = celoSepolia;
 export const chains = { [celoSepolia.id]: celoSepolia, [celo.id]: celo } as const;
 
@@ -730,6 +750,18 @@ export async function writeContract(args: {
   return publicClient.waitForTransactionReceipt({ hash });
 }
 `;
+
+/** The chain helper is rendered per project, retaining both networks for contract address maps. */
+export function chainSourceFor(chainId = SEPOLIA_CHAIN_ID): string {
+  return CHAIN.replace("export const chain = celoSepolia;", `export const chain = ${chainExportName(chainId)};`);
+}
+
+const hash = (source: string) => createHash("sha256").update(source).digest("hex");
+const CHAIN_TEMPLATE_HASHES = new Set([hash(CHAIN), hash(chainSourceFor(MAINNET_CHAIN_ID))]);
+
+function legacyChainFor(source: string, chainId: number): string {
+  return source.replace("export const chain = celoSepolia;", `export const chain = ${chainExportName(chainId)};`);
+}
 
 export const USE_WALLET = String.raw`import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { connectWallet, disconnectWallet, restoreWallet, subscribeWallet, walletState } from "./goodbuild/wallet";
@@ -817,13 +849,24 @@ const LEGACY_BUTTON = "src/components/ConnectButton.tsx";
  * either one on the old path, the app stays on window.ethereum. An edited ConnectButton stays as it is
  * and works with the new hook.
  */
-export function withCurrentWalletHelpers(files: Record<string, string>): Record<string, string> {
-  const out = { ...files, ...WALLET_HELPERS };
+export function withCurrentWalletHelpers(files: Record<string, string>, chainId = SEPOLIA_CHAIN_ID): Record<string, string> {
+  const out = { ...files, ...walletHelpersFor(chainId) };
   const isOld = (p: string) => p in out && createHash("sha256").update(out[p]).digest("hex") === LEGACY[p].sha256;
   const canMove = (p: string) => !(p in out) || isOld(p) || out[p].includes("./goodbuild/wallet");
-  if (!canMove(LEGACY_CHAIN) || !canMove(LEGACY_HOOK)) return out;
-  for (const p of [LEGACY_CHAIN, LEGACY_HOOK, LEGACY_BUTTON]) {
-    if (isOld(p)) out[p] = LEGACY[p].current;
+  const savedChain = files[LEGACY_CHAIN];
+  const savedChainHash = savedChain ? hash(savedChain) : null;
+  const oldChainHash = LEGACY[LEGACY_CHAIN].sha256;
+  if (!savedChain) out[LEGACY_CHAIN] = chainSourceFor(chainId);
+  if (!canMove(LEGACY_CHAIN) || !canMove(LEGACY_HOOK)) {
+    // Preserve the pre-D36 wallet implementation when one half was customized, but still move its
+    // network constant with the project. Known GoodBuild chain helpers can be safely regenerated.
+    if (savedChainHash === oldChainHash) out[LEGACY_CHAIN] = legacyChainFor(savedChain!, chainId);
+    else if (savedChainHash && CHAIN_TEMPLATE_HASHES.has(savedChainHash)) out[LEGACY_CHAIN] = chainSourceFor(chainId);
+    return out;
   }
+  for (const p of [LEGACY_CHAIN, LEGACY_HOOK, LEGACY_BUTTON]) {
+    if (isOld(p) && p !== LEGACY_CHAIN) out[p] = LEGACY[p].current;
+  }
+  if (savedChainHash === oldChainHash || (savedChainHash && CHAIN_TEMPLATE_HASHES.has(savedChainHash))) out[LEGACY_CHAIN] = chainSourceFor(chainId);
   return out;
 }

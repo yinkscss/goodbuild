@@ -30,6 +30,30 @@ describe("the wallet layer is GoodBuild's", () => {
     expect(files["src/lib/useDb.ts"]).not.toContain("ethereum");
   });
 
+  it.each([
+    [11142220, "celoSepolia"],
+    [42220, "celo"],
+  ] as const)("builds the wallet and chain helpers for project chain %s", (chainId, selected) => {
+    const files = starterFiles(chainId);
+    expect(files["src/lib/chain.ts"]).toContain(`export const chain = ${selected};`);
+    expect(files[WALLET_PATHS.wallet]).toContain(`export const appChain = ${selected};`);
+    expect(files["src/lib/chain.ts"]).toContain("[celoSepolia.id]: celoSepolia");
+    expect(files["src/lib/chain.ts"]).toContain("[celo.id]: celo");
+  });
+
+  it("refreshes a known saved chain helper when a project's network changes, but keeps custom edits", () => {
+    const sepolia = starterFiles(11142220);
+    const mainnet = withStarterHelpers(sepolia, 42220);
+    expect(mainnet["src/lib/chain.ts"]).toContain("export const chain = celo;");
+    expect(mainnet[WALLET_PATHS.wallet]).toContain("export const appChain = celo;");
+    const back = withStarterHelpers(mainnet, 11142220);
+    expect(back["src/lib/chain.ts"]).toContain("export const chain = celoSepolia;");
+    expect(back[WALLET_PATHS.wallet]).toContain("export const appChain = celoSepolia;");
+
+    const custom = { ...sepolia, "src/lib/chain.ts": `${sepolia["src/lib/chain.ts"]}\nexport const customChainSetting = true;\n` };
+    expect(withStarterHelpers(custom, 42220)["src/lib/chain.ts"]).toBe(custom["src/lib/chain.ts"]);
+  });
+
   it("the builder can't write, edit, delete or rename the wallet files, or move another file onto them", () => {
     const ws = new Workspace(starterFiles());
     for (const p of LOCKED) {
@@ -89,6 +113,18 @@ describe("the wallet layer is GoodBuild's", () => {
     expect(edited["src/lib/chain.ts"]).toContain("export const extra = 1;");
     expect(edited["src/lib/chain.ts"]).toContain("window as unknown as { ethereum");
     expect(checkApp({ ...starterFiles(), "src/lib/chain.ts": edited["src/lib/chain.ts"] }).errors).toEqual([]);
+  });
+
+  it("moves untouched pre-D36 helpers to the project's chain, and updates only the network in a linked legacy wallet pair", () => {
+    const mainnet = withStarterHelpers({ "src/App.tsx": "x", ...OLD_STARTER }, 42220);
+    expect(mainnet["src/lib/chain.ts"]).toContain("export const chain = celo;");
+    expect(mainnet[WALLET_PATHS.wallet]).toContain("export const appChain = celo;");
+
+    const editedHook = { ...OLD_STARTER, "src/lib/useWallet.ts": `${OLD_STARTER["src/lib/useWallet.ts"]}\nexport const customHook = true;\n` };
+    const preserved = withStarterHelpers(editedHook, 42220);
+    expect(preserved["src/lib/useWallet.ts"]).toContain("export const customHook = true;");
+    expect(preserved["src/lib/chain.ts"]).toContain("export const chain = celo;");
+    expect(preserved["src/lib/chain.ts"]).toContain("window as unknown as { ethereum");
   });
 
   it("never moves only part of an older project: the wallet shown and the wallet that sends must be the same", () => {

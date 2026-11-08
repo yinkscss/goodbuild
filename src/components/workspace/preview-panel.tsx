@@ -15,6 +15,7 @@ import { ExternalLink, Monitor, RotateCw, ShieldAlert, Smartphone, Wrench } from
 
 import { LogoMark } from "@/components/brand/logo";
 import { Button } from "@/components/ui/button";
+import { chainLabel } from "@/lib/deploy/explorer";
 import { isInfraError, previewFixPrompt, type PreviewError } from "@/lib/preview-errors";
 import { CAPTURE_DEPENDENCY, CAPTURE_ENTRY, CAPTURE_FILES, capturePreview } from "./preview-capture";
 import { cn } from "@/lib/utils";
@@ -89,6 +90,7 @@ export function dependencies(files: Record<string, string>): Record<string, stri
 
 export function PreviewPanel({
   projectId,
+  chainId,
   files,
   assetUrls,
   version,
@@ -101,6 +103,7 @@ export function PreviewPanel({
   onCaptureFailed,
 }: {
   projectId: string;
+  chainId: number;
   files: Record<string, string>;
   assetUrls?: Record<string, string>;
   onRuntimeError?: (error: PreviewError) => void;
@@ -173,7 +176,7 @@ export function PreviewPanel({
           recompileDelay: 400,
         }}
       >
-        <Toolbar tabs={tabs} tab={tab} device={device} setDevice={setDevice} popoutHref={`/p/${projectId}/preview`} />
+        <Toolbar tabs={tabs} tab={tab} device={device} setDevice={setDevice} chainId={chainId} popoutHref={`/p/${projectId}/preview`} />
         <div className="gb-sandpack mt-3 min-h-0 flex-1 overflow-hidden rounded-block bg-canvas">
           <div className={cn("h-full", tab !== "preview" && "hidden")}>
             <div ref={frameRef} className={cn("relative mx-auto h-full transition-[max-width] duration-200 ease-gb", device === "mobile" ? "max-w-[390px] py-3" : "max-w-none")}>
@@ -254,19 +257,21 @@ function Toolbar({
   tab,
   device,
   setDevice,
+  chainId,
   popoutHref,
 }: {
   tabs: React.ReactNode;
   tab: Tab;
   device: "desktop" | "mobile";
   setDevice: (d: "desktop" | "mobile") => void;
+  chainId: number;
   popoutHref: string;
 }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 px-2 py-1">
       {tabs}
       <div className={cn("flex items-center gap-2 text-sm text-grey-600", tab !== "preview" && "invisible")}>
-        <span className="hidden rounded-full bg-canvas px-3 py-1.5 font-mono text-xs sm:inline">preview · Celo Sepolia</span>
+        <span className="hidden rounded-full bg-canvas px-3 py-1.5 font-mono text-xs sm:inline">preview · {chainLabel(chainId)}</span>
         <a
           href={popoutHref}
           target="_blank"

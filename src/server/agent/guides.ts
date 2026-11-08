@@ -189,7 +189,7 @@ export const GUIDES: Guide[] = [
     name: "cross-chain",
     when: "cross-chain, bridge, multichain, other networks, or moving tokens between chains",
     body: `Cross-chain requests.
-- GoodBuild apps run on Celo (Celo Sepolia for now). Real bridging to other chains needs a bridge protocol and relayers that GoodBuild doesn't integrate, and hand-written bridges are a major source of hacks. Don't write a bridge contract, a "lock and mint" contract, or anything that claims to move tokens to another chain.
+- GoodBuild apps run on the Celo network selected for their project. Use the chain export from src/lib/chain.ts for all contract reads and writes; never hardcode a different network. Real bridging to other chains needs a bridge protocol and relayers that GoodBuild doesn't integrate, and hand-written bridges are a major source of hacks. Don't write a bridge contract, a "lock and mint" contract, or anything that claims to move tokens to another chain.
 - Usually the user means swapping between Celo tokens (G$ to cUSD, G$ to their own coin). Build that on Celo with the swaps-and-markets guide (an in-app pool), and say in one sentence that true cross-chain transfers aren't supported yet.
 - If they need to reach a coin that has no pool in the app, say that swapping it needs an external DEX or bridge that the app doesn't connect to yet, and leave a clear "Coming later" state in the UI rather than a fake button.`,
   },

@@ -51,6 +51,15 @@ beforeEach(async () => {
 });
 
 describe("publishApp", () => {
+  it("publishes wallet helpers for the project's selected chain", async () => {
+    const build = fakeBuild();
+    await publishApp(db, { ...project, chainId: 42220 }, "mainnet-wallet", { build });
+    const files = vi.mocked(build).mock.calls[0][0].files;
+    expect(files["src/lib/chain.ts"]).toContain("export const chain = celo;");
+    expect(files["src/lib/goodbuild/wallet.ts"]).toContain("export const appChain = celo;");
+    expect(files["src/lib/chain.ts"]).toContain("[celoSepolia.id]: celoSepolia");
+  });
+
   it("puts the app live on its address", async () => {
     const status = await publishApp(db, project, "tip-jar", { build: fakeBuild() });
     expect(status).toMatchObject({ slug: "tip-jar", live: true, publishedVersion: project.currentVersion });

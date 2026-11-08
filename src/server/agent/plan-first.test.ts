@@ -221,6 +221,13 @@ async function plan2() {
 }
 
 describe("answering", () => {
+  it("returns preview helpers for the project's selected chain", async () => {
+    await db.update(projects).set({ chainId: 42220 }).where(eq(projects.id, projectId));
+    const state = await workspaceState(db, projectId, userId);
+    expect(state?.files["src/lib/chain.ts"]).toContain("export const chain = celo;");
+    expect(state?.files["src/lib/goodbuild/wallet.ts"]).toContain("export const appChain = celo;");
+  });
+
   it("a reload mid-questions resumes at the first unanswered question", async () => {
     const { record } = await plan();
     const m = await assistantOf(record);

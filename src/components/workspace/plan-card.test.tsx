@@ -102,7 +102,7 @@ describe("TurnView", () => {
     chargedMicro: 0,
     status: "answered",
   };
-  const view = (r: TurnRecord, live = false) => <TurnView text="Built it." record={r} live={live} onFix={() => undefined} fixDisabled={false} />;
+  const view = (r: TurnRecord, live = false, chainId = 11142220) => <TurnView text="Built it." record={r} chainId={chainId} live={live} onFix={() => undefined} fixDisabled={false} />;
 
   it("no longer shows the build log or the file chips, live or finished", () => {
     for (const live of [true, false]) {
@@ -131,5 +131,11 @@ describe("TurnView", () => {
     expect(container.querySelector("ol")).not.toBeNull();
     expect(screen.getByText("Logs")).toBeTruthy();
     expect(screen.getByRole("alert").textContent).toContain("wrote src/App.tsx");
+  });
+
+  it("labels deploy-ready contracts with the project's network", () => {
+    const ready = { ...record, status: "ready" as const, contracts: [{ name: "Tip", file: "contracts/Tip.sol", bytecodeBytes: 1024 }] };
+    render(view(ready, false, 42220));
+    expect(screen.getByText(/Celo · 1\.0 kB/)).toBeTruthy();
   });
 });

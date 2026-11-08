@@ -80,6 +80,22 @@ describe("fixTier (D19 amendment)", () => {
 });
 
 describe("runTurn", { timeout: 120_000 }, () => {
+  it("seeds the selected project chain into generated helpers and model context", async () => {
+    await db.update(projects).set({ chainId: 42220 }).where(eq(projects.id, projectId));
+    const { client, requests } = scriptedModel([
+      { tools: [{ name: "create_file", args: { path: "src/App.tsx", content: "export default function App() { return <main>Ready</main>; }\n" } }] },
+      { text: "Built the app for Celo Mainnet." },
+    ]);
+
+    const record = await runTurn({ db, model: client }, { projectId, userId, mode: "build", userMessageId: queuedId }, () => {});
+    const files = await loadFiles(db, projectId);
+
+    expect(record.status).toBe("ready");
+    expect(files["src/lib/chain.ts"]).toContain("export const chain = celo;");
+    expect(files["src/lib/goodbuild/wallet.ts"]).toContain("export const appChain = celo;");
+    expect(String(requests[0].messages.at(-1)?.content)).toContain("Project target chain: Celo Mainnet (42220)");
+  });
+
   it("builds, auto-fixes a compile error with the cheap model, checkpoints and bills usage", async () => {
     const { client, requests } = scriptedModel([
       {

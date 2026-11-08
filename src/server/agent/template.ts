@@ -11,7 +11,8 @@
  * these files but not edit them, so the front end can't drift from the contract.
  */
 
-import { CHAIN, CONNECT_BUTTON, USE_WALLET, WALLET_HELPERS, withCurrentWalletHelpers } from "./wallet-template";
+import { DEFAULT_NETWORK, NETWORKS } from "@/config/networks";
+import { chainSourceFor, CONNECT_BUTTON, USE_WALLET, walletHelpersFor, withCurrentWalletHelpers } from "./wallet-template";
 
 export { WALLET_DIR, WALLET_HELPERS, withCurrentWalletHelpers } from "./wallet-template";
 
@@ -840,7 +841,7 @@ export function Textarea({ className, ...props }: React.TextareaHTMLAttributes<H
 `;
 
 /** Files every project starts with (paths without a leading slash). */
-export function starterFiles(): Record<string, string> {
+export function starterFiles(chainId = NETWORKS[DEFAULT_NETWORK].chainId): Record<string, string> {
   return {
     "package.json": packageJson(BASE_DEPENDENCIES),
     "public/index.html": INDEX_HTML,
@@ -848,7 +849,7 @@ export function starterFiles(): Record<string, string> {
     "src/styles.css": STYLES,
     "src/App.tsx": APP,
     "src/lib/utils.ts": UTILS,
-    "src/lib/chain.ts": CHAIN,
+    "src/lib/chain.ts": chainSourceFor(chainId),
     "src/lib/useWallet.ts": USE_WALLET,
     "src/lib/tokens.ts": TOKENS,
     "src/lib/format.ts": FORMAT,
@@ -856,7 +857,7 @@ export function starterFiles(): Record<string, string> {
     "src/lib/db.ts": DB,
     "src/lib/useDb.ts": USE_DB,
     "src/lib/dataRules.json": DATA_RULES,
-    ...WALLET_HELPERS,
+    ...walletHelpersFor(chainId),
     "src/contracts/index.ts": CONTRACTS_INDEX,
     "src/components/ConnectButton.tsx": CONNECT_BUTTON,
     "src/components/ui/button.tsx": BUTTON,
@@ -874,9 +875,9 @@ export function starterFiles(): Record<string, string> {
  * Older projects started before a helper existed. Add starter helpers and UI pieces that
  * are missing (never overwrite), so the prompt's list of available files is always true.
  */
-export function withStarterHelpers(files: Record<string, string>): Record<string, string> {
-  const out = withCurrentWalletHelpers(withCurrentDataHelpers(files));
-  for (const [p, content] of Object.entries(starterFiles())) {
+export function withStarterHelpers(files: Record<string, string>, chainId = NETWORKS[DEFAULT_NETWORK].chainId): Record<string, string> {
+  const out = withCurrentWalletHelpers(withCurrentDataHelpers(files), chainId);
+  for (const [p, content] of Object.entries(starterFiles(chainId))) {
     if (/^src\/(lib|components\/ui)\//.test(p) && !(p in out)) out[p] = content;
   }
   return out;

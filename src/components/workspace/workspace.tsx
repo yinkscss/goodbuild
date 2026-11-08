@@ -124,6 +124,7 @@ export function Workspace({ initial }: { initial: WorkspaceState }) {
         <div className={cn("min-h-0 flex-col", pane === "preview" ? "flex" : "hidden lg:flex", "[&>*]:flex-1")}>
           <PreviewPanel
             projectId={state.project.id}
+            chainId={state.project.chainId}
             files={files}
             assetUrls={assetUrls}
             version={previewVersion}

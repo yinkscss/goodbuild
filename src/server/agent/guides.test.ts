@@ -43,4 +43,13 @@ describe("guides", () => {
     expect(html).toContain("--font-display:");
     expect(starterFiles()["package.json"]).toContain('"react-router-dom"');
   });
+
+  it("tells generated apps to follow the project's selected Celo chain", () => {
+    const prompt = systemPrompt("build");
+    const crossChain = GUIDES.find((g) => g.name === "cross-chain")!.body;
+    expect(prompt).toContain("target network selected for this project");
+    expect(prompt).toContain("New projects default to Celo Sepolia");
+    expect(crossChain).toContain("network selected for their project");
+    expect(crossChain).not.toContain("Celo Sepolia for now");
+  });
 });
