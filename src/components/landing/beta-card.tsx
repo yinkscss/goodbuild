@@ -1,7 +1,7 @@
 import { Check } from "lucide-react";
 
 const FACTS = [
-  { title: "Free to start", body: "$0.20 of AI on every new account." },
+  { title: "Free to start", body: "$0.20 of AI on every new account, then add credits with CELO." },
   { title: "Your wallet signs", body: "GoodBuild never holds your keys." },
   { title: "Your own address", body: "Publish your app with one link to share." },
 ];
@@ -9,12 +9,12 @@ const FACTS = [
 /** Left bento card: true facts about the beta, until GoodBuild has real usage numbers to show. */
 export function BetaCard() {
   return (
-    <section aria-label="Testnet beta" className="flex flex-col rounded-card bg-surface p-6 shadow-card">
+    <section aria-label="Mainnet live" className="flex flex-col rounded-card bg-surface p-6 shadow-card">
       <p className="flex items-center gap-2 text-sm font-medium text-grey-600">
         <span className="size-2 rounded-full bg-success" aria-hidden />
-        Testnet beta
+        Live on Celo mainnet
       </p>
-      <p className="display mt-4 text-[32px] font-bold">Live on Celo Sepolia</p>
+      <p className="display mt-4 text-[32px] font-bold">Build on mainnet or testnet</p>
       <ul className="mt-auto space-y-4 pt-8">
         {FACTS.map((fact) => (
           <li key={fact.title} className="flex gap-3">

@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { encodeAbiParameters, type Address, type Hex, type PublicClient } from "viem";
 
@@ -17,6 +17,12 @@ import { oldContractsWithFunds } from "./old-contracts";
 import { DeployError, prepareDeploy, recordDeployment } from "./service";
 import { verifyOnSourcify, verifyProxied } from "./verify";
 import { contractModule } from "@/server/agent/template";
+
+// Mainnet is open by default (D51); these tests are about the switch when it is closed, so they close it.
+beforeEach(() => {
+  vi.stubEnv("MAINNET_DEFAULT_MODE", "off");
+});
+
 
 const HEADER = "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.24;\n";
 const TOKEN = HEADER + `import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";

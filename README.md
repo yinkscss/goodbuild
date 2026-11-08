@@ -38,4 +38,5 @@ Stack: Next.js 16 (App Router), TypeScript, Tailwind v4 + shadcn/ui, Vitest. Des
 - [Design system](docs/DESIGN_SYSTEM.md): light bento UI (D12, fixed); landing reference in design/landing/index.html
 - **Brand / logo:** official glass 2x2 tile mark (5 Nov 2026, D25) — assets in `design/brand/` and `public/brand/`; UI via `src/components/brand/logo.tsx`
 - [Credits system](docs/CREDITS.md): GoodBuild's own G$ credits (D11)
+- **Mainnet + on-chain credits (D51 to D55):** GoodBuild Credits token on Celo, see [DEPLOY.md](docs/DEPLOY.md#goodbuild-credits-on-celo-mainnet-d51-to-d55) and `contracts/GoodBuildCredits.sol`
 - [GoodDollar AI credits (AntSeed)](docs/GOODDOLLAR_AI_CREDITS.md): researched, deferred

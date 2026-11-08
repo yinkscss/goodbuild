@@ -15,7 +15,7 @@ const STEPS = [
   {
     n: "03",
     title: "Sign & deploy",
-    body: "Your wallet signs each contract onto Celo Sepolia. GoodBuild never holds your keys.",
+    body: "Your wallet signs each contract onto Celo, mainnet or testnet. GoodBuild never holds your keys.",
   },
   {
     n: "04",

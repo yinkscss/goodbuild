@@ -123,3 +123,6 @@ sequenceDiagram
 - **Accounting bugs:** keep the ledger double-entry, idempotency keys and reconciliation jobs (vault balance vs credited deposits).
 - **Regulatory:** prepaid credits might count as stored value. Keep them non-transferable, keep refunds limited, and get legal review (UNVERIFIED).
 - **Key/contract risk:** a multisig owner, the pause switch, and an audit or Slither run before mainnet.
+
+## On-chain credits (D51 to D55)
+Credits can also be bought with CELO on Celo mainnet. The GoodBuildCredits token (1 unit = 1 micro-USD, not transferable) is burned on `redeem`, and the server posts the same amount to the ledger as a `deposit` keyed `onchain:<chain>:<tx>:<logIndex>`. The ledger, holds and free caps (D46 to D49) are unchanged. See DECISIONS D51 to D55.

@@ -8,6 +8,8 @@ Written 6 Nov 2026 and updated the same day with the owner's launch strategy (D3
 
 **Updated by D44 (6 Nov 2026):** every recommendation in section 13 is accepted, and the review now comes before the gas grant. Where this document says grant then review, D44 wins.
 
+**Update, 8 Nov 2026 (D51 to D55):** mainnet is now open by default and GoodBuild has its own on-chain credit token, which replaces the Paystack path (M4 to M7) for the first launch. The contract is built and tested but not deployed. Verification gates, the gas grant, AI review and the lawyer are still open and still listed below.
+
 ## 1. What blocks the launch, in order
 
 1. **Lawyer and Paystack.** This is smaller now that there's no naira to crypto conversion, but it stands: nobody has reviewed the legal pages, Paystack hasn't confirmed in writing that selling AI credits is fine, and the gas grant is a new question for the lawyer (section 11).

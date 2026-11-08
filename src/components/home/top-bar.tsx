@@ -2,8 +2,9 @@
 
 import { DEFAULT_EXPECTED_CHAIN_ID, WalletButton } from "@/components/auth/wallet-button";
 import { Logo } from "@/components/brand/logo";
+import { AddCredits } from "@/components/credits/add-credits";
 import { CreditsPill } from "@/components/home/credits-pill";
-import { useWallet } from "@/lib/auth/context";
+import { useAuth, useWallet } from "@/lib/auth/context";
 import { chainName } from "@/lib/format";
 
 /** Network badge: green dot and the open project's chain (Celo Sepolia where there is no project), never a global flag. */
@@ -21,6 +22,7 @@ export function NetworkBadge({ chainId: expected = DEFAULT_EXPECTED_CHAIN_ID }: 
 
 /** Home top bar (mockup b): credits pill, network badge, account pill. */
 export function HomeTopBar({ balanceGd, usdPerGd }: { balanceGd: number | null; usdPerGd: number | null }) {
+  const signedIn = Boolean(useAuth().user);
   return (
     <div className="flex items-center justify-between gap-3 lg:justify-end">
       <div className="lg:hidden">
@@ -28,6 +30,7 @@ export function HomeTopBar({ balanceGd, usdPerGd }: { balanceGd: number | null; 
       </div>
       <div className="flex items-center gap-3">
         <CreditsPill balanceGd={balanceGd} usdPerGd={usdPerGd} className="hidden sm:flex" />
+        {signedIn && <AddCredits className="hidden sm:inline-flex !px-4 !py-2" />}
         <NetworkBadge />
         <WalletButton showNetwork={false} />
       </div>

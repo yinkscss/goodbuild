@@ -37,10 +37,10 @@ export function CreditsPill({
     return (
       <div
         className={cn("flex items-center gap-2 rounded-full bg-surface py-1.5 pr-4 pl-1.5 text-sm shadow-card", className)}
-        title="G$ credits arrive with the credits milestone. Each new account gets $0.20 of AI free during the testnet beta."
+        title="Each new account gets $0.20 of AI free. After that, add credits with CELO."
       >
         {glyph}
-        <b className="font-semibold">Testnet beta</b>
+        <b className="font-semibold">Free AI</b>
         <span className="text-grey-400">· $0.20 free</span>
       </div>
     );
