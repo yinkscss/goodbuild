@@ -123,7 +123,7 @@ export default function HomePage() {
 async function TopBar() {
   const session = await loadSession();
   const credits = await getCredits(session.user.id);
-  return <HomeTopBar balanceGd={credits.balanceGd} usdPerGd={credits.usdPerGd} />;
+  return <HomeTopBar balanceGd={credits.balanceGd} usdPerGd={credits.usdPerGd} balanceMicro={credits.balanceMicro} />;
 }
 
 async function Prompt() {

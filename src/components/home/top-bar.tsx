@@ -21,7 +21,7 @@ export function NetworkBadge({ chainId: expected = DEFAULT_EXPECTED_CHAIN_ID }: 
 }
 
 /** Home top bar (mockup b): credits pill, network badge, account pill. */
-export function HomeTopBar({ balanceGd, usdPerGd }: { balanceGd: number | null; usdPerGd: number | null }) {
+export function HomeTopBar({ balanceGd, usdPerGd, balanceMicro = null }: { balanceGd: number | null; usdPerGd: number | null; balanceMicro?: number | null }) {
   const signedIn = Boolean(useAuth().user);
   return (
     <div className="flex items-center justify-between gap-3 lg:justify-end">
@@ -29,7 +29,7 @@ export function HomeTopBar({ balanceGd, usdPerGd }: { balanceGd: number | null; 
         <Logo href="/home" />
       </div>
       <div className="flex items-center gap-3">
-        <CreditsPill balanceGd={balanceGd} usdPerGd={usdPerGd} className="hidden sm:flex" />
+        <CreditsPill balanceGd={balanceGd} usdPerGd={usdPerGd} balanceMicro={balanceMicro} className="hidden sm:flex" />
         {signedIn && <AddCredits className="hidden sm:inline-flex !px-4 !py-2" />}
         <NetworkBadge />
         <WalletButton showNetwork={false} />

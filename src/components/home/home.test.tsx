@@ -17,6 +17,10 @@ describe("CreditsPill", () => {
     expect(screen.getByText("Free AI")).toBeInTheDocument();
     expect(screen.queryByText(/\d G\$/)).not.toBeInTheDocument();
   });
+  it("shows the real ledger balance when there is some", () => {
+    render(<CreditsPill balanceGd={null} usdPerGd={null} balanceMicro={2_500_000} />);
+    expect(screen.getByText("$2.50")).toBeInTheDocument();
+  });
   it("shows G$ and USD when live", () => {
     render(<CreditsPill balanceGd={120} usdPerGd={0.000112} />);
     expect(screen.getByText("120 G$")).toBeInTheDocument();
