@@ -13,11 +13,11 @@ const QUESTIONS = [
   },
   {
     q: "Which network do apps run on?",
-    a: "Celo Sepolia, Celo's test network, during the beta. Test tokens have no real value, so it is a safe place to try ideas.",
+    a: "Celo mainnet or Celo Sepolia, your choice for each project. Mainnet uses real money, and contracts are unaudited, so start small. Sepolia uses test tokens with no value, a safe place to try ideas.",
   },
   {
     q: "Can I deploy and share my app today?",
-    a: "You can deploy to Celo Sepolia by signing from your own wallet. Then publish the front end to its own address, your-app.goodbuildit.xyz, and share the link.",
+    a: "Yes, on Celo mainnet or Celo Sepolia, by signing from your own wallet. Then publish the front end to its own address, your-app.goodbuildit.xyz, and share the link.",
   },
   {
     q: "What does publishing do?",

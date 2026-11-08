@@ -13,8 +13,11 @@ export function CreditsPill({
   balanceGd,
   usdPerGd,
   topUpHref = "#credits",
+  balanceMicro = null,
   className,
 }: {
+  /** The real ledger balance in micro-USD (D46), when there is some. It shows instead of the free-AI note. */
+  balanceMicro?: number | null;
   balanceGd: number | null;
   usdPerGd: number | null;
   topUpHref?: string;
@@ -33,14 +36,24 @@ export function CreditsPill({
     </span>
   );
 
+  if (state === "preview" && balanceMicro !== null && balanceMicro > 0) {
+    return (
+      <div className={cn("flex items-center gap-2 rounded-full bg-surface py-1.5 pr-4 pl-1.5 text-sm shadow-card", className)} title="Your GoodBuild credit. It pays for AI builds.">
+        <span className="grid size-6 place-items-center rounded-full bg-violet text-[10px] font-bold text-white" aria-hidden>$</span>
+        <b className="font-semibold">${(balanceMicro / 1_000_000).toFixed(2)}</b>
+        <span className="text-grey-400">credit</span>
+      </div>
+    );
+  }
+
   if (state === "preview") {
     return (
       <div
         className={cn("flex items-center gap-2 rounded-full bg-surface py-1.5 pr-4 pl-1.5 text-sm shadow-card", className)}
-        title="G$ credits arrive with the credits milestone. Each new account gets $0.20 of AI free during the testnet beta."
+        title="Each new account gets $0.20 of AI free. After that, add credits with CELO."
       >
         {glyph}
-        <b className="font-semibold">Testnet beta</b>
+        <b className="font-semibold">Free AI</b>
         <span className="text-grey-400">· $0.20 free</span>
       </div>
     );

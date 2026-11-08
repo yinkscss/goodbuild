@@ -7,6 +7,7 @@ import { createTestDb, type Db } from "@/server/db/client";
 import { createProjectFromPrompt } from "@/server/projects";
 import { getMainnetMode, setMainnetMode } from "@/server/settings/mainnet-access";
 
+
 // The routes with the session and the database stood in, so what the request says can be tried
 // against what the server decides (D50). A request must not be able to talk its way onto mainnet.
 
@@ -44,6 +45,7 @@ afterEach(() => vi.restoreAllMocks());
 
 beforeEach(async () => {
   vi.unstubAllEnvs();
+  vi.stubEnv("MAINNET_DEFAULT_MODE", "off"); // mainnet is open by default (D51); these tests are about the switch when closed
   vi.stubEnv("ADMIN_WALLETS", ADMIN);
   db = await createTestDb();
   const user = await signInUser(db, { wallet: USER, walletKind: "external", attestation: { ageOk: true, notUsPerson: true } });

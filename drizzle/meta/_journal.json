@@ -99,6 +99,13 @@
       "when": 1794016882356,
       "tag": "0013_c1_app_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1794166139574,
+      "tag": "0014_onchain_credits",
+      "breakpoints": true
     }
   ]
 }

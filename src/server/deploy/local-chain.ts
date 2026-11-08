@@ -36,6 +36,8 @@ export interface LocalReceipt {
   blockNumber: bigint;
   transactionHash: Hex;
   revert?: Hex;
+  /** Logs the transaction emitted, in the shape viem's receipts use. Empty for a revert. */
+  logs: Array<{ address: Address; topics: Hex[]; data: Hex; logIndex: number; blockNumber: bigint; transactionHash: Hex }>;
 }
 
 export class LocalChain {
@@ -84,6 +86,16 @@ export class LocalChain {
       blockNumber: BigInt(this.counter),
       transactionHash: hash,
       revert: failed ? bytesToHex(result.execResult.returnValue) : undefined,
+      logs: failed
+        ? []
+        : (result.execResult.logs ?? []).map(([addr, topics, data], logIndex) => ({
+            address: getAddress(bytesToHex(addr)),
+            topics: topics.map((t) => bytesToHex(t)),
+            data: bytesToHex(data),
+            logIndex,
+            blockNumber: BigInt(this.counter),
+            transactionHash: hash,
+          })),
     });
     return hash;
   }
@@ -123,6 +135,11 @@ export class LocalChain {
   client(): PublicClient {
     return {
       waitForTransactionReceipt: async ({ hash }: { hash: Hex }) => {
+        const receipt = this.receipts.get(hash);
+        if (!receipt) throw new Error("unknown transaction");
+        return receipt;
+      },
+      getTransactionReceipt: async ({ hash }: { hash: Hex }) => {
         const receipt = this.receipts.get(hash);
         if (!receipt) throw new Error("unknown transaction");
         return receipt;

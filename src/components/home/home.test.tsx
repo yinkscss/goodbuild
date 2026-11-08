@@ -12,10 +12,14 @@ import { TEMPLATES } from "@/config/templates";
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn(), replace: vi.fn() }) }));
 
 describe("CreditsPill", () => {
-  it("says testnet beta instead of inventing a balance before the ledger exists", () => {
+  it("says free AI instead of inventing a balance before the ledger exists", () => {
     render(<CreditsPill balanceGd={null} usdPerGd={null} />);
-    expect(screen.getByText("Testnet beta")).toBeInTheDocument();
+    expect(screen.getByText("Free AI")).toBeInTheDocument();
     expect(screen.queryByText(/\d G\$/)).not.toBeInTheDocument();
+  });
+  it("shows the real ledger balance when there is some", () => {
+    render(<CreditsPill balanceGd={null} usdPerGd={null} balanceMicro={2_500_000} />);
+    expect(screen.getByText("$2.50")).toBeInTheDocument();
   });
   it("shows G$ and USD when live", () => {
     render(<CreditsPill balanceGd={120} usdPerGd={0.000112} />);

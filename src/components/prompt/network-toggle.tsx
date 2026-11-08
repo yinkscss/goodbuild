@@ -3,7 +3,7 @@
 import { NETWORKS, type NetworkId } from "@/config/networks";
 import { cn } from "@/lib/utils";
 
-/** Segmented pill: Celo Sepolia (default) / Celo. Mainnet stays disabled behind a flag. */
+/** Segmented pill: Celo Sepolia (default) / Celo. Mainnet is live (D51); only the server's kill switch disables it. */
 export function NetworkToggle({
   value,
   onChange,
@@ -26,7 +26,7 @@ export function NetworkToggle({
             role="radio"
             aria-checked={selected}
             disabled={locked}
-            title={locked ? "Mainnet isn't open yet. Builds deploy to Celo Sepolia." : undefined}
+            title={locked ? "Celo mainnet is switched off right now. Builds deploy to Celo Sepolia." : undefined}
             onClick={() => onChange(id)}
             className={cn(
               "rounded-full px-3 py-1.5 transition-[background-color,color,box-shadow] duration-200 ease-gb outline-none focus-visible:shadow-focus",

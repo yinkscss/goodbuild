@@ -69,10 +69,10 @@ export function NetworkNotice() {
   const mainnetAllowed = useMainnetAllowed();
   return (
     <div className="mt-4 rounded-card bg-surface p-4 shadow-card">
-      <p className="text-xs font-semibold tracking-[.14em] text-violet uppercase">{mainnetAllowed ? "Testnet and mainnet" : "Testnet mode"}</p>
+      <p className="text-xs font-semibold tracking-[.14em] text-violet uppercase">{mainnetAllowed ? "Celo mainnet is live" : "Testnet mode"}</p>
       <p className="mt-1.5 text-xs text-grey-600">
         {mainnetAllowed
-          ? "New builds start on Celo Sepolia, which uses test money. Mainnet is open to you from a project's deploy menu. It uses real money, and the contracts are unaudited."
+          ? "Build and deploy on Celo mainnet with real money, or practise on Celo Sepolia with test money. Pick the network when you start a build. Contracts are unaudited, so start small."
           : "Deploys go to Celo Sepolia, which uses test money. Mainnet isn't open to your account yet."}
       </p>
     </div>

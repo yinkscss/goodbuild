@@ -22,6 +22,7 @@ import {
 import { oldContractsWithFunds } from "./old-contracts";
 import { assertChain, prepareDeploy, recordDeployment } from "./service";
 
+
 // The mainnet switch (D50). Each test is written to fail if the check it names is taken out.
 
 const HEADER = "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.24;\n";
@@ -43,6 +44,7 @@ afterEach(() => vi.restoreAllMocks()); // the test database is shared, so a spy 
 
 beforeEach(async () => {
   vi.unstubAllEnvs();
+  vi.stubEnv("MAINNET_DEFAULT_MODE", "off"); // mainnet is open by default (D51); these tests are about the switch when closed
   vi.stubEnv("ADMIN_WALLETS", `  ${ADMIN.toUpperCase().replace("0X", "0x")} , not-an-address, `);
   vi.stubEnv("NEXT_PUBLIC_ENABLE_MAINNET", ""); // the old build flag must mean nothing now
   db = await createTestDb();
@@ -67,8 +69,16 @@ const refused = async (p: Promise<unknown>) => {
 };
 
 describe("the setting", () => {
-  it("is off when nothing is stored, and for any value that isn't one of the three", async () => {
+  it("is open when nothing is stored and no default is set (D51), and closed when the default says so", async () => {
+    vi.stubEnv("MAINNET_DEFAULT_MODE", "");
+    expect(await getMainnetMode(db)).toBe("everyone");
+    vi.stubEnv("MAINNET_DEFAULT_MODE", "admins");
+    expect(await getMainnetMode(db)).toBe("admins");
+    vi.stubEnv("MAINNET_DEFAULT_MODE", "off");
     expect(await getMainnetMode(db)).toBe("off");
+  });
+
+  it("treats any value that isn't one of the three as off", async () => {
     for (const bad of ["", "Everyone", "true", "1", "on", "admin", "everyone ", null, undefined, 1]) expect(parseMode(bad)).toBe("off");
     expect(parseMode("admins")).toBe("admins");
   });

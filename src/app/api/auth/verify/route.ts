@@ -8,6 +8,7 @@ import { issueSession, publicUser, signInUser } from "@/server/auth/service";
 import { verifySignIn } from "@/server/auth/siwe";
 import { readNonceToken } from "@/server/auth/tokens";
 import { getDb } from "@/server/db/client";
+import { creditPendingForWallet } from "@/server/credits/onchain";
 
 /**
  * Verify a signed EIP-4361 message and start a session (AUTH.md Flow 4).
@@ -32,6 +33,8 @@ export async function POST(request: Request) {
 
     const db = await getDb();
     const user = await signInUser(db, { wallet: address, walletKind: body.walletKind, attestation: body.attestation });
+    // Credits redeemed on-chain before this wallet had an account land now. Never blocks sign-in.
+    await creditPendingForWallet(db, user.wallet).catch((e) => console.error("[credits] pending credit failed", e));
     await setSessionCookie(await issueSession(db, user, chainId));
     return NextResponse.json({ user: publicUser(user) });
   } catch (error) {
