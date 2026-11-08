@@ -1,5 +1,5 @@
 import type { PageTemplate } from "../page-templates";
-import { daisyui, hyperui, pinterest, shadcn, st21, tailblocks } from "./sources";
+import { daisyui, hyperui, magicui, pinterest, shadcn, st21, tailblocks } from "./sources";
 
 export const COMMUNITY: PageTemplate[] = [
   {
