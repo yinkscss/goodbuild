@@ -89,7 +89,7 @@ One build session at a time. Efforts are rough guesses in tokens, against about 
 | M8 | Top-up UI and pill | Modal, USD pill, low-credit card, new refusals, per DESIGN_SYSTEM. Says before paying: **credits pay for AI builds, not gas, and mainnet needs verification.** | M3, M5 | 250k |
 | M9 | Admin and switches | Admin page by `ADMIN_WALLETS`: inflows, flagged top-ups, rates, what customers hold versus provider balance, three-setting switches. No batch tools (D38). | M5 | 150k |
 | | **Mainnet** | | | |
-| C1 | Mainnet switch | Compose build arg, server check of the database switch, split prepare from record | M9 | 120k |
+| C1 | Mainnet switch | **Done, D50:** a database switch (off, admins, everyone) read at prepare, prepare split from record; the build arg was dropped, not added | none (M9 isn't needed) | 120k |
 | C2 | Apps follow their chain | Chain from the project, including older projects' locked helpers (as D34 did), prompt and guides. Both this and PR 32 rewrite the template's chain code. | **PR 32** | 250k |
 | T | Toggle and flow | Section 6 | C1, C2 | 200k |
 | C3 | Fund-safety checks | Withdraw rule and value cap at prepare | C1 | 300k |
@@ -153,8 +153,8 @@ Each gate must pass before step C. "Check" means something that can fail.
 | Gate | Today | Check |
 |---|---|---|
 | **Verification** | `verifiedAt` kept forever (D30) | At prepare on mainnet, read `getWhitelistedRoot` fresh. Refuse if zero, or if the read fails. Whether expiry returns zero is UNVERIFIED (decision 6). Test both paths, including a paying user being refused. |
-| **Mainnet switch** | Compose doesn't pass `NEXT_PUBLIC_ENABLE_MAINNET` though the Dockerfile declares it. `.env.production` reaches running containers, so the worker would see it and the web build wouldn't. | C1 adds the build arg and tests what server code sees after a build (UNVERIFIED today). |
-| **Kill switch** | `assertChain` guards prepare and record alike, and the flag is build-time | The database switch stops prepare only. A signed transaction must still record, and withdrawals still work. Test both. |
+| **Mainnet switch** | Compose doesn't pass `NEXT_PUBLIC_ENABLE_MAINNET` though the Dockerfile declares it. `.env.production` reaches running containers, so the worker would see it and the web build wouldn't. | **Done in C1 (D50):** the flag is gone. A database setting (off, admins, everyone) is read at each prepare, so it changes with no rebuild. Tests cover a non-admin, address case, a change between prepare and record, a request trying to override it, and recording with it off. |
+| **Kill switch** | **Done in C1 (D50).** Before: `assertChain` guarded prepare and record alike, and the flag was build-time | The database switch stops prepare only. A signed transaction must still record, and withdrawals still work. Test both. |
 | **Withdraw rule** | One prompt line (`prompt.ts`), plus a name match for the old-funds card | At prepare on mainnet, a contract that can receive G$ or CELO is refused without an exit function **and** a passing contract test in which a non-owner deposits and withdraws. It proves one path, not safety. |
 | **Typed confirmation and warning** | An "Unaudited" chip | Type the contract name beside "Unaudited, may lose funds". The server refuses without it. |
 | **Value caps** | None | A required constant limits what a contract holds, with a contract test that going over reverts (decision 7). It only binds generated code. |
@@ -317,7 +317,7 @@ No legal conclusions here. **Live keys wait for the first three. Mainnet waits f
 
 ## 12. Go-live checklist
 
-**Only the owner:** adds live keys, sets `NEXT_PUBLIC_ENABLE_MAINNET`, creates and funds the gas wallet, merges, makes the first real payment and first mainnet deploy.
+**Only the owner:** adds live keys, sets `ADMIN_WALLETS` and the mainnet switch (D50), creates and funds the gas wallet, merges, makes the first real payment and first mainnet deploy.
 
 | # | Step | Who |
 |---|---|---|
@@ -343,7 +343,7 @@ No legal conclusions here. **Live keys wait for the first three. Mainnet waits f
 | 17 | Confirm charge, fee, credit and bank settlement match. Do a small build and see the debit. | Owner |
 | 18 | Test a refund and, if Paystack allows, a dispute | Owner |
 | | **Step C: mainnet** | |
-| 19 | Set `NEXT_PUBLIC_ENABLE_MAINNET=true` and redeploy, switches on admins only | Owner |
+| 19 | Set `ADMIN_WALLETS` and switch mainnet to `admins` (D50, no redeploy: SQL or `PUT /api/mainnet`, see DEPLOY.md) | Owner |
 | 20 | Create the gas wallet on your own device, install the key file, fund a little, set the Telegram link if ready | Owner |
 | 21 | From a separate verified wallet: toggle, grant, review, typed confirmation, deploy with a small amount | Owner |
 | 22 | Check exactly one grant was sent, and one email. Try for a second: refused. | Owner |

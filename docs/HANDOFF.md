@@ -209,7 +209,7 @@ What exists:
 2. Magic dashboard: create the app, set `NEXT_PUBLIC_MAGIC_PUBLISHABLE_KEY` and `MAGIC_SECRET_KEY`, and allow `https://forno.celo.org` and `https://forno.celo-sepolia.celo-testnet.org` in its content security policy.
 3. One real end-to-end deploy (email wallet, then MetaMask) on Sepolia. **Not verified live yet:** Magic's Celo Sepolia behaviour and confirmation UI, WalletConnect/MiniPay connection, whether Celo's RPC accepts state overrides (if not, only the creation estimate runs), and a real Sourcify match.
 
-Known gaps: the fee estimate is exact for the first argument-free contract and scaled by size for the rest; mainnet deploys stay behind `NEXT_PUBLIC_ENABLE_MAINNET`.
+Known gaps: the fee estimate is exact for the first argument-free contract and scaled by size for the rest; mainnet deploys stay behind the runtime mainnet switch (D50, off by default; this line used to name `NEXT_PUBLIC_ENABLE_MAINNET`, which no longer exists).
 
 `main` (through the background runner, P18) is merged into this branch. The M5 migration is now `0004`, after main's `0003`. A local `.data/` database that ran the old M5 `0003` needs resetting: it would try to create `deployments` again.
 
