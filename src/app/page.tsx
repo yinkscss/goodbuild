@@ -1,3 +1,5 @@
+import { Suspense } from "react";
+
 import { Faq } from "@/components/landing/faq";
 import { FinalCta } from "@/components/landing/final-cta";
 import { HeroCard } from "@/components/landing/hero-card";
@@ -10,6 +12,7 @@ import { Safety } from "@/components/landing/safety";
 import { SignedInRedirect } from "@/components/landing/signed-in-redirect";
 import { SiteFooter } from "@/components/landing/site-footer";
 import { SiteNav } from "@/components/landing/site-nav";
+import { PublishedApps, PublishedAppsSkeleton } from "@/components/landing/published-apps";
 import { TemplateCard } from "@/components/landing/template-card";
 import { TemplateGallery } from "@/components/landing/template-gallery";
 
@@ -43,6 +46,9 @@ export default function LandingPage() {
 
         <HowItWorks />
         <TemplateGallery />
+        <Suspense fallback={<PublishedAppsSkeleton />}>
+          <PublishedApps />
+        </Suspense>
         <InsideBuilder />
         <Safety />
         <Pricing />
