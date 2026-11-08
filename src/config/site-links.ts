@@ -9,6 +9,7 @@ export const CONTACT_EMAIL = process.env.NEXT_PUBLIC_CONTACT_EMAIL;
 
 export const NAV_LINKS: SiteLink[] = [
   { href: "/#templates", label: "Templates" },
+  { href: "/#apps", label: "Live apps" },
   { href: "/#how-it-works", label: "How it works" },
   { href: "/#safety", label: "Safety" },
   { href: "/#pricing", label: "Pricing" },
@@ -20,6 +21,7 @@ export const FOOTER_COLUMNS: Array<{ title: string; links: SiteLink[] }> = [
     title: "Product",
     links: [
       { href: "/#templates", label: "Templates" },
+      { href: "/#apps", label: "Live apps" },
       { href: "/#how-it-works", label: "How it works" },
       { href: "/#builder", label: "Inside the builder" },
       { href: "/#pricing", label: "Pricing" },
