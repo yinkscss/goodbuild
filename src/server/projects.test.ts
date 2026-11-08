@@ -41,7 +41,8 @@ describe("projects", () => {
     expect(nameFromPrompt("A class poll for our 400-level excursion")).toBe("Class poll");
   });
 
-  it("only targets mainnet when the flag allows it", () => {
+  it("only targets mainnet when the switch allows this wallet, and defaults to no", () => {
+    expect(chainIdFor("celo")).toBe(11142220);
     expect(chainIdFor("celo", false)).toBe(11142220);
     expect(chainIdFor("celo", true)).toBe(42220);
     expect(chainIdFor("celo-sepolia", true)).toBe(11142220);

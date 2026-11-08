@@ -7,7 +7,6 @@ import { createPublicClient, erc20Abi, getAddress, http, type Abi, type Address,
 import { celo, celoSepolia } from "viem/chains";
 
 import { goodDollarAddress, isTestGoodDollar } from "@/config/gooddollar";
-import { isMainnetEnabled } from "@/config/networks";
 import { chainLabel } from "@/lib/deploy/explorer";
 import { MANIFEST_PATH, parseManifest, planManifest, referencesIn, type ArgValue } from "@/lib/deploy/manifest";
 import type { ProxyInfo, UpgradeableStep } from "@/lib/deploy/upgradeable";
@@ -16,6 +15,7 @@ import { PLATFORM_DIR } from "@/server/agent/template";
 import type { Db } from "@/server/db/client";
 import { deployments, type Deployment } from "@/server/db/deploy-schema";
 import { messages, projectFiles, projects } from "@/server/db/schema";
+import { allowsMainnet, getMainnetMode } from "@/server/settings/mainnet-access";
 import { withCurrentAddresses } from "./addresses";
 import { compileForDeploy, type DeployCompile, type EvmVersion } from "./compile";
 import { DeployError } from "./deploy-error";
@@ -87,12 +87,27 @@ export interface ReplacedContract {
   gdBalance: string | null;
 }
 
-export function assertChain(chainId: number, mainnetEnabled = isMainnetEnabled(process.env.NEXT_PUBLIC_ENABLE_MAINNET)) {
-  if (chainId === celo.id) {
-    if (!mainnetEnabled) throw new DeployError("mainnet_disabled", "Celo mainnet deploys are switched off for now. Use Celo Sepolia.");
-    return;
-  }
-  if (chainId !== celoSepolia.id) throw new DeployError("unsupported_chain", "GoodBuild deploys to Celo Sepolia or Celo.");
+/** A chain GoodBuild deploys to. This is the only chain rule on the record path (see assertMainnetAccess). */
+export function assertChain(chainId: number) {
+  if (chainId !== celo.id && chainId !== celoSepolia.id) throw new DeployError("unsupported_chain", "GoodBuild deploys to Celo Sepolia or Celo.");
+}
+
+/**
+ * The mainnet switch (D50), asked at PREPARE only. It is read from the database on this call and
+ * decided by the signed-in wallet, never by anything the request says. Recording a deploy that is
+ * already on-chain must not call this: a transaction that was signed and sent has to be saved
+ * whatever the switch says now.
+ */
+export async function assertMainnetAccess(db: Db, chainId: number, wallet: string | null | undefined) {
+  if (chainId !== celo.id) return;
+  const mode = await getMainnetMode(db);
+  if (allowsMainnet(mode, wallet)) return;
+  throw new DeployError(
+    "mainnet_disabled",
+    mode === "admins"
+      ? "Celo mainnet is only open to the GoodBuild team for now. You can deploy to Celo Sepolia, and nothing you've already deployed is affected."
+      : "Celo mainnet deploys are switched off right now. You can deploy to Celo Sepolia, and nothing you've already deployed is affected.",
+  );
 }
 
 /**
@@ -113,6 +128,7 @@ export async function prepareDeploy(
   deps: { compile?: typeof compileForDeploy; client?: Pick<PublicClient, "readContract" | "getStorageAt"> } = {},
 ): Promise<DeployPlan> {
   assertChain(input.chainId);
+  await assertMainnetAccess(db, input.chainId, input.wallet);
   // Keyed on the chain this request names, not only the project's: this is the rule at the server.
   const upgradeable = await isUpgradeableProject(db, input.projectId);
   if (upgradeable) assertUpgradeableChain(input.chainId);

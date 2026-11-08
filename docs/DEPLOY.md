@@ -76,7 +76,7 @@ So migrations only add, and in ways old code can still write to. To remove or re
 
 If the migration itself is the problem, a rollback won't fix it. The options are a new forward migration, which is the normal answer, or restoring a backup (below), which **loses everything written since that backup**. Once real money is in the database, don't restore without reconciling against Paystack and the chain.
 
-A rollback also doesn't change `.env.production` or the files in `/opt/goodbuild`, including the compose file. `NEXT_PUBLIC_*` values go back with the image, since they're fixed at build time.
+A rollback also doesn't change `.env.production` or the files in `/opt/goodbuild`, including the compose file. `NEXT_PUBLIC_*` values go back with the image, since they're fixed at build time. The mainnet switch is in the database, so a rollback keeps its setting, and an image from before D50 reads the old build flag instead (unset, so mainnet is off).
 
 **How far this is tested:** `deploy/test-release.sh` runs both scripts against real Docker in CI, on a throwaway project. UNVERIFIED on the production server until the owner runs the test below. Disk use per image is also UNVERIFIED. The first production run (6 Nov) failed with "No such image" when it tagged the old image by its ID after the build, though CI had passed. Nothing restarted. `release.sh` now holds the old image by name (`outgoing`) before building. Why the server lost the ID is UNVERIFIED (a different Docker image store is likely).
 
@@ -110,6 +110,16 @@ docker compose --env-file .env.production restart web worker
 - A takedown also stops the app's data API and keeps its data. Add `--purge-data` to delete what visitors saved in it (D31).
 - App data on the whole server: `docker compose --env-file .env.production exec -T goodbuild-postgres psql -U goodbuild -d goodbuild -c "select count(*) as apps, sum(rows) as records, pg_size_pretty(sum(bytes)) as size from app_data_usage where wallet = '*'"`. The limit is `APP_DATA_MAX_TOTAL_BYTES` (default 1 GB). Set it to suit the free disk.
 - `NEXT_PUBLIC_*` values are fixed at build time, so changing one needs a deploy. Other values need a restart with `up -d`.
+
+## The mainnet switch (D50)
+Who may start a new Celo mainnet deploy is a row in the database (`app_settings`, key `mainnet_access`), read on every prepare. It takes effect on the next request, with no rebuild and no restart. Settings: `off` (the default, and what a missing, misspelled or unreadable value means), `admins` (wallets in `ADMIN_WALLETS`), `everyone`. The old `NEXT_PUBLIC_ENABLE_MAINNET` is gone and does nothing.
+- **Turning it off stops new mainnet prepares only.** A transaction already signed and sent is still recorded, and withdrawals and the old-funds card keep working. Sepolia is never affected.
+- **Look:** `docker compose --env-file .env.production exec -T goodbuild-postgres psql -U goodbuild -d goodbuild -c "select * from app_settings"`. No rows means off.
+- **Change it by SQL (works with no admin wallet set up):** `... psql -U goodbuild -d goodbuild -c "insert into app_settings (key, value) values ('mainnet_access', 'off') on conflict (key) do update set value = excluded.value, updated_at = now(), updated_by = null"`. Use `off`, `admins` or `everyone`.
+- **Or as an admin:** `PUT /api/mainnet` with `{"mode":"off"}` while signed in with a wallet in `ADMIN_WALLETS`. `GET /api/mainnet` gives each viewer a yes or no.
+- `ADMIN_WALLETS` is in `.env.production`, so adding the first admin needs `up -d web worker`. With it empty, `admins` lets nobody in.
+- **Don't set `everyone` before step G1.** Until the GoodDollar check is enforced at prepare, nothing on the server asks for verification.
+- The migration for the table is additive (`0013`), so a rollback to older code keeps working: older code ignores the table and never opens mainnet.
 
 ## Backups
 Two kinds run side by side. Keep both.

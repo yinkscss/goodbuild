@@ -9,6 +9,7 @@ import { createTestDb, type Db } from "@/server/db/client";
 import { deployments } from "@/server/db/deploy-schema";
 import { messages } from "@/server/db/schema";
 import { createProjectFromPrompt } from "@/server/projects";
+import { setMainnetMode } from "@/server/settings/mainnet-access";
 import { abisInModules, deploymentsBlock, loadDeployedAddresses, withDeployedAddresses } from "./addresses";
 import { compileForDeploy, sourceKey } from "./compile";
 import { contractState } from "./contract-state";
@@ -106,16 +107,12 @@ describe("prepareDeploy", () => {
     expect(plan.steps[0].bytecode).toMatch(/^0x/);
   }, 60_000);
 
-  it("uses the real G$ on mainnet, but only when mainnet is enabled", async () => {
-    await expect(prepareDeploy(db, { projectId, chainId: 42220 })).rejects.toMatchObject({ code: "mainnet_disabled" });
-    process.env.NEXT_PUBLIC_ENABLE_MAINNET = "true";
-    try {
-      const plan = await prepareDeploy(db, { projectId, chainId: 42220 });
-      expect(plan.gooddollar).toBe("0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A");
-      expect(plan.isTestGooddollar).toBe(false);
-    } finally {
-      delete process.env.NEXT_PUBLIC_ENABLE_MAINNET;
-    }
+  it("uses the real G$ on mainnet, but only when the mainnet switch lets this wallet in", async () => {
+    await expect(prepareDeploy(db, { projectId, chainId: 42220, wallet: WALLET })).rejects.toMatchObject({ code: "mainnet_disabled" });
+    await setMainnetMode(db, "everyone", null);
+    const plan = await prepareDeploy(db, { projectId, chainId: 42220, wallet: WALLET });
+    expect(plan.gooddollar).toBe("0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A");
+    expect(plan.isTestGooddollar).toBe(false);
   }, 60_000);
 
   it("asks for the test G$ when Sepolia has none", async () => {

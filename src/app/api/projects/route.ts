@@ -4,6 +4,7 @@ import { createProjectBody } from "@/lib/api-schemas";
 import { errorResponse, requireSession } from "@/server/auth/http";
 import { getDb } from "@/server/db/client";
 import { createProjectFromPrompt, listProjects } from "@/server/projects";
+import { mainnetAllowedFor } from "@/server/settings/mainnet-access";
 
 /** Create a project from a prompt (the first message is queued for the agent). */
 export async function POST(request: Request) {
@@ -11,7 +12,9 @@ export async function POST(request: Request) {
     const session = await requireSession();
     const parsed = createProjectBody.safeParse(await request.json().catch(() => null));
     if (!parsed.success) return NextResponse.json({ error: "invalid_body" }, { status: 400 });
-    const project = await createProjectFromPrompt(await getDb(), session.user.id, parsed.data);
+    const db = await getDb();
+    const mainnetAllowed = await mainnetAllowedFor(db, session.user.wallet);
+    const project = await createProjectFromPrompt(db, session.user.id, { ...parsed.data, mainnetAllowed });
     return NextResponse.json({ id: project.id, name: project.name }, { status: 201 });
   } catch (error) {
     return errorResponse(error);

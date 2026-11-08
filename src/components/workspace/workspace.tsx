@@ -87,11 +87,11 @@ export function Workspace({ initial }: { initial: WorkspaceState }) {
         </div>
         <div className="flex items-center gap-3">
           <CreditsPill balanceGd={null} usdPerGd={null} className="hidden xl:flex" />
-          <NetworkBadge />
+          <NetworkBadge chainId={state.project.chainId} />
           <BackendButton on={backendOn} disabled={false} onOpen={() => setBackendOpen(true)} compact className="hidden px-3.5 py-2.5 md:inline-flex 2xl:px-5" />
           <PublishButton publish={publish} onOpen={() => setPublishOpen(true)} disabled={running} className="hidden px-5 py-2.5 md:inline-flex" />
           <DeployButton className="hidden px-5 py-2.5 md:inline-flex" />
-          <WalletButton showNetwork={false} />
+          <WalletButton showNetwork={false} expectedChainId={state.project.chainId} />
         </div>
       </header>
 

@@ -26,7 +26,7 @@ export function NetworkToggle({
             role="radio"
             aria-checked={selected}
             disabled={locked}
-            title={locked ? "Mainnet unlocks after testnet (Stage 1 builds deploy to Celo Sepolia)" : undefined}
+            title={locked ? "Mainnet isn't open yet. Builds deploy to Celo Sepolia." : undefined}
             onClick={() => onChange(id)}
             className={cn(
               "rounded-full px-3 py-1.5 transition-[background-color,color,box-shadow] duration-200 ease-gb outline-none focus-visible:shadow-focus",

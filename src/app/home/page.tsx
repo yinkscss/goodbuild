@@ -2,7 +2,7 @@ import { Suspense, cache } from "react";
 import { redirect } from "next/navigation";
 
 import { Logo } from "@/components/brand/logo";
-import { Greeting, HomePrompt, HomePromptProvider, NewBuildButton } from "@/components/home/home-prompt";
+import { Greeting, HomePrompt, HomePromptProvider, NetworkNotice, NewBuildButton } from "@/components/home/home-prompt";
 import {
   ProjectGrid,
   ProjectGridSkeleton,
@@ -88,12 +88,7 @@ export default function HomePage() {
               <SidebarRecent />
             </Suspense>
           </div>
-          <div className="mt-4 rounded-card bg-surface p-4 shadow-card">
-            <p className="text-xs font-semibold tracking-[.14em] text-violet uppercase">Testnet mode</p>
-            <p className="mt-1.5 text-xs text-grey-600">
-              Deploys go to Celo Sepolia. Mainnet unlocks later in Stage 1.
-            </p>
-          </div>
+          <NetworkNotice />
         </aside>
 
         <main className="flex min-w-0 flex-1 flex-col px-4 py-5 sm:px-6 lg:pr-6 lg:pl-0">

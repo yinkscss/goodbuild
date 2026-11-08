@@ -16,26 +16,33 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { NETWORKS, isMainnetEnabled } from "@/config/networks";
+import { NETWORKS } from "@/config/networks";
 import { useAuth, useWallet } from "@/lib/auth/context";
 import { chainName, explorerAddressUrl, shortAddress } from "@/lib/format";
+import { useMainnetAllowed } from "@/lib/use-mainnet-allowed";
 import { cn } from "@/lib/utils";
 
-/** The chain the app expects the wallet on right now (Stage 1: Celo Sepolia). */
-export function expectedChainId(mainnet = isMainnetEnabled()): number {
-  return mainnet ? NETWORKS.celo.chainId : NETWORKS["celo-sepolia"].chainId;
-}
+/** Where there is no project (home, landing), a wallet is expected on Celo Sepolia, where every new project starts. */
+export const DEFAULT_EXPECTED_CHAIN_ID: number = NETWORKS["celo-sepolia"].chainId;
 
 /**
  * Wallet states from DESIGN_SYSTEM §3: disconnected (black Connect wallet), connecting
  * (spinner, "Check your wallet"), connected (white pill, pink dot, address, Celo badge),
  * wrong network (warning "Switch to Celo"). Connected opens the account menu (AUTH.md Flow 7).
+ * `expectedChainId` is the open project's chain: the pill follows it, never a global flag (D50).
  */
-export function WalletButton({ className, showNetwork = true }: { className?: string; showNetwork?: boolean }) {
+export function WalletButton({
+  className,
+  showNetwork = true,
+  expectedChainId: expected = DEFAULT_EXPECTED_CHAIN_ID,
+}: {
+  className?: string;
+  showNetwork?: boolean;
+  expectedChainId?: number;
+}) {
   const auth = useAuth();
   const { openConnect } = useSendGate();
   const { wallet, isWrongNetwork, switchChain } = useWallet();
-  const expected = expectedChainId();
   const [switching, setSwitching] = React.useState(false);
 
   if (!auth.ready) {
@@ -78,27 +85,30 @@ export function WalletButton({ className, showNetwork = true }: { className?: st
           {switching ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <AlertTriangle className="size-4" aria-hidden />}
           Switch to {NETWORKS[expected === NETWORKS.celo.chainId ? "celo" : "celo-sepolia"].label}
         </button>
-        <AccountMenu compact />
+        <AccountMenu compact expectedChainId={expected} />
       </div>
     );
   }
 
-  return <AccountMenu className={className} showNetwork={showNetwork} />;
+  return <AccountMenu className={className} showNetwork={showNetwork} expectedChainId={expected} />;
 }
 
 function AccountMenu({
   className,
   compact = false,
   showNetwork = true,
+  expectedChainId,
 }: {
   className?: string;
   compact?: boolean;
   showNetwork?: boolean;
+  expectedChainId: number;
 }) {
   const auth = useAuth();
   const router = useRouter();
   const { wallet: browserWallet, switchChain } = useWallet();
   const [copied, setCopied] = React.useState(false);
+  const mainnetAllowed = useMainnetAllowed();
   if (!auth.user) return null;
   // The session is the source of truth; the browser wallet may be disconnected or locked.
   const wallet = browserWallet ?? {
@@ -108,8 +118,9 @@ function AccountMenu({
     label: auth.user.walletKind === "embedded" ? "Email wallet" : "Wallet",
   };
 
-  const explorer = explorerAddressUrl(wallet.chainId ?? expectedChainId(), wallet.address);
-  const mainnet = isMainnetEnabled();
+  const explorer = explorerAddressUrl(wallet.chainId ?? expectedChainId, wallet.address);
+  // The switch only closes the door on NEW mainnet deploys. Someone already on Celo, or in a Celo project, can still pick it.
+  const mainnet = mainnetAllowed || wallet.chainId === NETWORKS.celo.chainId || expectedChainId === NETWORKS.celo.chainId;
 
   return (
     <DropdownMenu>
@@ -171,7 +182,7 @@ function AccountMenu({
           <DropdownMenuRadioItem value={String(NETWORKS.celo.chainId)} disabled={!mainnet}>
             <span>
               <span className="block">Celo</span>
-              {!mainnet && <span className="block text-xs text-grey-600">Mainnet unlocks later in Stage 1</span>}
+              {!mainnet && <span className="block text-xs text-grey-600">Not open to your account yet</span>}
             </span>
           </DropdownMenuRadioItem>
         </DropdownMenuRadioGroup>

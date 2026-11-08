@@ -4,8 +4,8 @@ import * as React from "react";
 
 import { useSendGate } from "@/components/auth/send-gate";
 import { PromptBox, type PromptBoxHandle } from "@/components/prompt/prompt-box";
-import { isMainnetEnabled } from "@/config/networks";
 import { LANDING_CHIP_IDS, getTemplate } from "@/config/templates";
+import { useMainnetAllowed } from "@/lib/use-mainnet-allowed";
 
 const chips = LANDING_CHIP_IDS.map((id) => getTemplate(id)).filter((t) => t !== undefined);
 
@@ -23,6 +23,7 @@ export function fillLandingPrompt(templateId: string) {
 export function LandingPrompt() {
   const { send, sendError } = useSendGate();
   const box = React.useRef<PromptBoxHandle>(null);
+  const mainnetAllowed = useMainnetAllowed();
 
   React.useEffect(() => {
     const onFill = (e: Event) => {
@@ -38,7 +39,7 @@ export function LandingPrompt() {
       ref={box}
       chips={chips}
       hint="Free to start, no card needed"
-      mainnetEnabled={isMainnetEnabled()}
+      mainnetEnabled={mainnetAllowed}
       onSubmit={send}
       status={sendError ? <span className="text-danger">{sendError}</span> : undefined}
     />

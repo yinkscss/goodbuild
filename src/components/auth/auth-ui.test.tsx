@@ -91,7 +91,9 @@ describe("prompt gating", () => {
     rerender(<Harness auth={signedIn} />);
 
     await waitFor(() => expect(push).toHaveBeenCalledWith("/p/p-123"));
-    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    // The wallet menu also asks /api/mainnet whether the switch is open for this viewer; that isn't the call under test.
+    const created = (fetchMock.mock.calls as unknown as Array<[string, RequestInit]>).find(([u]) => String(u) === "/api/projects")!;
+    const init = created[1];
     expect(JSON.parse(String(init.body))).toMatchObject({ prompt: "A tip jar", templateId: "tip-jar" });
     expect(sessionStorage.getItem(PENDING_PROMPT_KEY)).toBeNull();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
