@@ -43,15 +43,15 @@ describe("G$ pricing", () => {
   });
 
   it("uses the live price, a stale one if the feed fails, and refuses a wild or missing one", async () => {
-    expect(await gdUsdPrice(price(0.00012), 1000, {})).toBe(0.00012);
+    expect(await gdUsdPrice(price(0.00012), 1000, {} as NodeJS.ProcessEnv)).toBe(0.00012);
     const down = (async () => {
       throw new Error("offline");
     }) as unknown as typeof fetch;
-    expect(await gdUsdPrice(down, 1000 + 5 * 60_000, {})).toBe(0.00012);
+    expect(await gdUsdPrice(down, 1000 + 5 * 60_000, {} as NodeJS.ProcessEnv)).toBe(0.00012);
     resetPriceCache();
-    await expect(gdUsdPrice(down, 1000, {})).rejects.toBeInstanceOf(QuoteError);
-    await expect(gdUsdPrice(price(0.5), 1000, {})).rejects.toBeInstanceOf(QuoteError); // 4,000x the expected price
-    await expect(gdUsdPrice(price(0), 1000, {})).rejects.toBeInstanceOf(QuoteError);
+    await expect(gdUsdPrice(down, 1000, {} as NodeJS.ProcessEnv)).rejects.toBeInstanceOf(QuoteError);
+    await expect(gdUsdPrice(price(0.5), 1000, {} as NodeJS.ProcessEnv)).rejects.toBeInstanceOf(QuoteError); // 4,000x the expected price
+    await expect(gdUsdPrice(price(0), 1000, {} as NodeJS.ProcessEnv)).rejects.toBeInstanceOf(QuoteError);
   });
 });
 

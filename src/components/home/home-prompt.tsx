@@ -72,7 +72,7 @@ export function NetworkNotice() {
       <p className="text-xs font-semibold tracking-[.14em] text-violet uppercase">{mainnetAllowed ? "Celo mainnet is live" : "Testnet mode"}</p>
       <p className="mt-1.5 text-xs text-grey-600">
         {mainnetAllowed
-          ? "Build and deploy on Celo mainnet with real money, or practise on Celo Sepolia with test money. Pick the network when you start a build. Contracts are unaudited, so start small."
+          ? "Build and deploy on Celo mainnet with real money, or practise on Celo Sepolia with test money. Pick the network when you start a build."
           : "Deploys go to Celo Sepolia, which uses test money. Mainnet isn't open to your account yet."}
       </p>
     </div>

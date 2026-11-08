@@ -16,6 +16,9 @@ import { useDeploy, type DeployState, type StepView } from "./use-deploy";
 
 type Deploy = ReturnType<typeof useDeploy>;
 
+/** Once someone chooses to skip the Sepolia suggestion, it stays skipped until the page reloads. */
+let mainnetAcknowledged = false;
+
 const PHASE_COPY: Record<StepPhase, string> = {
   waiting: "Waiting",
   reused: "Already deployed",
@@ -132,10 +135,59 @@ function VerifyChip({ status }: { status: StepView["verify"] }) {
   return <span className="rounded-full bg-tint px-2 py-0.5 text-[11px] font-semibold text-violet">Verifying…</span>;
 }
 
+const FAUCET_URL = "https://faucet.celo.org/celo-sepolia";
+
+/** Step-by-step: copy your wallet address, open the faucet, paste it, come back. Test CELO is free. */
+export function FaucetGuide({ className }: { className?: string }) {
+  const { wallet } = useAuth();
+  const steps = [
+    {
+      title: "Copy your wallet address",
+      body: (
+        <>
+          {wallet ? (
+            <span className="mt-2 flex items-center gap-2">
+              <code className="min-w-0 flex-1 truncate rounded-full bg-canvas px-3 py-1.5 font-mono text-xs">{wallet.address}</code>
+              <CopyButton value={wallet.address} />
+            </span>
+          ) : (
+            <span className="mt-1 block text-grey-600">Connect your wallet from the top bar first.</span>
+          )}
+          <span className="mt-1 block text-xs text-grey-600">You can also click your wallet button in the top bar and choose Copy address.</span>
+        </>
+      ),
+    },
+    {
+      title: "Open the Celo Sepolia faucet",
+      body: (
+        <a className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-violet hover:underline" href={FAUCET_URL} target="_blank" rel="noreferrer">
+          faucet.celo.org/celo-sepolia <ExternalLink className="size-3" aria-hidden />
+        </a>
+      ),
+    },
+    { title: "Paste your address and request CELO", body: <span className="mt-1 block text-xs text-grey-600">Pick Celo Sepolia, paste the address, and confirm. The test CELO arrives in under a minute.</span> },
+    { title: "Come back and try again", body: <span className="mt-1 block text-xs text-grey-600">Test CELO has no value. It only pays the network fee on Sepolia.</span> },
+  ];
+  return (
+    <ol className={cn("space-y-3 rounded-tip bg-surface p-3 text-sm", className)} aria-label="Get free test CELO">
+      {steps.map((st, i) => (
+        <li key={st.title} className="flex gap-3">
+          <span className="grid size-6 shrink-0 place-items-center rounded-full bg-tint text-xs font-bold text-violet">{i + 1}</span>
+          <div className="min-w-0 flex-1">
+            <p className="font-medium">{st.title}</p>
+            {st.body}
+          </div>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 /** Where to send CELO: email wallets start empty, and their owners may not know the address. */
 function FundWallet({ chainId }: { chainId: number }) {
   const { wallet } = useAuth();
   if (!wallet) return null;
+  if (chainId !== 42220) return <FaucetGuide className="mt-3" />;
   return (
     <div className="mt-3 rounded-tip bg-surface p-3 text-sm">
       <p className="text-grey-600">Send a little CELO to your wallet, then try again.</p>
@@ -143,11 +195,6 @@ function FundWallet({ chainId }: { chainId: number }) {
         <code className="min-w-0 flex-1 truncate font-mono text-xs">{wallet.address}</code>
         <CopyButton value={wallet.address} />
       </div>
-      {chainId !== 42220 && (
-        <a className="mt-2 inline-block text-xs font-medium text-violet hover:underline" href="https://faucet.celo.org/celo-sepolia" target="_blank" rel="noreferrer">
-          Get free test CELO from the faucet
-        </a>
-      )}
     </div>
   );
 }
@@ -441,6 +488,10 @@ export function DeployModal({
   const running = state.stage === "running";
   const wrongAccount = Boolean(auth.user && auth.wallet && auth.wallet.address.toLowerCase() !== auth.user.wallet.toLowerCase());
   const [faucet, setFaucet] = React.useState<"idle" | "claiming" | "claimed" | "failed">("idle");
+  const [confirmMainnet, setConfirmMainnet] = React.useState(false);
+  const [testTip, setTestTip] = React.useState(false);
+  const [showFaucet, setShowFaucet] = React.useState(false);
+  const isMainnet = (state.plan?.chainId ?? chainId) === 42220;
   const todo = state.steps.filter((s) => s.phase !== "reused" && s.phase !== "done").length;
   const current = state.steps.find((s) => !["waiting", "reused", "done"].includes(s.phase)) ?? [...state.steps].reverse().find((s) => s.phase === "done" || s.phase === "reused") ?? state.steps[0];
   const upgrading = (state.plan?.upgrades ?? []).length > 0;
@@ -566,7 +617,10 @@ export function DeployModal({
             <Button
               variant="primary"
               disabled={state.stage !== "ready" || !auth.user || !auth.wallet || wrongAccount || todo === 0}
-              onClick={() => void deploy.start()}
+              onClick={() => {
+                if (isMainnet && !mainnetAcknowledged) setConfirmMainnet(true);
+                else void deploy.start();
+              }}
             >
               {running ? (
                 <>
@@ -583,7 +637,57 @@ export function DeployModal({
           )}
         </div>
         {!auth.wallet && state.stage === "ready" && <p className="mt-3 text-right text-xs text-grey-600">Connect your wallet from the top bar to continue.</p>}
+        {!isMainnet && state.plan && state.stage === "ready" && (
+          <div className="mt-3 text-right">
+            <button type="button" className="text-xs font-medium text-violet hover:underline" aria-expanded={showFaucet} onClick={() => setShowFaucet((v) => !v)}>
+              {showFaucet ? "Hide the faucet guide" : "Need free test CELO? See how"}
+            </button>
+            {showFaucet && <FaucetGuide className="mt-2 text-left" />}
+          </div>
+        )}
       </DialogContent>
+      <Dialog open={confirmMainnet} onOpenChange={(v) => { setConfirmMainnet(v); if (!v) setTestTip(false); }}>
+        <DialogContent className="sm:w-[460px]">
+          <p className="eyebrow pr-10">{testTip ? "How to test first" : "Before you sign"}</p>
+          <DialogTitle className="display mt-2 pr-10 text-[24px] font-extrabold">{testTip ? "Try it on Celo Sepolia" : "This deploys to Celo mainnet"}</DialogTitle>
+          <DialogDescription className="mt-2 text-sm text-grey-600">
+            {testTip
+              ? "Go to Home, pick Celo Sepolia beside the prompt box, and build the same idea. It deploys with free test money. When it works, come back and deploy here."
+              : "Mainnet uses real CELO, and a deployed contract can\u2019t be taken back. We recommend trying it on Celo Sepolia first, where test money is free, to check that everything works. You can skip this."}
+          </DialogDescription>
+          {testTip && <FaucetGuide className="mt-4" />}
+          <div className="mt-6 flex flex-wrap justify-end gap-2">
+            {testTip ? (
+              <Button
+                variant="primary"
+                onClick={() => {
+                  setConfirmMainnet(false);
+                  setTestTip(false);
+                  onOpenChange(false);
+                }}
+              >
+                Got it
+              </Button>
+            ) : (
+              <>
+                <Button variant="secondary" onClick={() => setTestTip(true)}>
+                  Test on Sepolia first
+                </Button>
+                <Button
+                  variant="primary"
+                  onClick={() => {
+                    mainnetAcknowledged = true;
+                    setConfirmMainnet(false);
+                    void deploy.start();
+                  }}
+                >
+                  Skip, deploy on mainnet
+                </Button>
+              </>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 }

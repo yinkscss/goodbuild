@@ -43,14 +43,16 @@ describe("buildPublishedApp", () => {
   it("always labels the app, and adds the demo notice only when contracts aren't deployed", async () => {
     const page = (out: Awaited<ReturnType<typeof build>>) => text(named(out, /^index\.html$/));
     const deployed = page(await build({}));
-    expect(deployed).toContain("Built with GoodBuild · Unaudited");
+    expect(deployed).toContain("Built with <img");
+    expect(deployed).toContain("data:image/png;base64,");
+    expect(deployed).not.toContain("Unaudited");
     expect(deployed).not.toContain("Demo:");
     expect(page(await build({}, { hasUndeployedContracts: true }))).toContain("isn't deployed yet");
   });
 
   it("says when the app's contract can be changed (D33), and only then", async () => {
     const page = (out: Awaited<ReturnType<typeof build>>) => text(named(out, /^index\.html$/));
-    expect(page(await build({}, { changeableContract: true }))).toContain("Built with GoodBuild · Unaudited · This contract can be changed");
+    expect(page(await build({}, { changeableContract: true }))).toContain("This contract can be changed");
     expect(page(await build({}))).not.toContain("can be changed");
   });
 

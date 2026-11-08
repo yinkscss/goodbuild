@@ -89,7 +89,7 @@ const SECTIONS: Array<{ id: string; title: string; body: ReactNode }> = [
         </p>
         <p>
           If an app&apos;s contracts aren&apos;t deployed for the version you publish, it goes live as a demo with a notice, and on-chain actions won&apos;t work. Every
-          published app carries a &quot;Built with GoodBuild · Unaudited&quot; bar.
+          published app carries a small &quot;Built with GoodBuild&quot; pill at the bottom.
         </p>
       </>
     ),
