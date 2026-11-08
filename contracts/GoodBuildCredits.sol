@@ -2,128 +2,175 @@
 pragma solidity ^0.8.28;
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Ownable2Step, Ownable} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
+import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
 /**
- * GoodBuild Credits (GBC), on Celo mainnet (D51).
+ * GoodBuild Credits (GBC) on Celo (D51, D56).
  *
- * One GBC unit is one micro-USD of GoodBuild AI credit: 6 decimals, 1.000000 GBC = $1 of AI builds.
- * It is NOT a trading asset. It can only be minted and burned, never sent between wallets, so a
- * balance always belongs to the wallet that bought it and maps to one GoodBuild account.
+ * A credit is worth $1 of GoodBuild AI builds. The token has 6 decimals, so 1 GBC unit is 1 micro-USD, the
+ * same unit as GoodBuild's ledger. The supply is fixed: 10,000,000 credits are minted once, to this
+ * contract, and every sale burns credits out of that inventory. Nobody can mint more.
  *
- * Flow:
- *   1. Mint: a wallet buys with CELO (`purchase`), or an authorised minter (the GoodBuild backend,
- *      for on-ramp and other payments) mints for a wallet (`mint`).
- *   2. Redeem: the wallet calls `redeem`, which burns the tokens and emits `Redeemed`. The backend
- *      sees that event and posts the same amount to the wallet's ledger balance, once per event.
- * Burning before crediting means credit can never be created twice from one balance.
+ * Buying: a user pays G$ for a quote that GoodBuild's server signed (EIP-712). The quote names the buyer,
+ * the exact G$ amount, the credits and any verification bonus, a unique ref and a deadline. The contract
+ * checks the signature, takes the G$, burns the credits from inventory and emits `Redeemed`, which the
+ * backend turns into ledger credit exactly once. The price lives in the server's quote (G$ moves, so a
+ * fixed on-chain rate would go stale); the signer can be replaced by the owner at any time.
  *
- * Not audited. Value caps: one purchase or mint is limited, and the owner can pause everything
- * except redeem of existing balances (so a pause never traps credit).
+ * Credits are never held by users and cannot be transferred. The owner (admin) can pause buying, replace
+ * the quote signer, grant credits to a wallet, and withdraw the G$ (or any token or CELO) held here.
+ * Not audited.
  */
-contract GoodBuildCredits is ERC20, Ownable2Step, Pausable, ReentrancyGuard {
-    /// GBC units (6 decimals) minted per 1 CELO (1e18 wei). Owner-set: there is no price oracle.
-    uint256 public creditsPerCelo;
-    /// Where purchase money goes, immediately.
-    address payable public treasury;
-    /// The most one purchase or one mint may create, in GBC units.
-    uint256 public maxPerMint;
-    mapping(address => bool) public isMinter;
+contract GoodBuildCredits is ERC20, Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
+    using SafeERC20 for IERC20;
 
-    event Purchased(address indexed account, uint256 celoPaid, uint256 credits);
-    event Minted(address indexed minter, address indexed account, uint256 credits, bytes32 ref);
+    /// 10,000,000 credits, 6 decimals.
+    uint256 public constant SUPPLY = 10_000_000 * 1e6;
+
+    struct Quote {
+        address buyer;
+        uint256 gdAmount; // G$ (18 decimals) the buyer pays
+        uint256 credits; // paid credits, GBC units
+        uint256 bonus; // extra credits for a GoodDollar-verified person, GBC units
+        bytes32 ref; // unique per quote
+        uint256 deadline; // unix seconds
+    }
+
+    bytes32 public constant QUOTE_TYPEHASH = keccak256("Quote(address buyer,uint256 gdAmount,uint256 credits,uint256 bonus,bytes32 ref,uint256 deadline)");
+
+    IERC20 public immutable goodDollar;
+    address public quoteSigner;
+    /// The most credits (paid plus bonus) one quote or grant may release, GBC units.
+    uint256 public maxPerQuote;
+    /// Credits sold or granted so far, GBC units.
+    uint256 public totalReleased;
+    mapping(bytes32 => bool) public used;
+
+    event Purchased(address indexed account, uint256 gdPaid, uint256 credits, uint256 bonus, bytes32 ref);
     event Redeemed(address indexed account, uint256 credits, bytes32 ref);
-    event RateChanged(uint256 creditsPerCelo);
-    event TreasuryChanged(address treasury);
-    event MaxPerMintChanged(uint256 maxPerMint);
-    event MinterSet(address indexed minter, bool allowed);
+    event Granted(address indexed account, uint256 credits, bytes32 ref);
+    event QuoteSignerChanged(address signer);
+    event MaxPerQuoteChanged(uint256 maxPerQuote);
+    event Withdrawn(address indexed token, address indexed to, uint256 amount);
 
     error TransfersDisabled();
     error ZeroAmount();
     error OverLimit();
-    error NotMinter();
     error BadAddress();
-    error PaymentFailed();
+    error BadQuote();
+    error QuoteExpired();
+    error QuoteUsed();
+    error BadSignature();
+    error NotGoodDollar();
+    error WrongAmount();
+    error SoldOut();
+    error WithdrawFailed();
 
-    constructor(address initialOwner, address payable treasury_, uint256 creditsPerCelo_, uint256 maxPerMint_)
+    constructor(address admin, address goodDollar_, address quoteSigner_, uint256 maxPerQuote_)
         ERC20("GoodBuild Credits", "GBC")
-        Ownable(initialOwner)
+        Ownable(admin)
+        EIP712("GoodBuild Credits", "1")
     {
-        if (treasury_ == address(0)) revert BadAddress();
-        if (creditsPerCelo_ == 0 || maxPerMint_ == 0) revert ZeroAmount();
-        treasury = treasury_;
-        creditsPerCelo = creditsPerCelo_;
-        maxPerMint = maxPerMint_;
+        if (admin == address(0) || goodDollar_ == address(0) || quoteSigner_ == address(0)) revert BadAddress();
+        if (maxPerQuote_ == 0) revert ZeroAmount();
+        goodDollar = IERC20(goodDollar_);
+        quoteSigner = quoteSigner_;
+        maxPerQuote = maxPerQuote_;
+        _mint(address(this), SUPPLY);
     }
 
     function decimals() public pure override returns (uint8) {
         return 6;
     }
 
-    /// Buy credits with CELO. Mints to the sender and forwards the CELO to the treasury.
-    function purchase() external payable whenNotPaused nonReentrant {
-        uint256 credits = (msg.value * creditsPerCelo) / 1e18;
-        if (credits == 0) revert ZeroAmount();
-        if (credits > maxPerMint) revert OverLimit();
-        _mint(msg.sender, credits);
-        emit Purchased(msg.sender, msg.value, credits);
-        (bool ok, ) = treasury.call{value: msg.value}("");
-        if (!ok) revert PaymentFailed();
+    /// Credits still for sale.
+    function remaining() external view returns (uint256) {
+        return balanceOf(address(this));
     }
 
-    /// Buy credits with CELO and add them to the sender's GoodBuild balance in one signature: the same as
-    /// `purchase` then `redeem`, so the wallet never holds an unspent balance. The default path in the app.
-    function purchaseAndRedeem(bytes32 ref) external payable whenNotPaused nonReentrant {
-        uint256 credits = (msg.value * creditsPerCelo) / 1e18;
-        if (credits == 0) revert ZeroAmount();
-        if (credits > maxPerMint) revert OverLimit();
-        emit Purchased(msg.sender, msg.value, credits);
-        emit Redeemed(msg.sender, credits, ref);
-        (bool ok, ) = treasury.call{value: msg.value}("");
-        if (!ok) revert PaymentFailed();
+    function quoteHash(Quote calldata q) public view returns (bytes32) {
+        return _hashTypedDataV4(keccak256(abi.encode(QUOTE_TYPEHASH, q.buyer, q.gdAmount, q.credits, q.bonus, q.ref, q.deadline)));
     }
 
-    /// An authorised minter creates credits for a wallet. `ref` ties it to the payment it answers.
-    function mint(address account, uint256 credits, bytes32 ref) external whenNotPaused {
-        if (!isMinter[msg.sender]) revert NotMinter();
+    /// Pay with an allowance: approve G$ to this contract, then call. The sender must be the quote's buyer.
+    function buy(Quote calldata q, bytes calldata signature) external whenNotPaused nonReentrant {
+        if (q.buyer != msg.sender) revert BadQuote();
+        _checkAndRelease(q, signature);
+        goodDollar.safeTransferFrom(msg.sender, address(this), q.gdAmount);
+    }
+
+    /// Pay in one signature with G$'s `transferAndCall(this, gdAmount, abi.encode(quote, signature))` (ERC-677).
+    function onTokenTransfer(address from, uint256 amount, bytes calldata data) external whenNotPaused nonReentrant returns (bool) {
+        if (msg.sender != address(goodDollar)) revert NotGoodDollar();
+        (Quote memory q, bytes memory signature) = abi.decode(data, (Quote, bytes));
+        if (q.buyer != from) revert BadQuote();
+        if (amount != q.gdAmount) revert WrongAmount();
+        _checkAndRelease(q, signature);
+        return true;
+    }
+
+    function _checkAndRelease(Quote memory q, bytes memory signature) private {
+        if (q.gdAmount == 0 || q.credits == 0) revert ZeroAmount();
+        if (block.timestamp > q.deadline) revert QuoteExpired();
+        if (used[q.ref]) revert QuoteUsed();
+        bytes32 digest = _hashTypedDataV4(keccak256(abi.encode(QUOTE_TYPEHASH, q.buyer, q.gdAmount, q.credits, q.bonus, q.ref, q.deadline)));
+        if (ECDSA.recover(digest, signature) != quoteSigner) revert BadSignature();
+        used[q.ref] = true;
+        uint256 total = q.credits + q.bonus;
+        if (total > maxPerQuote) revert OverLimit();
+        _release(q.buyer, total, q.ref);
+        emit Purchased(q.buyer, q.gdAmount, q.credits, q.bonus, q.ref);
+    }
+
+    /// Burns credits out of inventory and tells the backend to credit the wallet's ledger once.
+    function _release(address account, uint256 credits, bytes32 ref) private {
+        if (credits > balanceOf(address(this))) revert SoldOut();
+        _burn(address(this), credits);
+        totalReleased += credits;
+        emit Redeemed(account, credits, ref);
+    }
+
+    /// Admin: give a wallet credits at no charge (support, promotions). Uses the same unique-ref guard.
+    function grant(address account, uint256 credits, bytes32 ref) external onlyOwner {
         if (account == address(0)) revert BadAddress();
         if (credits == 0) revert ZeroAmount();
-        if (credits > maxPerMint) revert OverLimit();
-        _mint(account, credits);
-        emit Minted(msg.sender, account, credits, ref);
+        if (credits > maxPerQuote) revert OverLimit();
+        if (used[ref]) revert QuoteUsed();
+        used[ref] = true;
+        _release(account, credits, ref);
+        emit Granted(account, credits, ref);
     }
 
-    /// Burn credits to add the same amount to the sender's GoodBuild balance. Works while paused.
-    function redeem(uint256 credits, bytes32 ref) external {
-        if (credits == 0) revert ZeroAmount();
-        _burn(msg.sender, credits);
-        emit Redeemed(msg.sender, credits, ref);
+    /// Admin: take G$ (or any token) out; `token` of address(0) means CELO.
+    function withdraw(address token, address payable to, uint256 amount) external onlyOwner nonReentrant {
+        if (to == address(0)) revert BadAddress();
+        if (amount == 0) revert ZeroAmount();
+        if (token == address(this)) revert BadAddress(); // credits are not withdrawable, only sold
+        if (token == address(0)) {
+            (bool ok, ) = to.call{value: amount}("");
+            if (!ok) revert WithdrawFailed();
+        } else {
+            IERC20(token).safeTransfer(to, amount);
+        }
+        emit Withdrawn(token, to, amount);
     }
 
-    function setCreditsPerCelo(uint256 value) external onlyOwner {
+    function setQuoteSigner(address signer) external onlyOwner {
+        if (signer == address(0)) revert BadAddress();
+        quoteSigner = signer;
+        emit QuoteSignerChanged(signer);
+    }
+
+    function setMaxPerQuote(uint256 value) external onlyOwner {
         if (value == 0) revert ZeroAmount();
-        creditsPerCelo = value;
-        emit RateChanged(value);
-    }
-
-    function setTreasury(address payable value) external onlyOwner {
-        if (value == address(0)) revert BadAddress();
-        treasury = value;
-        emit TreasuryChanged(value);
-    }
-
-    function setMaxPerMint(uint256 value) external onlyOwner {
-        if (value == 0) revert ZeroAmount();
-        maxPerMint = value;
-        emit MaxPerMintChanged(value);
-    }
-
-    function setMinter(address minter, bool allowed) external onlyOwner {
-        if (minter == address(0)) revert BadAddress();
-        isMinter[minter] = allowed;
-        emit MinterSet(minter, allowed);
+        maxPerQuote = value;
+        emit MaxPerQuoteChanged(value);
     }
 
     function pause() external onlyOwner {
@@ -134,7 +181,7 @@ contract GoodBuildCredits is ERC20, Ownable2Step, Pausable, ReentrancyGuard {
         _unpause();
     }
 
-    /// Only mint (from == 0) and burn (to == 0) move balances. Wallet to wallet is refused.
+    /// Only mint (the one-time supply) and burn (a sale) move balances; credits can never be sent.
     function _update(address from, address to, uint256 value) internal override {
         if (from != address(0) && to != address(0)) revert TransfersDisabled();
         super._update(from, to, value);

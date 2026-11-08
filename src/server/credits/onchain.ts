@@ -7,6 +7,8 @@ import type { Db } from "@/server/db/client";
 import { onchainCreditEvents } from "@/server/db/onchain-credits-schema";
 import { users } from "@/server/db/schema";
 import { postLedgerEntry } from "./ledger";
+import { creditsContract } from "./contract-address";
+import { markQuotePaid } from "./quote";
 
 /**
  * GoodBuild Credits on-chain (D51, D52). The token's `Redeemed(account, credits, ref)` event is the
@@ -17,21 +19,17 @@ import { postLedgerEntry } from "./ledger";
  */
 export const CREDITS_ABI = parseAbi([
   "event Redeemed(address indexed account, uint256 credits, bytes32 ref)",
-  "event Purchased(address indexed account, uint256 celoPaid, uint256 credits)",
-  "function creditsPerCelo() view returns (uint256)",
-  "function maxPerMint() view returns (uint256)",
+  "event Purchased(address indexed account, uint256 gdPaid, uint256 credits, uint256 bonus, bytes32 ref)",
+  "function goodDollar() view returns (address)",
+  "function quoteSigner() view returns (address)",
+  "function maxPerQuote() view returns (uint256)",
+  "function remaining() view returns (uint256)",
   "function paused() view returns (bool)",
-  "function balanceOf(address) view returns (uint256)",
-  "function purchase() payable",
-  "function purchaseAndRedeem(bytes32 ref) payable",
-  "function redeem(uint256 credits, bytes32 ref)",
+  "function owner() view returns (address)",
+  "function transferAndCall(address,uint256,bytes)",
 ]);
 
-/** The deployed contract for a chain, from CREDITS_CONTRACT_<chainId>. Null when none is set. */
-export function creditsContract(chainId: number, env: NodeJS.ProcessEnv = process.env): Address | null {
-  const raw = env[`CREDITS_CONTRACT_${chainId}`]?.trim();
-  return raw && /^0x[0-9a-fA-F]{40}$/.test(raw) ? getAddress(raw) : null;
-}
+export { creditsContract };
 
 export interface RedeemedLog {
   chainId: number;
@@ -40,6 +38,8 @@ export interface RedeemedLog {
   blockNumber: number;
   wallet: string;
   amountMicro: number;
+  /** The quote ref the contract emitted with this event, when known. */
+  ref?: Hex;
 }
 
 export interface CreditResult {
@@ -84,6 +84,7 @@ export async function recordRedemption(db: Db, log: RedeemedLog): Promise<Credit
     .from(onchainCreditEvents)
     .where(and(eq(onchainCreditEvents.chainId, values.chainId), eq(onchainCreditEvents.txHash, values.txHash), eq(onchainCreditEvents.logIndex, values.logIndex)))
     .limit(1);
+  if (log.ref) await markQuotePaid(db, log.ref, values.txHash);
   return creditRow(db, row);
 }
 
@@ -116,7 +117,7 @@ export async function redeemFromReceipt(db: Db, client: ReceiptClient, chainId: 
   const logs = parseEventLogs({ abi: CREDITS_ABI, eventName: "Redeemed", logs: receipt.logs.filter((l) => l.address.toLowerCase() === contract.toLowerCase()) });
   let creditedMicro = 0;
   for (const l of logs) {
-    const r = await recordRedemption(db, { chainId, txHash, logIndex: l.logIndex, blockNumber: Number(l.blockNumber), wallet: l.args.account, amountMicro: Number(l.args.credits) });
+    const r = await recordRedemption(db, { chainId, txHash, logIndex: l.logIndex, blockNumber: Number(l.blockNumber), wallet: l.args.account, amountMicro: Number(l.args.credits), ref: l.args.ref });
     if (r.credited) creditedMicro += r.amountMicro;
   }
   return { events: logs.length, creditedMicro };
@@ -152,7 +153,7 @@ export async function syncRedemptions(db: Db, client: LogClient, chainId: number
     const to = from + SYNC_CHUNK - BigInt(1) < stop ? from + SYNC_CHUNK - BigInt(1) : stop;
     const logs = await client.getContractEvents({ address: contract, abi: CREDITS_ABI, eventName: "Redeemed", fromBlock: from, toBlock: to, strict: true });
     for (const l of logs) {
-      await recordRedemption(db, { chainId, txHash: l.transactionHash, logIndex: l.logIndex, blockNumber: Number(l.blockNumber), wallet: l.args.account, amountMicro: Number(l.args.credits) });
+      await recordRedemption(db, { chainId, txHash: l.transactionHash, logIndex: l.logIndex, blockNumber: Number(l.blockNumber), wallet: l.args.account, amountMicro: Number(l.args.credits), ref: l.args.ref });
       events++;
     }
     from = to + BigInt(1);

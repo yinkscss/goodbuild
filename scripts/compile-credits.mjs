@@ -20,18 +20,22 @@ function findImports(p) {
   }
 }
 
-export function compileCredits() {
+function compileFile(source, contract) {
   const input = {
     language: "Solidity",
-    sources: { [SOURCE]: { content: fs.readFileSync(path.join(root, SOURCE), "utf8") } },
+    sources: { [source]: { content: fs.readFileSync(path.join(root, source), "utf8") } },
     settings: { optimizer: { enabled: true, runs: 200 }, evmVersion: "paris", outputSelection: { "*": { "*": ["abi", "evm.bytecode.object"] } } },
   };
   const out = JSON.parse(solc.compile(JSON.stringify(input), { import: findImports }));
   const errors = (out.errors ?? []).filter((e) => e.severity === "error");
   if (errors.length) throw new Error(errors.map((e) => e.formattedMessage).join("\n"));
-  const c = out.contracts[SOURCE].GoodBuildCredits;
+  const c = out.contracts[source][contract];
   return { abi: c.abi, bytecode: `0x${c.evm.bytecode.object}` };
 }
+
+export const compileCredits = () => compileFile(SOURCE, "GoodBuildCredits");
+/** The Sepolia stand-in for G$ (ERC-677 transferAndCall, faucet), compiled for tests and the Sepolia rehearsal. */
+export const compileTestGd = () => compileFile("scripts/solidity/goodbuild/TestGoodDollar.sol", "TestGoodDollar");
 
 if (process.argv[1] === import.meta.filename) {
   const artifact = compileCredits();
