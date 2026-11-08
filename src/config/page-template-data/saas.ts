@@ -1,0 +1,118 @@
+import type { PageTemplate } from "../page-templates";
+import { daisyui, hyperui, magicui, pinterest, shadcn, st21, tailblocks } from "./sources";
+
+export const SAAS: PageTemplate[] = [
+  {
+    id: "flowdesk",
+    label: "Flowdesk",
+    category: "SaaS",
+    kind: "site",
+    description: "A calm project-management product page with pricing and FAQ",
+    mood: "calm, bright and trustworthy, lots of white space",
+    font: "sans",
+    theme: { bg: "#F7F8FC", fg: "#12172B", muted: "#667085", card: "#FFFFFF", accent: "#4F46E5", accentFg: "#FFFFFF" },
+    nav: { brand: "Flowdesk", links: ["Product", "Pricing", "Customers", "FAQ"], cta: "Start free" },
+    sections: [
+      { type: "hero", variant: "split", eyebrow: "Project management", title: "Plan the week. Ship on Friday.", sub: "Flowdesk gives small teams one board for tasks, deadlines and handovers, so nothing gets lost in chat.", cta: "Start free", cta2: "Watch the tour", art: "dashboard", note: "Free for teams up to 5" },
+      { type: "logos", label: "Used by teams at", items: ["Kora Labs", "Ndiyo", "Paystream", "Savannah Co", "Tunde & Sons"] },
+      { type: "features", title: "Everything a small team needs", items: [
+        { icon: "Kanban", title: "Boards that stay tidy", text: "Drag tasks between stages and see who owns what." },
+        { icon: "CalendarClock", title: "Deadlines you can trust", text: "Reminders land the day before, not after." },
+        { icon: "MessagesSquare", title: "Comments on the task", text: "Keep the talk next to the work it is about." },
+      ] },
+      { type: "pricing", title: "Simple pricing", items: [
+        { name: "Starter", price: "$0", note: "per month", points: ["Up to 5 people", "3 boards", "Email reminders"] },
+        { name: "Team", price: "$8", note: "per person", points: ["Unlimited boards", "Timeline view", "Priority support"], highlight: true },
+        { name: "Company", price: "Talk to us", points: ["Single sign-on", "Audit log", "Custom limits"] },
+      ] },
+      { type: "faq", items: [
+        { q: "Can I import from a spreadsheet?", a: "Yes. Paste a CSV and Flowdesk turns each row into a task." },
+        { q: "Is there a mobile app?", a: "The web app works on any phone, and installs to your home screen." },
+      ] },
+      { type: "cta", title: "Give your team a calmer Monday", sub: "Set up your first board in two minutes.", button: "Start free" },
+    ],
+    footer: "Flowdesk, made in Lagos. Product, Pricing, Privacy, Terms.",
+    inspiration: [hyperui("hero with product mock-up and a three-tier pricing row"), shadcn("feature grid with icon cards"), pinterest("soft indigo SaaS palettes")],
+  },
+  {
+    id: "pulse",
+    label: "Pulse Analytics",
+    category: "SaaS",
+    kind: "site",
+    description: "A dark analytics product page with a live-chart hero and big numbers",
+    mood: "dark, sharp and data-rich, with a glowing teal accent",
+    font: "sans",
+    theme: { bg: "#0B1215", fg: "#E8F1F2", muted: "#8AA0A6", card: "#121C20", accent: "#2DD4BF", accentFg: "#04201C" },
+    nav: { brand: "Pulse", links: ["Features", "Docs", "Pricing", "Changelog"], cta: "Get a demo" },
+    sections: [
+      { type: "hero", variant: "center", eyebrow: "Product analytics", title: "See what your users actually do", sub: "Events, funnels and retention in one dashboard. No code changes after the first snippet.", cta: "Get a demo", cta2: "Read the docs", art: "chart" },
+      { type: "stats", items: [{ value: "2.4B", label: "events a month" }, { value: "99.99%", label: "uptime" }, { value: "<1 min", label: "to first chart" }] },
+      { type: "features", title: "Answers, not dashboards", items: [
+        { icon: "Filter", title: "Funnels", text: "Find the step where people drop off." },
+        { icon: "Repeat", title: "Retention", text: "See who comes back after a week." },
+        { icon: "ShieldCheck", title: "Privacy first", text: "No cookies, no personal data stored." },
+      ] },
+      { type: "quote", text: "We found our biggest drop-off in one afternoon and fixed it by Friday.", who: "Amara Eze, Head of Growth at Kora Labs" },
+      { type: "cta", title: "Start measuring today", button: "Get a demo" },
+    ],
+    footer: "Pulse Analytics. Docs, Status, Security, Privacy.",
+    inspiration: [magicui("glowing chart hero and animated number stats"), shadcn("dark card grid"), st21("dark SaaS hero ideas")],
+  },
+  {
+    id: "shipkit",
+    label: "ShipKit",
+    category: "SaaS",
+    kind: "site",
+    description: "A developer-tool page with a code window hero and a terminal feel",
+    mood: "developer-first, monospace, dark with a lime accent",
+    font: "mono",
+    theme: { bg: "#0E1111", fg: "#E7ECE9", muted: "#8A9690", card: "#161B1A", accent: "#A3E635", accentFg: "#10190A" },
+    nav: { brand: "shipkit", links: ["Docs", "Examples", "Pricing", "GitHub"], cta: "Install" },
+    sections: [
+      { type: "hero", variant: "split", eyebrow: "npm i shipkit", title: "Deploy from your terminal in one command", sub: "ShipKit builds, tests and ships your app to the edge. Zero config for most projects.", cta: "Read the docs", cta2: "Star on GitHub", art: "code" },
+      { type: "steps", title: "Three commands to production", items: [
+        { title: "shipkit init", text: "Detects your framework and writes a tiny config." },
+        { title: "shipkit preview", text: "A shareable URL for every branch." },
+        { title: "shipkit ship", text: "Atomic deploys with instant rollback." },
+      ] },
+      { type: "features", title: "Built for the way you work", items: [
+        { icon: "Zap", title: "Fast builds", text: "Smart caching keeps most builds under 20 seconds." },
+        { icon: "GitBranch", title: "Branch previews", text: "Every pull request gets its own URL." },
+        { icon: "Undo2", title: "Instant rollback", text: "Go back to any release with one command." },
+      ] },
+      { type: "pricing", title: "Free for side projects", items: [
+        { name: "Hobby", price: "$0", points: ["3 projects", "Community support"] },
+        { name: "Pro", price: "$12", note: "per month", points: ["Unlimited projects", "Team access", "Email support"], highlight: true },
+      ] },
+    ],
+    footer: "ShipKit is open source under the MIT licence. Docs, Changelog, Status.",
+    inspiration: [daisyui("terminal and mockup-code window styling"), magicui("terminal hero block"), tailblocks("simple stacked feature rows")],
+  },
+  {
+    id: "pocketpay",
+    label: "PocketPay",
+    category: "SaaS",
+    kind: "site",
+    description: "A mobile wallet-app launch page with a phone mock-up and download buttons",
+    mood: "friendly and energetic, warm yellow with deep green, rounded shapes",
+    font: "sans",
+    theme: { bg: "#FFF9E8", fg: "#10301F", muted: "#5F7A6A", card: "#FFFFFF", accent: "#0F8A5F", accentFg: "#FFFFFF" },
+    nav: { brand: "PocketPay", links: ["How it works", "Fees", "Safety", "Help"], cta: "Get the app" },
+    sections: [
+      { type: "hero", variant: "split", eyebrow: "Mobile money for everyone", title: "Send money home in seconds", sub: "Save, send and receive in G$ and cUSD from your phone. No bank account needed.", cta: "Get the app", cta2: "See the fees", art: "phone" },
+      { type: "steps", title: "Start in three taps", items: [
+        { title: "Open the app", text: "Sign in with your phone number." },
+        { title: "Add money", text: "Top up with a card or a local agent." },
+        { title: "Send", text: "Pick a contact and it arrives instantly." },
+      ] },
+      { type: "stats", items: [{ value: "$0.01", label: "average fee" }, { value: "3 sec", label: "to arrive" }, { value: "40+", label: "countries" }] },
+      { type: "faq", items: [
+        { q: "Is my money safe?", a: "You hold your own keys, and the app never moves funds without your approval." },
+        { q: "Does it work offline?", a: "You can view your balance offline. Sending needs a connection." },
+      ] },
+      { type: "cta", title: "Your money, in your pocket", button: "Get the app" },
+    ],
+    footer: "PocketPay Labs. Terms, Privacy, Support.",
+    inspiration: [hyperui("hero with a device mock-up"), pinterest("rounded fintech app landing boards"), shadcn("stat row")],
+  },
+];
