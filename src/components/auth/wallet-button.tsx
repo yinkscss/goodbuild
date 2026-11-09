@@ -24,7 +24,7 @@ import { useMainnetAllowed } from "@/lib/use-mainnet-allowed";
 import { cn } from "@/lib/utils";
 
 /** Where there is no project (home, landing), a wallet is expected on Celo Sepolia, where every new project starts. */
-export const DEFAULT_EXPECTED_CHAIN_ID: number = NETWORKS["celo-sepolia"].chainId;
+export const DEFAULT_EXPECTED_CHAIN_ID: number = NETWORKS.celo.chainId;
 
 /**
  * Wallet states from DESIGN_SYSTEM §3: disconnected (black Connect wallet), connecting

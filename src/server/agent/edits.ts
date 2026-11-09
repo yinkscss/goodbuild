@@ -35,7 +35,7 @@ export function applyEdits(original: string, edits: SearchReplace[]): EditResult
     if (!range) {
       return {
         ok: false,
-        error: `${label}"search" text was not found. Read the file again (read_file) and copy the lines exactly.`,
+        error: `${label}"search" text was not found. Read the file again (read_file) and copy the lines exactly.${nearestHint(content, edit.search)}`,
       };
     }
     const lines = content.split("\n");
@@ -44,6 +44,24 @@ export function applyEdits(original: string, edits: SearchReplace[]): EditResult
     fuzzy = true;
   }
   return { ok: true, content, fuzzy };
+}
+
+/**
+ * When a search isn't found, show the model the lines that are really there, around the line that looks most like the
+ * first line it searched for. One look at the real text usually fixes the edit in one step, instead of a loop of failed
+ * edits that ends in "too many steps". Empty when nothing is close.
+ */
+function nearestHint(content: string, search: string): string {
+  const first = search.split("\n").map(norm).find((l) => l.length >= 6);
+  if (!first) return "";
+  const lines = content.split("\n");
+  const key = first.slice(0, 40);
+  let at = lines.findIndex((l) => norm(l) === first);
+  if (at < 0) at = lines.findIndex((l) => norm(l).includes(key));
+  if (at < 0) return "";
+  const from = Math.max(at - 2, 0);
+  const to = Math.min(at + 6, lines.length);
+  return `\nThe closest lines in the file right now (${from + 1}-${to}):\n${lines.slice(from, to).join("\n")}`;
 }
 
 function countOccurrences(haystack: string, needle: string): number {

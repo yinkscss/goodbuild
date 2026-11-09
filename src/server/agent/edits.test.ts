@@ -68,3 +68,15 @@ describe("diffs", () => {
     expect(d).toContain("+c");
   });
 });
+
+describe("applyEdits not-found hint", () => {
+  it("shows the real nearby lines so the model can retry in one step", () => {
+    const file = "import a from 'a';\nexport function useCircle() {\n  const x = 1;\n  return x;\n}\n";
+    const r = applyEdits(file, [{ search: "export function useCircle() {\n  const y = 2;", replace: "x" }]);
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.error).toContain("not found");
+      expect(r.error).toContain("const x = 1;");
+    }
+  });
+});

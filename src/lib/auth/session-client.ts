@@ -5,7 +5,7 @@ import type { Attestation, SessionUser, WalletKind } from "./types";
 
 /** Chains a sign-in message may name. Sign-in costs nothing on either. */
 export const SIGN_IN_CHAIN_IDS = [11142220, 42220];
-export const DEFAULT_SIGN_IN_CHAIN_ID = 11142220;
+export const DEFAULT_SIGN_IN_CHAIN_ID = 42220;
 
 export const SIGN_IN_STATEMENT = "Sign in to GoodBuild. This is free and does not send a transaction.";
 
@@ -45,7 +45,7 @@ export function parseChainId(raw: string | number | null | undefined): number | 
   return Number.isFinite(n) ? n : null;
 }
 
-/** Sign-in names the wallet's chain when it's a Celo chain, otherwise Celo Sepolia. */
+/** Sign-in names the wallet's chain when it's a Celo chain, otherwise Celo mainnet. */
 export function signInChainFor(walletChainId: number | null): number {
   return walletChainId !== null && SIGN_IN_CHAIN_IDS.includes(walletChainId) ? walletChainId : DEFAULT_SIGN_IN_CHAIN_ID;
 }

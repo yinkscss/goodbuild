@@ -11,7 +11,7 @@
  * these files but not edit them, so the front end can't drift from the contract.
  */
 
-import { DEFAULT_NETWORK, NETWORKS } from "@/config/networks";
+import { NETWORKS } from "@/config/networks";
 import { chainSourceFor, CONNECT_BUTTON, USE_WALLET, walletHelpersFor, withCurrentWalletHelpers } from "./wallet-template";
 
 export { WALLET_DIR, WALLET_HELPERS, withCurrentWalletHelpers } from "./wallet-template";
@@ -841,7 +841,7 @@ export function Textarea({ className, ...props }: React.TextareaHTMLAttributes<H
 `;
 
 /** Files every project starts with (paths without a leading slash). */
-export function starterFiles(chainId = NETWORKS[DEFAULT_NETWORK].chainId): Record<string, string> {
+export function starterFiles(chainId = NETWORKS["celo-sepolia"].chainId): Record<string, string> {
   return {
     "package.json": packageJson(BASE_DEPENDENCIES),
     "public/index.html": INDEX_HTML,
@@ -875,7 +875,7 @@ export function starterFiles(chainId = NETWORKS[DEFAULT_NETWORK].chainId): Recor
  * Older projects started before a helper existed. Add starter helpers and UI pieces that
  * are missing (never overwrite), so the prompt's list of available files is always true.
  */
-export function withStarterHelpers(files: Record<string, string>, chainId = NETWORKS[DEFAULT_NETWORK].chainId): Record<string, string> {
+export function withStarterHelpers(files: Record<string, string>, chainId = NETWORKS["celo-sepolia"].chainId): Record<string, string> {
   const out = withCurrentWalletHelpers(withCurrentDataHelpers(files), chainId);
   for (const [p, content] of Object.entries(starterFiles(chainId))) {
     if (/^src\/(lib|components\/ui)\//.test(p) && !(p in out)) out[p] = content;

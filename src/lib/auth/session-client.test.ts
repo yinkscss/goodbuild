@@ -34,7 +34,7 @@ describe("signInWithEthereum", () => {
     });
     expect(user.id).toBe("u1");
     const parsed = parseSiweMessage(String(posted.message));
-    expect(parsed).toMatchObject({ domain: "goodbuild.test", nonce: "n0nce0123456789a", chainId: 11142220 });
+    expect(parsed).toMatchObject({ domain: "goodbuild.test", nonce: "n0nce0123456789a", chainId: 42220 });
     expect(posted.attestation).toEqual(yes);
     expect(posted.walletKind).toBe("external");
   });
@@ -79,9 +79,10 @@ describe("chain helpers", () => {
     expect(parseChainId(42220)).toBe(42220);
     expect(parseChainId(null)).toBeNull();
   });
-  it("signs in on the wallet's Celo chain, else Celo Sepolia", () => {
+  it("signs in on the wallet's Celo chain, else Celo mainnet", () => {
     expect(signInChainFor(42220)).toBe(42220);
-    expect(signInChainFor(1)).toBe(11142220);
-    expect(signInChainFor(null)).toBe(11142220);
+    expect(signInChainFor(11142220)).toBe(11142220);
+    expect(signInChainFor(1)).toBe(42220);
+    expect(signInChainFor(null)).toBe(42220);
   });
 });

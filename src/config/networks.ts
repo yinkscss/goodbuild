@@ -1,5 +1,5 @@
 /**
- * Networks for Stage 1. Testnet first (Celo Sepolia, P1). Who may deploy to mainnet is a server
+ * Networks for Stage 1. Celo mainnet is the default; Celo Sepolia stays one tap away for testing. Who may deploy to mainnet is a server
  * setting that changes while the app runs (D50), so nothing here knows about it.
  * Alfajores was retired on 30 Sep 2025, so it is not offered anywhere.
  */
@@ -17,4 +17,4 @@ export const NETWORKS: Record<NetworkId, NetworkOption> = {
   celo: { id: "celo", chainId: 42220, label: "Celo", shortLabel: "Celo" },
 };
 
-export const DEFAULT_NETWORK: NetworkId = "celo-sepolia";
+export const DEFAULT_NETWORK: NetworkId = "celo";

@@ -96,7 +96,9 @@ export function PromptBox({
   const [value, setValue] = React.useState(initialValue);
   const [rows, setRows] = React.useState(PROMPT_MIN_ROWS);
   const [templateId, setTemplateId] = React.useState<string | null>(null);
-  const [network, setNetwork] = React.useState<NetworkId>(DEFAULT_NETWORK);
+  const [picked, setNetwork] = React.useState<NetworkId>(DEFAULT_NETWORK);
+  // Mainnet is the default, but a wallet it is not open to builds on Sepolia.
+  const network: NetworkId = picked === "celo" && !mainnetEnabled ? "celo-sepolia" : picked;
   const [attachment, setAttachment] = React.useState<File | null>(null);
   const [attachError, setAttachError] = React.useState<string | null>(null);
   const [pending, setPending] = React.useState(false);
