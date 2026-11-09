@@ -615,3 +615,9 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 ### P3. GoodDollar AI credits via AntSeed gateway behind LiteLLM (DEFERRED by D11)
 - Status: deferred. GoodDollar/AntSeed is an optional future provider only, revisit once GoodDollar ships its proxy/API keys.
 - Date: 4 Nov 2026 · Proposed by: Grok Bot · Users fund credits with the GoodWidget AI credits widget; GoodBuild runs an AntSeed gateway registered as an OpenAI-compatible LiteLLM provider, falling back to direct providers. Blocked on buyer-key custody / GoodDollar proxy (see [GOODDOLLAR_AI_CREDITS.md](GOODDOLLAR_AI_CREDITS.md), Q17).
+
+### D61. Measured: selling G$ back to CELO costs far more than the 5% quote buffer (9 Nov 2026, measured by Claude, owner to decide)
+- Live mainnet purchase passed (tx `0xc0717ff2…e492`, $0.25 for 2,323 G$, `Redeemed` 250,000 units). One purchase reserves about 0.08 CELO of maximum fee, so the screens tell people to keep about 0.1 CELO.
+- Read-only QuoterV2 quotes on the CELO/G$ 1% pool (the only deep-ish pool): selling 2,323 G$ (a $0.25 purchase) returns 14.7% less than spot; 10,000 G$ about 37% less; 50,000 G$ about 73% less. The 1% pool fee is included. The pool holds a few hundred dollars.
+- Consequence: the 5% buffer does not cover a market exit. Credits cost about $0.80 to serve per $1, so margin is about 20% before any exit. Holding G$ (not selling) keeps the margin; selling in one go would erase it.
+- Options for the owner: (a) hold the G$ and only sell small slices over time, (b) raise `CREDITS_PRICE_BUFFER_BPS` (each +1% costs buyers 1%), (c) use the withdrawn G$ to pay GoodDollar-side costs instead of selling. Not changed yet.

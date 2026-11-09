@@ -36,7 +36,8 @@ export function TopUpPill({ onPaid }: { onPaid?: () => void }) {
           <span className="text-warning">{phase.message}</span>
         ) : (
           <>
-            Add <b>${(amountMicro / UNITS).toFixed(2)}</b> to keep building{gd ? <> (about <b>{formatGd(gd)} G$</b>)</> : null}.
+            Add <b>${(amountMicro / UNITS).toFixed(2)}</b> to keep building{gd ? <> (about <b>{formatGd(gd)} G$</b>)</> : null}.{" "}
+            <span className="text-grey-600">Keep about 0.1 CELO in your wallet for the network fee.</span>
           </>
         )}
       </p>
