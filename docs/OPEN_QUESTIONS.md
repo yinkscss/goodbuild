@@ -180,3 +180,6 @@
 
 ## Q41. Magic (D22): wallet list and pricing
 - Coinbase Wallet is dropped from the connect modal (not in the user's list). Magic's pricing tier and key-export story were not compared; check before launch (UNVERIFIED).
+
+### Template gallery: should templates be "unlockable"? (8 Nov 2026, from the gallery build)
+The brief called the section unlockable. Today every template is open. Options: keep open (best for sign-ups), gate a few "premium" ones behind verified or paid credits (touches the credits code), or unlock by publishing a first app. Owner to choose. See [TEMPLATES.md](TEMPLATES.md).

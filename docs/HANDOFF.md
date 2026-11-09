@@ -9,6 +9,8 @@ Written 4 Nov 2026 at the end of the first build session (claude.ai), for whoeve
 
 **App data (D31, merged in PR #19 and deployed by the workflow on 5 Nov 2026; not yet exercised on the live site):** published apps can save data for their visitors, and since D34 (PR #28) the builder writes each app's rules, forms work without a wallet, and owners read what visitors send in the Backend window. Design, limits and what isn't verified: [APP_DATA.md](APP_DATA.md).
 
+**Template gallery (8 Nov 2026, D60, PR on branch `claude/templates-gallery-d7e5db`):** 26 landing-page templates with real screenshots, one click builds from a server-side brief. Design, licences and open items: [TEMPLATES.md](TEMPLATES.md). **UNVERIFIED:** a real AI build from a template (no provider keys or Magic key were available in the build session); the brief reaching the model and the click-to-sign-in path are tested.
+
 **Launch plan (6 Nov 2026, D37 to D43):** M6 and mainnet ship together. [MAINNET_PLAN.md](MAINNET_PLAN.md) replaces the order below, and notes what here is out of date.
 
 **Next: M6**, in this order, with design in [CREDITS.md](CREDITS.md) and [TOPUPS.md](TOPUPS.md):
