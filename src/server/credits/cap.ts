@@ -105,6 +105,20 @@ async function identitySpentMicro(db: Db, goodidRoot: string): Promise<number> {
 }
 
 /**
+ * What is left of this person's free AI allowance (D28, D30), in micro-USD, for showing next to their
+ * paid balance. `null` means unlimited (an exempt wallet). It never goes below zero.
+ */
+export async function freeRemainingMicro(db: Db, userId: string, env: Record<string, string | undefined> = process.env): Promise<number | null> {
+  const [user] = await db.select({ wallet: users.wallet, verifiedAt: users.verifiedAt, goodidRoot: users.goodidRoot }).from(users).where(eq(users.id, userId)).limit(1);
+  if (!user || isExempt(user.wallet, env)) return null;
+  if (user.verifiedAt) {
+    const spent = user.goodidRoot ? await identitySpentMicro(db, user.goodidRoot) : await spentMicro(db, userId);
+    return Math.max(verifiedCapMicro(env) - spent, 0);
+  }
+  return Math.max(capMicro(env) - (await spentMicro(db, userId)), 0);
+}
+
+/**
  * Is there room left in the total budget? New requests also count queued builds. The worker starts
  * builds one by one, so it counts only the others already running: two queued builds near the limit
  * would otherwise each see the other's reservation and both fail. Only free and exempt spending and

@@ -5,6 +5,7 @@ import { AppShell } from "@/components/home/app-shell";
 import { chainName } from "@/lib/format";
 import { relativeTime } from "@/lib/home";
 import { getCredits } from "@/server/credits";
+import { freeRemainingMicro } from "@/server/credits/cap";
 import { listTopUps } from "@/server/credits/topups";
 import { getDb } from "@/server/db/client";
 import { loadSession } from "@/server/home-data";
@@ -29,6 +30,8 @@ export default function CreditsPage() {
 async function CreditsBody() {
   const session = await loadSession();
   const { balanceMicro } = await getCredits(session.user.id);
+  const freeMicro = await freeRemainingMicro(await getDb(), session.user.id).catch(() => 0);
+  const totalMicro = balanceMicro === null ? null : balanceMicro + (freeMicro ?? 0);
   let topUps: Awaited<ReturnType<typeof listTopUps>> = [];
   let historyError = false;
   try {
@@ -42,9 +45,9 @@ async function CreditsBody() {
     <>
       <div className="mt-8 flex flex-col gap-4 rounded-card bg-surface p-6 shadow-card sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="text-xs font-semibold tracking-[.14em] text-grey-400 uppercase">Balance</p>
-          <p className="display mt-1 text-[40px] font-extrabold">{balanceMicro === null ? "Unavailable" : usd(balanceMicro)}</p>
-          <p className="mt-1 text-sm text-grey-600">{balanceMicro === null ? "We couldn't read your balance. Reload to try again." : "Each build uses a few cents of credit."}</p>
+          <p className="text-xs font-semibold tracking-[.14em] text-grey-400 uppercase">Available</p>
+          <p className="display mt-1 text-[40px] font-extrabold">{totalMicro === null ? "Unavailable" : usd(totalMicro)}</p>
+          <p className="mt-1 text-sm text-grey-600">{balanceMicro === null ? "We couldn't read your balance. Reload to try again." : freeMicro === null ? `${usd(balanceMicro)} paid credit, plus unlimited free AI. Each build uses a few cents.` : `${usd(balanceMicro)} paid credit + ${usd(freeMicro)} free AI left. Free AI is used first. Each build uses a few cents.`}</p>
         </div>
         <AddCredits />
       </div>
