@@ -222,7 +222,8 @@ function seek(t) {
   const am = document.getElementById('amt'); if (am) { const q = sm((t - B(21.1)) / (B(22.6) - B(21.1))); const v = Math.round((0.25 + q * 4.75) / .05) * .05; am.textContent = '$' + v.toFixed(2); }
   // toggle (scene 7): knob moves on the beat 25
   const kn = document.getElementById('knob'); if (kn) { const kx = ch([[0, 10], [25.0, 460], [27.9, 10]], t, 40, .78); kn.style.left = kx + 'px'; const f = clamp((kx - 10) / 450); document.getElementById('ta').style.color = rgb([17 + 238 * (1 - f) * 0 + (255 - 17) * (1 - clamp(1 - f * 2)) * 0 + (255 - 17) * (1 - f) * 0, 0, 0].map((_, i) => (1 - f) * 255 + f * 17)); document.getElementById('tb').style.color = rgb([0, 1, 2].map(() => f * 255 + (1 - f) * 17)); }
-  stage.style.transform = `scale(${1 + .018 * Math.sin(2 * Math.PI * t / 7.5)})`;
+  if (/sq/.test(location.search)) stage.style.overflow = 'visible';
+  stage.style.transform = `scale(${(/sq/.test(location.search) ? .8 : 1) * (1 + .018 * Math.sin(2 * Math.PI * t / 7.5))})`;
   EL.forEach(e => drawEl(e, t));
 }
 window.seek = seek;

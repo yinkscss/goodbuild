@@ -6,7 +6,7 @@ const { launch } = require('./launch.cjs');
 const a = {}; for (let i = 2; i < process.argv.length; i += 2) a[process.argv[i].replace(/^--/, '')] = process.argv[i + 1];
 const W = +a.w, H = +a.h, DUR = +a.dur, FPS = +(a.fps || 60), SUB = +(a.sub || 4), SH = +(a.shutter || 0.5), NW = +(a.workers || 3);
 const out = path.resolve(a.out); fs.mkdirSync(out, { recursive: true });
-const url = 'file://' + path.resolve(a.page);
+const url = 'file://' + path.resolve(a.page) + (a.query || '');
 async function mk(b) {
   const ctx = await b.newContext({ viewport: { width: W, height: H }, deviceScaleFactor: +(a.dsf || 1) });
   const p = await ctx.newPage(); await p.goto(url); await p.evaluate(() => document.fonts.ready); await p.waitForFunction(() => window.ready !== false);

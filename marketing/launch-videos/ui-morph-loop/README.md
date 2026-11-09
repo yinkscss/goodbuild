@@ -34,3 +34,5 @@ node make-audio.cjs   # regenerates audio.wav and beatgrid.json
 ```
 Stills: `node ../_shared/render-dom.cjs --page index.html --w 1440 --h 1440 --dur 14 --out ../.work/v1/stills --at 0,0.9,1.9`.
 Four subframes over half a frame are blended with ffmpeg `tmix` (motion blur). Banned list respected: no bounce, particles, glows or gradients on the UI; overshoot is under 2 percent.
+
+Every beat carries a beat-locked 4 percent scale kick (peak after 70 ms) on top of the state changes, so the shortest per-beat motion energy (mean frame difference at 30 fps) rose from 0.016 to 0.086.

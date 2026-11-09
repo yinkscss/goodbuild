@@ -176,7 +176,7 @@ function seek(t) {
   const w = sp(s => s.w, 30, .8), h = sp(s => s.h, 30, .8), r = sp(s => s.r, 34, .85);
   const cam = sp(s => s.cam, 22, .9);
   const fill = [0, 1, 2].map(c => sp(s => s.fill[c], 44, 1));
-  const drift = 1 + .02 * Math.sin(2 * Math.PI * t / 7); const u = cam * drift; document.documentElement.style.setProperty('--u', u);
+  const drift = 1 + .02 * Math.sin(2 * Math.PI * t / 7); const tau = ((t % BEAT) + BEAT) % BEAT, kick = .04 * (tau / .07) * Math.exp(1 - tau / .07); const u = cam * drift * (1 + kick); document.documentElement.style.setProperty('--u', u);
   const W = w * u, H = h * u;
   shell.style.cssText = `left:${720 - W / 2}px;top:${720 - H / 2}px;width:${W}px;height:${H}px;border-radius:${Math.min(r * u, H / 2, W / 2)}px;background:${hex(fill)};box-shadow:0 ${18 * u}px ${50 * u}px ${-22 * u}px rgba(17,17,17,.22),0 ${2 * u}px ${6 * u}px rgba(17,17,17,.06)`;
   // layers

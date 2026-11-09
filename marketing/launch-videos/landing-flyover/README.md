@@ -7,6 +7,8 @@
 2. `film.html`: WebGL2, every frame from `seek(t)`. Page is a mipmapped, 16x anisotropic textured quad; each piece its own quad at its own height with its own shadow (same picture in `#1a2133`, offset (0.10z, 4+0.36z), blur 7+0.5z, 26 percent). Depth of field per pixel (75 x (focus-depth)/depth in front, 6 x (depth-focus)/depth behind, cap 120 px, 40 golden-angle taps from matched mip levels). 16 subframes across 0.7 of a frame accumulated in a float target (40 subframes during the rise and dive, where the speed is highest). Four logo tiles (quadrants of the logo mark) lift beside the Build it button and stay to the end card.
 3. `render-gl.cjs` renders the frames over a local http server (textures would be tainted from `file://`), `encode.sh`-style ffmpeg muxes `audio.wav` (`make-audio.cjs`: pad, whooshes at 8.66 s and 9.80 s, hit at 9.97 s).
 
+![Stills at 0, 1.6, 2.5, 5, 6.5, 9.3 and 11 s](stills.jpg)
+
 ## Timeline (as implemented)
 | Time | |
 |---|---|

@@ -14,4 +14,4 @@ node ../_shared/render-dom.cjs --page index.html --w 1920 --h 1080 --dur 15 --fp
 ../_shared/encode.sh ../.work/v3/frames 3 out/web3-showreel-1080x1080.mp4 audio.wav "crop=1080:1080:420:0"
 ../_shared/motion-energy.sh out/web3-showreel-1920x1080.mp4 30     # per-beat motion, to check nothing is dead
 ```
-The square crop is the centre 1080 px; all essential type sits inside it. A 1080x1350 crop is not possible from a 1080 px tall frame.
+The square is a separate pass: the same page rendered with `?sq` (stage scaled to 0.8 so the wide cards and the 200 px word fit the centre 1080 px), then cropped. Render it with `--query '?sq' --out ../.work/v3/framesq` and encode with the crop above. A 1080x1350 crop is not possible from a 1080 px tall frame.
