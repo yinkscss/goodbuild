@@ -6,6 +6,7 @@ import { ArrowUp, Loader2, Square } from "lucide-react";
 import { formatMicroUsd } from "@/lib/pricing";
 import type { AssetInfo, AssetKind } from "@/server/agent/assets";
 import { START_BUILDING_TEXT } from "@/lib/plan";
+import { TopUpPill } from "@/components/credits/top-up-pill";
 import { FIX_PROMPT } from "@/lib/preview-errors";
 import { isSubmitShortcut } from "@/lib/prompt";
 import type { TurnMode, TurnRecord } from "@/lib/turn-types";
@@ -122,6 +123,14 @@ export function ChatPanel({ ws, assetUrls = {} }: { ws: UseWorkspace; assetUrls?
             <span className="mt-1.5 size-2 shrink-0 rounded-full bg-danger" aria-hidden />
             {ws.error}
           </p>
+        )}
+        {ws.needsCredits && (
+          <TopUpPill
+            onPaid={() => {
+              ws.clearNeedsCredits();
+              if (lastUserPrompt) send(lastUserPrompt, "build");
+            }}
+          />
         )}
         {state.outdatedContracts.length > 0 && !running && (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-block bg-warning/10 p-4 text-sm" role="status">

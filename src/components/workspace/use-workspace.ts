@@ -27,6 +27,9 @@ export interface UseWorkspace {
   /** Reload from the server. Returns the new state, or null if the request failed. */
   refresh: () => Promise<WorkspaceState | null>;
   error: string | null;
+  /** The last send was refused because the AI credit is used up: the chat offers a one-click top-up. */
+  needsCredits: boolean;
+  clearNeedsCredits: () => void;
   /** Upload a logo, image or design reference to the project. */
   upload: (file: File, kind: AssetKind) => Promise<void>;
   removeAsset: (id: string) => Promise<void>;
@@ -94,6 +97,7 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
   const [state, setState] = React.useState(initial);
   const [live, setLive] = React.useState<LiveTurn | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const [needsCredits, setNeedsCredits] = React.useState(false);
   const projectId = initial.project.id;
   const [autoFixVersion, setAutoFixVersion] = React.useState<number | null>(null);
   const [checkVersion, setCheckVersion] = React.useState<number | null>(null);
@@ -130,7 +134,9 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         });
+        if (res.ok) setNeedsCredits(false);
         if (!res.ok) {
+          if (res.status === 402) setNeedsCredits(true);
           const failure = await res.json().then((b: { error?: string; message?: string }) => b).catch(() => null);
           setError(failure?.error === "unauthenticated" ? "Your session ended. Sign in again." : res.status === 402 && failure?.message ? failure.message : "The build couldn't be queued. Try again.");
         }
@@ -380,6 +386,8 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
     revert,
     refresh,
     error,
+    needsCredits,
+    clearNeedsCredits: () => setNeedsCredits(false),
     upload,
     removeAsset,
     uploading: uploading > 0,

@@ -20,7 +20,7 @@ export const creditQuotes = pgTable(
     wallet: text("wallet").notNull(),
     /** The verified GoodID root behind the wallet when a bonus was included, lowercased. */
     goodidRoot: text("goodid_root"),
-    /** Whole credits in the pack (10, 50, 100). */
+    /** Whole credits bought, rounded down (0 under $1). The exact amount is creditsMicro. */
     pack: integer("pack").notNull(),
     creditsMicro: bigint("credits_micro", { mode: "number" }).notNull(),
     bonusMicro: bigint("bonus_micro", { mode: "number" }).notNull().default(0),

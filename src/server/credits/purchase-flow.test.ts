@@ -48,7 +48,7 @@ describe.each(testBackends())("purchase flow on $name", (backend) => {
 
     const [user] = await db.insert(users).values({ wallet: buyer.toLowerCase() }).returning();
     const price = (async () => new Response(JSON.stringify({ gooddollar: { usd: 0.01 } }))) as unknown as typeof fetch;
-    const signed = await issueQuote(db, { userId: user.id, wallet: buyer, chainId: 1, pack: 10, root: null }, { env: { ...env, GD_USD_FALLBACK: "0.01" } as NodeJS.ProcessEnv, fetcher: price, now: new Date(1_749_999_900_000) });
+    const signed = await issueQuote(db, { userId: user.id, wallet: buyer, chainId: 1, amountMicro: 10_000_000, root: null }, { env: { ...env, GD_USD_FALLBACK: "0.01" } as NodeJS.ProcessEnv, fetcher: price, now: new Date(1_749_999_900_000) });
     expect(BigInt(signed.quote.gdAmount)).toBe(BigInt(1000) * G); // $10 at $0.01 per G$ is 1,000 G$
 
     const q = { buyer: signed.quote.buyer, gdAmount: BigInt(signed.quote.gdAmount), credits: BigInt(signed.quote.credits), bonus: BigInt(signed.quote.bonus), ref: signed.quote.ref as Hex, deadline: BigInt(signed.quote.deadline) };
