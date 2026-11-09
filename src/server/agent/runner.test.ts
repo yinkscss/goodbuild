@@ -547,3 +547,104 @@ describe("run check in a turn (D67)", { timeout: 120_000 }, () => {
     expect(record.steps.some((s) => s.id === "run")).toBe(false);
   });
 });
+
+describe("type check and the run_checks tool (D68)", { timeout: 120_000 }, () => {
+  const GOOD = "export default function App() { return <main>Ready</main>; }\n";
+  const BAD = 'import { Button } from "./components/ui/button";\nexport default function App() { return <main><Button size="huge">Go</Button></main>; }\n';
+  const typeError = { file: "src/App.tsx", line: 2, message: `Type '"huge"' is not assignable to type '"default" | "sm" | "lg"'.`, source: "types" as const };
+  /** Stands in for TypeScript: an error while the app still says size="huge". */
+  const fakeTypes = () => {
+    const runs: string[] = [];
+    const typeCheck = async (files: Record<string, string>) => {
+      runs.push(files["src/App.tsx"]);
+      const bad = files["src/App.tsx"].includes('"huge"');
+      return { ran: true, issues: bad ? [typeError] : [], note: bad ? "1 type error" : "types are consistent", ms: 5000 };
+    };
+    return { runs, typeCheck };
+  };
+  const toolResult = (req: { messages: Array<{ role: string; content?: unknown }> }) => String(req.messages.filter((m) => m.role === "tool").at(-1)?.content);
+
+  it("lets the builder run the checks, fix what they report on the build model, and doesn't check the same files twice", async () => {
+    const { client, requests } = scriptedModel([
+      { tools: [{ name: "create_file", args: { path: "src/App.tsx", content: BAD } }, { name: "run_checks", args: {} }] },
+      { tools: [{ name: "edit_file", args: { path: "src/App.tsx", edits: [{ search: 'size="huge"', replace: 'size="lg"' }] } }, { name: "run_checks", args: {} }] },
+      { text: "Built the page." },
+    ]);
+    const { runs, typeCheck } = fakeTypes();
+    const { events, emit } = collect();
+    const record = await runTurn({ db, model: client, typeCheck }, { projectId, userId, mode: "build", userMessageId: queuedId }, emit);
+
+    expect(record.status).toBe("ready");
+    // The builder saw the error, then a clean result. Every call was on the build tier: no fix pass.
+    expect(toolResult(requests[1])).toContain("[types] Type '\"huge\"' is not assignable");
+    expect(toolResult(requests[2])).toContain("All checks pass");
+    expect(requests.map((r) => r.tier)).toEqual(["cheap", "cheap", "cheap"]);
+    expect(record.steps.some((s) => s.id.startsWith("fix:"))).toBe(false);
+    // Two checks, both the builder's own. The end of the turn reused the second.
+    expect(runs).toHaveLength(2);
+    expect(events.some((e) => e.type === "log" && e.line.includes("nothing changed since the builder's last check"))).toBe(true);
+    expect(record.steps.find((s) => s.id === "types:check1")).toMatchObject({ status: "error" });
+    expect(record.steps.find((s) => s.id === "types:check2")).toMatchObject({ status: "done", detail: "types are consistent" });
+  });
+
+  it("checks again at the end when the builder edited after its last check", async () => {
+    const { client } = scriptedModel([
+      { tools: [{ name: "create_file", args: { path: "src/App.tsx", content: GOOD } }, { name: "run_checks", args: {} }] },
+      { tools: [{ name: "edit_file", args: { path: "src/App.tsx", edits: [{ search: "Ready", replace: "Welcome" }] } }] },
+      { text: "Built the page." },
+    ]);
+    const { runs, typeCheck } = fakeTypes();
+    const record = await runTurn({ db, model: client, typeCheck }, { projectId, userId, mode: "build", userMessageId: queuedId }, () => {});
+    expect(record.status).toBe("ready");
+    expect(runs).toHaveLength(2);
+    expect(runs[1]).toContain("Welcome");
+  });
+
+  it("stops answering after three checks in a turn", async () => {
+    const check = { tools: [{ name: "run_checks", args: {} }] };
+    const { client, requests } = scriptedModel([{ tools: [{ name: "create_file", args: { path: "src/App.tsx", content: GOOD } }] }, check, check, check, check, { text: "Built the page." }]);
+    const { runs, typeCheck } = fakeTypes();
+    const record = await runTurn({ db, model: client, typeCheck }, { projectId, userId, mode: "build", userMessageId: queuedId }, () => {});
+    expect(record.status).toBe("ready");
+    expect(runs).toHaveLength(3);
+    expect(toolResult(requests[5])).toContain("already run the checks 3 times");
+  });
+
+  it("sends type errors to auto-fix when enforced, on the cheap model first", async () => {
+    const { client, requests } = scriptedModel([
+      { tools: [{ name: "create_file", args: { path: "src/App.tsx", content: BAD } }] },
+      { text: "Built the page." },
+      { tools: [{ name: "edit_file", args: { path: "src/App.tsx", edits: [{ search: 'size="huge"', replace: 'size="lg"' }] } }] },
+      { text: "Fixed." },
+    ]);
+    const { typeCheck } = fakeTypes();
+    const record = await runTurn({ db, model: client, typeCheck, typeCheckMode: "enforce" }, { projectId, userId, mode: "build", userMessageId: queuedId }, () => {});
+    expect(record.status).toBe("ready");
+    expect(requests[2].tier).toBe("cheap");
+    expect(String(requests[2].messages.at(-1)?.content)).toContain("[types] Type '\"huge\"'");
+    expect(record.steps.find((s) => s.id === "autofix")).toMatchObject({ label: "Auto-fix: fixed" });
+  });
+
+  it("only notes type errors in warn mode: the build finishes, and the builder is told if it asks", async () => {
+    const { client, requests } = scriptedModel([
+      { tools: [{ name: "create_file", args: { path: "src/App.tsx", content: BAD } }, { name: "run_checks", args: {} }] },
+      { text: "Built the page." },
+    ]);
+    const { typeCheck } = fakeTypes();
+    const { events, emit } = collect();
+    const record = await runTurn({ db, model: client, typeCheck, typeCheckMode: "warn" }, { projectId, userId, mode: "build", userMessageId: queuedId }, emit);
+    expect(record.status).toBe("ready");
+    expect(record.checks).toMatchObject({ errors: 0 });
+    expect(toolResult(requests[1])).toContain("Nothing blocks the build, but these are worth fixing");
+    expect(toolResult(requests[1])).toContain("[types]");
+    expect(record.steps.find((s) => s.id === "types:check1")).toMatchObject({ status: "done", detail: "1 type error noted" });
+    expect(events.some((e) => e.type === "log" && e.line.includes("type check: 1 type error, noted, not blocking"))).toBe(true);
+    expect(record.steps.some((s) => s.id.startsWith("fix:"))).toBe(false);
+  });
+
+  it("refuses run_checks in plan mode, and leaves the type check off when the server hasn't set it", async () => {
+    const plan = scriptedModel([{ tools: [{ name: "run_checks", args: {} }] }, { text: "Here is the plan." }]);
+    await runTurn({ db, model: plan.client }, { projectId, userId, mode: "plan", userMessageId: queuedId }, () => {});
+    expect(toolResult(plan.requests[1])).toContain("plan mode can't run the checks");
+  });
+});

@@ -7,7 +7,10 @@ import type { Db } from "@/server/db/client";
 import { messages, projects } from "@/server/db/schema";
 import { checkApp, checkContracts, formatIssues, mentionsGd, mentionsNativeCelo, type CheckIssue, type CheckReport, type ContractCheckOptions } from "./checks";
 import { runContractTests } from "./contract-tests";
+import { createHash } from "node:crypto";
+
 import { runCheck, runCheckEnabled } from "./run-check";
+import { typeCheck, typeCheckMode, type TypeCheckMode } from "./type-check";
 import { dbAssetStore, type AssetStore } from "./asset-store";
 import { ASSETS_MODULE, assetManifest, assetsModule, visionImage } from "./assets";
 import { HISTORY_WINDOW, memoryBlock, updateMemory, type Memory, type MemoryMessage } from "./memory";
@@ -46,6 +49,10 @@ export interface TurnDeps {
   checkApp?: typeof checkApp;
   /** Opens the built app in a headless browser (D67). Default: the real one where the server turns it on, otherwise none. */
   runCheck?: typeof runCheck;
+  /** TypeScript over the app (D68). Default: the real one in the mode the server sets (TYPE_CHECK), otherwise none. */
+  typeCheck?: typeof typeCheck;
+  /** "warn" notes type errors, "enforce" sends them to auto-fix. Default: TYPE_CHECK. */
+  typeCheckMode?: TypeCheckMode;
   /** Uploaded assets (default: the DB store). */
   assets?: AssetStore;
   /** The background job running this turn (P18). Without one the turn runs directly (tests). */
@@ -76,6 +83,8 @@ export const FIX_BUDGET_MICRO = 300_000;
 const MAX_STALLED_ATTEMPTS = 2;
 const MAX_CALLS = 30;
 const MAX_TOOL_ROUNDS_PER_PHASE = 16;
+/** How often the builder may ask for the checks in one turn (the run_checks tool, D68). Each costs seconds of server time. */
+export const MAX_TOOL_CHECKS = 3;
 const MAX_TOKENS = 16_000;
 
 export class TurnBusyError extends Error {
@@ -107,6 +116,8 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
   const openWith = deps.runCheck ?? (runCheckEnabled() ? runCheck : undefined);
   let chainId: number | undefined;
   const open = openWith ? (files: Record<string, string>) => openWith(files, { assets: assetNames, chainId }) : undefined;
+  const typesMode = deps.typeCheckMode ?? (deps.typeCheck ? "enforce" : typeCheckMode());
+  const types = typesMode === "off" ? undefined : { run: deps.typeCheck ?? typeCheck, enforce: typesMode === "enforce" };
 
   if (!job.lockHeld && !(await claimTurn(db, input.projectId, input.userId))) throw new TurnBusyError();
   // Every usage row of the turn takes the job's funding (D48).
@@ -344,6 +355,10 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
           // Plan mode can't edit; a refused edit attempt isn't worth showing as a failed step.
           const label = input.mode === "plan" ? null : toolLabel(call);
           if (label) step({ id: stepId, label, status: "running" });
+          if (call.name === "run_checks") {
+            convo.push({ role: "tool", tool_call_id: call.id, content: await checkForTheBuilder() });
+            continue;
+          }
           const outcome = ws.execute(call.name, call.arguments, input.mode);
           if (outcome.guides?.length) log(`guides: ${outcome.guides.join(", ")}`);
           if (outcome.access) log(`· ${outcome.access}`);
@@ -380,6 +395,44 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       }
       log("! stopped: too many tool rounds in one pass");
       return false;
+    };
+
+    // The person's colours stay, whatever the model wrote to the page (D32).
+    const keepTheme = () => {
+      const html = ws.files["public/index.html"];
+      if (html === undefined) return;
+      const palette = paletteById(setup.paletteId);
+      if (palette) ws.files["public/index.html"] = applyPalette(html, palette);
+      else if (setup.customColours) ws.files["public/index.html"] = ensureReadable(html);
+    };
+
+    /**
+     * The run_checks tool (D68): the same checks GoodBuild runs at the end, on the files as they are
+     * now, so the builder can fix its own mistakes while it still has the work in mind (and on the
+     * build model, not the dearer fix model). The result is kept: if nothing changes afterwards, the
+     * end of the turn uses it instead of checking the same files twice.
+     */
+    let toolChecks = 0;
+    let checked: { key: string; report: CheckReport } | undefined;
+    const checkForTheBuilder = async (): Promise<string> => {
+      if (input.mode === "plan") return "Error: plan mode can't run the checks.";
+      if (toolChecks >= MAX_TOOL_CHECKS) return `You have already run the checks ${MAX_TOOL_CHECKS} times this turn. Finish the work and reply; GoodBuild checks everything again when you're done.`;
+      toolChecks++;
+      keepTheme();
+      log(`· run_checks (${toolChecks} of ${MAX_TOOL_CHECKS})`);
+      const report = await runChecks(ws.files, compile, lint, step, log, `check${toolChecks}`, contractOptions, runContractTests, stopIfRequested, open, types);
+      checked = { key: filesKey(ws.files), report };
+      const found = [...report.errors, ...(report.notes ?? [])];
+      if (!found.length) return "All checks pass. Don't run them again unless you edit more files.";
+      return `${report.ok ? "Nothing blocks the build, but these are worth fixing" : "The checks found problems"}. Fix them with edit_file (read a file before editing it), then run_checks again if you changed more than a line or two:\n${formatIssues(found)}`;
+    };
+    /** The checks on the files as they are, or the builder's own last check if nothing changed since. */
+    const checkNow = async (attempt: number): Promise<CheckReport> => {
+      if (checked && checked.key === filesKey(ws.files)) {
+        log("· checks: nothing changed since the builder's last check, using that result");
+        return checked.report;
+      }
+      return runChecks(ws.files, compile, lint, step, log, attempt, contractOptions, runContractTests, stopIfRequested, open, types);
     };
 
     // Plan first (D32): one call and no tool rounds. The answers start the next turn, so nothing
@@ -444,17 +497,9 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       return record;
     }
 
-    // The person's colours stay, whatever the model wrote to the page (D32).
-    const keepTheme = () => {
-      const html = ws.files["public/index.html"];
-      if (html === undefined) return;
-      const palette = paletteById(setup.paletteId);
-      if (palette) ws.files["public/index.html"] = applyPalette(html, palette);
-      else if (setup.customColours) ws.files["public/index.html"] = ensureReadable(html);
-    };
     keepTheme();
     // Checks and auto-fix (up to MAX_FIX_ATTEMPTS). Stops on the same errors twice, on two attempts in a row without progress, or at the fix budget.
-    let report = await runChecks(ws.files, compile, lint, step, log, 0, contractOptions, runContractTests, stopIfRequested, open);
+    let report = await checkNow(0);
     let previous = "";
     const initialErrors = report.errors.length;
     let attemptsUsed = 0;
@@ -480,10 +525,10 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       step({ id: `fix:${attempt}`, label: `Fixing errors (attempt ${attempt} of ${MAX_FIX_ATTEMPTS})`, detail: `${plural(report.errors.length, "error")} to fix: ${firstIssue(report.errors)}`, status: "running" });
       convo.push({
         role: "user",
-        content: `GoodBuild's checks failed. Fix these errors with edit_file. A [runtime] error is what happened when GoodBuild opened the built app in a browser: read the named file before changing it. If a contract test fails, decide whether the contract or the test is wrong: fix the contract when it misbehaves; change a test only when its expectation is mistaken, and never delete or weaken a check just to make it pass. Then stop with a very short note (the user sees the fix steps, not this note):\n${issues}`,
+        content: `GoodBuild's checks failed. Fix these errors with edit_file. A [runtime] error is what happened when GoodBuild opened the built app in a browser, and a [types] error is TypeScript's: read the named file before changing it. If a contract test fails, decide whether the contract or the test is wrong: fix the contract when it misbehaves; change a test only when its expectation is mistaken, and never delete or weaken a check just to make it pass. Then stop with a very short note (the user sees the fix steps, not this note):\n${issues}`,
       });
       await phase(fixTier(attempt, report.errors), true);
-      report = await runChecks(ws.files, compile, lint, step, log, attempt, contractOptions, runContractTests, stopIfRequested, open);
+      report = await checkNow(attempt);
       step({
         id: `fix:${attempt}`,
         label: `Fixing errors (attempt ${attempt} of ${MAX_FIX_ATTEMPTS})`,
@@ -824,13 +869,16 @@ async function runChecks(
   lint: typeof checkApp,
   step: (s: Step) => void,
   log: (l: string) => void,
-  attempt: number,
+  /** A fix attempt's number, or a name for a check the builder asked for: it keeps the step ids apart. */
+  attempt: number | string,
   contractOptions: ContractCheckOptions = {},
   runTests: typeof runContractTests = runContractTests,
   /** Stop point: solc and the test EVM can't be interrupted mid-run, so check before each. */
   stopIfRequested: () => void = () => undefined,
   /** The run check (D67), when this server has it on. */
   open?: (files: Record<string, string>) => ReturnType<typeof runCheck>,
+  /** The type check (D68), when this server has it on. */
+  types?: { run: typeof typeCheck; enforce: boolean },
 ): Promise<CheckReport> {
   const suffix = attempt ? `:${attempt}` : "";
   const hasContracts = Object.keys(files).some((p) => p.startsWith("contracts/") && p.endsWith(".sol"));
@@ -877,35 +925,60 @@ async function runChecks(
     detail: app.ok ? "imports and syntax ok" : `${plural(app.errors.length, "error")}: ${firstIssue(app.errors)}`,
     status: app.ok ? "done" : "error",
   });
-  // Open the app only once everything before it passes: a build that doesn't compile can't run, and
-  // those errors are cheaper to fix first.
+  // Type-check and open the app only once everything before them passes: a build that doesn't
+  // compile can't run, and those errors are cheaper to fix first. The two run side by side.
   let runtime: CheckIssue[] = [];
-  if (open && contracts.ok && app.ok) {
+  let typed: CheckIssue[] = [];
+  if ((open || types) && contracts.ok && app.ok) {
     stopIfRequested();
-    step({ id: `run${suffix}`, label: "Opening the app", status: "running" });
     // The app imports its contracts' ABIs from platform modules that are written at the end of the
-    // turn. The check gets them now, with no addresses, as the app is before anything is deployed.
+    // turn. The checks get them now, with no addresses, as the app is before anything is deployed.
     const withContracts = { ...files };
     for (const c of contracts.contracts) withContracts[`${PLATFORM_DIR}${c.name}.ts`] = contractModule(c.name, c.abi, {});
     if (contracts.contracts.length) withContracts[`${PLATFORM_DIR}index.ts`] = contractsIndex(contracts.contracts.map((c) => c.name));
-    const result = await open(withContracts);
-    runtime = result.issues;
-    log(`${!result.ran ? "·" : runtime.length ? "✗" : "✓"} run check: ${result.note} (${(result.ms / 1000).toFixed(1)}s)`);
-    for (const e of runtime.slice(0, 3)) log(`✗ ${e.file.split("/").pop()} ${e.message}`);
-    step({
-      id: `run${suffix}`,
-      label: "Opening the app",
-      detail: !result.ran ? "skipped" : runtime.length ? `${plural(runtime.length, "problem")}: ${firstIssue(runtime)}` : "it runs",
-      status: runtime.length ? "error" : "done",
-    });
+    if (types) step({ id: `types${suffix}`, label: "Checking types", status: "running" });
+    if (open) step({ id: `run${suffix}`, label: "Opening the app", status: "running" });
+    const [typeResult, runResult] = await Promise.all([types?.run(withContracts), open?.(withContracts)]);
+    if (typeResult && types) {
+      typed = typeResult.issues;
+      log(`${!typeResult.ran ? "·" : typed.length ? (types.enforce ? "✗" : "!") : "✓"} type check: ${typeResult.note}${typed.length && !types.enforce ? ", noted, not blocking" : ""} (${(typeResult.ms / 1000).toFixed(1)}s)`);
+      for (const e of typed.slice(0, 3)) log(`${types.enforce ? "✗" : "!"} ${e.file.split("/").pop()}${e.line ? `:${e.line}` : ""} ${e.message.slice(0, 200)}`);
+      step({
+        id: `types${suffix}`,
+        label: "Checking types",
+        detail: !typeResult.ran ? "skipped" : typed.length ? `${plural(typed.length, "type error")}${types.enforce ? `: ${firstIssue(typed)}` : " noted"}` : "types are consistent",
+        status: typed.length && types.enforce ? "error" : "done",
+      });
+    }
+    if (runResult) {
+      runtime = runResult.issues;
+      log(`${!runResult.ran ? "·" : runtime.length ? "✗" : "✓"} run check: ${runResult.note} (${(runResult.ms / 1000).toFixed(1)}s)`);
+      for (const e of runtime.slice(0, 3)) log(`✗ ${e.file.split("/").pop()} ${e.message}`);
+      step({
+        id: `run${suffix}`,
+        label: "Opening the app",
+        detail: !runResult.ran ? "skipped" : runtime.length ? `${plural(runtime.length, "problem")}: ${firstIssue(runtime)}` : "it runs",
+        status: runtime.length ? "error" : "done",
+      });
+    }
   }
+  const blocking = types?.enforce ? typed : [];
   return {
-    ok: contracts.ok && app.ok && runtime.length === 0,
-    errors: [...contracts.errors, ...app.errors, ...runtime],
+    ok: contracts.ok && app.ok && runtime.length === 0 && blocking.length === 0,
+    errors: [...contracts.errors, ...app.errors, ...blocking, ...runtime],
     warnings: contracts.warnings,
     contracts: contracts.contracts,
     compilerVersion: contracts.compilerVersion,
+    // Type errors in "warn" mode: shown to the builder when it asks, never held against the build.
+    ...(typed.length && !types?.enforce ? { notes: typed } : {}),
   };
+}
+
+/** A fingerprint of the project's files, to tell whether anything changed between two checks. */
+function filesKey(files: Record<string, string>): string {
+  const hash = createHash("sha256");
+  for (const path of Object.keys(files).sort()) hash.update(path).update("\0").update(files[path]).update("\0");
+  return hash.digest("hex");
 }
 
 /**
@@ -949,7 +1022,9 @@ async function finish(db: Db, id: string, text: string, record: TurnRecord) {
  * amendment, HARNESS.md E5: Sonnet's fix of one was $0.20 of a $0.26 build).
  */
 export function fixTier(attempt: number, errors: CheckIssue[]): ModelTier {
-  return attempt === 1 && onlyTestFailures(errors) ? TIER_FOR.testFix : TIER_FOR.fix;
+  // Third D19 amendment (D68): type errors alone also get the cheap model first. They name the line and say what is wrong.
+  const onlyTypes = errors.length > 0 && errors.every((i) => i.source === "types");
+  return attempt === 1 && (onlyTestFailures(errors) || onlyTypes) ? TIER_FOR.testFix : TIER_FOR.fix;
 }
 
 /** Every remaining error is a contract test failing or a test file that won't compile: nothing is wrong with the contract or the app themselves. */
