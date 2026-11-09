@@ -25,7 +25,7 @@ export interface CheckIssue {
   file: string;
   line?: number;
   message: string;
-  source: "solc" | "guardrail" | "syntax" | "imports" | "paths" | "test" | "manifest" | "runtime";
+  source: "solc" | "guardrail" | "syntax" | "imports" | "paths" | "test" | "manifest" | "runtime" | "types";
 }
 
 export interface CompiledContract {
@@ -54,6 +54,8 @@ export interface CheckReport {
   /** Every ABI from the compile (project, tests, OpenZeppelin), for decoding reverts. */
   abis?: unknown[][];
   compilerVersion?: string;
+  /** Problems worth telling the builder about that don't fail the build (type errors while TYPE_CHECK is "warn"). */
+  notes?: CheckIssue[];
 }
 
 export const MAX_FILE_BYTES = 120_000;

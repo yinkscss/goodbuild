@@ -44,6 +44,7 @@ export const BUILD_TOOLS: ToolSpec[] = [
       minItems: 1,
     },
   }, ["path", "edits"]),
+  fn("run_checks", "Run GoodBuild's checks on the project as it is now and get the errors back: contracts are compiled and their tests run, the app's imports and types are checked, and the built app is opened in a browser. Call it once after your last edit, fix what it reports, and stop. At most 3 times a turn.", {}, []),
   fn("delete_file", "Delete a file.", { path: { type: "string" } }, ["path"]),
   fn("rename_file", "Rename or move a file.", { from: { type: "string" }, to: { type: "string" } }, ["from", "to"]),
   fn("add_dependency", `Add an npm package to the app. Allowed: ${Object.keys(ALLOWED_DEPENDENCIES).join(", ")}.`, {
@@ -134,7 +135,8 @@ ${FOLLOW_UP}`
       : `You are in BUILD MODE. Work in this order:
 1. Call set_plan once with a short summary, steps and the guides this work needs (skip set_plan when you are only answering a question).
 2. Write the contract first (if any), then the front end. Prefer edit_file on existing files; create_file for new ones. On a first build, replace src/App.tsx completely. One file per create_file call and keep each file under about 250 lines (split big contracts and pages into several files); a response that is too long gets cut off and the file is lost. Don't write text between tool calls; the user only sees your final reply. Never repeat an edit that already succeeded.
-3. When done, reply to the user in 1-3 plain sentences (never use em dashes; use commas or full stops): what you built or changed and anything they should know (for example constructor arguments they'll be asked for at deploy). No markdown headings, no code. Do not say whether the code compiled, ran or was tested: you have not seen the results yet.
+3. When the edits are done, call run_checks once and fix what it reports (skip it for a question, or a change to wording or one style). It takes several seconds, so don't call it after every file.
+4. Then reply to the user in 1-3 plain sentences (never use em dashes; use commas or full stops): what you built or changed and anything they should know (for example constructor arguments they'll be asked for at deploy). No markdown headings, no code. Do not say whether the code compiled, ran or was tested: GoodBuild shows the user those results itself.
 ${FOLLOW_UP}
 GoodBuild then compiles the contracts and checks the app, and shows the user those results itself. If something fails you'll get the errors to fix.`;
 

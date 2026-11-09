@@ -13,6 +13,8 @@ Written 4 Nov 2026 at the end of the first build session (claude.ai), for whoeve
 
 **Run check (9 Nov 2026, D67, branch `claude/web-builder-harness-review-2a9263`):** every build is opened in a headless browser on the server, and crashes go to auto-fix. Measured on the production server in throwaway containers. **UNVERIFIED:** a real AI build with it on, and the `checker` compose service itself. After the first deploy, run `docker compose --env-file .env.production ps checker` and look for `run check:` lines in the worker's log.
 
+**Type check and run_checks (9 Nov 2026, D68, branch `claude/type-check-run-checks`):** TypeScript over each app, on `warn` (noted in the log, not blocking), and a `run_checks` tool for the builder. **UNVERIFIED:** any real AI build. After a day of real builds, read the `type check:` lines in the worker's log and decide whether to set `TYPE_CHECK=enforce`.
+
 **Seen on the server on 9 Nov 2026:** the `worker` container exited with code 0 and no log line every 41 to 47 minutes (5 starts between 18:34 and 21:30 UTC) and Docker restarted it. PR #60 (merged) keeps the idle poll timer alive so the process no longer ends. **UNVERIFIED** on the server: check `docker inspect goodbuild-worker-1 --format '{{.RestartCount}}'` stays at 0 an hour after a deploy.
 
 **Launch plan (6 Nov 2026, D37 to D43):** M6 and mainnet ship together. [MAINNET_PLAN.md](MAINNET_PLAN.md) replaces the order below, and notes what here is out of date.
