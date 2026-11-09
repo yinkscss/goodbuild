@@ -14,7 +14,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { NetworkToggle } from "@/components/prompt/network-toggle";
 import { DEFAULT_NETWORK, type NetworkId } from "@/config/networks";
-import { getPageTemplate } from "@/config/page-template-data";
+import { PAGE_TEMPLATES, getPageTemplate } from "@/config/page-template-data";
+import { TEMPLATE_CATEGORIES } from "@/config/page-templates";
 import { TEMPLATE_EXAMPLE } from "@/config/page-templates";
 import { TemplateSlides } from "@/components/landing/template-slides";
 import { TEMPLATES, getTemplate, type StarterTemplate } from "@/config/templates";
@@ -295,8 +296,7 @@ export function PromptBox({
                 <ChevronDown className="size-3.5" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-72">
-              <DropdownMenuLabel>Start from a template</DropdownMenuLabel>
+            <DropdownMenuContent align="start" className="max-h-[min(28rem,70vh)] w-80 overflow-y-auto">
               <DropdownMenuRadioGroup
                 value={templateId ?? ""}
                 onValueChange={(v) => {
@@ -304,6 +304,7 @@ export function PromptBox({
                   if (t) fillFromTemplate(t);
                 }}
               >
+                <DropdownMenuLabel>dApp starters</DropdownMenuLabel>
                 {TEMPLATES.map((t) => (
                   <DropdownMenuRadioItem key={t.id} value={t.id}>
                     <span>
@@ -312,6 +313,23 @@ export function PromptBox({
                     </span>
                   </DropdownMenuRadioItem>
                 ))}
+                {TEMPLATE_CATEGORIES.map((cat) => {
+                  const items = PAGE_TEMPLATES.filter((t) => t.category === cat);
+                  if (items.length === 0) return null;
+                  return (
+                    <React.Fragment key={cat}>
+                      <DropdownMenuLabel>{cat} templates</DropdownMenuLabel>
+                      {items.map((t) => (
+                        <DropdownMenuRadioItem key={t.id} value={t.id}>
+                          <span>
+                            <span className="block font-medium">{t.label}</span>
+                            <span className="block text-xs text-grey-600">{t.description}</span>
+                          </span>
+                        </DropdownMenuRadioItem>
+                      ))}
+                    </React.Fragment>
+                  );
+                })}
               </DropdownMenuRadioGroup>
             </DropdownMenuContent>
           </DropdownMenu>
