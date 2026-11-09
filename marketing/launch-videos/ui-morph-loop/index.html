@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>GoodBuild UI morph loop</title>
+<style>
+@font-face{font-family:"Geist";src:url(../_shared/fonts/geist-latin-wght-normal.woff2) format("woff2");font-weight:100 900}
+:root{--u:1}
+*{box-sizing:border-box;margin:0}
+html,body{width:1440px;height:1440px;overflow:hidden;background:#ECE9E4}
+body{font-family:"Geist",sans-serif;color:#111;-webkit-font-smoothing:antialiased;position:relative}
+#shell{position:absolute;overflow:hidden}
+.layer{position:absolute;left:50%;top:50%;display:flex;align-items:center;opacity:0}
+.abs{position:absolute}
+#cursor{position:absolute;left:0;top:0;width:44px;height:44px;pointer-events:none}
+svg{display:block;overflow:visible}
+</style></head><body>
+<div id="shell"></div>
+<div id="cursor"><svg width="44" height="44" viewBox="0 0 44 44"><path d="M8 5 L8 33 L15.5 26.5 L20.5 38 L26 35.5 L21 24.5 L31 24 Z" fill="#111" stroke="#fff" stroke-width="2.4" stroke-linejoin="round"/></svg></div>
+<script>
+// ---------- timeline (120 BPM, 7 bars, 28 beats) ----------
+const BPM = 120, BEAT = 60 / BPM, T = 28 * BEAT;
+const INK = [17, 17, 17], WHITE = [255, 255, 255], VIOLET = [89, 46, 129];
+const hex = c => `rgb(${c.map(v => Math.round(v)).join(',')})`;
+const STATES = [
+  // name, beat, click-delay (state change lags the click by 0.04s), w, h, r, fill, content box
+  { n: 'button',  b: 0,  w: 560, h: 148, r: 74,  fill: INK },
+  { n: 'loader',  b: 2,  w: 168, h: 168, r: 84,  fill: WHITE, d: .04 },
+  { n: 'check',   b: 3,  w: 168, h: 168, r: 84,  fill: VIOLET },
+  { n: 'island',  b: 4,  w: 560, h: 96,  r: 48,  fill: INK },
+  { n: 'credits', b: 6,  w: 620, h: 128, r: 64,  fill: WHITE },
+  { n: 'slider',  b: 8,  w: 700, h: 380, r: 48,  fill: WHITE, d: .04 },
+  { n: 'sign',    b: 11, w: 660, h: 120, r: 60,  fill: WHITE, d: .04 },
+  { n: 'toggle',  b: 13, w: 620, h: 116, r: 58,  fill: WHITE },
+  { n: 'tabs',    b: 15, w: 640, h: 116, r: 58,  fill: WHITE, d: .04 },
+  { n: 'data',    b: 17, w: 760, h: 440, r: 48,  fill: WHITE },
+  { n: 'palette', b: 20, w: 760, h: 420, r: 40,  fill: WHITE },
+  { n: 'toast',   b: 22, w: 660, h: 132, r: 66,  fill: INK, d: .04 },
+  { n: 'button',  b: 25, w: 560, h: 148, r: 74,  fill: INK },
+];
+STATES.forEach(s => { s.t = s.b * BEAT + (s.d || 0); s.cam = Math.min(3.0, 920 / s.w, 900 / s.h); });
+// the toggle & others carry the "d" delay only when a click triggers them; button b26 uses a plain beat.
+
+// ---------- closed-form spring step responses (cyclic: keys of previous cycles still ring) ----------
+function step(x, w, z) { // unit step response of a 2nd-order system, 0 for x<0
+  if (x <= 0) return 0;
+  if (z >= 1) return 1 - Math.exp(-w * x) * (1 + w * x);
+  const wd = w * Math.sqrt(1 - z * z);
+  return 1 - Math.exp(-z * w * x) * (Math.cos(wd * x) + (z * w / wd) * Math.sin(wd * x));
+}
+// keys: [{t, v}] ; value before first key (cyclic) = v of last key. sum of one spring per target change.
+function springSum(keys, t, w, z) {
+  let v = keys[keys.length - 1].v, prev = v;
+  for (const m of [-2, -1, 0]) {
+    prev = keys[keys.length - 1].v;
+    for (const k of keys) { v += (k.v - prev) * step(t - (k.t + m * T), w, z); prev = k.v; }
+  }
+  // the loop above adds cycles m=-2..0 but the base counts only once: net displacement per cycle sums to 0.
+  return v;
+}
+const key = (arr, f) => arr.map(s => ({ t: s.t, v: f(s) }));
+const wrap = t => ((t % T) + T) % T;
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const sm = x => { x = clamp(x); return x * x * (3 - 2 * x); };
+
+// ---------- DOM ----------
+const shell = document.getElementById('shell'), cursor = document.getElementById('cursor');
+const U = s => s.replace(/(-?\d*\.?\d+)u\b/g, (m, n) => `calc(var(--u)*${n}px)`);
+const layers = {};
+function layer(id, w, h, html, style = '') {
+  const d = document.createElement('div'); d.className = 'layer'; d.id = 'L_' + id;
+  d.style.cssText = U(`width:${w}u;height:${h}u;margin-left:${-w / 2}u;margin-top:${-h / 2}u;${style}`);
+  d.innerHTML = U(html); shell.appendChild(d); layers[id] = d; return d;
+}
+const arrow = `<svg width="40u" height="40u" viewBox="0 0 40 40" fill="none" stroke="#fff" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 20h22M22 11l9 9-9 9"/></svg>`;
+layer('button', 560, 148, `<div class="abs" style="left:64u;top:0;height:148u;display:flex;align-items:center;font-size:46u;font-weight:600;color:#fff;letter-spacing:-.02em">Build it</div>
+ <div class="abs" style="right:28u;top:28u;width:92u;height:92u;border-radius:50%;background:#592E81;display:flex;align-items:center;justify-content:center">${arrow}</div>`);
+layer('loader', 168, 168, `<svg id="spin" class="abs" style="left:48u;top:48u" width="72u" height="72u" viewBox="0 0 72 72" fill="none" stroke-width="7" stroke-linecap="round"><circle cx="36" cy="36" r="28" stroke="rgba(17,17,17,.1)"/><path id="spinArc" d="M36 8a28 28 0 0 1 28 28" stroke="#592E81"/></svg>`);
+layer('check', 168, 168, `<svg class="abs" style="left:48u;top:48u" width="72u" height="72u" viewBox="0 0 72 72" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"><path id="chk" d="M16 38l13 13 27-29" pathLength="1" stroke-dasharray="1" stroke-dashoffset="1"/></svg>`);
+layer('island', 560, 96, `<div class="abs" style="left:40u;top:0;height:96u;display:flex;align-items:center;gap:16u"><div id="idot" style="width:18u;height:18u;border-radius:50%;background:#a77fd6"></div><span style="font-size:32u;font-weight:600;color:#fff;letter-spacing:-.01em">Live on testnet</span></div>
+ <div class="abs" style="right:36u;top:0;height:96u;width:200u;display:flex;align-items:center;justify-content:flex-end;font-size:22u;font-weight:500;color:rgba(255,255,255,.5)"><span id="isA" class="abs" style="right:0">Celo Sepolia</span><span id="isB" class="abs" style="right:0;opacity:0">Test it first</span></div>`);
+layer('credits', 620, 128, `<div class="abs" style="left:28u;top:26u;width:76u;height:76u;border-radius:50%;background:#111;color:#fff;display:flex;align-items:center;justify-content:center;font-size:30u;font-weight:600">G$</div>
+ <div class="abs" style="left:124u;top:0;height:128u;display:flex;flex-direction:column;justify-content:center"><span style="font-size:40u;font-weight:600;letter-spacing:-.02em">Add credits</span><span style="font-size:21u;color:rgba(17,17,17,.55);margin-top:2u">from $0.25, one signature</span></div>
+ <div class="abs" style="right:24u;top:32u;width:64u;height:64u;border-radius:50%;background:#F3EEF8;display:flex;align-items:center;justify-content:center"><svg width="30u" height="30u" viewBox="0 0 30 30" fill="none" stroke="#592E81" stroke-width="3.4" stroke-linecap="round"><path d="M15 6v18M6 15h18"/></svg></div>`);
+layer('slider', 700, 380, `<div class="abs" style="left:48u;top:40u;font-size:22u;font-weight:600;color:rgba(17,17,17,.55)">Add AI credits</div>
+ <div id="amt" class="abs" style="left:48u;top:68u;font-size:116u;font-weight:600;letter-spacing:-.04em;line-height:1">$0.25</div>
+ <div class="abs" style="left:48u;top:198u;width:604u;height:14u;border-radius:7u;background:rgba(17,17,17,.1)"></div>
+ <div id="fillbar" class="abs" style="left:48u;top:198u;height:14u;border-radius:7u;background:#592E81"></div>
+ <div id="knob" class="abs" style="top:179u;width:52u;height:52u;border-radius:50%;background:#fff;box-shadow:0 2u 8u rgba(17,17,17,.22),0 0 0 1u rgba(17,17,17,.06)"></div>
+ <div class="abs" style="left:48u;top:226u;font-size:20u;color:rgba(17,17,17,.4)">$0.25</div><div class="abs" style="right:48u;top:226u;font-size:20u;color:rgba(17,17,17,.4)">$10</div>
+ <div id="paybtn" class="abs" style="left:48u;top:274u;width:604u;height:70u;border-radius:35u;background:#111;color:#fff;display:flex;align-items:center;justify-content:center;font-size:27u;font-weight:600">Pay with G$</div>`);
+layer('sign', 660, 120, `<div id="signA" class="abs" style="left:0;top:0;width:660u;height:120u;display:flex;align-items:center;justify-content:center;gap:22u;font-size:34u;font-weight:600;letter-spacing:-.01em"><svg width="40u" height="40u" viewBox="0 0 40 40" fill="none" stroke-width="5" stroke-linecap="round"><circle cx="20" cy="20" r="14" stroke="rgba(17,17,17,.1)"/><path id="spin2" d="M20 6a14 14 0 0 1 14 14" stroke="#592E81"/></svg>Confirm in your wallet…</div>
+ <div id="signB" class="abs" style="left:0;top:0;width:660u;height:120u;display:flex;align-items:center;justify-content:center;gap:22u;font-size:34u;font-weight:600;letter-spacing:-.01em;opacity:0"><div style="width:52u;height:52u;border-radius:50%;background:#592E81;display:flex;align-items:center;justify-content:center"><svg width="28u" height="28u" viewBox="0 0 28 28" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path id="chk2" d="M5 14l6 6 12-13" pathLength="1" stroke-dasharray="1" stroke-dashoffset="1"/></svg></div>Added $5.00</div>`);
+layer('toggle', 620, 116, `<div id="tpill" class="abs" style="top:10u;width:296u;height:96u;border-radius:48u;background:#111"></div>
+ <div id="tl" class="abs" style="left:10u;top:10u;width:296u;height:96u;display:flex;align-items:center;justify-content:center;font-size:32u;font-weight:600">Celo Sepolia</div>
+ <div id="tr" class="abs" style="left:314u;top:10u;width:296u;height:96u;display:flex;align-items:center;justify-content:center;font-size:32u;font-weight:600">Celo</div>`);
+layer('tabs', 640, 116, `<div id="tind" class="abs" style="top:10u;height:96u;border-radius:48u;background:#F3EEF8"></div>
+ <div id="t0" class="abs" style="left:10u;top:10u;width:200u;height:96u;display:flex;align-items:center;justify-content:center;font-size:32u;font-weight:600">Preview</div>
+ <div id="t1" class="abs" style="left:220u;top:10u;width:200u;height:96u;display:flex;align-items:center;justify-content:center;font-size:32u;font-weight:600">Code</div>
+ <div id="t2" class="abs" style="left:430u;top:10u;width:200u;height:96u;display:flex;align-items:center;justify-content:center;font-size:32u;font-weight:600">Contract</div>`);
+layer('data', 760, 440, `<div class="abs" style="left:48u;top:40u;font-size:20u;font-weight:600;letter-spacing:.16em;color:#592E81">BACKEND</div>
+ <div class="abs" style="left:48u;top:72u;font-size:44u;font-weight:600;letter-spacing:-.03em">Your app saves data</div>
+ <div class="abs" style="left:48u;top:136u;font-size:22u;color:rgba(17,17,17,.55)">What visitors send in, kept for you.</div>
+ <svg class="abs" style="left:48u;top:190u" width="664u" height="200u" viewBox="0 0 664 200" fill="none"><g stroke="rgba(17,17,17,.06)" stroke-width="2"><path d="M0 40H664M0 100H664M0 160H664"/></g>
+  <path id="cline" d="M0 150 C60 146 90 130 140 120 S230 126 280 96 S370 80 420 62 S520 70 560 40 S630 24 664 18" stroke="#592E81" stroke-width="5" stroke-linecap="round" pathLength="1" stroke-dasharray="1" stroke-dashoffset="1"/>
+  <circle id="cdot" cx="420" cy="62" r="9" fill="#fff" stroke="#592E81" stroke-width="5" opacity="0"/></svg>
+ <div id="tip" class="abs" style="left:372u;top:198u;padding:8u 16u;border-radius:10u;background:#111;color:#fff;font-size:22u;font-weight:600;opacity:0;white-space:nowrap">14 saved</div>`);
+const rows = ['Deploy', 'Publish', 'Add credits'];
+layer('palette', 760, 420, `<div class="abs" style="left:0;top:0;width:760u;height:104u;display:flex;align-items:center;padding-left:40u;gap:18u;font-size:34u;font-weight:500"><svg width="32u" height="32u" viewBox="0 0 32 32" fill="none" stroke="rgba(17,17,17,.4)" stroke-width="3.4" stroke-linecap="round"><circle cx="14" cy="14" r="9"/><path d="M21 21l7 7"/></svg><span id="ptxt"></span><span id="pcaret" style="width:3u;height:38u;background:#592E81;margin-left:-14u"></span></div>
+ <div class="abs" style="left:0;top:104u;width:760u;height:2u;background:rgba(17,17,17,.05)"></div>
+ <div id="prow0" class="abs" style="left:20u;top:128u;width:720u;height:80u;border-radius:24u;background:#F3EEF8;display:flex;align-items:center;padding:0 28u;font-size:30u;font-weight:600;justify-content:space-between"><span>Deploy</span><span id="kbd" style="font-size:22u;font-weight:600;color:#592E81;padding:6u 14u;border-radius:10u;background:#fff">Enter</span></div>
+ <div id="prow1" class="abs" style="left:20u;top:216u;width:720u;height:80u;display:flex;align-items:center;padding:0 28u;font-size:30u;font-weight:500;color:rgba(17,17,17,.55)">Publish</div>
+ <div id="prow2" class="abs" style="left:20u;top:304u;width:720u;height:80u;display:flex;align-items:center;padding:0 28u;font-size:30u;font-weight:500;color:rgba(17,17,17,.55)">Add credits</div>`);
+layer('toast', 660, 132, `<div class="abs" style="left:30u;top:30u;width:72u;height:72u;border-radius:50%;background:#592E81;display:flex;align-items:center;justify-content:center"><svg width="38u" height="38u" viewBox="0 0 38 38" fill="none" stroke="#fff" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round"><path id="chk3" d="M8 19l8 8 15-17" pathLength="1" stroke-dasharray="1" stroke-dashoffset="1"/></svg></div>
+ <div class="abs" style="left:126u;top:0;height:132u;display:flex;flex-direction:column;justify-content:center"><span style="font-size:38u;font-weight:600;color:#fff;letter-spacing:-.02em">Live on Celo mainnet</span><span style="position:relative;height:28u;margin-top:3u;font-size:21u;color:rgba(255,255,255,.55)"><span id="tsA" style="position:absolute;left:0;white-space:nowrap">Signed in your wallet</span><span id="tsB" style="position:absolute;left:0;opacity:0;white-space:nowrap">GoodBuild never holds your keys</span></span></div>`);
+const $ = id => document.getElementById(id);
+
+// ---------- layer visibility windows ----------
+// layer id -> state index it belongs to (last 'button' belongs to both first and last state)
+const NAMES = ['button', 'loader', 'check', 'island', 'credits', 'slider', 'sign', 'toggle', 'tabs', 'data', 'palette', 'toast'];
+function vis(id, t) { // 0..1 and blur from state windows (cyclic)
+  const i = NAMES.indexOf(id); const a = i === 0 ? STATES[12].t - T : STATES[i].t; const b = STATES[i + 1].t + (i === 0 ? 0 : 0);
+  let best = 0;
+  for (const m of [-1, 0, 1]) {
+    const tin = a + m * T, tout = b + m * T;
+    const o = sm((t - (tin + .10)) / .18) * (1 - sm((t - (tout - .03)) / .13));
+    best = Math.max(best, o);
+  }
+  return best;
+}
+
+// ---------- cursor path (screen px relative to canvas centre), clicks ----------
+const C = (si, x, y) => ({ x: x * STATES[si].cam, y: y * STATES[si].cam });
+const sx = STATES; // helper alias
+// slider geometry (local units) -> knob/track
+const TRACK_L = -350 + 48, TRACK_W = 604;               // local x of the track start and its width
+const FRAC_END = (5 - 0.25) / 9.75;
+const camS = STATES[5].cam;
+// build explicit cursor keyframes in screen space (centre = 720,720)
+const KN = (() => {
+  const k = [], cS = STATES[5].cam;
+  const knobX = f => (TRACK_L + f * TRACK_W) * cS;            // knob centre x on screen (relative to centre)
+  const knobY = (179 + 26 - 190) * cS;                         // knob centre y relative to slider card centre (card h=380)
+  const P = (b, x, y) => k.push({ t: b * BEAT, x, y });
+  P(0, 440, 340);
+  P(0.3, 330, 270);
+  P(1.0, ...Object.values(C(0, 36, 12)));
+  P(3.0, 250, 300);
+  P(6.8, ...Object.values(C(4, 60, 14)));
+  P(7.95, ...Object.values(C(4, 236, 4)));            // click "+" at beat 8
+  P(8.8, knobX(0), knobY);                             // reach the knob
+  P(9.05, knobX(0), knobY);                            // grab
+  for (let i = 1; i <= 13; i++) { const q = i / 13, e = q * q * (3 - 2 * q) * .85 + q * .15; P(9.05 + i * 0.1, knobX(FRAC_END * e), knobY + Math.sin(q * Math.PI) * -6); } // drag
+  P(10.5, knobX(FRAC_END), knobY);                     // release
+  P(10.95, ...Object.values(C(5, 0, (274 + 35 - 190))));   // pay button centre
+  P(12.2, 310, 190);
+  P(13.8, ...Object.values(C(7, 150, 0)));             // right segment "Celo"
+  P(14.2, ...Object.values(C(7, 150, 0)));
+  P(15.8, ...Object.values(C(8, -105 + 0, 0)));        // "Code" tab centre (tabs: 220..420 → centre 320-320=0 → local x = 0?)
+  P(16.2, ...Object.values(C(8, 0, 0)));
+  P(18.5, ...Object.values(C(9, 60, 60)));            // hover chart point
+  P(20.0, 300, 330);
+  P(21.6, 345, 300);
+  P(23.2, 335, 285);
+  P(24.6, 330, 270);
+  P(26.6, 440, 340);
+  P(28 - 0.001, 440, 340);
+  return k;
+})();
+const CLICKS = [2.0, 8.0, 11.0, 14.0, 16.0].map(b => b * BEAT);
+const GRAB = [9.05 * BEAT, 10.62 * BEAT];
+
+// ---------- the frame ----------
+function seek(t) {
+  t = wrap(t);
+  const S = STATES;
+  // shell channels
+  const sp = (f, w, z) => springSum(key(S, f), t, w, z);
+  const w = sp(s => s.w, 30, .8), h = sp(s => s.h, 30, .8), r = sp(s => s.r, 34, .85);
+  const cam = sp(s => s.cam, 22, .9);
+  const fill = [0, 1, 2].map(c => sp(s => s.fill[c], 44, 1));
+  const drift = 1 + .02 * Math.sin(2 * Math.PI * t / 7); const u = cam * drift; document.documentElement.style.setProperty('--u', u);
+  const W = w * u, H = h * u;
+  shell.style.cssText = `left:${720 - W / 2}px;top:${720 - H / 2}px;width:${W}px;height:${H}px;border-radius:${Math.min(r * u, H / 2, W / 2)}px;background:${hex(fill)};box-shadow:0 ${18 * u}px ${50 * u}px ${-22 * u}px rgba(17,17,17,.22),0 ${2 * u}px ${6 * u}px rgba(17,17,17,.06)`;
+  // layers
+  for (const id of NAMES) {
+    const L = layers[id], o = vis(id, t);
+    L.style.opacity = o; L.style.filter = o > 0 && o < 1 ? `blur(${(1 - o) * 7}px)` : 'none';
+    L.style.transform = `translateY(${(1 - o) * 6 * u}px)`;
+    L.style.visibility = o > 0.001 ? 'visible' : 'hidden';
+  }
+  // button layer is shared by first & last state: vis() handles cyclic windows.
+  // loader
+  const si = i => S[i].t;
+  $('spinArc').setAttribute('transform', `rotate(${(t - si(1)) * 520} 36 36)`);
+  $('spin2').setAttribute('transform', `rotate(${(t - si(6)) * 520} 20 20)`);
+  $('chk').style.strokeDashoffset = 1 - sm((t - si(2) - .12) / .3);
+  $('idot').style.transform = `scale(${1 + .18 * Math.sin((t - si(3)) * 9)})`;
+  // slider: direct manipulation (knob follows the cursor while grabbed)
+  const cx = cursorAt(t).x, cs = camS;
+  const fracOf = x => clamp((x / cs - TRACK_L) / TRACK_W);
+  let frac;
+  const endFrac = fracOf(cursorAt(GRAB[1]).x);
+  const tg = GRAB[0], tr = GRAB[1];
+  const wt = wrap(t);
+  frac = wt < tg ? 0 : wt < tr ? fracOf(cx) : endFrac;
+  const snapped = Math.round((.25 + frac * 9.75) / .25) * .25;
+  $('amt').textContent = '$' + snapped.toFixed(2);
+  $('knob').style.left = (TRACK_L + 350 + frac * TRACK_W - 26) / 1 * 0 + 'px'; // set below with u
+  $('knob').style.left = `calc(var(--u)*${48 + frac * TRACK_W - 26}px)`;
+  $('fillbar').style.width = `calc(var(--u)*${frac * TRACK_W}px)`;
+  const press = wt >= tg && wt < tr ? 1 : 0;
+  $('knob').style.transform = `scale(${1 + .08 * sm((wt - tg) / .08) * (1 - sm((wt - tr) / .1))})`;
+  // sign: text swap inside the container, own enter/exit
+  const sw = S[6].t + .5 * BEAT * 2 - .0; // swap at beat 12
+  const swap = sm((t - (12 * BEAT - .06)) / .16);
+  $('signA').style.opacity = 1 - swap; $('signA').style.filter = `blur(${swap * 6}px)`;
+  $('signB').style.opacity = swap; $('signB').style.filter = `blur(${(1 - swap) * 6}px)`;
+  $('chk2').style.strokeDashoffset = 1 - sm((t - 12 * BEAT - .08) / .28);
+  // toggle: indicator spring on the click at beat 14
+  const tk = [{ t: 14 * BEAT + .02, v: 314 }, { t: 24 * BEAT, v: 10 }];
+  const tx = springSum(tk, t, 38, .78);
+  const tpill = $('tpill'); tpill.style.left = `calc(var(--u)*${tx}px)`;
+  const ov = x => clamp(1 - Math.abs(x) / 296);
+  const fl = ov(tx - 10), fr = ov(tx - 314);
+  const mix = (a, b, f) => a.map((v, i) => v + (b[i] - v) * f);
+  $('tl').style.color = hex(mix([17, 17, 17], [255, 255, 255], clamp(1 - Math.abs(tx - 10) / 296 * 1.2)));
+  $('tr').style.color = hex(mix([17, 17, 17], [255, 255, 255], clamp(1 - Math.abs(tx - 314) / 296 * 1.2)));
+  // tabs: two edges on different springs
+  const tc = 16 * BEAT + .02;
+  const left = springSum([{ t: tc, v: 220 }, { t: 24 * BEAT, v: 10 }], t, 52, .72);
+  const right = springSum([{ t: tc, v: 420 }, { t: 24 * BEAT, v: 210 }], t, 30, .85);
+  const ti = $('tind'); ti.style.left = `calc(var(--u)*${left}px)`; ti.style.width = `calc(var(--u)*${right - left}px)`;
+  for (let i = 0; i < 3; i++) {
+    const c0 = 10 + i * 210 + 100, ctr = (left + right) / 2;
+    const f = clamp(1 - Math.abs(c0 - ctr) / 150);
+    $('t' + i).style.color = hex(mix([17, 17, 17].map(v => v + 80), VIOLET, f));
+  }
+  // data chart draw + tooltip
+  const sd = S[9].t;
+  $('cline').style.strokeDashoffset = 1 - sm((t - sd - .25) / 1.5);
+  const tipO = sm((t - 19 * BEAT + .05) / .12) * (1 - sm((t - (S[10].t - .05)) / .12));
+  $('cdot').setAttribute('opacity', tipO); $('tip').style.opacity = tipO; $('tip').style.transform = `translateY(${(1 - tipO) * 8 * u}px)`;
+  // palette typing & enter
+  const typed = 'Deploy'; const nT = clamp(Math.floor((t - (20.5 * BEAT)) / (BEAT * .5 / 1.0) * 2.0 + 0.0001) + 0, 0, 6);
+  const tt = Math.floor(clamp((t - 20.2 * BEAT) / (0.1), 0, 6));
+  $('ptxt').textContent = typed.slice(0, tt);
+  $('pcaret').style.opacity = (Math.floor(t * 4) % 2 === 0) ? 1 : 0.15;
+  $('kbd').style.transform = `scale(${1 - .12 * Math.max(0, 1 - Math.abs(t - (22 * BEAT - .02)) / .09)})`;
+  ['prow0', 'prow1', 'prow2'].forEach((id, i) => { const o = sm((t - (S[10].t + .22 + i * .08)) / .14); $(id).style.opacity = o; $(id).style.transform = `translateY(${(1 - o) * 10 * u}px)`; });
+  const sel = sm((t - 21.2 * BEAT) / .06) * (1 - sm((t - 21.9 * BEAT) / .04)); $('prow0').style.background = hex(mix([243, 238, 248], [226, 210, 240], .5 * (1 + Math.sin((t - 20.8) * 7)) * .0 + sel * .8));
+  const isw = sm((t - 5 * BEAT) / .14); $('isA').style.opacity = 1 - isw; $('isA').style.filter = `blur(${isw * 5}px)`; $('isB').style.opacity = isw; $('isB').style.filter = `blur(${(1 - isw) * 5}px)`;
+  const tsw = sm((t - 23.5 * BEAT) / .14); $('tsA').style.opacity = 1 - tsw; $('tsA').style.filter = `blur(${tsw * 5}px)`; $('tsB').style.opacity = tsw; $('tsB').style.filter = `blur(${(1 - tsw) * 5}px)`;
+  const hov = sm((t - 7.55 * BEAT) / .2) * (1 - sm((t - (S[5].t - .02)) / .06)); layers.credits.querySelector('div:last-child').style.transform = `scale(${1 + .12 * hov}) rotate(${hov * 90}deg)`;
+  $('chk3').style.strokeDashoffset = 1 - sm((t - S[11].t - .2) / .3);
+  // cursor
+  const c = cursorAt(t);
+  let sc = 1; for (const ck of CLICKS) sc -= .16 * dip(t, ck);
+  sc -= .1 * (wt >= tg && wt < tr ? 1 : 0) * sm((wt - tg) / .08);
+  cursor.style.transform = `translate(${720 + c.x * drift - 8}px,${720 + c.y * drift - 5}px) scale(${sc})`;
+  cursor.style.transformOrigin = '8px 5px';
+}
+function dip(t, tc) { // press-release dip, periodic
+  let d = 0; for (const m of [-1, 0, 1]) { const x = t - (tc + m * T); d = Math.max(d, Math.max(0, 1 - Math.abs(x) / .09)); } return d;
+}
+function cursorAt(t) {
+  return { x: springSum(KN.map(k => ({ t: k.t, v: k.x })), t, 24, .86), y: springSum(KN.map(k => ({ t: k.t, v: k.y })), t, 24, .86) };
+}
+window.seek = seek; seek(0);
+</script></body></html>
