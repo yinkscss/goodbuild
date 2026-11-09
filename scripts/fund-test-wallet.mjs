@@ -33,10 +33,12 @@ if (celoIn > MAX_CELO) throw new Error("Refusing more than 10 CELO in one swap."
 const rpc = process.env.CELO_RPC_URL ? http(process.env.CELO_RPC_URL) : http();
 const pub = createPublicClient({ chain: celo, transport: rpc });
 const quoterAbi = parseAbi(["function quoteExactInputSingle((address tokenIn,address tokenOut,uint256 amountIn,uint24 fee,uint160 sqrtPriceLimitX96)) returns (uint256 amountOut,uint160,uint32,uint256)"]);
-const q = await pub.simulateContract({ address: QUOTER, abi: quoterAbi, functionName: "quoteExactInputSingle", args: [{ tokenIn: CELO_TOKEN, tokenOut: GD, amountIn: celoIn, fee: FEE, sqrtPriceLimitX96: 0n }] });
+const gasOnly = process.argv.includes("--gas-only"); // just send --gas CELO, no swap
+const q = gasOnly ? { result: [0n] } : await pub.simulateContract({ address: QUOTER, abi: quoterAbi, functionName: "quoteExactInputSingle", args: [{ tokenIn: CELO_TOKEN, tokenOut: GD, amountIn: celoIn, fee: FEE, sqrtPriceLimitX96: 0n }] });
 const quoted = q.result[0];
 const minOut = (quoted * 97n) / 100n;
-console.log(`Swap ${formatEther(celoIn)} CELO -> about ${formatEther(quoted)} G$ (minimum ${formatEther(minOut)} G$), delivered to ${getAddress(to)}; then ${formatEther(gas)} CELO for fees.`);
+if (gasOnly) console.log(`Gas only: send ${formatEther(gas)} CELO to ${getAddress(to)}, no swap.`);
+else console.log(`Swap ${formatEther(celoIn)} CELO -> about ${formatEther(quoted)} G$ (minimum ${formatEther(minOut)} G$), delivered to ${getAddress(to)}; then ${formatEther(gas)} CELO for fees.`);
 console.log("A $0.25 purchase needs about 2,300 G$ at today's price (it moves); check the quote above covers it.");
 if (!process.argv.includes("--send")) {
   console.log("Dry run. Add --send (and GAS_WALLET_PRIVATE_KEY, CONFIRM_MAINNET=yes) to do it.");
@@ -53,6 +55,11 @@ const wait = (hash) => pub.waitForTransactionReceipt({ hash }).then((r) => {
 });
 
 const balance = await pub.getBalance({ address: account.address });
+if (gasOnly) {
+  await wait(await wallet.sendTransaction({ to: getAddress(to), value: gas }));
+  console.log(`Sent. Test wallet now holds ${formatEther(await pub.getBalance({ address: getAddress(to) }))} CELO.`);
+  process.exit(0);
+}
 if (balance < celoIn + gas + parseEther("0.2")) throw new Error(`The gas wallet has ${formatEther(balance)} CELO, not enough.`);
 await wait(await wallet.writeContract({ address: CELO_TOKEN, abi: parseAbi(["function approve(address,uint256) returns (bool)"]), functionName: "approve", args: [ROUTER, celoIn] }));
 console.log("approved");

@@ -14,7 +14,7 @@
 set -euo pipefail
 
 MODE="${1:-}"
-case "$MODE" in dry | fund | buy-dry | buy) ;; *) echo "Usage: $0 dry|fund|buy-dry|buy" >&2; exit 2 ;; esac
+case "$MODE" in dry | fund | gas | buy-dry | buy) ;; *) echo "Usage: $0 dry|fund|gas|buy-dry|buy" >&2; exit 2 ;; esac
 
 HOST="${HOST:-root@193.181.221.210}"
 SSH_KEY="${SSH_KEY:?Set SSH_KEY to the server deploy key path (the one DEPLOY.md calls goodbuild-deploy)}"
@@ -49,6 +49,11 @@ case "$MODE" in
     echo "This SENDS ${CELO_AMOUNT} CELO from the gas wallet into a swap for $ADDRESS. Type YES to continue:"
     read -r ok; [ "$ok" = "YES" ] || { echo "Cancelled."; exit 1; }
     ssh "${SSH_OPTS[@]}" "$HOST" "cd /opt/goodbuild/deploy && docker run --rm --env-file .env.production -e CONFIRM_MAINNET=yes -v $REMOTE_DIR:/app/gbc-live --entrypoint node goodbuild:latest /app/gbc-live/scripts/fund-test-wallet.mjs --to $ADDRESS --celo $CELO_AMOUNT --send"
+    ;;
+  gas)
+    echo "This SENDS 0.1 CELO from the gas wallet to $ADDRESS for network fees. Type YES to continue:"
+    read -r ok; [ "$ok" = "YES" ] || { echo "Cancelled."; exit 1; }
+    ssh "${SSH_OPTS[@]}" "$HOST" "cd /opt/goodbuild/deploy && docker run --rm --env-file .env.production -e CONFIRM_MAINNET=yes -v $REMOTE_DIR:/app/gbc-live --entrypoint node goodbuild:latest /app/gbc-live/scripts/fund-test-wallet.mjs --to $ADDRESS --gas 0.1 --gas-only --send"
     ;;
   buy-dry | buy)
     # Send the wallet key on stdin into a 600 file; it is removed by the trap when this script ends.
