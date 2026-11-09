@@ -21,3 +21,6 @@ Shared code is in [`_shared/`](_shared): `launch.cjs` (finds Playwright + Chromi
 - Any number in a chart or counter ("14 saved", "128 entries") is sample data for the picture, not a product statistic.
 - UI shown follows `docs/DESIGN_SYSTEM.md` colours, radii and component shapes (violet `#592E81`, pink pop, 24/16/pill radii). Type in the films is Geist (and Instrument Serif for the fly-over's closing tail) as the brief asks, which is not the app's own Inter/Unbounded.
 - The live landing page still said "add credits with CELO". The purchase is G$, so the fly-over capture rewrites that one string to "G$" in memory (it never touches the site). Remove the line in `landing-flyover/capture.cjs` to capture the page verbatim.
+
+## Voice-over (added on request)
+The UI morph loop and the Web3 showreel (both sizes) have `*-vo.mp4` versions with a voice-over. The 3D fly-over has none, by request. The voice is macOS `say` (Samantha), which is a plain system voice: swap it for a recorded or studio voice before a paid launch push.

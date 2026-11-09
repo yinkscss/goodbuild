@@ -1,0 +1,51 @@
+{
+ "voice": "Samantha",
+ "rate": 178,
+ "total": 21,
+ "lines": [
+  {
+   "t": 0.15,
+   "text": "Describe an app. Hit build."
+  },
+  {
+   "t": 3.0,
+   "text": "Test it on testnet first."
+  },
+  {
+   "t": 4.7,
+   "text": "Credits start at twenty five cents."
+  },
+  {
+   "t": 6.8,
+   "text": "Slide to pick your amount."
+  },
+  {
+   "t": 8.5,
+   "text": "One signature."
+  },
+  {
+   "t": 9.8,
+   "text": "Then switch to Celo mainnet."
+  },
+  {
+   "t": 11.5,
+   "text": "Preview. Code. Contract."
+  },
+  {
+   "t": 13.5,
+   "text": "Need to save data? Your app can."
+  },
+  {
+   "t": 15.6,
+   "text": "Deploy."
+  },
+  {
+   "t": 16.7,
+   "text": "Live on Celo mainnet."
+  },
+  {
+   "t": 18.3,
+   "text": "GoodBuild never holds your keys."
+  }
+ ]
+}

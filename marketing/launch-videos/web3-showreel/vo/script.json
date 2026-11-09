@@ -1,0 +1,43 @@
+{
+ "voice": "Samantha",
+ "rate": 188,
+ "total": 15,
+ "lines": [
+  {
+   "t": 0.15,
+   "text": "Vibe code any Web3 app."
+  },
+  {
+   "t": 2.8,
+   "text": "Just describe it."
+  },
+  {
+   "t": 4.3,
+   "text": "Test on testnet first."
+  },
+  {
+   "t": 6.1,
+   "text": "Add a backend. It saves your data."
+  },
+  {
+   "t": 8.4,
+   "text": "No subscription."
+  },
+  {
+   "t": 9.5,
+   "text": "Pay as you go, from twenty five cents."
+  },
+  {
+   "t": 11.7,
+   "text": "One signature."
+  },
+  {
+   "t": 12.6,
+   "text": "Then go live."
+  },
+  {
+   "t": 13.3,
+   "text": "Live on mainnet."
+  }
+ ]
+}

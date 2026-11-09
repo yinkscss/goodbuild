@@ -1,3 +1,5 @@
 .work/
 **/frames/
 *.sub.png
+vo/.lines/
+vo/mix.wav

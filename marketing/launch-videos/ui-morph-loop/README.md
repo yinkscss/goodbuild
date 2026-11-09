@@ -36,3 +36,10 @@ Stills: `node ../_shared/render-dom.cjs --page index.html --w 1440 --h 1440 --du
 Four subframes over half a frame are blended with ffmpeg `tmix` (motion blur). Banned list respected: no bounce, particles, glows or gradients on the UI; overshoot is under 2 percent.
 
 Every beat carries a beat-locked 4 percent scale kick (peak after 70 ms) on top of the state changes, so the shortest per-beat motion energy (mean frame difference at 30 fps) rose from 0.016 to 0.086.
+
+## Voice-over
+`out/*-vo.mp4` carry a voice-over; the untouched silent-of-voice cuts stay next to them. Script and cue times: `vo/script.json` (seconds from the start, each line cued to its beat). Voice: the macOS system voice Samantha via `say` (offline, no account, no upload). Music is ducked under the voice and the mix is normalised to about -15.5 LUFS (true peak below -4 dBFS).
+```bash
+node ../_shared/vo.cjs . audio.wav out/ui-morph-loop.mp4 out/ui-morph-loop-vo.mp4   # run from this folder; edit vo/script.json to change lines or timing
+```
+The tool flags overlaps and lines that run into the loop point. To use a better voice, change `voice` in `vo/script.json` (any `say -v '?'` voice) or replace `vo/voiceover.wav` with a recording and mux it the same way.

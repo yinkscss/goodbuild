@@ -15,3 +15,12 @@ node ../_shared/render-dom.cjs --page index.html --w 1920 --h 1080 --dur 15 --fp
 ../_shared/motion-energy.sh out/web3-showreel-1920x1080.mp4 30     # per-beat motion, to check nothing is dead
 ```
 The square is a separate pass: the same page rendered with `?sq` (stage scaled to 0.8 so the wide cards and the 200 px word fit the centre 1080 px), then cropped. Render it with `--query '?sq' --out ../.work/v3/framesq` and encode with the crop above. A 1080x1350 crop is not possible from a 1080 px tall frame.
+
+## Voice-over
+`out/*-vo.mp4` carry a voice-over; the untouched silent-of-voice cuts stay next to them. Script and cue times: `vo/script.json` (seconds from the start, each line cued to its beat). Voice: the macOS system voice Samantha via `say` (offline, no account, no upload). Music is ducked under the voice and the mix is normalised to about -15.5 LUFS (true peak below -4 dBFS).
+```bash
+node ../_shared/vo.cjs . audio.wav out/web3-showreel-1920x1080.mp4 out/web3-showreel-1920x1080-vo.mp4   # run from this folder; edit vo/script.json to change lines or timing
+```
+The tool flags overlaps and lines that run into the loop point. To use a better voice, change `voice` in `vo/script.json` (any `say -v '?'` voice) or replace `vo/voiceover.wav` with a recording and mux it the same way.
+
+The square voice-over version uses the same mix (`out/web3-showreel-1080x1080-vo.mp4`, video stream copied from the square render).
