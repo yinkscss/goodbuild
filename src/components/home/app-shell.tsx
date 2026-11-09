@@ -8,6 +8,8 @@ import { HomeTopBar } from "@/components/home/top-bar";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { getCredits } from "@/server/credits";
+import { freeRemainingMicro } from "@/server/credits/cap";
+import { getDb } from "@/server/db/client";
 import { loadProjects, loadSession } from "@/server/home-data";
 
 export type NavKey = "home" | "templates" | "deployments" | "credits";
@@ -21,10 +23,17 @@ const NAV: { key: NavKey; label: string; href: string }[] = [
 
 const ITEM = "flex items-center justify-between rounded-[12px] px-3 py-2 outline-none focus-visible:shadow-focus";
 
+/** Paid credit plus the free AI still left, which is what a person can spend. Null when the paid ledger can't be read. */
+async function availableMicro(userId: string, paid: number | null): Promise<number | null> {
+  if (paid === null) return null;
+  const free = await freeRemainingMicro(await getDb(), userId).catch(() => 0);
+  return paid + (free ?? 0);
+}
+
 /** The credit balance next to "Credits" in the nav. Nothing shows until the ledger answers. */
 async function CreditsHint() {
   const session = await loadSession();
-  const { balanceMicro } = await getCredits(session.user.id);
+  const balanceMicro = await availableMicro(session.user.id, (await getCredits(session.user.id)).balanceMicro);
   if (balanceMicro === null) return null;
   return <span className="text-[11px] font-medium text-grey-600">${(balanceMicro / 1_000_000).toFixed(2)}</span>;
 }
@@ -37,7 +46,7 @@ async function SidebarRecent() {
 async function TopBar() {
   const session = await loadSession();
   const credits = await getCredits(session.user.id);
-  return <HomeTopBar balanceGd={credits.balanceGd} usdPerGd={credits.usdPerGd} balanceMicro={credits.balanceMicro} />;
+  return <HomeTopBar balanceGd={credits.balanceGd} usdPerGd={credits.usdPerGd} balanceMicro={await availableMicro(session.user.id, credits.balanceMicro)} />;
 }
 
 /**

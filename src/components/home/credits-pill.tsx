@@ -38,10 +38,10 @@ export function CreditsPill({
 
   if (state === "preview" && balanceMicro !== null && balanceMicro > 0) {
     return (
-      <div className={cn("flex items-center gap-2 rounded-full bg-surface py-1.5 pr-4 pl-1.5 text-sm shadow-card", className)} title="Your GoodBuild credit. It pays for AI builds.">
+      <div className={cn("flex items-center gap-2 rounded-full bg-surface py-1.5 pr-4 pl-1.5 text-sm shadow-card", className)} title="Your paid credit plus the free AI you have left. Free AI is used first.">
         <span className="grid size-6 place-items-center rounded-full bg-violet text-[10px] font-bold text-white" aria-hidden>$</span>
         <b className="font-semibold">${(balanceMicro / 1_000_000).toFixed(2)}</b>
-        <span className="text-grey-400">credit</span>
+        <span className="text-grey-400">available</span>
       </div>
     );
   }
