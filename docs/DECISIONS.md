@@ -392,7 +392,7 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 
 
 ### D60. A template gallery that builds from a brief held on the server (8 Nov 2026, decided by Claude, owner to review)
-- **What:** the landing page shows 26 page templates with real screenshot thumbnails ([TEMPLATES.md](TEMPLATES.md)). One click sends a short request with the template id; the server adds the full design brief to the first build.
+- **What:** the landing page shows 41 page templates with real screenshot thumbnails ([TEMPLATES.md](TEMPLATES.md)). One click sends a short request with the template id; the server adds the full design brief to the first build.
 - **Why a brief and not a long prompt:** the chat stays readable, the user can't see or edit a wall of spec text by mistake, and the id is looked up on the server so a request can't inject its own brief. The cost is about 2 to 3 KB of input once.
 - **Plan-first is skipped for templates** (amends D32 for this case): the template already says what to build, so the questions would only re-ask it and cost a call. Colours come from the brief.
 - **Licensing:** all designs are original; permissive sources inspired layouts only (list in TEMPLATES.md). Preline and Cruip excluded on licence grounds; 21st.dev and Pinterest inspiration only.

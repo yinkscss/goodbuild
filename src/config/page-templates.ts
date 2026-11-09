@@ -11,6 +11,8 @@
  * inspiration, never copied). Copy rules: no em dashes, no lorem ipsum.
  */
 
+import SLIDES from "./page-template-data/slides.json";
+
 export type TemplateCategory = "SaaS" | "Portfolio" | "Web3" | "Store" | "Events" | "Community";
 
 export const TEMPLATE_CATEGORIES: TemplateCategory[] = ["SaaS", "Portfolio", "Web3", "Store", "Events", "Community"];
@@ -31,6 +33,12 @@ export type Section =
   | { type: "form"; title: string; sub?: string; placeholder: string; button: string }
   | { type: "list"; title: string; rows: { left: string; mid?: string; right?: string }[] }
   | { type: "cta"; title: string; sub?: string; button: string };
+
+/** A page after Home. It becomes a route (HashRouter, src/pages/) and a nav link of the same name. */
+export interface ExtraPage {
+  name: string;
+  sections: Section[];
+}
 
 export interface TemplateTheme {
   bg: string;
@@ -61,7 +69,10 @@ export interface PageTemplate {
   font: "sans" | "serif" | "mono";
   theme: TemplateTheme;
   nav: { brand: string; links: string[]; cta: string };
+  /** The Home page. */
   sections: Section[];
+  /** More pages, for plain websites. */
+  pages?: ExtraPage[];
   footer: string;
   /** For dapps: what the page does on-chain, in plain words. */
   onchain?: string;
@@ -70,9 +81,28 @@ export interface PageTemplate {
 
 export const TEMPLATE_THUMB_DIR = "/templates";
 
-export function thumbnailFor(template: Pick<PageTemplate, "id">): string {
-  return `${TEMPLATE_THUMB_DIR}/${template.id}.png`;
+export function thumbnailFor(template: Pick<PageTemplate, "id">, slide = 1): string {
+  return `${TEMPLATE_THUMB_DIR}/${template.id}${slide > 1 ? `-${slide}` : ""}.png`;
 }
+
+/**
+ * Every screenshot of a template, in slideshow order: Home, Home scrolled (when the page is long),
+ * then each extra page. The count comes from the renderer (slides.json), so it can't drift.
+ */
+export function thumbnailsFor(template: Pick<PageTemplate, "id">): string[] {
+  const n = (SLIDES as Record<string, number>)[template.id] ?? 1;
+  return Array.from({ length: n }, (_, i) => thumbnailFor(template, i + 1));
+}
+
+/** Placeholder help in the prompt box once a template is attached: what a person might type next. */
+export const TEMPLATE_EXAMPLE: Record<TemplateCategory, string> = {
+  SaaS: "e.g. A landing page for my invoicing app, with my own name and pricing",
+  Portfolio: "e.g. A portfolio for me, a photographer in Accra, with my own projects",
+  Web3: "e.g. My own collection: 500 pieces at 10 G$ each",
+  Store: "e.g. A shop for my handmade soap business, with my products",
+  Events: "e.g. My tech conference on 14 March in Nairobi",
+  Community: "e.g. A page for my school's alumni newsletter",
+};
 
 /** The short message the user sees in the chat. The full brief is added server-side. */
 export function templateRequest(template: Pick<PageTemplate, "label" | "description">): string {
@@ -121,12 +151,16 @@ function describe(s: Section, n: number): string {
  */
 export function templateBrief(t: PageTemplate): string {
   const lines = [
-    `The person started from the "${t.label}" template (${t.category}, ${t.kind === "dapp" ? "an app with an on-chain part" : "a plain website, no contract"}). They saw its thumbnail, so build this page and keep it close to the spec. Do not ask questions, build it now.`,
+    `The person started from the "${t.label}" template (${t.category}, ${t.kind === "dapp" ? "an app with an on-chain part" : "a plain website, no contract"}). They picked it from the gallery and saw its thumbnail, then wrote their own request. Keep the layout, sections and look of the template, and follow their message wherever it differs (their name, business, copy, colours, extra or missing sections). Replace the template's example names and copy with theirs. Do not ask questions, build it now.`,
     `Feel: ${t.mood}. Type: ${FONT_NOTE[t.font]}.`,
     `Colours (set them as the --color-* tokens in public/index.html, and keep text easy to read): page background ${t.theme.bg}, text ${t.theme.fg}, secondary text ${t.theme.muted}, cards ${t.theme.card}, accent ${t.theme.accent} with ${t.theme.accentFg} text on it. ${isDark(t.theme.bg) ? "It is a dark design." : "It is a light design."}`,
     `Top bar: brand "${t.nav.brand}", links ${t.nav.links.map((l) => `"${l}"`).join(", ")}, and a button "${t.nav.cta}"${t.kind === "dapp" ? " (use ConnectButton as the wallet control on the right)" : ""}.`,
-    "Sections, top to bottom:",
+    t.pages?.length
+      ? `This is a multi-page website. Load the pages-and-routing guide: HashRouter, one file per page in src/pages/, a shared Layout with the top bar and footer, and a nav link for each page. Pages: Home (/), ${t.pages.map((p) => `${p.name} (/${p.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")})`).join(", ")}. Nav links that match a page name go to that page, the others scroll to a section of Home.`
+      : "This is a single page.",
+    "Home page sections, top to bottom:",
     ...t.sections.map((s, i) => describe(s, i + 1)),
+    ...(t.pages ?? []).flatMap((pg) => [`Page "${pg.name}": a short page title, then:`, ...pg.sections.map((s, i) => describe(s, i + 1))]),
     `Footer: ${t.footer}`,
     t.onchain ? `On-chain part: ${t.onchain}` : "No contract is needed: make every button do something sensible (scroll to a section, open a form, or save to app data when it collects entries).",
     "Make it responsive (stacked on phones, with a compact menu), keep the copy as written, and keep the whole page in a few small files. Placeholder pictures are CSS gradients and inline SVG, not remote images.",
