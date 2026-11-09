@@ -1,6 +1,6 @@
 # 3D landing-page fly-over
 
-1440x1152, 14.5 s, 60 fps, H.264 + synthesised score. Output: `out/landing-flyover-1440x1152.mp4`. One continuous WebGL2 camera over https://goodbuildit.xyz laid flat on a studio floor, never a cut.
+1440x1152, 21.75 s, 60 fps, H.264 + synthesised score. Output: `out/landing-flyover-1440x1152.mp4`. One continuous WebGL2 camera over https://goodbuildit.xyz laid flat on a studio floor, never a cut.
 
 ## Pipeline
 1. `capture.cjs`: Playwright, 1440 wide, device scale 2, scrolls the whole page once, marks the liftable pieces with `data-layer`, screenshots the page with them hidden (`capture/base.png`) and each piece alone, transparent, 28 px padding (`capture/layers/*.png`), positions in `capture/layers.json`. 45 pieces: hero cards, prompt box, example chips, badge chip, Build it button, how-it-works cards, 11 template cards with their photos, safety/pricing cards, FAQ, CTA. The capture is committed so the film re-renders without the network.
@@ -10,6 +10,8 @@
 ![Stills at 0, 1.6, 2.5, 5, 6.5, 9.3 and 11 s](stills.jpg)
 
 ## Timeline (as implemented)
+Pace: the whole film runs at 1/1.5 speed (`TS = 1.5` in `film.html`, audio scaled to match), so every time below is the first-cut time x 1.5 (the dive lands at 14.96 s, the hold ends at 21.75 s). Camera speeds in px/s are therefore 1/1.5 of the figures quoted.
+
 | Time | |
 |---|---|
 | 0 to 8.2 s | flight, camera 56 degrees off straight-down, 1360 px from the look-at point easing to 1700 px (never back in), focal 1880 px, speed curve as a share of 770 px/s: 0 at 0 s, 0.5 by 0.6 s, held to 1.25 s, 1.0 by 1.6 s, held 0.90 to 1.06 to 7.3 s, 0.12 by 8.3 s |
@@ -31,9 +33,9 @@
 ## Re-render
 ```bash
 node capture.cjs capture                       # optional, needs network (URL=... to point at a local dev server)
-node ../_shared/render-gl.cjs --page landing-flyover/film.html --w 1440 --h 1152 --dur 14.5 --fps 60 --out ../.work/v2/frames --part 0/2 &
-node ../_shared/render-gl.cjs --page landing-flyover/film.html --w 1440 --h 1152 --dur 14.5 --fps 60 --out ../.work/v2/frames --part 1/2
+node ../_shared/render-gl.cjs --page landing-flyover/film.html --w 1440 --h 1152 --dur 21.75 --fps 60 --out ../.work/v2/frames --part 0/2 &
+node ../_shared/render-gl.cjs --page landing-flyover/film.html --w 1440 --h 1152 --dur 21.75 --fps 60 --out ../.work/v2/frames --part 1/2
 # run from marketing/launch-videos; about 40 minutes on an Intel UHD 630
 ffmpeg -framerate 60 -i .work/v2/frames/f%05d.png -i landing-flyover/audio.wav -vf "scale=out_color_matrix=bt709:out_range=tv,format=yuv420p" -c:v libx264 -crf 14 -preset slow -colorspace bt709 -color_primaries bt709 -color_trc bt709 -color_range tv -c:a aac -shortest landing-flyover/out/landing-flyover-1440x1152.mp4
 ```
-Stills: `node _shared/render-gl.cjs --page landing-flyover/film.html --w 1440 --h 1152 --out .work/v2/stills --sub 4 --at 0,1.6,2.5,5,6.5,9.3,11`.
+Stills: `node _shared/render-gl.cjs --page landing-flyover/film.html --w 1440 --h 1152 --out .work/v2/stills --sub 4 --at 0,2.4,3.75,7.5,9.75,13.95,16.5`.

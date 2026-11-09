@@ -244,5 +244,5 @@ function setOverlay(t) {
   const w1 = [...document.querySelectorAll('#l1 .w')].filter((e, i) => i % 2 === 0), w2 = [...document.querySelectorAll('#l2 .w')].filter((e, i) => i % 2 === 0);
   w1.forEach((e, i) => wordAnim(e, 10.12 + i * .06, t)); w2.forEach((e, i) => wordAnim(e, 10.12 + 3 * .06 + .1 + i * .05, t));
 }
-window.seek = seek; window.cam = cam; window.pf = pf;
+const TS = 1.5, seek0 = seek; window.seek = (t, n) => { const u = t / TS; return seek0(u, n == null ? SUBN(u) : n); }; window.cam = cam; window.pf = pf;
 </script></body></html>

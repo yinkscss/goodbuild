@@ -1,6 +1,6 @@
-// Synthesised 120 BPM loop bed (original, no samples) + UI sounds on measured peaks. Output: audio.wav (14 s, 44.1 kHz stereo, wraps seamlessly).
+// Synthesised 80 BPM loop bed (original, no samples) + UI sounds on measured peaks. Output: audio.wav (14 s, 44.1 kHz stereo, wraps seamlessly).
 const fs = require('fs'), path = require('path');
-const SR = 44100, BPM = 120, BEAT = 60 / BPM, DUR = 28 * BEAT, N = Math.round(DUR * SR);
+const SR = 44100, BPM = 80, BEAT = 60 / BPM, DUR = 28 * BEAT, N = Math.round(DUR * SR);
 const L = new Float32Array(N), R = new Float32Array(N);
 let seed = 7; const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296 * 2 - 1;
 function add(t0, len, fn, pan = 0, gain = 1) { // circular add so tails wrap for a seamless loop

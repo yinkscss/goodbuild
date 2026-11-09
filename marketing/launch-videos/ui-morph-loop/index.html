@@ -263,5 +263,5 @@ function dip(t, tc) { // press-release dip, periodic
 function cursorAt(t) {
   return { x: springSum(KN.map(k => ({ t: k.t, v: k.x })), t, 24, .86), y: springSum(KN.map(k => ({ t: k.t, v: k.y })), t, 24, .86) };
 }
-window.seek = seek; seek(0);
+const TS = 1.5, seek0 = seek; window.seek = t => seek0(t / TS); seek(0);
 </script></body></html>
