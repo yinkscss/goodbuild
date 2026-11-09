@@ -11,13 +11,15 @@ import {
   type SandpackTheme,
 } from "@codesandbox/sandpack-react";
 import { contractAddressKey } from "@/lib/deploy/wiring";
-import { ExternalLink, Monitor, RotateCw, ShieldAlert, Smartphone, Wrench } from "lucide-react";
+import { ExternalLink, Monitor, RotateCw, ShieldAlert, Smartphone } from "lucide-react";
 
 import { LogoMark } from "@/components/brand/logo";
-import { Button } from "@/components/ui/button";
 import { chainLabel } from "@/lib/deploy/explorer";
-import { isInfraError, previewFixPrompt, type PreviewError } from "@/lib/preview-errors";
+import { OVERRIDE_KEY, chooseEngine, failedKey, parseOverride, type EngineOverride, type PreviewEngine } from "@/lib/preview-engine";
+import { isInfraError, type PreviewError } from "@/lib/preview-errors";
+import { OwnPreview } from "./own-preview";
 import { CAPTURE_DEPENDENCY, CAPTURE_ENTRY, CAPTURE_FILES, capturePreview } from "./preview-capture";
+import { PreviewErrorNotice } from "./preview-error-notice";
 import { cn } from "@/lib/utils";
 
 type Tab = "preview" | "code" | "contract";
@@ -88,6 +90,44 @@ export function dependencies(files: Record<string, string>): Record<string, stri
   }
 }
 
+/** How long Sandpack's bundler may stay silent before the workspace uses its own build. */
+const SANDPACK_STUCK_MS = 20_000;
+
+/**
+ * Which preview this project gets (src/lib/preview-engine.ts). The owner's override comes from
+ * ?preview=own|sandpack|auto on the address and is remembered in this browser; nobody else sees it.
+ */
+function usePreviewEngine(projectId: string, files: Record<string, string>): { engine: PreviewEngine; sandpackFailed: () => void } {
+  // Read once, when the panel mounts: it only ever renders in the browser.
+  const [override] = React.useState<EngineOverride>(() => {
+    try {
+      const asked = parseOverride(new URLSearchParams(window.location.search).get("preview"));
+      if (asked === "auto") window.localStorage.removeItem(OVERRIDE_KEY);
+      else if (asked) window.localStorage.setItem(OVERRIDE_KEY, asked);
+      const saved = parseOverride(window.localStorage.getItem(OVERRIDE_KEY));
+      return saved === "own" || saved === "sandpack" ? saved : null;
+    } catch {
+      return null; // storage is blocked: no override
+    }
+  });
+  const [failed, setFailed] = React.useState(() => {
+    try {
+      return window.sessionStorage.getItem(failedKey(projectId)) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const sandpackFailed = React.useCallback(() => {
+    setFailed(true);
+    try {
+      window.sessionStorage.setItem(failedKey(projectId), "1");
+    } catch {
+      /* fine */
+    }
+  }, [projectId]);
+  return { engine: chooseEngine({ files, override, sandpackFailed: failed }), sandpackFailed };
+}
+
 export function PreviewPanel({
   projectId,
   chainId,
@@ -124,6 +164,23 @@ export function PreviewPanel({
   const deps = React.useMemo(() => dependencies(files), [files]);
   const visible = React.useMemo(() => Object.keys(sandpackFiles).filter((p) => p.startsWith("/src/")).sort(), [sandpackFiles]);
   const solFiles = Object.keys(files).filter((p) => p.startsWith("contracts/") && p.endsWith(".sol")).sort();
+  const { engine, sandpackFailed } = usePreviewEngine(projectId, files);
+  const [reloads, setReloads] = React.useState(0);
+  const [ownUrl, setOwnUrl] = React.useState<string | null>(null);
+  const buildKey = `${version}:${contractAddressKey(files)}`;
+  // Kept with the build it came from, so a new build starts with no error showing.
+  const [ownErrorAt, setOwnErrorAt] = React.useState<{ key: string; error: PreviewError } | null>(null);
+  const ownError = ownErrorAt?.key === buildKey ? ownErrorAt.error : null;
+  const setOwnError = React.useCallback((error: PreviewError | null) => setOwnErrorAt(error ? { key: buildKey, error } : null), [buildKey]);
+  // The visual check captures from inside Sandpack's frame. On the own build there is nothing to
+  // wait for, so say so instead of leaving the workspace waiting for a screenshot.
+  const skipCapture = React.useRef(onCaptureFailed);
+  React.useEffect(() => {
+    skipCapture.current = onCaptureFailed;
+  }, [onCaptureFailed]);
+  React.useEffect(() => {
+    if (engine === "own" && checkVersion === version) skipCapture.current?.();
+  }, [engine, checkVersion, version]);
 
   const tabs = (
     <div className="flex rounded-full bg-tint p-1 text-sm" role="tablist" aria-label="View">
@@ -164,7 +221,7 @@ export function PreviewPanel({
       <SandpackProvider
         // Remount the bundler on each new version, and when a deploy lands (which adds no version),
         // so the preview always matches the saved files.
-        key={`${version}:${contractAddressKey(files)}`}
+        key={buildKey}
         template="react-ts"
         theme={theme}
         files={sandpackFiles}
@@ -176,18 +233,30 @@ export function PreviewPanel({
           recompileDelay: 400,
         }}
       >
-        <Toolbar tabs={tabs} tab={tab} device={device} setDevice={setDevice} chainId={chainId} popoutHref={`/p/${projectId}/preview`} />
+        <Toolbar
+          tabs={tabs}
+          tab={tab}
+          device={device}
+          setDevice={setDevice}
+          chainId={chainId}
+          popoutHref={engine === "own" && ownUrl ? ownUrl : `/p/${projectId}/preview`}
+          onRefresh={engine === "own" ? () => setReloads((n) => n + 1) : undefined}
+        />
         <div className="gb-sandpack mt-3 min-h-0 flex-1 overflow-hidden rounded-block bg-canvas">
           <div className={cn("h-full", tab !== "preview" && "hidden")}>
-            <div ref={frameRef} className={cn("relative mx-auto h-full transition-[max-width] duration-200 ease-gb", device === "mobile" ? "max-w-[390px] py-3" : "max-w-none")}>
-              <PreviewCover rounded={device === "mobile"} />
-              <SandpackPreview
-                className={cn("!h-full overflow-hidden bg-surface", device === "mobile" ? "rounded-[24px] shadow-card" : "")}
-                showOpenInCodeSandbox={false}
-                showRefreshButton={false}
-                showSandpackErrorOverlay={false}
-              />
-            </div>
+            {engine === "own" ? (
+              <OwnPreview key={buildKey} projectId={projectId} reloadKey={reloads} device={device} onRuntimeError={onRuntimeError} onError={setOwnError} onUrl={setOwnUrl} />
+            ) : (
+              <div ref={frameRef} className={cn("relative mx-auto h-full transition-[max-width] duration-200 ease-gb", device === "mobile" ? "max-w-[390px] py-3" : "max-w-none")}>
+                <PreviewCover rounded={device === "mobile"} onStuck={sandpackFailed} />
+                <SandpackPreview
+                  className={cn("!h-full overflow-hidden bg-surface", device === "mobile" ? "rounded-[24px] shadow-card" : "")}
+                  showOpenInCodeSandbox={false}
+                  showRefreshButton={false}
+                  showSandpackErrorOverlay={false}
+                />
+              </div>
+            )}
           </div>
           {tab === "code" && (
             <div className="grid h-full grid-cols-[200px_minmax(0,1fr)] grid-rows-[minmax(0,1fr)] bg-surface">
@@ -197,8 +266,12 @@ export function PreviewPanel({
           )}
           {tab === "contract" && <ContractView files={files} solFiles={solFiles} contracts={contracts} />}
         </div>
-        <ErrorWatcher onFix={onFix} fixDisabled={fixDisabled} onRuntimeError={onRuntimeError} />
-        {onCaptured && <VisualCheckRunner version={version} checkVersion={checkVersion ?? null} visible={tab === "preview"} container={frameRef} onCaptured={onCaptured} onFailed={onCaptureFailed} />}
+        {engine === "own" ? (
+          ownError && <PreviewErrorNotice error={ownError} onFix={onFix} fixDisabled={fixDisabled} onDismiss={() => setOwnError(null)} />
+        ) : (
+          <ErrorWatcher onFix={onFix} fixDisabled={fixDisabled} onRuntimeError={onRuntimeError} onInfraError={sandpackFailed} />
+        )}
+        {engine === "sandpack" && onCaptured && <VisualCheckRunner version={version} checkVersion={checkVersion ?? null} visible={tab === "preview"} container={frameRef} onCaptured={onCaptured} onFailed={onCaptureFailed} />}
       </SandpackProvider>
     </section>
   );
@@ -209,22 +282,32 @@ export function PreviewPanel({
  * the "done" message in dev), hiding a working preview. It is hidden in globals.css; this cover
  * replaces it and clears on the bundler's raw "done" message, which always arrives.
  */
-export function PreviewCover({ rounded }: { rounded: boolean }) {
+export function PreviewCover({ rounded, onStuck }: { rounded: boolean; onStuck?: () => void }) {
   const [ready, setReady] = React.useState(false);
   const [slow, setSlow] = React.useState(false);
+  const stuck = React.useRef(onStuck);
+  React.useEffect(() => {
+    stuck.current = onStuck;
+  }, [onStuck]);
   React.useEffect(() => {
     let timer = 0;
+    let giveUp = 0;
     // The "slow" hint counts from the latest (re)start, not from mount.
     const arm = () => {
       window.clearTimeout(timer);
+      window.clearTimeout(giveUp);
       setSlow(false);
       timer = window.setTimeout(() => setSlow(true), 45_000);
+      // CodeSandbox's bundler hasn't answered (down, or blocked on this network): the workspace
+      // switches to GoodBuild's own build instead of leaving the person waiting (D69).
+      giveUp = window.setTimeout(() => stuck.current?.(), SANDPACK_STUCK_MS);
     };
     const onMessage = (e: MessageEvent) => {
       const d = e.data as { codesandbox?: boolean; type?: string; firstLoad?: boolean } | null;
       if (!d || typeof d !== "object" || !d.codesandbox) return;
       if (d.type === "done" || d.type === "success") {
         window.clearTimeout(timer);
+        window.clearTimeout(giveUp);
         setReady(true);
       } else if (d.type === "start" && d.firstLoad) {
         setReady(false);
@@ -236,6 +319,7 @@ export function PreviewCover({ rounded }: { rounded: boolean }) {
     return () => {
       window.removeEventListener("message", onMessage);
       window.clearTimeout(timer);
+      window.clearTimeout(giveUp);
     };
   }, []);
   if (ready) return null;
@@ -259,6 +343,7 @@ function Toolbar({
   setDevice,
   chainId,
   popoutHref,
+  onRefresh,
 }: {
   tabs: React.ReactNode;
   tab: Tab;
@@ -266,6 +351,7 @@ function Toolbar({
   setDevice: (d: "desktop" | "mobile") => void;
   chainId: number;
   popoutHref: string;
+  onRefresh?: () => void;
 }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 px-2 py-1">
@@ -282,15 +368,16 @@ function Toolbar({
         >
           <ExternalLink className="size-3.5" />
         </a>
-        <PreviewControls device={device} setDevice={setDevice} />
+        <PreviewControls device={device} setDevice={setDevice} onRefresh={onRefresh} />
       </div>
     </div>
   );
 }
 
 /** Refresh and the device toggle, shared by the workspace toolbar and the pop-out tab. */
-export function PreviewControls({ device, setDevice }: { device: "desktop" | "mobile"; setDevice: (d: "desktop" | "mobile") => void }) {
-  const { refresh } = useSandpackNavigation();
+export function PreviewControls({ device, setDevice, onRefresh }: { device: "desktop" | "mobile"; setDevice: (d: "desktop" | "mobile") => void; onRefresh?: () => void }) {
+  const sandpack = useSandpackNavigation();
+  const refresh = onRefresh ?? sandpack.refresh;
   return (
     <>
       <button
@@ -379,13 +466,20 @@ function ErrorWatcher({
   onFix,
   fixDisabled,
   onRuntimeError,
+  onInfraError,
 }: {
   onFix: (prompt: string) => void;
   fixDisabled: boolean;
   /** Called once per error shown; the workspace decides whether to auto-fix. */
   onRuntimeError?: (error: PreviewError) => void;
+  /** The bundler or a CDN failed, not the app: the workspace switches to its own build. */
+  onInfraError?: () => void;
 }) {
   const { listen } = useSandpack();
+  const infra = React.useRef(onInfraError);
+  React.useEffect(() => {
+    infra.current = onInfraError;
+  }, [onInfraError]);
   const [error, setError] = React.useState<PreviewError | null>(null);
   const report = React.useRef(onRuntimeError);
   React.useEffect(() => {
@@ -398,7 +492,8 @@ function ErrorWatcher({
         const m = msg as unknown as PreviewError;
         const e = { title: m.title, message: m.message, path: m.path, line: m.line };
         setError(e);
-        if (!isInfraError(e)) report.current?.(e);
+        if (isInfraError(e)) infra.current?.();
+        else report.current?.(e);
       } else if (msg.type === "success") {
         setError(null);
       }
@@ -406,30 +501,7 @@ function ErrorWatcher({
   }, [listen]);
 
   if (!error) return null;
-  const where = error.path ? ` in ${error.path.replace(/^\//, "")}${error.line ? `:${error.line}` : ""}` : "";
-  return (
-    <div className="mt-3 flex flex-wrap items-start justify-between gap-3 rounded-block bg-canvas p-4" role="alert">
-      <div className="flex min-w-0 items-start gap-3">
-        <span className="mt-1.5 size-2 shrink-0 rounded-full bg-danger" aria-hidden />
-        <div className="min-w-0">
-          <p className="text-sm font-medium">The preview hit an error{where}</p>
-          <p className="line-clamp-3 font-mono text-xs break-words text-grey-600">{error.message || error.title}</p>
-        </div>
-      </div>
-      <Button
-        variant="chipSelected"
-        size="sm"
-        disabled={fixDisabled}
-        onClick={() => {
-          onFix(previewFixPrompt(error, false));
-          setError(null);
-        }}
-      >
-        <Wrench />
-        Fix it
-      </Button>
-    </div>
-  );
+  return <PreviewErrorNotice error={error} onFix={onFix} fixDisabled={fixDisabled} onDismiss={() => setError(null)} />;
 }
 
 function ContractView({
