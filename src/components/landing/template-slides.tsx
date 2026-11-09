@@ -78,12 +78,12 @@ export function TemplateBanner({ templateId }: { templateId: string | null | und
   if (!template) return null;
   return (
     <div
-      className="flex items-center gap-3 rounded-block bg-canvas p-2 pr-4"
+      className="flex flex-col gap-3 rounded-block bg-canvas p-2 sm:flex-row sm:items-center sm:pr-4"
       onPointerEnter={() => setHover(true)}
       onPointerLeave={() => setHover(false)}
     >
-      <TemplateSlides template={template} playing={hover} sizes="140px" className="w-[140px] shrink-0" />
-      <div className="min-w-0">
+      <TemplateSlides template={template} playing={hover} sizes="(min-width: 640px) 160px, 100vw" className="w-full shrink-0 sm:w-40" />
+      <div className="min-w-0 px-1 pb-1 sm:px-0 sm:pb-0">
         <p className="eyebrow">Template</p>
         <p className="truncate text-sm font-semibold">{template.label}</p>
         <p className="text-xs text-grey-600">Started from this design. Ask for any change.</p>

@@ -42,7 +42,7 @@ export function ChatPanel({ ws, assetUrls = {} }: { ws: UseWorkspace; assetUrls?
   const lastUserPrompt = [...state.messages].reverse().find((m) => m.role === "user" && m.status !== "queued" && m.status !== "cancelled")?.content;
   return (
     <section aria-label="Chat" className="flex min-h-0 flex-col rounded-card bg-surface shadow-card">
-      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5" aria-live="polite">
+      <div className="min-h-0 flex-1 space-y-5 overflow-x-hidden overflow-y-auto overscroll-contain p-3 sm:p-5" aria-live="polite">
         <TemplateBanner templateId={state.project.templateId} />
         {state.messages.map((m) => {
           if (m.id === liveMessageId) return null;
@@ -52,7 +52,7 @@ export function ChatPanel({ ws, assetUrls = {} }: { ws: UseWorkspace; assetUrls?
             const cancelled = m.status === "cancelled";
             return (
               <div key={m.id} className={cn("flex flex-col items-end gap-1", (waiting || cancelled) && "opacity-60")}>
-                <p className="max-w-[85%] rounded-block rounded-br-md bg-tint px-4 py-3 text-sm whitespace-pre-wrap">{m.content}</p>
+                <p className="max-w-[90%] rounded-block rounded-br-md break-words bg-tint px-4 py-3 text-sm whitespace-pre-wrap">{m.content}</p>
                 {mode === "plan" && <span className="text-[11px] text-grey-400">Plan mode</span>}
                 {waiting && <span className="text-[11px] text-grey-400">Queued, runs after the current build</span>}
                 {cancelled && (
@@ -216,7 +216,7 @@ export function Composer({
   const [dragging, setDragging] = React.useState(false);
   return (
     <form
-      className={cn("m-4 mt-0 rounded-block bg-canvas p-3 focus-within:shadow-focus", dragging && "shadow-focus")}
+      className={cn("m-3 mt-0 rounded-block sm:m-4 sm:mt-0 bg-canvas p-3 focus-within:shadow-focus", dragging && "shadow-focus")}
       onSubmit={(e) => {
         e.preventDefault();
         submit();
@@ -261,7 +261,7 @@ export function Composer({
         placeholder={placeholder}
         className="block w-full resize-none bg-transparent px-1 text-sm leading-[22px] outline-none placeholder:text-grey-400 focus-visible:shadow-none"
       />
-      <div className="mt-3 flex items-center justify-between gap-3">
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
         <div className="flex items-center gap-2">
         <AttachMenu onUpload={(f, k) => void onUpload(f, k)} uploading={uploading} />
         <div className="flex rounded-full bg-surface p-1 text-xs font-medium" role="radiogroup" aria-label="Mode">
@@ -283,7 +283,7 @@ export function Composer({
           ))}
         </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="ml-auto flex items-center gap-2 sm:gap-3">
           <span className="text-xs text-grey-400" title="Estimated charge for this request: AI cost + 25%. Each new account gets $0.20 of AI free during the testnet beta.">
             ≈ {formatMicroUsd(est)} {running ? "· runs after this build" : ""}
           </span>

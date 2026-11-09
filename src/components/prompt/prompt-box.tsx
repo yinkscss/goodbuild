@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Image from "next/image";
 import { ChevronDown, ImagePlus, LayoutTemplate, Sparkles, X } from "lucide-react";
 
 import { ActionButton, Button } from "@/components/ui/button";
@@ -15,7 +16,7 @@ import {
 import { NetworkToggle } from "@/components/prompt/network-toggle";
 import { DEFAULT_NETWORK, type NetworkId } from "@/config/networks";
 import { PAGE_TEMPLATES, getPageTemplate } from "@/config/page-template-data";
-import { TEMPLATE_CATEGORIES } from "@/config/page-templates";
+import { TEMPLATE_CATEGORIES, thumbnailFor } from "@/config/page-templates";
 import { TEMPLATE_EXAMPLE } from "@/config/page-templates";
 import { TemplateSlides } from "@/components/landing/template-slides";
 import { TEMPLATES, getTemplate, type StarterTemplate } from "@/config/templates";
@@ -197,7 +198,7 @@ export function PromptBox({
 
   const card = (
     <form
-      className={cn("rounded-card bg-surface p-5 shadow-card md:p-6", chipsPlacement === "inside" && className)}
+      className={cn("min-w-0 rounded-card bg-surface p-4 shadow-card sm:p-5 md:p-6", chipsPlacement === "inside" && className)}
       onSubmit={(e) => {
         e.preventDefault();
         void submit();
@@ -205,12 +206,12 @@ export function PromptBox({
     >
       {pageTemplate && (
         <div
-          className="mb-4 flex items-center gap-4 rounded-block bg-canvas p-2 pr-3"
+          className="relative mb-4 flex flex-col gap-3 rounded-block bg-canvas p-2 sm:flex-row sm:items-center sm:gap-4 sm:pr-3"
           onPointerEnter={() => setPreviewing(true)}
           onPointerLeave={() => setPreviewing(false)}
         >
-          <TemplateSlides template={pageTemplate} playing={previewing} sizes="160px" className="w-40 shrink-0" />
-          <div className="min-w-0 flex-1">
+          <TemplateSlides template={pageTemplate} playing={previewing} sizes="(min-width: 640px) 160px, 100vw" className="w-full shrink-0 sm:w-40" />
+          <div className="min-w-0 flex-1 px-1 pb-1 sm:px-0 sm:pb-0">
             <p className="eyebrow">Template</p>
             <p className="truncate text-base font-semibold">{pageTemplate.label}</p>
             <p className="text-xs text-grey-600">The design is attached. Write what you want and change anything you like, nothing is sent until you press {submitLabel}.</p>
@@ -218,7 +219,7 @@ export function PromptBox({
           <button
             type="button"
             onClick={() => setTemplateId(null)}
-            className="grid size-7 shrink-0 place-items-center rounded-full text-grey-600 hover:bg-tint hover:text-violet"
+            className="absolute top-3 right-3 grid size-9 shrink-0 place-items-center rounded-full bg-surface/90 text-grey-600 shadow-card hover:bg-tint hover:text-violet sm:static sm:size-7 sm:bg-transparent sm:shadow-none"
             aria-label={`Remove the ${pageTemplate.label} template`}
           >
             <X className="size-4" />
@@ -321,9 +322,14 @@ export function PromptBox({
                       <DropdownMenuLabel>{cat} templates</DropdownMenuLabel>
                       {items.map((t) => (
                         <DropdownMenuRadioItem key={t.id} value={t.id}>
-                          <span>
-                            <span className="block font-medium">{t.label}</span>
-                            <span className="block text-xs text-grey-600">{t.description}</span>
+                          <span className="flex min-w-0 items-center gap-3">
+                            <span className="relative block aspect-[8/5] w-16 shrink-0 overflow-hidden rounded-tip bg-tint">
+                              <Image src={thumbnailFor(t, 1)} alt="" width={160} height={100} sizes="64px" className="size-full object-cover" />
+                            </span>
+                            <span className="min-w-0">
+                              <span className="block font-medium">{t.label}</span>
+                              <span className="block text-xs text-grey-600">{t.description}</span>
+                            </span>
                           </span>
                         </DropdownMenuRadioItem>
                       ))}

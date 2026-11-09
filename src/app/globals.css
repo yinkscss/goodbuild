@@ -176,6 +176,33 @@
   }
 }
 
+/*
+ * Mobile guards. Unlayered on purpose so they outrank the layered Tailwind utilities.
+ * - iOS Safari zooms the whole page when a field under 16px gets focus, which leaves the page
+ *   wider than the screen. Fields are 16px on phones.
+ * - Nothing may push the page wider than the viewport; long words and addresses wrap.
+ */
+html,
+body {
+  max-width: 100%;
+  overflow-x: clip;
+}
+body {
+  overflow-wrap: anywhere;
+}
+img,
+svg,
+video {
+  max-width: 100%;
+}
+@media (max-width: 639px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}
+
 /* In-page nav links glide to their section; the reduced-motion rule below turns this off. */
 html {
   scroll-behavior: smooth;
