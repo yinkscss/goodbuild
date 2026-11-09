@@ -2,7 +2,7 @@ import "server-only";
 
 import type { Browser, BrowserContext, Page, Route } from "playwright-core";
 
-import { buildPublishedApp, PublishBuildError, type PublishedFile } from "@/server/publish/build";
+import { buildPublishedApp, moduleStarts, PublishBuildError, type PublishedFile } from "@/server/publish/build";
 
 import type { CheckIssue } from "./checks";
 
@@ -193,14 +193,7 @@ const NOT_THE_APP = /Failed to fetch|NetworkError|Load failed|net::ERR|ERR_BLOCK
  * first stack frame inside one of the project's own modules says which file to look at.
  */
 export function sourceOfStack(stack: string, js: string, jsPath: string): string | undefined {
-  const starts: Array<{ line: number; file: string }> = [];
-  js.split("\n").forEach((text, i) => {
-    const m = /^\s*\/\/ (.+)$/.exec(text);
-    if (!m) return;
-    const project = /^project:(.+)$/.exec(m[1]);
-    // A package's module ends the project file above it.
-    if (project || /node_modules\//.test(m[1])) starts.push({ line: i + 1, file: project ? project[1] : "" });
-  });
+  const starts = moduleStarts(js);
   const frame = new RegExp(`${jsPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}:(\\d+):\\d+`, "g");
   for (const m of stack.matchAll(frame)) {
     const line = Number(m[1]);

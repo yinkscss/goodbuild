@@ -47,6 +47,12 @@ export interface BuildInput {
    * and with React's development build, so an error names the component and says what went wrong.
    */
   forCheck?: boolean;
+  /**
+   * A build for the workspace's own preview (D69), served only to its owner on the project's preview
+   * host. Like forCheck (readable errors), with no "Built with" pill, and with a small script that
+   * tells the workspace when the app is up and what went wrong (src/server/preview/bridge.ts).
+   */
+  preview?: { bridge: (js: string, jsName: string) => string };
 }
 
 /** The whole app, assets included. */
@@ -62,6 +68,23 @@ export class PublishBuildError extends Error {
 }
 
 const ENTRY = "src/main.tsx";
+/** The preview's bridge script. Not a path a project file can have. */
+export const PREVIEW_BRIDGE_PATH = "__gb-preview.js";
+
+/**
+ * Where each module starts in a bundle that isn't minified: esbuild writes `// project:src/App.tsx`
+ * above each one. `file` is empty for a package's module, which ends the project file above it.
+ */
+export function moduleStarts(js: string): Array<{ line: number; file: string }> {
+  const starts: Array<{ line: number; file: string }> = [];
+  js.split("\n").forEach((text, i) => {
+    const m = /^\s*\/\/ (.+)$/.exec(text);
+    if (!m) return;
+    const project = /^project:(.+)$/.exec(m[1]);
+    if (project || /node_modules\//.test(m[1])) starts.push({ line: i + 1, file: project ? project[1] : "" });
+  });
+  return starts;
+}
 const THEME_BLOCK = /<style type="text\/tailwindcss">([\s\S]*?)<\/style>/g;
 const LOADERS = { tsx: "tsx", ts: "ts", jsx: "jsx", js: "js", css: "css", json: "json" } as const;
 
@@ -208,7 +231,7 @@ export async function buildPublishedApp(input: BuildInput): Promise<PublishedFil
   const theme = [...html.matchAll(THEME_BLOCK)].map((m) => m[1]).join("\n");
   const runtimeDir = input.runtimeDir ?? (await publishRuntimeDir());
   const walletConnect = !!input.walletConnectProjectId;
-  const { js, chunks, css: bundledCss } = await bundle(files, runtimeDir, walletConnect, input.forCheck);
+  const { js, chunks, css: bundledCss } = await bundle(files, runtimeDir, walletConnect, input.forCheck || !!input.preview);
   const css = (await compileTailwind(files, theme, runtimeDir)) + bundledCss;
 
   const jsName = hashed("app", "js", js);
@@ -217,8 +240,10 @@ export async function buildPublishedApp(input: BuildInput): Promise<PublishedFil
   const dataMeta = input.dataClientId ? `<meta name="goodbuild-data" content="${escapeHtml(input.dataClientId)}" />\n` : "";
   const walletMeta = input.walletConnectProjectId ? `<meta name="goodbuild-walletconnect" content="${escapeHtml(input.walletConnectProjectId)}" />\n` : "";
   page = page.replace("</head>", () => `${dataMeta}${walletMeta}<link rel="stylesheet" href="/${cssName}" />\n</head>`);
-  page = page.replace(/<body[^>]*>/, (open) => `${open}\n${bar(input.hasUndeployedContracts, input.reportUrl, input.changeableContract)}`);
-  page = page.replace("</body>", () => `<script type="module" src="/${jsName}"></script>\n</body>`);
+  const bridge = input.preview?.bridge(js, jsName);
+  if (!input.preview) page = page.replace(/<body[^>]*>/, (open) => `${open}\n${bar(input.hasUndeployedContracts, input.reportUrl, input.changeableContract)}`);
+  // The bridge is a classic script, so it is listening before the app's module runs.
+  page = page.replace("</body>", () => `${bridge ? `<script src="/${PREVIEW_BRIDGE_PATH}"></script>\n` : ""}<script type="module" src="/${jsName}"></script>\n</body>`);
 
   const encoder = new TextEncoder();
   const output: PublishedFile[] = [
@@ -226,6 +251,7 @@ export async function buildPublishedApp(input: BuildInput): Promise<PublishedFil
     { path: jsName, mime: "text/javascript; charset=utf-8", bytes: encoder.encode(js) },
     { path: cssName, mime: "text/css; charset=utf-8", bytes: encoder.encode(css) },
     ...chunks.map((c) => ({ path: c.path, mime: "text/javascript; charset=utf-8", bytes: encoder.encode(c.text) })),
+    ...(bridge ? [{ path: PREVIEW_BRIDGE_PATH, mime: "text/javascript; charset=utf-8", bytes: encoder.encode(bridge) }] : []),
     ...input.assets.map((a) => ({ path: `assets/${a.name}`, mime: a.mime, bytes: a.bytes })),
   ];
   const size = output.reduce((sum, f) => sum + f.bytes.length, 0);

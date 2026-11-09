@@ -9,6 +9,9 @@ How production runs today, for anyone (person or agent) working on it. Decision:
 - **Traffic:** visitor → Cloudflare → Coolify's Traefik (`coolify-proxy`, ports 80 and 443) → `web`, routed by the labels in the compose file. Published apps use the same route at `<slug>.goodbuildit.xyz`, and `src/proxy.ts` separates them by Host.
 - **Coolify** is kept on the server for now by the owner's choice, but the app isn't managed through it. Only its proxy is used. Don't change settings in its dashboard expecting them to affect GoodBuild.
 
+## Preview hosts (D69)
+A project's own-build preview is served at `pv-<32 hex>.goodbuildit.xyz`, through the same wildcard DNS and Traefik rule as published apps. The builds are held in the `web` container's memory, so a deploy or restart empties them and the workspace asks for them again. If a second `web` instance is ever added, previews need shared storage first.
+
 ## Access
 SSH as root with the deploy key, which is not in git:
 ```bash
