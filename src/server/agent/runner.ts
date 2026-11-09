@@ -7,6 +7,7 @@ import type { Db } from "@/server/db/client";
 import { messages, projects } from "@/server/db/schema";
 import { checkApp, checkContracts, formatIssues, mentionsGd, mentionsNativeCelo, type CheckIssue, type CheckReport, type ContractCheckOptions } from "./checks";
 import { runContractTests } from "./contract-tests";
+import { runCheck, runCheckEnabled } from "./run-check";
 import { dbAssetStore, type AssetStore } from "./asset-store";
 import { ASSETS_MODULE, assetManifest, assetsModule, visionImage } from "./assets";
 import { HISTORY_WINDOW, memoryBlock, updateMemory, type Memory, type MemoryMessage } from "./memory";
@@ -43,6 +44,8 @@ export interface TurnDeps {
   model: ModelClient;
   checkContracts?: typeof checkContracts;
   checkApp?: typeof checkApp;
+  /** Opens the built app in a headless browser (D67). Default: the real one where the server turns it on, otherwise none. */
+  runCheck?: typeof runCheck;
   /** Uploaded assets (default: the DB store). */
   assets?: AssetStore;
   /** The background job running this turn (P18). Without one the turn runs directly (tests). */
@@ -101,6 +104,9 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
   const lintWith = deps.checkApp ?? checkApp;
   let assetNames: string[] = [];
   const lint = (files: Record<string, string>) => lintWith(files, { assets: assetNames });
+  const openWith = deps.runCheck ?? (runCheckEnabled() ? runCheck : undefined);
+  let chainId: number | undefined;
+  const open = openWith ? (files: Record<string, string>) => openWith(files, { assets: assetNames, chainId }) : undefined;
 
   if (!job.lockHeld && !(await claimTurn(db, input.projectId, input.userId))) throw new TurnBusyError();
   // Every usage row of the turn takes the job's funding (D48).
@@ -152,6 +158,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       setup = await runSetup();
     }
     assetNames = setup.assetNames;
+    chainId = setup.chainId;
     const ws = new Workspace(setup.baseFiles);
     const firstBuild = setup.firstBuild;
     const contractOptions = setup.contractOptions;
@@ -447,7 +454,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     };
     keepTheme();
     // Checks and auto-fix (up to MAX_FIX_ATTEMPTS). Stops on the same errors twice, on two attempts in a row without progress, or at the fix budget.
-    let report = await runChecks(ws.files, compile, lint, step, log, 0, contractOptions, runContractTests, stopIfRequested);
+    let report = await runChecks(ws.files, compile, lint, step, log, 0, contractOptions, runContractTests, stopIfRequested, open);
     let previous = "";
     const initialErrors = report.errors.length;
     let attemptsUsed = 0;
@@ -473,10 +480,10 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       step({ id: `fix:${attempt}`, label: `Fixing errors (attempt ${attempt} of ${MAX_FIX_ATTEMPTS})`, detail: `${plural(report.errors.length, "error")} to fix: ${firstIssue(report.errors)}`, status: "running" });
       convo.push({
         role: "user",
-        content: `GoodBuild's checks failed. Fix these errors with edit_file. If a contract test fails, decide whether the contract or the test is wrong: fix the contract when it misbehaves; change a test only when its expectation is mistaken, and never delete or weaken a check just to make it pass. Then stop with a very short note (the user sees the fix steps, not this note):\n${issues}`,
+        content: `GoodBuild's checks failed. Fix these errors with edit_file. A [runtime] error is what happened when GoodBuild opened the built app in a browser: read the named file before changing it. If a contract test fails, decide whether the contract or the test is wrong: fix the contract when it misbehaves; change a test only when its expectation is mistaken, and never delete or weaken a check just to make it pass. Then stop with a very short note (the user sees the fix steps, not this note):\n${issues}`,
       });
       await phase(fixTier(attempt, report.errors), true);
-      report = await runChecks(ws.files, compile, lint, step, log, attempt, contractOptions, runContractTests, stopIfRequested);
+      report = await runChecks(ws.files, compile, lint, step, log, attempt, contractOptions, runContractTests, stopIfRequested, open);
       step({
         id: `fix:${attempt}`,
         label: `Fixing errors (attempt ${attempt} of ${MAX_FIX_ATTEMPTS})`,
@@ -657,6 +664,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
         intake: true,
         priorStatus: finalStatus,
         assetNames: names,
+        chainId: project.chainId,
         contractOptions: {},
         baseFiles: files,
         prefix: [{ role: "user", content: intakeContext(request, assets) }],
@@ -749,6 +757,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       ...(input.mode === "build" && firstBuild && brief.customColours ? { customColours: true } : {}),
       priorStatus: finalStatus,
       assetNames: names,
+      chainId: project.chainId,
       contractOptions: { gdToken: mentionsGd(userText), allowNative: mentionsNativeCelo(userText), ...(upgradeable ? { upgradeable } : {}) },
       baseFiles: files,
       prefix,
@@ -820,6 +829,8 @@ async function runChecks(
   runTests: typeof runContractTests = runContractTests,
   /** Stop point: solc and the test EVM can't be interrupted mid-run, so check before each. */
   stopIfRequested: () => void = () => undefined,
+  /** The run check (D67), when this server has it on. */
+  open?: (files: Record<string, string>) => ReturnType<typeof runCheck>,
 ): Promise<CheckReport> {
   const suffix = attempt ? `:${attempt}` : "";
   const hasContracts = Object.keys(files).some((p) => p.startsWith("contracts/") && p.endsWith(".sol"));
@@ -866,9 +877,31 @@ async function runChecks(
     detail: app.ok ? "imports and syntax ok" : `${plural(app.errors.length, "error")}: ${firstIssue(app.errors)}`,
     status: app.ok ? "done" : "error",
   });
+  // Open the app only once everything before it passes: a build that doesn't compile can't run, and
+  // those errors are cheaper to fix first.
+  let runtime: CheckIssue[] = [];
+  if (open && contracts.ok && app.ok) {
+    stopIfRequested();
+    step({ id: `run${suffix}`, label: "Opening the app", status: "running" });
+    // The app imports its contracts' ABIs from platform modules that are written at the end of the
+    // turn. The check gets them now, with no addresses, as the app is before anything is deployed.
+    const withContracts = { ...files };
+    for (const c of contracts.contracts) withContracts[`${PLATFORM_DIR}${c.name}.ts`] = contractModule(c.name, c.abi, {});
+    if (contracts.contracts.length) withContracts[`${PLATFORM_DIR}index.ts`] = contractsIndex(contracts.contracts.map((c) => c.name));
+    const result = await open(withContracts);
+    runtime = result.issues;
+    log(`${!result.ran ? "·" : runtime.length ? "✗" : "✓"} run check: ${result.note} (${(result.ms / 1000).toFixed(1)}s)`);
+    for (const e of runtime.slice(0, 3)) log(`✗ ${e.file.split("/").pop()} ${e.message}`);
+    step({
+      id: `run${suffix}`,
+      label: "Opening the app",
+      detail: !result.ran ? "skipped" : runtime.length ? `${plural(runtime.length, "problem")}: ${firstIssue(runtime)}` : "it runs",
+      status: runtime.length ? "error" : "done",
+    });
+  }
   return {
-    ok: contracts.ok && app.ok,
-    errors: [...contracts.errors, ...app.errors],
+    ok: contracts.ok && app.ok && runtime.length === 0,
+    errors: [...contracts.errors, ...app.errors, ...runtime],
     warnings: contracts.warnings,
     contracts: contracts.contracts,
     compilerVersion: contracts.compilerVersion,

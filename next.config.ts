@@ -9,7 +9,7 @@ const nextConfig: NextConfig = {
   // Publishing runs esbuild and Tailwind's compiler, which load native binaries and their own CSS.
   // For hosts that run a Node server: a self-contained folder (`NEXT_OUTPUT=standalone pnpm build`).
   output: process.env.NEXT_OUTPUT === "standalone" ? "standalone" : undefined,
-  serverExternalPackages: ["@electric-sql/pglite", "solc", "jsdom", "dompurify", "esbuild", "tailwindcss", "@tailwindcss/oxide"],
+  serverExternalPackages: ["@electric-sql/pglite", "solc", "jsdom", "dompurify", "esbuild", "tailwindcss", "@tailwindcss/oxide", "playwright-core"],
   // Read from disk when publishing, so file tracing can't see them on its own.
   outputFileTracingIncludes: {
     "/api/projects/[id]/publish": ["./publish-runtime.pack.gz"],

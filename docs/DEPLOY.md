@@ -5,7 +5,7 @@ How production runs today, for anyone (person or agent) working on it. Decision:
 ## What runs where
 - **Server:** VPS at `193.181.221.210` (iHostio; the owner has written permission for blockchain and testnet work, required by its terms). Ubuntu, with Docker and Coolify.
 - **Code and config:** `/opt/goodbuild`. Secrets: `/opt/goodbuild/deploy/.env.production` (mode 600, server only). Template: `deploy/env.production.example`.
-- **Containers** (`deploy/docker-compose.yml`, project `goodbuild`): `goodbuild-postgres` (no public port), `migrate` (runs once per deploy), `web` (`next start`) and `worker` (`pnpm worker`, `TURN_CONCURRENCY` builds at once).
+- **Containers** (`deploy/docker-compose.yml`, project `goodbuild`): `goodbuild-postgres` (no public port), `migrate` (runs once per deploy), `web` (`next start`), `worker` (`pnpm worker`, `TURN_CONCURRENCY` builds at once) and `checker` (the run check's headless browser, D67: no secrets, no database, no internet; the worker reaches it at `ws://checker:3001/`). If `checker` is down, builds skip the run check and still finish. To turn the check off, remove `RUN_CHECK_WS_ENDPOINT` from the worker in the compose file and run `up -d worker`.
 - **Traffic:** visitor → Cloudflare → Coolify's Traefik (`coolify-proxy`, ports 80 and 443) → `web`, routed by the labels in the compose file. Published apps use the same route at `<slug>.goodbuildit.xyz`, and `src/proxy.ts` separates them by Host.
 - **Coolify** is kept on the server for now by the owner's choice, but the app isn't managed through it. Only its proxy is used. Don't change settings in its dashboard expecting them to affect GoodBuild.
 

@@ -42,6 +42,11 @@ export interface BuildInput {
   walletConnectProjectId?: string;
   /** Where the allowed packages are installed. */
   runtimeDir?: string;
+  /**
+   * A build for the run check (src/server/agent/run-check.ts), never served to visitors: not minified
+   * and with React's development build, so an error names the component and says what went wrong.
+   */
+  forCheck?: boolean;
 }
 
 /** The whole app, assets included. */
@@ -112,7 +117,7 @@ function describeMessage(m: Message): string {
   return m.location ? `${m.location.file.replace(/^project:/, "")}:${m.location.line}: ${m.text}` : m.text;
 }
 
-async function bundle(files: Record<string, string>, runtimeDir: string, walletConnect: boolean) {
+async function bundle(files: Record<string, string>, runtimeDir: string, walletConnect: boolean, forCheck = false) {
   const esbuild = await import("esbuild");
   try {
     const result = await esbuild.build({
@@ -122,14 +127,14 @@ async function bundle(files: Record<string, string>, runtimeDir: string, walletC
       format: "esm",
       target: "es2020",
       jsx: "automatic",
-      minify: true,
+      minify: !forCheck,
       logLevel: "silent",
       outdir: "/",
       // Code behind import() (WalletConnect) becomes its own file, fetched only when it's needed.
       splitting: true,
       entryNames: "entry",
       chunkNames: "chunk.[hash]",
-      define: { "process.env.NODE_ENV": '"production"', global: "globalThis" },
+      define: { "process.env.NODE_ENV": forCheck ? '"development"' : '"production"', global: "globalThis" },
       plugins: [projectPlugin(files, runtimeDir, walletConnect)],
     });
     const name = (f: { path: string }) => f.path.replace(/^\//, "");
@@ -203,7 +208,7 @@ export async function buildPublishedApp(input: BuildInput): Promise<PublishedFil
   const theme = [...html.matchAll(THEME_BLOCK)].map((m) => m[1]).join("\n");
   const runtimeDir = input.runtimeDir ?? (await publishRuntimeDir());
   const walletConnect = !!input.walletConnectProjectId;
-  const { js, chunks, css: bundledCss } = await bundle(files, runtimeDir, walletConnect);
+  const { js, chunks, css: bundledCss } = await bundle(files, runtimeDir, walletConnect, input.forCheck);
   const css = (await compileTailwind(files, theme, runtimeDir)) + bundledCss;
 
   const jsName = hashed("app", "js", js);

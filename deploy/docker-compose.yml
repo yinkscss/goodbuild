@@ -66,9 +66,28 @@ services:
     environment:
       <<: *database
       TURN_CONCURRENCY: ${TURN_CONCURRENCY:-6}
+      # The run check (D67): builds are opened in the checker's browser. If it is down, builds skip the check.
+      RUN_CHECK_WS_ENDPOINT: ws://checker:3001/
+      RUN_CHECK_CONCURRENCY: ${RUN_CHECK_CONCURRENCY:-2}
     depends_on:
       migrate:
         condition: service_completed_successfully
+    networks: [default, checker]
+
+  # The run check's browser (D67). Generated apps run in it, so it gets nothing: no secrets (no
+  # env_file), no database (not on the default network) and no internet (its only network is internal).
+  # The worker answers every request the page makes from memory.
+  checker:
+    image: goodbuild:latest
+    command: ["node", "node_modules/playwright-core/cli.js", "run-server", "--port", "3001", "--host", "0.0.0.0"]
+    restart: unless-stopped
+    networks: [checker]
+    # Measured on this server (9 Nov 2026): about 450 MB during one check and 720 MB with three at once.
+    mem_limit: 1536m
+    cpus: 1.5
+    pids_limit: 512
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
 
 volumes:
   postgres-data:
@@ -76,3 +95,6 @@ volumes:
 networks:
   coolify:
     external: true
+  # Worker and checker only, with no route out.
+  checker:
+    internal: true
