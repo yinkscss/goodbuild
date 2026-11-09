@@ -23,7 +23,7 @@ export interface WorkspaceMessage {
 }
 
 export interface WorkspaceState {
-  project: { id: string; name: string; status: string; chainId: number; currentVersion: number; building: boolean; upgradeable: boolean };
+  project: { id: string; name: string; status: string; chainId: number; currentVersion: number; building: boolean; upgradeable: boolean; templateId?: string | null };
   files: Record<string, string>;
   messages: WorkspaceMessage[];
   versions: Array<{ number: number; summary: string; createdAt: string; revertedFrom: number | null }>;
@@ -65,6 +65,7 @@ export async function workspaceState(db: Db, projectId: string, ownerId: string)
       currentVersion: project.currentVersion,
       building: Boolean(project.turnStartedAt),
       upgradeable: contracts.upgradeable,
+      templateId: project.templateId,
     },
     files,
     messages: owned.messages.map((m) => ({

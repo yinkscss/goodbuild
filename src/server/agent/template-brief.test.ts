@@ -26,10 +26,12 @@ async function fromTemplate(id: string) {
 }
 
 describe("projects started from a gallery template", () => {
-  it("names the project after the template", async () => {
-    const p = await fromTemplate("flowdesk");
-    expect(p.name).toBe("Flowdesk");
-    expect(p.templateId).toBe("flowdesk");
+  it("keeps the template id but names the project after what the person asked for", async () => {
+    const t = getPageTemplate("folio")!;
+    const p = await createProjectFromPrompt(db, userId, { prompt: "A portfolio for me, Ada, a brand designer in Lagos", templateId: t.id, network: "celo-sepolia" });
+    expect(p.templateId).toBe("folio");
+    expect(p.name).toBe("Portfolio for me");
+    expect(p.name).not.toBe(t.label);
   });
 
   it("builds straight away: the template is the plan, so no questions are asked", async () => {

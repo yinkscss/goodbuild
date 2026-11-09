@@ -8,7 +8,7 @@
  * Needs Google Chrome (CHROME_PATH to override). HTML goes to $TMPDIR/gb-templates/.
  */
 import { execFileSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -41,7 +41,9 @@ function css(t: PageTemplate): string {
   return `
 *{box-sizing:border-box;margin:0}
 :root{--bg:${bg};--fg:${fg};--muted:${muted};--card:${card};--a:${accent};--af:${accentFg}}
-body{background:var(--bg);color:var(--fg);font:15px/1.5 ${fonts.sans};width:${W}px;height:${H}px;overflow:hidden}
+body{background:var(--bg);color:var(--fg);font:15px/1.5 ${fonts.sans};width:${W}px;min-height:${H}px;overflow:hidden}
+.links .on{color:var(--fg);font-weight:600}
+.ptitle{padding:34px 0 6px}.ptitle h1{font-size:44px}
 h1,h2,h3,.brand{font-family:${heading}}
 .nav{display:flex;align-items:center;justify-content:space-between;padding:22px 64px}
 .brand{font-weight:700;font-size:19px;letter-spacing:-.01em}
@@ -173,13 +175,16 @@ function Block({ s, t }: { s: Section; t: PageTemplate }) {
   }
 }
 
-export function renderTemplateHtml(t: PageTemplate): string {
+/** page 0 is Home; 1.. are t.pages. */
+export function renderTemplateHtml(t: PageTemplate, page = 0): string {
+  const extra = page > 0 ? t.pages![page - 1] : null;
+  const sections = extra ? extra.sections : t.sections;
   const body = renderToStaticMarkup(
     h("div", null,
-      h("div", { className: "nav" }, h("span", { className: "brand" }, t.nav.brand), h("div", { className: "links" }, t.nav.links.map((l) => h("span", { key: l }, l))), h("span", { className: "btn" }, t.nav.cta)),
-      h("div", { className: "page" }, t.sections.map((s, i) => h(Block, { key: i, s, t })))),
+      h("div", { className: "nav" }, h("span", { className: "brand" }, t.nav.brand), h("div", { className: "links" }, t.nav.links.map((l) => h("span", { key: l, className: extra && l.toLowerCase() === extra.name.toLowerCase() ? "on" : "" }, l))), h("span", { className: "btn" }, t.nav.cta)),
+      h("div", { className: "page" }, extra ? h("div", { className: "ptitle" }, h("h1", null, extra.name)) : null, sections.map((s, i) => h(Block, { key: i, s, t })))),
   );
-  return `<!doctype html><html><head><meta charset="utf-8"><title>${t.label}</title><style>${css(t)}</style></head><body>${body}</body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${t.label}</title><style>${css(t)}</style></head><body>${body}<script>document.documentElement.dataset.h=String(document.body.scrollHeight)</script></body></html>`;
 }
 
 function chromePath(): string {
@@ -194,15 +199,35 @@ async function main() {
   const out = path.join(process.cwd(), "public", "templates");
   mkdirSync(dir, { recursive: true });
   mkdirSync(out, { recursive: true });
+  const slidesFile = path.join(process.cwd(), "src", "config", "page-template-data", "slides.json");
+  const slides: Record<string, number> = existsSync(slidesFile) ? JSON.parse(readFileSync(slidesFile, "utf8")) : {};
   for (const t of PAGE_TEMPLATES.filter((x) => !only || only.includes(x.id))) {
-    const file = path.join(dir, `${t.id}.html`);
-    writeFileSync(file, renderTemplateHtml(t));
-    if (htmlOnly) continue;
-    const raw = path.join(dir, `${t.id}.raw.png`);
-    execFileSync(chromePath(), ["--headless=new", "--disable-gpu", "--hide-scrollbars", `--window-size=${W},${H}`, `--screenshot=${raw}`, `file://${file}`], { stdio: "ignore" });
-    await sharp(raw).resize(960, 600).png({ palette: true, quality: 88, compressionLevel: 9 }).toFile(path.join(out, `${t.id}.png`));
-    console.log("rendered", t.id);
+    // Slide order: Home, Home scrolled (only when the page is long), then each extra page.
+    const shots: Array<{ page: number; lower: boolean }> = [{ page: 0, lower: false }];
+    let n = 0;
+    for (let page = 0; page <= (t.pages?.length ?? 0); page++) {
+      const file = path.join(dir, `${t.id}-${page}.html`);
+      writeFileSync(file, renderTemplateHtml(t, page));
+      if (htmlOnly) continue;
+      const dom = execFileSync(chromePath(), ["--headless=new", "--disable-gpu", "--hide-scrollbars", `--window-size=${W},${H}`, "--virtual-time-budget=2000", "--dump-dom", `file://${file}`], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+      const height = Math.max(H, Number(/data-h="(\d+)"/.exec(dom)?.[1] ?? H));
+      const raw = path.join(dir, `${t.id}-${page}.raw.png`);
+      execFileSync(chromePath(), ["--headless=new", "--disable-gpu", "--hide-scrollbars", `--window-size=${W},${height}`, `--screenshot=${raw}`, `file://${file}`], { stdio: "ignore" });
+      const save = async (top: number) => {
+        n += 1;
+        const name = n === 1 ? `${t.id}.png` : `${t.id}-${n}.png`;
+        await sharp(raw).extract({ left: 0, top, width: W, height: H }).resize(960, 600).png({ palette: true, quality: 88, compressionLevel: 9 }).toFile(path.join(out, name));
+      };
+      await save(0);
+      if (page === 0 && height > 1000) await save(Math.min(H, height - H));
+    }
+    void shots;
+    if (!htmlOnly) {
+      slides[t.id] = n;
+      console.log("rendered", t.id, n, "slides");
+    }
   }
+  if (!htmlOnly) writeFileSync(slidesFile, JSON.stringify(slides, null, 2) + "\n");
 }
 
 if (process.argv[1]?.endsWith("render-templates.tsx")) void main();
