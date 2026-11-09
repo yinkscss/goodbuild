@@ -156,6 +156,7 @@
 
 ## Q36. Preview depends on CodeSandbox's hosted bundler and the Tailwind CDN
 - Sandpack loads its bundler from CodeSandbox, and generated apps load Tailwind's browser build from jsDelivr. If either is down or blocked (some campus or corporate networks), the preview is blank while chat, code and contract views still work.
+- **Partly answered by D69 (10 Nov 2026):** when Sandpack fails or stays silent for 20 s, the workspace now shows GoodBuild's own build instead, which needs neither CodeSandbox nor the CDN.
 - Claude's input: acceptable for Stage 1. Later options: self-host the Sandpack bundler (supported via `bundlerURL`) and vendor the Tailwind browser build.
 
 ## Q37. Workspace chat width
