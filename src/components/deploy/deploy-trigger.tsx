@@ -30,6 +30,7 @@ export function DeployProvider({
   onDeployed,
   onFix,
   onPublish,
+  onSwitchChain,
   children,
 }: {
   projectId: string;
@@ -42,11 +43,24 @@ export function DeployProvider({
   onFix: (prompt: string) => void;
   /** Offered once deployed: republishing is what puts the new addresses in the public app. */
   onPublish?: () => void;
+  /** Move the project to another network (saves it on the server and reloads the workspace). True when it moved. */
+  onSwitchChain?: (chainId: number) => Promise<boolean>;
   children: React.ReactNode;
 }) {
   const [open, setOpen] = React.useState(false);
   const deploy = useDeploy({ projectId, chainId, onDeployed });
   const { prepare, reset } = deploy;
+  const [switching, setSwitching] = React.useState(false);
+  // The project moved to another network while the modal is open: plan again for it.
+  const lastChain = React.useRef(chainId);
+  React.useEffect(() => {
+    if (lastChain.current === chainId) return;
+    lastChain.current = chainId;
+    if (open) {
+      reset();
+      void prepare();
+    }
+  }, [chainId, open, prepare, reset]);
 
   const value = React.useMemo<DeployContext>(
     () => ({
@@ -71,6 +85,18 @@ export function DeployProvider({
         }}
         deploy={deploy}
         chainId={chainId}
+        switching={switching}
+        onSwitchNetwork={
+          onSwitchChain &&
+          (async (next) => {
+            setSwitching(true);
+            try {
+              await onSwitchChain(next);
+            } finally {
+              setSwitching(false);
+            }
+          })
+        }
         onFix={(prompt) => {
           setOpen(false);
           reset();

@@ -475,6 +475,8 @@ export function DeployModal({
   chainId,
   onFix,
   onPublish,
+  switching = false,
+  onSwitchNetwork,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -482,6 +484,9 @@ export function DeployModal({
   chainId: number;
   onFix: (prompt: string) => void;
   onPublish?: () => void;
+  switching?: boolean;
+  /** Moves the project to another network. Without it the network is fixed for the project. */
+  onSwitchNetwork?: (chainId: number) => Promise<void>;
 }) {
   const auth = useAuth();
   const { state } = deploy;
@@ -515,6 +520,24 @@ export function DeployModal({
             <div className="skeleton h-10 rounded-block motion-reduce:animate-none" />
             <div className="skeleton h-10 rounded-block motion-reduce:animate-none" />
             <div className="skeleton h-10 rounded-block motion-reduce:animate-none" />
+          </div>
+        )}
+
+        {onSwitchNetwork && !running && state.stage !== "done" && (
+          <div role="radiogroup" aria-label="Network" className="mt-5 flex rounded-full bg-tint p-1 text-sm font-medium">
+            {([[42220, "Celo mainnet"], [11142220, "Celo Sepolia (testnet)"]] as const).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                role="radio"
+                aria-checked={(state.plan?.chainId ?? chainId) === id}
+                disabled={switching || state.stage === "preparing"}
+                onClick={() => (state.plan?.chainId ?? chainId) !== id && void onSwitchNetwork(id)}
+                className={cn("flex-1 rounded-full px-3 py-2 transition-colors", (state.plan?.chainId ?? chainId) === id ? "bg-surface text-ink shadow-card" : "text-grey-600")}
+              >
+                {label}
+              </button>
+            ))}
           </div>
         )}
 
@@ -653,7 +676,7 @@ export function DeployModal({
           <DialogDescription className="mt-2 text-sm text-grey-600">
             {testTip
               ? "Go to Home, pick Celo Sepolia beside the prompt box, and build the same idea. It deploys with free test money. When it works, come back and deploy here."
-              : "Mainnet uses real CELO, and a deployed contract can\u2019t be taken back. We recommend trying it on Celo Sepolia first, where test money is free, to check that everything works. You can skip this."}
+              : "Mainnet uses real CELO, and a deployed contract can\u2019t be taken back. We recommend trying it on Celo Sepolia first, where test money is free, to check that everything works. One tap switches this project to Sepolia, and you can switch back here. You can skip this."}
           </DialogDescription>
           {testTip && <FaucetGuide className="mt-4" />}
           <div className="mt-6 flex flex-wrap justify-end gap-2">
@@ -670,7 +693,14 @@ export function DeployModal({
               </Button>
             ) : (
               <>
-                <Button variant="secondary" onClick={() => setTestTip(true)}>
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    if (!onSwitchNetwork) return setTestTip(true);
+                    setConfirmMainnet(false);
+                    void onSwitchNetwork(11142220);
+                  }}
+                >
                   Test on Sepolia first
                 </Button>
                 <Button
