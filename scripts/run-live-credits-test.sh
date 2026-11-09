@@ -32,7 +32,7 @@ ADDRESS="$(node -e 'const w=require(process.argv[1])[Number(process.argv[2])];if
 echo "Test wallet: $ADDRESS"
 
 # 1. Copy the scripts (no secrets).
-ssh "${SSH_OPTS[@]}" "$HOST" "mkdir -p $REMOTE_DIR/scripts && chmod 700 $REMOTE_DIR"
+ssh "${SSH_OPTS[@]}" "$HOST" "mkdir -p $REMOTE_DIR/scripts && chmod 755 $REMOTE_DIR $REMOTE_DIR/scripts"  # the container user is not root; the scripts hold no secrets (wallet.env is 600, read by docker as root)
 scp -q "${SSH_OPTS[@]}" "$ROOT/scripts/fund-test-wallet.mjs" "$ROOT/scripts/credits-live-purchase.mjs" "$HOST:$REMOTE_DIR/scripts/"
 
 # 2. Run in a throwaway container from the live image (it has viem). The env file stays on the server.
