@@ -43,12 +43,12 @@ trap cleanup EXIT
 
 case "$MODE" in
   dry)
-    ssh "${SSH_OPTS[@]}" "$HOST" "cd /opt/goodbuild/deploy && docker run --rm --env-file .env.production -v $REMOTE_DIR:/app/gbc-live goodbuild:latest node /app/gbc-live/scripts/fund-test-wallet.mjs --to $ADDRESS --celo $CELO_AMOUNT"
+    ssh "${SSH_OPTS[@]}" "$HOST" "cd /opt/goodbuild/deploy && docker run --rm --env-file .env.production -v $REMOTE_DIR:/app/gbc-live --entrypoint node goodbuild:latest /app/gbc-live/scripts/fund-test-wallet.mjs --to $ADDRESS --celo $CELO_AMOUNT"
     ;;
   fund)
     echo "This SENDS ${CELO_AMOUNT} CELO from the gas wallet into a swap for $ADDRESS. Type YES to continue:"
     read -r ok; [ "$ok" = "YES" ] || { echo "Cancelled."; exit 1; }
-    ssh "${SSH_OPTS[@]}" "$HOST" "cd /opt/goodbuild/deploy && docker run --rm --env-file .env.production -e CONFIRM_MAINNET=yes -v $REMOTE_DIR:/app/gbc-live goodbuild:latest node /app/gbc-live/scripts/fund-test-wallet.mjs --to $ADDRESS --celo $CELO_AMOUNT --send"
+    ssh "${SSH_OPTS[@]}" "$HOST" "cd /opt/goodbuild/deploy && docker run --rm --env-file .env.production -e CONFIRM_MAINNET=yes -v $REMOTE_DIR:/app/gbc-live --entrypoint node goodbuild:latest /app/gbc-live/scripts/fund-test-wallet.mjs --to $ADDRESS --celo $CELO_AMOUNT --send"
     ;;
   buy-dry | buy)
     # Send the wallet key on stdin into a 600 file; it is removed by the trap when this script ends.
@@ -57,9 +57,9 @@ case "$MODE" in
     if [ "$MODE" = "buy" ]; then
       echo "This SENDS a G\$ payment of about \$$USD from $ADDRESS to the credits contract. Type YES to continue:"
       read -r ok; [ "$ok" = "YES" ] || { echo "Cancelled."; exit 1; }
-      ssh "${SSH_OPTS[@]}" "$HOST" "cd /opt/goodbuild/deploy && docker run --rm --env-file .env.production --env-file $REMOTE_DIR/wallet.env -e CONFIRM_MAINNET=yes -v $REMOTE_DIR:/app/gbc-live goodbuild:latest node /app/gbc-live/scripts/credits-live-purchase.mjs --usd $USD --send"
+      ssh "${SSH_OPTS[@]}" "$HOST" "cd /opt/goodbuild/deploy && docker run --rm --env-file .env.production --env-file $REMOTE_DIR/wallet.env -e CONFIRM_MAINNET=yes -v $REMOTE_DIR:/app/gbc-live --entrypoint node goodbuild:latest /app/gbc-live/scripts/credits-live-purchase.mjs --usd $USD --send"
     else
-      ssh "${SSH_OPTS[@]}" "$HOST" "cd /opt/goodbuild/deploy && docker run --rm --env-file .env.production --env-file $REMOTE_DIR/wallet.env -v $REMOTE_DIR:/app/gbc-live goodbuild:latest node /app/gbc-live/scripts/credits-live-purchase.mjs --usd $USD"
+      ssh "${SSH_OPTS[@]}" "$HOST" "cd /opt/goodbuild/deploy && docker run --rm --env-file .env.production --env-file $REMOTE_DIR/wallet.env -v $REMOTE_DIR:/app/gbc-live --entrypoint node goodbuild:latest /app/gbc-live/scripts/credits-live-purchase.mjs --usd $USD"
     fi
     ;;
 esac
