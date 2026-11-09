@@ -6,7 +6,7 @@
 # Runtime variables are listed in docs/HANDOFF.md. NEXT_PUBLIC_* are fixed at build time.
 FROM node:24-slim
 
-# The run check's headless browser and the system libraries it needs (D66). It comes before the
+# The run check's headless browser and the system libraries it needs (D67). It comes before the
 # app's own files so a normal deploy reuses this layer. The version must be the playwright-core
 # version in package.json (run-check.test.ts checks it): the two sides speak a versioned protocol.
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright

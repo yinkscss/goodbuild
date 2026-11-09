@@ -481,7 +481,7 @@ describe("the fix loop's guards", () => {
   });
 });
 
-describe("run check in a turn (D66)", { timeout: 120_000 }, () => {
+describe("run check in a turn (D67)", { timeout: 120_000 }, () => {
   const CRASHES = "export default function App() { const items: string[] = undefined as never; return <main>{items.length}</main>; }\n";
   const crash = { file: "src/App.tsx", message: "The app crashed when it ran: Cannot read properties of undefined (reading 'length') (in <App>)", source: "runtime" as const };
 

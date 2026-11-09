@@ -44,7 +44,7 @@ export interface TurnDeps {
   model: ModelClient;
   checkContracts?: typeof checkContracts;
   checkApp?: typeof checkApp;
-  /** Opens the built app in a headless browser (D66). Default: the real one where the server turns it on, otherwise none. */
+  /** Opens the built app in a headless browser (D67). Default: the real one where the server turns it on, otherwise none. */
   runCheck?: typeof runCheck;
   /** Uploaded assets (default: the DB store). */
   assets?: AssetStore;
@@ -829,7 +829,7 @@ async function runChecks(
   runTests: typeof runContractTests = runContractTests,
   /** Stop point: solc and the test EVM can't be interrupted mid-run, so check before each. */
   stopIfRequested: () => void = () => undefined,
-  /** The run check (D66), when this server has it on. */
+  /** The run check (D67), when this server has it on. */
   open?: (files: Record<string, string>) => ReturnType<typeof runCheck>,
 ): Promise<CheckReport> {
   const suffix = attempt ? `:${attempt}` : "";

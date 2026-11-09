@@ -622,27 +622,34 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - Consequence: the 5% buffer does not cover a market exit. Credits cost about $0.80 to serve per $1, so margin is about 20% before any exit. Holding G$ (not selling) keeps the margin; selling in one go would erase it.
 - Options for the owner: (a) hold the G$ and only sell small slices over time, (b) raise `CREDITS_PRICE_BUFFER_BPS` (each +1% costs buyers 1%), (c) use the withdrawn G$ to pay GoodDollar-side costs instead of selling. Not changed yet.
 
-### D62. Games with entry fees are not gambling (clarifies D4)
+### D62. Settings page: one owner-scoped admin panel for apps, contracts, admin functions and data (9 Nov 2026, proposed by Claude, approved by the owner)
+- `/settings` has four tabs: Apps, Contracts, Admin functions, Data. It adds no table and holds no keys: admin calls are simulated, then signed in the user's own wallet (CLAUDE.md rule 8), like the old-funds withdrawal.
+- **Authorization.** `GET /api/account/apps`, `/contracts` and `/admin-functions` use `requireSession`, then scope every query through `projects.owner_id` (deployments also by `user_id`). Two users never see each other's rows; a signed-out call is 401. The Data tab reuses `/api/projects/[id]/app-data/records`, which already returns 404 for other people's projects and respects D34 (owner reads only collections whose rule lists the owner; per-record grants apply). The Settings code never queries `app_data_records` directly and never touches the visitor email tables.
+- **"Encrypted" fields.** Nothing in the database is encrypted today (checked 9 Nov 2026). Secrets are environment variables only. So "stays protected" means: session/code/IP hashes, tokens, visitor emails, stored source (`std_json_input`) and constructor arguments are never selected by these routes (explicit column lists), and writer ids are shown shortened (`maskSubject`). Tests scan the real JSON payloads for those keys. No encryption was added.
+- **Admin functions are guessed from names** (`adminFunctions`, same approach as `exitFunctions`), because an ABI can't show `onlyOwner`. The UI says "may need the owner", reads `owner()` where it exists to say whether the signed-in wallet is the owner, and the chain decides. Functions with array/struct inputs are listed but not callable here. Only the newest deploy of each contract is shown ("Live"); replaced ones show as "Replaced" under Contracts.
+- Mainnet calls show an extra confirm step naming the network. UNVERIFIED: a real wallet signing an admin call from this page (tested to the simulate step in unit tests only).
+
+### D63. Games with entry fees are not gambling (clarifies D4)
 - Date: 9 Nov 2026 · Decided by: the user.
 - Generated games may charge an entry fee and pay prizes. D4 (no sports betting) stands.
 - Not in code yet: `src/server/agent/prompt.ts` still tells the builder to refuse "gambling" with no definition, so a paid-entry game may be refused until the wording changes.
 - Claude's flag, for the user to confirm: draw the line at skill. A game whose payout is decided by play (a score, a race, a puzzle) is allowed. One whose payout is decided by chance (lottery, dice, slots, a random winner among payers) is what most laws call gambling, and I'd keep refusing those. Scores sent from the browser can also be faked, since apps have no server, so prize games need a way to trust a score before real money rides on it. UNVERIFIED: no lawyer has looked at this for Nigeria or anywhere else.
 
-### D63. The preview keeps Sandpack while GoodBuild's own build is added beside it
+### D64. The preview keeps Sandpack while GoodBuild's own build is added beside it
 - Date: 9 Nov 2026 · Decided by: the user · Proposed by: Claude.
 - A preview served from the publish bundler (esbuild) is to be built next to Sandpack, not in place of it. Both stay for a while. Q36 stays open until one is retired.
 
-### D64. Uploads beyond images go to Cloudflare R2, with the server's disk in the meantime
+### D65. Uploads beyond images go to Cloudflare R2, with the server's disk in the meantime
 - Date: 9 Nov 2026 · Decided by: the user.
 - Audio, fonts and 3D models need object storage. The target is an R2 bucket (S3 API). Until it exists, files are stored on the server behind the `AssetStore` seam.
 - Claude's flag: files on the server's disk aren't in the database, so the nightly and hourly backups (D47) don't cover them. They need adding to the backup, or the move to R2 should come before users rely on them.
 
-### D65. New contract kinds are allowed on mainnet from the start (answers Q15 for them)
+### D66. New contract kinds are allowed on mainnet from the start (answers Q15 for them)
 - Date: 9 Nov 2026 · Decided by: the user.
 - DAOs, vaults, airdrops and the other kinds that a wider OpenZeppelin list brings are not limited to Celo Sepolia. Mainnet stays behind the runtime switch (D50).
 - Claude's flag: these contracts hold other people's money and are easy to get subtly wrong, so the exploit-test check before a mainnet deploy should ship with them, not after.
 
-### D66. The run check: every build is opened in a headless browser on the server
+### D67. The run check: every build is opened in a headless browser on the server
 - Date: 9 Nov 2026 · Proposed and built by: Claude · Approved by: the user ("start the work").
 - **Why.** The checks could see that an app compiles, never that it runs. A crash on first render, an empty page or a route that throws was only found by a person with the preview open (HARNESS.md E1 found one by hand).
 - **What.** After the contract and app checks pass, `src/server/agent/run-check.ts` builds the project with the publish bundler (not minified, React's development build), opens it at phone width in headless Chromium, follows up to 5 `#/` links, and reports uncaught errors and an empty page as `[runtime]` issues. They go through the same auto-fix loop as a compile error (strong model, D19). Each issue names the project file from the stack and, when React says so, the component.
@@ -658,4 +665,4 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - **Tests.** `run-check.test.ts` opens real builds in a real browser (crash in a component, an undefined import, an effect error, an empty page, a broken second page, the network stub, a build failure, screenshots, an endless loop). CI installs the browser; without one those tests skip. `runner.test.ts` covers the fix loop with a stand-in.
 - **UNVERIFIED:** a real AI build with the check on (no provider keys in the build session), the real compose service on the server (the rehearsal used the same flags by hand), and how often a real model's fix for a runtime error works first time.
 - **Known limits.** No wallet is connected, so code behind a connected wallet isn't run. Uploaded images are blank placeholders. A resumed build runs the check again, and a different result would end the resume with "no longer matches" (the same is true of contract tests). Screenshots are taken on request but nothing uses them yet: the visual check still captures in the user's browser.
-- **Not done here:** a type check, a `run_checks` tool for the model, the visual check on these screenshots, the own-build preview (D63).
+- **Not done here:** a type check, a `run_checks` tool for the model, the visual check on these screenshots, the own-build preview (D64).

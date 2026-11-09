@@ -7,7 +7,7 @@ import { buildPublishedApp, PublishBuildError, type PublishedFile } from "@/serv
 import type { CheckIssue } from "./checks";
 
 /**
- * The run check (D66): build the app the way publishing does, open it in a headless browser and
+ * The run check (D67): build the app the way publishing does, open it in a headless browser and
  * report what breaks when it runs. Compiling and linting can't see a crash on first render, a page
  * that mounts nothing or a route that throws; until now only a person with the preview open could.
  *
