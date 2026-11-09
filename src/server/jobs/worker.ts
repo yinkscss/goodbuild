@@ -162,8 +162,10 @@ export class TurnWorker {
         console.warn(`[worker] ${(e as Error).message}`);
       }
       await new Promise<void>((resolve) => {
+        // Not unref'd: this timer is the standalone worker's only guaranteed handle. postgres-js
+        // recycles each connection every 30 to 60 minutes; in the gap with none open an unref'd
+        // timer let the event loop drain and the process exit 0 (restarted by Docker, 9 Nov 2026).
         const t = setTimeout(resolve, IDLE_POLL_MS);
-        t.unref?.();
         this.wake = () => {
           clearTimeout(t);
           resolve();
