@@ -29,11 +29,15 @@ describe("PromptBox", () => {
     );
   });
 
-  it("plain Enter adds a newline instead of submitting", async () => {
+  it("Enter submits and Shift+Enter adds a newline", async () => {
     const onSubmit = vi.fn();
     render(<PromptBox onSubmit={onSubmit} />);
-    await userEvent.type(screen.getByLabelText(/describe the dapp/i), "line one{Enter}line two");
+    const box = screen.getByLabelText(/describe the dapp/i) as HTMLTextAreaElement;
+    await userEvent.type(box, "line one{Shift>}{Enter}{/Shift}line two");
     expect(onSubmit).not.toHaveBeenCalled();
+    expect(box.value).toBe("line one\nline two");
+    await userEvent.type(box, "{Enter}");
+    expect(onSubmit).toHaveBeenCalledTimes(1);
   });
 
   it("keeps mainnet locked unless the flag is on", () => {

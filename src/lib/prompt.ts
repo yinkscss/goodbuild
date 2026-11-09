@@ -23,13 +23,14 @@ export interface KeyLike {
   key: string;
   metaKey: boolean;
   ctrlKey: boolean;
+  shiftKey?: boolean;
   isComposing?: boolean;
 }
 
-/** Cmd+Enter (macOS) or Ctrl+Enter submits. Plain Enter adds a newline. */
+/** Enter submits (also Cmd/Ctrl+Enter). Shift+Enter adds a newline. Never while an IME is composing. */
 export function isSubmitShortcut(e: KeyLike): boolean {
   if (e.isComposing) return false;
-  return e.key === "Enter" && (e.metaKey || e.ctrlKey);
+  return e.key === "Enter" && !e.shiftKey;
 }
 
 /** A prompt is sendable when it has non-whitespace text within the length cap. */

@@ -71,7 +71,7 @@ const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
 /**
  * The hero prompt box (DESIGN_SYSTEM §3): auto-growing 18px textarea (2 to 8 rows),
  * attach, template picker, network toggle, Enhance, example chips, credits hint and
- * the violet Build it button. Cmd/Ctrl+Enter submits.
+ * the violet Build it button. Enter submits; Shift+Enter adds a line.
  */
 export function PromptBox({
   ref,
@@ -127,7 +127,7 @@ export function PromptBox({
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (isSubmitShortcut({ key: e.key, metaKey: e.metaKey, ctrlKey: e.ctrlKey, isComposing: e.nativeEvent.isComposing })) {
+    if (isSubmitShortcut({ key: e.key, metaKey: e.metaKey, ctrlKey: e.ctrlKey, shiftKey: e.shiftKey, isComposing: e.nativeEvent.isComposing })) {
       e.preventDefault();
       void submit();
     }
@@ -345,7 +345,7 @@ export function PromptBox({
                     <span className="mx-1.5">·</span>
                   </>
                 )}
-                <kbd className="font-sans">⌘/Ctrl ↵</kbd>
+                <kbd className="font-sans">↵ to build · Shift ↵ new line</kbd>
               </>
             )}
           </span>

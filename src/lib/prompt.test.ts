@@ -25,8 +25,11 @@ describe("isSubmitShortcut", () => {
     expect(isSubmitShortcut({ ...base, metaKey: true })).toBe(true);
     expect(isSubmitShortcut({ ...base, ctrlKey: true })).toBe(true);
   });
-  it("ignores plain Enter and other keys", () => {
-    expect(isSubmitShortcut(base)).toBe(false);
+  it("submits on plain Enter but not Shift+Enter", () => {
+    expect(isSubmitShortcut(base)).toBe(true);
+    expect(isSubmitShortcut({ ...base, shiftKey: true })).toBe(false);
+  });
+  it("ignores other keys", () => {
     expect(isSubmitShortcut({ ...base, key: "a", metaKey: true })).toBe(false);
   });
   it("ignores IME composition", () => {
