@@ -16,6 +16,7 @@ import { OldFundsCard } from "./old-funds-card";
 import { TurnView } from "./turn-view";
 import type { UseWorkspace } from "./use-workspace";
 import { VerifyCard } from "./verify-card";
+import { TemplateBanner } from "@/components/landing/template-slides";
 
 /** Left pane of the workspace (mockup c): the conversation and the composer. */
 export function ChatPanel({ ws, assetUrls = {} }: { ws: UseWorkspace; assetUrls?: Record<string, string> }) {
@@ -41,6 +42,7 @@ export function ChatPanel({ ws, assetUrls = {} }: { ws: UseWorkspace; assetUrls?
   return (
     <section aria-label="Chat" className="flex min-h-0 flex-col rounded-card bg-surface shadow-card">
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5" aria-live="polite">
+        <TemplateBanner templateId={state.project.templateId} />
         {state.messages.map((m) => {
           if (m.id === liveMessageId) return null;
           if (m.role === "user") {

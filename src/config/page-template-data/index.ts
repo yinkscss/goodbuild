@@ -5,10 +5,14 @@ import { PORTFOLIO } from "./portfolio";
 import { SAAS } from "./saas";
 import { STORE } from "./store";
 import { WEB3 } from "./web3";
+import { EXTRA_PAGES } from "./pages";
 import { MORE_COMMUNITY, MORE_EVENTS, MORE_PORTFOLIO, MORE_SAAS, MORE_STORE, MORE_WEB3 } from "./more";
 
 /** Gallery order: SaaS first, then the rest, so the first row shows range. */
-export const PAGE_TEMPLATES: PageTemplate[] = [...SAAS, ...MORE_SAAS, ...WEB3, ...MORE_WEB3, ...PORTFOLIO, ...MORE_PORTFOLIO, ...STORE, ...MORE_STORE, ...EVENTS, ...MORE_EVENTS, ...COMMUNITY, ...MORE_COMMUNITY];
+const BASE: PageTemplate[] = [...SAAS, ...MORE_SAAS, ...WEB3, ...MORE_WEB3, ...PORTFOLIO, ...MORE_PORTFOLIO, ...STORE, ...MORE_STORE, ...EVENTS, ...MORE_EVENTS, ...COMMUNITY, ...MORE_COMMUNITY];
+
+/** Plain websites get extra routed pages; dApps stay one screen. */
+export const PAGE_TEMPLATES: PageTemplate[] = BASE.map((t) => (EXTRA_PAGES[t.id] ? { ...t, pages: EXTRA_PAGES[t.id] } : t));
 
 export function getPageTemplate(id: string | null | undefined): PageTemplate | undefined {
   return id ? PAGE_TEMPLATES.find((t) => t.id === id) : undefined;

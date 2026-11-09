@@ -14,6 +14,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { NetworkToggle } from "@/components/prompt/network-toggle";
 import { DEFAULT_NETWORK, type NetworkId } from "@/config/networks";
+import { getPageTemplate } from "@/config/page-template-data";
+import { TEMPLATE_EXAMPLE } from "@/config/page-templates";
+import { TemplateSlides } from "@/components/landing/template-slides";
 import { TEMPLATES, getTemplate, type StarterTemplate } from "@/config/templates";
 import {
   PROMPT_MAX_LENGTH,
@@ -130,7 +133,10 @@ export function PromptBox({
 
   function fillFromTemplate(t: StarterTemplate) {
     setTemplateId(t.id);
-    setValue(t.examplePrompt);
+    // A gallery template is attached, not typed in: its brief stays behind the scenes and the person
+    // writes their own request. A dApp starter fills a ready-made prompt they can edit.
+    if (getPageTemplate(t.id)) setValue((v) => (v.trim() ? v : ""));
+    else setValue(t.examplePrompt);
     requestAnimationFrame(() => {
       const el = textareaRef.current;
       if (!el) return;
@@ -162,6 +168,9 @@ export function PromptBox({
   React.useImperativeHandle(ref, () => ({ fill: fillFromTemplate, focus: () => textareaRef.current?.focus() }));
 
   const selectedTemplate = templateId ? getTemplate(templateId) : undefined;
+  const pageTemplate = getPageTemplate(templateId);
+  const placeholder = pageTemplate ? `Say what you want to build with this template, ${TEMPLATE_EXAMPLE[pageTemplate.category]}` : "Describe the dApp you want to build…";
+  const [previewing, setPreviewing] = React.useState(false);
   const empty = value.length === 0;
 
   function chipRow(spacing: string) {
@@ -191,8 +200,30 @@ export function PromptBox({
         void submit();
       }}
     >
+      {pageTemplate && (
+        <div
+          className="mb-4 flex items-center gap-4 rounded-block bg-canvas p-2 pr-3"
+          onPointerEnter={() => setPreviewing(true)}
+          onPointerLeave={() => setPreviewing(false)}
+        >
+          <TemplateSlides template={pageTemplate} playing={previewing} sizes="160px" className="w-40 shrink-0" />
+          <div className="min-w-0 flex-1">
+            <p className="eyebrow">Template</p>
+            <p className="truncate text-base font-semibold">{pageTemplate.label}</p>
+            <p className="text-xs text-grey-600">The design is attached. Write what you want and change anything you like, nothing is sent until you press {submitLabel}.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setTemplateId(null)}
+            className="grid size-7 shrink-0 place-items-center rounded-full text-grey-600 hover:bg-tint hover:text-violet"
+            aria-label={`Remove the ${pageTemplate.label} template`}
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+      )}
       <label htmlFor={`${id}-prompt`} className="sr-only">
-        Describe the dApp you want to build
+        {pageTemplate ? `Describe what you want to build with the ${pageTemplate.label} template` : "Describe the dApp you want to build"}
       </label>
       <div className="relative">
         {empty && (
@@ -201,7 +232,7 @@ export function PromptBox({
             className="pointer-events-none absolute inset-x-0 top-0 flex items-center text-[18px] leading-7 text-grey-400"
           >
             <span className="mr-1 inline-block h-5 w-[2px] rounded-full bg-violet animate-caret motion-reduce:animate-none" />
-            Describe the dApp you want to build…
+            {placeholder}
           </span>
         )}
         <textarea
@@ -210,7 +241,7 @@ export function PromptBox({
           rows={rows}
           value={value}
           maxLength={PROMPT_MAX_LENGTH}
-          placeholder="Describe the dApp you want to build…"
+          placeholder={placeholder}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={onKeyDown}
           aria-describedby={`${id}-hint`}

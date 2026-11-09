@@ -3,6 +3,7 @@ import "server-only";
 import { and, asc, desc, eq } from "drizzle-orm";
 
 import { NETWORKS, type NetworkId } from "@/config/networks";
+import { getPageTemplate } from "@/config/page-template-data";
 import { getTemplate } from "@/config/templates";
 import type { Db } from "@/server/db/client";
 import { messages, projects, type Message, type Project } from "@/server/db/schema";
@@ -18,7 +19,8 @@ const TRAILING_FILLER = new Set([
  */
 export function nameFromPrompt(prompt: string, templateId?: string | null): string {
   const template = templateId ? getTemplate(templateId) : undefined;
-  if (template) return template.label;
+  // A gallery template is only a starting design: the project is named for what the person asked for.
+  if (template && !getPageTemplate(templateId)) return template.label;
   const clause = prompt.split(/[.,:;!?\n(]/)[0] ?? "";
   const words = clause
     .replace(/[^\p{L}\p{N}$\s-]/gu, " ")
