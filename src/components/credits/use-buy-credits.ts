@@ -1,12 +1,15 @@
 "use client";
 
 import * as React from "react";
-import { encodeAbiParameters } from "viem";
+import { createPublicClient, custom, encodeAbiParameters } from "viem";
 import { celo, celoSepolia } from "viem/chains";
 
 import { useAuth } from "@/lib/auth/context";
 
 const GD_ABI = [{ type: "function", name: "transferAndCall", stateMutability: "nonpayable", inputs: [{ name: "to", type: "address" }, { name: "amount", type: "uint256" }, { name: "data", type: "bytes" }], outputs: [{ type: "bool" }] }] as const;
+const BALANCE_ABI = [{ type: "function", name: "balanceOf", stateMutability: "view", inputs: [{ name: "account", type: "address" }], outputs: [{ type: "uint256" }] }] as const;
+/** G$ is a Superfluid token: a short balance reverts with SF_TOKEN_MOVE_INSUFFICIENT_BALANCE (0x2f4cb941), which wallets show as "unknown custom error". */
+export const NO_GD_PATTERN = /transfer amount exceeds balance|insufficient|exceeds the balance|0x2f4cb941|SF_TOKEN_MOVE_INSUFFICIENT_BALANCE/i;
 const QUOTE_TUPLE = [
   { type: "tuple", components: [{ name: "buyer", type: "address" }, { name: "gdAmount", type: "uint256" }, { name: "credits", type: "uint256" }, { name: "bonus", type: "uint256" }, { name: "ref", type: "bytes32" }, { name: "deadline", type: "uint256" }] },
   { type: "bytes" },
@@ -96,6 +99,11 @@ export function useBuyCredits(info: ChainInfo | null | undefined) {
         if (auth.wallet?.chainId !== info.chainId) await auth.switchChain(info.chainId);
         const client = await auth.getWalletClient();
         const chain = info.chainId === celoSepolia.id ? celoSepolia : celo;
+        const have = await createPublicClient({ chain, transport: custom(client.transport) }).readContract({ address: info.goodDollar, abi: BALANCE_ABI, functionName: "balanceOf", args: [wallet as `0x${string}`] }).catch(() => null);
+        if (have !== null && have < BigInt(q.gdAmount)) {
+          setPhase({ name: "error", needsGd: true, message: `You have ${formatGd(have)} G$ in this wallet and need ${formatGd(BigInt(q.gdAmount))} G$. Nothing was charged.` });
+          return false;
+        }
         const data = encodeAbiParameters(QUOTE_TUPLE, [{ buyer: q.buyer as `0x${string}`, gdAmount: BigInt(q.gdAmount), credits: BigInt(q.credits), bonus: BigInt(q.bonus), ref: q.ref as `0x${string}`, deadline: BigInt(q.deadline) }, signed.signature]);
         const hash = await client.writeContract({ account: wallet as `0x${string}`, chain, address: info.goodDollar, abi: GD_ABI, functionName: "transferAndCall", args: [info.contract, BigInt(q.gdAmount), data] });
         setPhase({ name: "crediting", hash });
@@ -113,7 +121,7 @@ export function useBuyCredits(info: ChainInfo | null | undefined) {
         throw new Error("The network is slow. Your payment went through, and the credit lands as soon as it's confirmed.");
       } catch (error) {
         const text = (error as Error).message ?? "";
-        const noGd = /transfer amount exceeds balance|insufficient|exceeds the balance/i.test(text);
+        const noGd = NO_GD_PATTERN.test(text);
         const refused = /user rejected|denied|rejected the request/i.test(text);
         const noGas = /gas required exceeds|insufficient funds for gas/i.test(text);
         setPhase({ name: "error", needsGd: noGd && !noGas, message: noGas ? "You need a little CELO for the network fee." : noGd ? "You don't have enough G$ for that." : refused ? "You cancelled it in your wallet. Nothing was charged." : text.slice(0, 200) || "Something went wrong. Nothing was charged." });
