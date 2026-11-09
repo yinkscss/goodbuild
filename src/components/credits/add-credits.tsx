@@ -89,7 +89,7 @@ export function AddCredits({ className }: { className?: string }) {
               <Button variant="primary" className="w-full" disabled={busy || !valid || !wallet || phase.name === "done"} onClick={() => void buy(amountMicro)}>
                 {phase.name === "signing" ? "Confirm in your wallet…" : phase.name === "crediting" ? "Adding credit…" : "Pay with G$"}
               </Button>
-              <p className="text-center text-xs text-grey-600">Price follows the live G$ market price, quoted for 10 minutes.</p>
+              <p className="text-center text-xs text-grey-600">Price follows the live G$ market price, quoted for 10 minutes. Keep about 0.1 CELO in your wallet for the network fee.</p>
             </div>
           )}
         </DialogContent>
