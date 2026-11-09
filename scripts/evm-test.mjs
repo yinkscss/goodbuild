@@ -8,6 +8,8 @@ import { createAddressFromString, createZeroAddress, hexToBytes, bytesToHex } fr
 import { decodeErrorResult, encodeFunctionData } from "viem";
 
 const GAS = 30_000_000n;
+/** Native CELO each test contract starts with. */
+const TEST_CELO = 1_000n * 10n ** 18n;
 const CALLER = createAddressFromString("0x1000000000000000000000000000000000000001");
 /** Tests see a realistic clock (block.timestamp = TIMESTAMP), so "an expired deadline" can be expressed. */
 export const TIMESTAMP = 1_750_000_000n;
@@ -91,6 +93,8 @@ async function main({ tests, abis }) {
         continue;
       }
       const at = created.createdAddress;
+      // The test contract starts with native CELO, so tests can tip, pay and escrow (use fund() to hand some to an actor).
+      await evm.stateManager.modifyAccountFields(at, { balance: TEST_CELO });
       if (hasSetUp) {
         const s = await call(evm, at, encodeFunctionData({ abi: t.abi, functionName: "setUp" }));
         if (s.execResult.exceptionError) {

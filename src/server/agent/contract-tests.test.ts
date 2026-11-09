@@ -99,3 +99,66 @@ contract ClockTest is Test {
     expect(results).toEqual([expect.objectContaining({ test: "testClock", ok: true })]);
   });
 });
+
+describe("native CELO in tests", { timeout: 120_000 }, () => {
+  // The same shape as the tip jar the live test built: payable tip with a note, owner-only withdraw. Its AI-written tests could
+  // never pass because actors couldn't send value and the test contract held no CELO.
+  const JAR = `// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.24;
+contract Jar {
+    address public owner = msg.sender;
+    uint256 public total;
+    error NoTip();
+    error NotOwner();
+    error SendFailed();
+    function tip(string calldata) external payable {
+        if (msg.value == 0) revert NoTip();
+        total += msg.value;
+    }
+    function withdraw() external {
+        if (msg.sender != owner) revert NotOwner();
+        (bool ok,) = owner.call{value: address(this).balance}("");
+        if (!ok) revert SendFailed();
+    }
+}
+`;
+  const JAR_TEST = `// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.24;
+import {Test, Actor} from "@goodbuild/Test.sol";
+import {Jar} from "../Jar.sol";
+contract JarTest is Test {
+    Jar jar;
+    receive() external payable {}
+    function setUp() public { jar = new Jar(); }
+    function testActorTipsWithValue() public {
+        Actor alice = newActor();
+        fund(alice, 1 ether);
+        alice.execValue(address(jar), abi.encodeCall(jar.tip, ("hi")), 0.25 ether);
+        assertEq(jar.total(), 0.25 ether, "tip recorded");
+        assertEq(address(jar).balance, 0.25 ether, "jar holds it");
+    }
+    function testEmptyTipReverts() public {
+        Actor alice = newActor();
+        expectRevertValue(alice, address(jar), abi.encodeCall(jar.tip, ("x")), 0, "no value must revert");
+    }
+    function testOwnerWithdraws() public {
+        jar.tip{value: 1 ether}("mine");
+        uint256 before = address(this).balance;
+        jar.withdraw();
+        assertEq(address(this).balance, before + 1 ether, "owner got the jar");
+    }
+    function testStrangerCannotWithdraw() public {
+        Actor bob = newActor();
+        jar.tip{value: 1 ether}("x");
+        expectRevert(bob, address(jar), abi.encodeCall(jar.withdraw, ()), "only the owner");
+    }
+}
+`;
+  it("lets a payable contract be tested: the test contract holds CELO, actors can be funded and send value", async () => {
+    const report = await checkContracts({ "contracts/Jar.sol": JAR, "contracts/test/Jar.t.sol": JAR_TEST });
+    expect(report.errors).toEqual([]);
+    const { results, issues } = await runContractTests(report);
+    expect(issues).toEqual([]);
+    expect(results.map((r) => `${r.test}:${r.ok}`).sort()).toEqual(["testActorTipsWithValue:true", "testEmptyTipReverts:true", "testOwnerWithdraws:true", "testStrangerCannotWithdraw:true"]);
+  });
+});

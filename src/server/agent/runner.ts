@@ -65,7 +65,12 @@ export interface TurnInput {
   intake?: boolean;
 }
 
-export const MAX_FIX_ATTEMPTS = 3;
+/** Fix attempts per build. Later attempts only run while errors keep dropping (see fixProgress) and the fix spend stays under FIX_BUDGET_MICRO. */
+export const MAX_FIX_ATTEMPTS = 5;
+/** The most the auto-fix loop may charge on one build (micro-USD, what the person pays), so a hard failure can't run up the bill. */
+export const FIX_BUDGET_MICRO = 300_000;
+/** Stop after this many attempts in a row that didn't bring the error count below its best so far. */
+const MAX_STALLED_ATTEMPTS = 2;
 const MAX_CALLS = 30;
 const MAX_TOOL_ROUNDS_PER_PHASE = 16;
 const MAX_TOKENS = 16_000;
@@ -441,17 +446,26 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       else if (setup.customColours) ws.files["public/index.html"] = ensureReadable(html);
     };
     keepTheme();
-    // Checks and auto-fix (max 3, all on the fix tier). Same errors twice → stop.
+    // Checks and auto-fix (up to MAX_FIX_ATTEMPTS). Stops on the same errors twice, on two attempts in a row without progress, or at the fix budget.
     let report = await runChecks(ws.files, compile, lint, step, log, 0, contractOptions, runContractTests, stopIfRequested);
     let previous = "";
     const initialErrors = report.errors.length;
     let attemptsUsed = 0;
     let stoppedEarly = false;
+    let stopNote = "";
+    const fixStartMicro = record.chargedMicro;
+    let progress = { best: report.errors.length, stalls: 0 };
     for (let attempt = 1; !report.ok && attempt <= MAX_FIX_ATTEMPTS; attempt++) {
       const issues = formatIssues(report.errors);
       if (issues === previous) {
         log("! the same errors came back after a fix, stopping");
         stoppedEarly = true;
+        break;
+      }
+      if (record.chargedMicro - fixStartMicro >= FIX_BUDGET_MICRO) {
+        log("! the fix budget for this build is used up, stopping");
+        stoppedEarly = true;
+        stopNote = "the fix budget for one build was used up";
         break;
       }
       previous = issues;
@@ -469,15 +483,28 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
         detail: report.ok ? "all checks pass" : `${plural(report.errors.length, "error")} left: ${firstIssue(report.errors)}`,
         status: report.ok ? "done" : "error",
       });
+      progress = fixProgress(progress.best, progress.stalls, report.errors.length);
+      if (!report.ok && progress.stalls >= MAX_STALLED_ATTEMPTS) {
+        log("! two fix attempts in a row made no progress, stopping");
+        stoppedEarly = true;
+        stopNote = "two attempts in a row made no progress";
+        break;
+      }
     }
     keepTheme();
     // Replayed everything without reaching a new model call (a crash during the last checks).
     goLive();
-    if (initialErrors > 0) {
+    // Only contract tests are still failing: the contract compiled and the app's checks pass, so the build ships and says so.
+    const testsOnly = onlyTestFailures(report.errors);
+    if (initialErrors > 0 && testsOnly) {
+      const detail = `${plural(report.errors.length, "test failure")} left (${firstIssue(report.errors)}). The contract compiled and the app checks pass, so you can still deploy.`;
+      step({ id: "autofix", label: "Contract tests: not all passing", detail, status: "done" });
+      log(`! ${detail}`);
+    } else if (initialErrors > 0) {
       const detail = report.ok
         ? `Fixed ${plural(initialErrors, "error")} on attempt ${attemptsUsed} of ${MAX_FIX_ATTEMPTS}`
         : stoppedEarly
-          ? `Failed after ${plural(attemptsUsed, "attempt")}: the same ${report.errors.length === 1 ? "error" : "errors"} came back`
+          ? `Failed after ${plural(attemptsUsed, "attempt")}: ${stopNote || `the same ${report.errors.length === 1 ? "error" : "errors"} came back`}`
           : `Failed after ${plural(attemptsUsed, "attempt")}: ${plural(report.errors.length, "error")} left`;
       step({ id: "autofix", label: report.ok ? "Auto-fix: fixed" : "Auto-fix: failed", detail, status: report.ok ? "done" : "error" });
       log(report.ok ? `✓ ${detail.toLowerCase()}` : `✗ ${detail.toLowerCase()}`);
@@ -492,11 +519,11 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       ws.files[`${PLATFORM_DIR}index.ts`] = contractsIndex(names);
       record.contracts = report.contracts.map(({ name, file, bytecodeBytes }) => ({ name, file, bytecodeBytes }));
     }
-    record.checks = { errors: report.errors.length, warnings: report.warnings.length };
-    record.status = report.ok ? "ready" : "needs_fix";
+    record.checks = { errors: testsOnly ? 0 : report.errors.length, warnings: report.warnings.length };
+    record.status = report.ok || testsOnly ? "ready" : "needs_fix";
     const endStatus = record.status;
 
-    const summary = firstLine(text) || (report.ok ? "Build updated." : "Build has errors to fix.");
+    const summary = firstLine(text) || (report.ok || testsOnly ? "Build updated." : "Build has errors to fix.");
     const save = ws.changed() || firstBuild;
     if (save) record.changes = ws.netChanges().filter((c) => !c.path.startsWith(PLATFORM_DIR));
     stopIfRequested();
@@ -889,8 +916,17 @@ async function finish(db: Db, id: string, text: string, record: TurnRecord) {
  * amendment, HARNESS.md E5: Sonnet's fix of one was $0.20 of a $0.26 build).
  */
 export function fixTier(attempt: number, errors: CheckIssue[]): ModelTier {
-  const testOnly = errors.length > 0 && errors.every((i) => i.source === "test" || (i.source === "solc" && i.file.startsWith("contracts/test/")));
-  return attempt === 1 && testOnly ? TIER_FOR.testFix : TIER_FOR.fix;
+  return attempt === 1 && onlyTestFailures(errors) ? TIER_FOR.testFix : TIER_FOR.fix;
+}
+
+/** Every remaining error is a contract test failing or a test file that won't compile: nothing is wrong with the contract or the app themselves. */
+export function onlyTestFailures(errors: CheckIssue[]): boolean {
+  return errors.length > 0 && errors.every((i) => i.source === "test" || (i.source === "solc" && i.file.startsWith("contracts/test/")));
+}
+
+/** Track the best error count and how many attempts in a row failed to beat it. */
+export function fixProgress(best: number, stalls: number, errorsNow: number): { best: number; stalls: number } {
+  return errorsNow < best ? { best: errorsNow, stalls: 0 } : { best, stalls: stalls + 1 };
 }
 
 function onlySuggestions(calls: ToolCall[]): boolean {
