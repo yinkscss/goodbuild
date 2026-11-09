@@ -94,6 +94,17 @@ export function thumbnailsFor(template: Pick<PageTemplate, "id">): string[] {
   return Array.from({ length: n }, (_, i) => thumbnailFor(template, i + 1));
 }
 
+/** What each screenshot in `thumbnailsFor` shows, in the same order. */
+export function slideLabels(template: Pick<PageTemplate, "id" | "pages">): string[] {
+  const n = thumbnailsFor(template).length;
+  const extra = template.pages ?? [];
+  const hasLower = n === extra.length + 2;
+  return ["Home, top", ...(hasLower ? ["Home, further down"] : []), ...extra.map((p) => `${p.name} page`)].slice(0, n);
+}
+
+/** How many screenshots go to the agent with a template's first build (about 770 input tokens each, once). */
+export const MAX_BRIEF_IMAGES = 3;
+
 /** Placeholder help in the prompt box once a template is attached: what a person might type next. */
 export const TEMPLATE_EXAMPLE: Record<TemplateCategory, string> = {
   SaaS: "e.g. A landing page for my invoicing app, with my own name and pricing",
@@ -163,6 +174,7 @@ export function templateBrief(t: PageTemplate): string {
     ...(t.pages ?? []).flatMap((pg) => [`Page "${pg.name}": a short page title, then:`, ...pg.sections.map((s, i) => describe(s, i + 1))]),
     `Footer: ${t.footer}`,
     t.onchain ? `On-chain part: ${t.onchain}` : "No contract is needed: make every button do something sensible (scroll to a section, open a form, or save to app data when it collects entries).",
+    `Screenshots of the template are attached to this message (${slideLabels(t).slice(0, MAX_BRIEF_IMAGES).join("; ")}). They show the look to match: spacing, type scale, card style and colour use. The text above is the source of truth for copy and structure.`,
     "Make it responsive (stacked on phones, with a compact menu), keep the copy as written, and keep the whole page in a few small files. Placeholder pictures are CSS gradients and inline SVG, not remote images.",
   ];
   return lines.join("\n");

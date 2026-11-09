@@ -14,8 +14,8 @@ import type { ChatMessage, ToolCall } from "./model";
 
 export const TURN_SETUP_VERSION = 1;
 
-/** A user message part as saved: images are referenced by asset id, never stored as base64. */
-export type SavedPart = { type: "text"; text: string } | { type: "asset-image"; assetId: string };
+/** A user message part as saved: images are referenced by asset id (or a template screenshot's file name), never stored as base64. */
+export type SavedPart = { type: "text"; text: string } | { type: "asset-image"; assetId: string } | { type: "template-image"; name: string };
 export type SavedMessage = Exclude<ChatMessage, { role: "user" }> | { role: "user"; content: string | SavedPart[]; cache?: boolean };
 
 export interface TurnSetup {

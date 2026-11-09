@@ -2,7 +2,10 @@ import "server-only";
 
 import { and, asc, eq } from "drizzle-orm";
 
-import { templateBriefFor } from "@/config/page-template-data";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+
+import { templateBriefFor, templateImageFiles } from "@/config/page-template-data";
 import type { Db } from "@/server/db/client";
 import { messages, projects } from "@/server/db/schema";
 import { checkApp, checkContracts, formatIssues, mentionsGd, mentionsNativeCelo, type CheckIssue, type CheckReport, type ContractCheckOptions } from "./checks";
@@ -129,6 +132,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
   };
 
   let images: UserPart[] = [];
+  let templateImages = new Map<string, UserPart>();
   try {
     // ---- Setup: done once; a resumed run restores it instead (memory call and all) ----
     let setup: TurnSetup;
@@ -143,6 +147,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       emit({ type: "start", messageId: assistantId, mode: input.mode });
       images = await loadImages(deps.assets ?? dbAssetStore(db), input.projectId, setup.imageAssetIds);
       if (images.length !== setup.imageAssetIds.length) throw new ResumeFailedError("a design reference this build used was deleted.");
+      templateImages = await loadTemplateImages(savedTemplateImageNames(setup.prefix));
     } else {
       setup = await runSetup();
     }
@@ -153,7 +158,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     if (saved) log(`↻ resumed after an interruption (attempt ${job.resume?.attempt ?? 2}), replaying ${replayLog.length} saved ${replayLog.length === 1 ? "response" : "responses"}`);
 
     const intake = setup.intake === true;
-    const convo: ChatMessage[] = [{ role: "system", content: intake ? INTAKE_PROMPT : systemPrompt(input.mode) }, ...rehydrate(setup.prefix, images)];
+    const convo: ChatMessage[] = [{ role: "system", content: intake ? INTAKE_PROMPT : systemPrompt(input.mode) }, ...rehydrate(setup.prefix, images, templateImages)];
     const tools = intake ? INTAKE_TOOLS : input.mode === "plan" ? PLAN_TOOLS : BUILD_TOOLS;
 
     let calls = 0;
@@ -704,13 +709,28 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     images = await loadImages(assetStore, input.projectId, fresh.map((a) => a.id));
     if (images.length) log(`attached ${plural(images.length, "design reference")}: ${fresh.map((a) => a.name).join(", ")}`);
     const imageAssetIds = images.length ? fresh.map((a) => a.id) : [];
+    // A gallery template's first build also gets screenshots of the design (the text brief stays the source of truth).
+    const tplNames = firstBuild ? templateImageFiles(project.templateId) : [];
+    templateImages = await loadTemplateImages(tplNames);
+    if (templateImages.size) log(`attached ${plural(templateImages.size, "template screenshot")}`);
 
     // G$ anywhere in this project's prompts means the G$ ERC-20, never native CELO.
     const userText = [request, brief.answerWords, ...history.filter((m) => m.role === "user").map((m) => String(m.content))].join("\n");
     const prefix: SavedMessage[] = [
       // History messages are plain text (built above from message content).
       ...(history as SavedMessage[]),
-      { role: "user", content: imageAssetIds.length ? [{ type: "text", text: ctx.text }, ...imageAssetIds.map((assetId) => ({ type: "asset-image" as const, assetId }))] : ctx.text, cache: true },
+      {
+        role: "user",
+        content:
+          imageAssetIds.length || templateImages.size
+            ? [
+                { type: "text", text: ctx.text },
+                ...imageAssetIds.map((assetId) => ({ type: "asset-image" as const, assetId })),
+                ...[...templateImages.keys()].map((name) => ({ type: "template-image" as const, name })),
+              ]
+            : ctx.text,
+        cache: true,
+      },
     ];
     const result: TurnSetup = {
       v: TURN_SETUP_VERSION,
@@ -772,12 +792,31 @@ async function loadImages(store: AssetStore, projectId: string, ids: string[]): 
   return out;
 }
 
+/** Template screenshots ship in public/templates/. A missing file is skipped: the text brief is enough to build. */
+async function loadTemplateImages(names: string[]): Promise<Map<string, UserPart>> {
+  const out = new Map<string, UserPart>();
+  for (const name of names) {
+    if (!/^[a-z0-9-]+\.png$/.test(name)) continue;
+    try {
+      const bytes = await readFile(path.join(process.cwd(), "public", "templates", name));
+      out.set(name, { type: "image", ...(await visionImage(new Uint8Array(bytes), "image/png")) });
+    } catch {
+      // skipped
+    }
+  }
+  return out;
+}
+
+function savedTemplateImageNames(prefix: SavedMessage[]): string[] {
+  return prefix.flatMap((m) => (m.role === "user" && typeof m.content !== "string" ? m.content.flatMap((p) => (p.type === "template-image" ? [p.name] : [])) : []));
+}
+
 /** Saved messages back to model messages: asset references become the images loaded for them. */
-function rehydrate(prefix: SavedMessage[], images: UserPart[]): ChatMessage[] {
+function rehydrate(prefix: SavedMessage[], images: UserPart[], templateImages: Map<string, UserPart> = new Map()): ChatMessage[] {
   let next = 0;
   return prefix.map((m) => {
     if (m.role !== "user" || typeof m.content === "string") return m as ChatMessage;
-    const content: UserPart[] = m.content.map((p) => (p.type === "asset-image" ? images[next++] : p)).filter(Boolean);
+    const content: UserPart[] = m.content.map((p) => (p.type === "asset-image" ? images[next++] : p.type === "template-image" ? templateImages.get(p.name) : p)).filter((p): p is UserPart => Boolean(p));
     return { ...m, content };
   });
 }

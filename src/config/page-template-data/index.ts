@@ -1,4 +1,4 @@
-import { templateBrief, type PageTemplate } from "../page-templates";
+import { MAX_BRIEF_IMAGES, templateBrief, thumbnailsFor, type PageTemplate } from "../page-templates";
 import { COMMUNITY } from "./community";
 import { EVENTS } from "./events";
 import { PORTFOLIO } from "./portfolio";
@@ -22,4 +22,10 @@ export function getPageTemplate(id: string | null | undefined): PageTemplate | u
 export function templateBriefFor(id: string | null | undefined): string {
   const t = getPageTemplate(id);
   return t ? templateBrief(t) : "";
+}
+
+/** Screenshot file names (in public/templates/) that go to the agent with a template project's first build. */
+export function templateImageFiles(id: string | null | undefined): string[] {
+  const t = getPageTemplate(id);
+  return t ? thumbnailsFor(t).slice(0, MAX_BRIEF_IMAGES).map((u) => u.split("/").pop()!) : [];
 }

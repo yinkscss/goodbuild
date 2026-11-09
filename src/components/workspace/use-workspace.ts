@@ -28,7 +28,8 @@ export interface UseWorkspace {
   refresh: () => Promise<WorkspaceState | null>;
   error: string | null;
   /** Upload a logo, image or design reference to the project. */
-  upload: (file: File, kind: AssetKind) => Promise<void>;
+  /** Resolves true when the file was saved. */
+  upload: (file: File, kind: AssetKind) => Promise<boolean>;
   removeAsset: (id: string) => Promise<void>;
   /** Re-classify an upload (logo, image, design reference); the server re-describes it. */
   changeAssetKind: (id: string, kind: AssetKind) => Promise<void>;
@@ -288,9 +289,10 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
         if (!res.ok) {
           const b = (await res.json().catch(() => ({}))) as { message?: string; error?: string };
           setError(b.message ?? (b.error === "unauthenticated" ? "Your session ended. Sign in again." : "That upload didn't work. Try again."));
-          return;
+          return false;
         }
         await refresh();
+        return true;
       } finally {
         setUploading((n) => n - 1);
       }

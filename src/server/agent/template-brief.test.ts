@@ -60,6 +60,20 @@ describe("projects started from a gallery template", () => {
     expect(context).toContain("started from the \\\"Flowdesk\\\" template");
   });
 
+  it("attaches screenshots of the template to the first build, and none for other projects", async () => {
+    const images = (messages: unknown) => JSON.stringify(messages).match(/"type":"image"/g)?.length ?? 0;
+    const p = await fromTemplate("flowdesk");
+    const first = scriptedModel([{ text: "Built it." }]);
+    await runTurn({ db, model: first.client }, { projectId: p.id, userId, mode: "build", prompt: templateRequest(getPageTemplate("flowdesk")!) }, () => undefined);
+    expect(images(first.requests[0].messages)).toBe(3);
+    expect(JSON.stringify(first.requests[0].messages)).toContain("Screenshots of the template are attached");
+
+    const plain = await createProjectFromPrompt(db, userId, { prompt: "A tip jar", network: "celo-sepolia" });
+    const none = scriptedModel([{ text: "Built it." }]);
+    await runTurn({ db, model: none.client }, { projectId: plain.id, userId, mode: "build", prompt: "A tip jar" }, () => undefined);
+    expect(images(none.requests[0].messages)).toBe(0);
+  });
+
   it("every template has a brief the agent can use", () => {
     for (const t of PAGE_TEMPLATES) expect(getPageTemplate(t.id)).toBe(t);
   });
