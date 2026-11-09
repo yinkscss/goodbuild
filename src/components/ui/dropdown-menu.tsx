@@ -21,8 +21,9 @@ function DropdownMenuContent({
       <DropdownMenuPrimitive.Content
         data-slot="dropdown-menu-content"
         sideOffset={sideOffset}
+        collisionPadding={8}
         className={cn(
-          "z-50 min-w-[14rem] overflow-hidden rounded-block bg-surface p-1.5 text-ink shadow-pop outline-none",
+          "z-50 max-h-[var(--radix-dropdown-menu-content-available-height)] min-w-[14rem] max-w-[calc(100vw-16px)] overflow-y-auto overscroll-contain overflow-x-hidden rounded-block bg-surface p-1.5 text-ink shadow-pop outline-none",
           className,
         )}
         {...props}

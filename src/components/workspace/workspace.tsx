@@ -81,8 +81,8 @@ export function Workspace({ initial }: { initial: WorkspaceState }) {
         return true;
       }}
     >
-    <div className="flex h-dvh flex-col gap-4 p-4">
-      <header className="flex h-12 shrink-0 items-center justify-between gap-3 px-2">
+    <div className="flex h-dvh min-w-0 flex-col gap-3 p-3 sm:gap-4 sm:p-4">
+      <header className="flex h-12 shrink-0 items-center justify-between gap-2 px-1 sm:gap-3 sm:px-2">
         <div className="flex min-w-0 items-center gap-3">
           <Logo href="/home" wordmarkClassName="hidden sm:inline" />
           <span className="hidden text-grey-400 sm:inline" aria-hidden>
@@ -91,7 +91,7 @@ export function Workspace({ initial }: { initial: WorkspaceState }) {
           <h1 className="hidden truncate font-semibold sm:block">{state.project.name}</h1>
           <VersionMenu ws={ws} />
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex shrink-0 items-center gap-2 sm:gap-3">
           <CreditsPill balanceGd={null} usdPerGd={null} balanceMicro={state.availableMicro} className="hidden xl:flex" />
           <NetworkBadge chainId={state.project.chainId} />
           <BackendButton on={backendOn} disabled={false} onOpen={() => setBackendOpen(true)} compact className="hidden px-3.5 py-2.5 md:inline-flex 2xl:px-5" />
@@ -102,8 +102,8 @@ export function Workspace({ initial }: { initial: WorkspaceState }) {
       </header>
 
       {/* The header can't fit these on a phone, and MiniPay users are on phones. */}
-      <div className="flex gap-2 md:hidden">
-        <BackendButton on={backendOn} disabled={false} onOpen={() => setBackendOpen(true)} className="flex-1 px-4 py-2.5" />
+      <div className="flex min-w-0 gap-2 md:hidden [&>*]:min-w-0 [&>*]:px-2 [&>*]:text-[13px]">
+        <BackendButton on={backendOn} disabled={false} onOpen={() => setBackendOpen(true)} className="flex-1 py-2.5" />
         <PublishButton publish={publish} onOpen={() => setPublishOpen(true)} disabled={running} className="flex-1 px-4 py-2.5" />
         <DeployButton className="flex-1 px-4 py-2.5" />
       </div>
