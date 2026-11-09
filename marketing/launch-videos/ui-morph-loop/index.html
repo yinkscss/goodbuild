@@ -254,7 +254,7 @@ function seek(t) {
   const c = cursorAt(t);
   let sc = 1; for (const ck of CLICKS) sc -= .16 * dip(t, ck);
   sc -= .1 * (wt >= tg && wt < tr ? 1 : 0) * sm((wt - tg) / .08);
-  cursor.style.transform = `translate(${720 + c.x * drift - 8}px,${720 + c.y * drift - 5}px) scale(${sc})`;
+  cursor.style.transform = `translate(${720 + c.x * drift * (1 + kick) - 8}px,${720 + c.y * drift * (1 + kick) - 5}px) scale(${sc})`;
   cursor.style.transformOrigin = '8px 5px';
 }
 function dip(t, tc) { // press-release dip, periodic
