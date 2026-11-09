@@ -253,7 +253,7 @@ export function Composer({
           for (const f of files) void onUpload(f, "image");
         }}
         onKeyDown={(e) => {
-          if (isSubmitShortcut({ key: e.key, metaKey: e.metaKey, ctrlKey: e.ctrlKey, isComposing: e.nativeEvent.isComposing })) {
+          if (isSubmitShortcut({ key: e.key, metaKey: e.metaKey, ctrlKey: e.ctrlKey, shiftKey: e.shiftKey, isComposing: e.nativeEvent.isComposing })) {
             e.preventDefault();
             submit();
           }
