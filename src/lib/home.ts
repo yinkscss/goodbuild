@@ -65,7 +65,7 @@ export const LOW_CREDIT_THRESHOLD_GD = 10;
 
 export type CreditState = "preview" | "ok" | "low" | "empty";
 
-/** `null` balance means the credit ledger isn't live yet (before M6). */
+/** `null` balance means the credit ledger isn't live yet (before credits are live). */
 export function creditState(balanceGd: number | null): CreditState {
   if (balanceGd === null) return "preview";
   if (balanceGd <= 0) return "empty";

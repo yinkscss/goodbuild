@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, Check, ChevronDown, Copy, ExternalLink, KeyRound, Loader2, LogOut, Wallet } from "lucide-react";
 
@@ -188,12 +189,14 @@ function AccountMenu({
         </DropdownMenuRadioGroup>
 
         <DropdownMenuSeparator />
-        <DropdownMenuItem disabled>
-          <Wallet className="mt-0.5 size-4 text-grey-600" />
-          <span>
-            <span className="block">Credits and top-up</span>
-            <span className="block text-xs text-grey-600">Coming with G$ credits</span>
-          </span>
+        <DropdownMenuItem asChild>
+          <Link href="/credits">
+            <Wallet className="mt-0.5 size-4 text-grey-600" />
+            <span>
+              <span className="block">Credits and top-up</span>
+              <span className="block text-xs text-grey-600">Pay with G$</span>
+            </span>
+          </Link>
         </DropdownMenuItem>
         {auth.exportKey && (
           <DropdownMenuItem onSelect={() => void auth.exportKey?.()}>

@@ -6,13 +6,13 @@ import { cn } from "@/lib/utils";
 /**
  * Credits pill (DESIGN_SYSTEM §3, AUTH.md Flow 8): G$ balance plus a USD estimate.
  * ≤10 G$ turns warning-tinted with a top-up link; 0 G$ the same, and Send is disabled
- * elsewhere. `balanceGd: null` means the ledger isn't live yet (before M6): the pill
+ * elsewhere. `balanceGd: null` means the ledger isn't live yet (before credits are live): the pill
  * says so instead of showing an invented balance.
  */
 export function CreditsPill({
   balanceGd,
   usdPerGd,
-  topUpHref = "#credits",
+  topUpHref = "/credits",
   balanceMicro = null,
   className,
 }: {
@@ -50,7 +50,7 @@ export function CreditsPill({
     return (
       <div
         className={cn("flex items-center gap-2 rounded-full bg-surface py-1.5 pr-4 pl-1.5 text-sm shadow-card", className)}
-        title="Each new account gets $0.20 of AI free. After that, add credits with CELO."
+        title="Each new account gets $0.20 of AI free. After that, add credits with G$."
       >
         {glyph}
         <b className="font-semibold">Free AI</b>

@@ -22,7 +22,7 @@ export const CAP_MESSAGE = "You've used your free $0.20 of AI. Verify with GoodD
  */
 export const VERIFIED_CAP_MICRO = 700_000;
 
-export const VERIFIED_CAP_MESSAGE = "You've used all your free AI. Top-ups are coming soon.";
+export const VERIFIED_CAP_MESSAGE = "You've used all your free AI. Add credits with G$ to keep building.";
 
 /**
  * Total real provider spend the free trial may reach, across every account (D29). Set below the

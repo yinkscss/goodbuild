@@ -35,6 +35,9 @@ function toBackend(request: NextRequest, backend: string, path: string) {
   return NextResponse.rewrite(new URL(`${path}${request.nextUrl.search}`, backend), { request: { headers } });
 }
 
+/** Signed-in pages that redirect to the landing page without a session cookie. */
+const APP_PAGES = new Set(["/home", "/templates", "/deployments", "/credits"]);
+
 /**
  * - Backend behind an edge (EDGE_SECRET, no BACKEND_ORIGIN): only the edge may call it. The edge has
  *   already applied every rule below, and a direct caller would skip the region gate.
@@ -43,7 +46,7 @@ function toBackend(request: NextRequest, backend: string, path: string) {
  *   The one exception is the app's data API at /__gb/data/, after the same region check (docs/APP_DATA.md).
  * - The routes that serve those files and that data don't exist on the main host.
  * - API: region gate (D10). Sign-in, building and credits return 451 from blocked regions.
- * - App pages (/home, /p/*): without a session cookie, go to the landing page before
+ * - App pages (/home, /templates, /deployments, /credits, /p/*): without a session cookie, go to the landing page before
  *   rendering anything. The page itself still verifies the session properly.
  */
 export function proxy(request: NextRequest) {
@@ -90,7 +93,7 @@ export function proxy(request: NextRequest) {
     return backend ? toBackend(request, backend, pathname) : NextResponse.next();
   }
   if (backend && pathname.startsWith("/a/")) return toBackend(request, backend, pathname);
-  if (pathname === "/home" || pathname.startsWith("/p/")) {
+  if (APP_PAGES.has(pathname) || pathname.startsWith("/p/")) {
     if (!request.cookies.has(SESSION_COOKIE)) {
       return NextResponse.redirect(new URL("/", request.url));
     }
