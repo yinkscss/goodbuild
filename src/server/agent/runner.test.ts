@@ -324,13 +324,13 @@ describe("runTurn", { timeout: 120_000 }, () => {
     expect(record.steps.find((s) => s.id === "autofix")).toEqual({
       id: "autofix",
       label: "Auto-fix: fixed",
-      detail: "Fixed 1 error on attempt 1 of 3",
+      detail: "Fixed 1 error on attempt 1 of 5",
       status: "done",
     });
-    expect(record.log).toContain("✓ fixed 1 error on attempt 1 of 3");
+    expect(record.log).toContain("✓ fixed 1 error on attempt 1 of 5");
   });
 
-  it("stops after 3 failed fix attempts and saves the build as needs_fix", async () => {
+  it("stops early on a stuck fix and saves the build as needs_fix", async () => {
     const stuck = { tools: [{ name: "edit_file", args: { path: "contracts/TipJar.sol", edits: [{ search: "event Tipped", replace: "event  Tipped" }] } }] };
     const { client, requests } = scriptedModel([
       { tools: [{ name: "create_file", args: { path: "contracts/TipJar.sol", content: BROKEN } }] },
@@ -458,5 +458,25 @@ describe("runTurn", { timeout: 120_000 }, () => {
     expect(versions[0]).toMatchObject({ number: 3, revertedFrom: 1 });
     const chat = await db.select().from(messages).where(eq(messages.projectId, projectId));
     expect(chat.some((m) => m.role === "system" && m.content.startsWith("Reverted to v1"))).toBe(true);
+  });
+});
+
+describe("the fix loop's guards", () => {
+  it("counts attempts that don't beat the best error count, and resets on progress", async () => {
+    const { fixProgress } = await import("./runner");
+    expect(fixProgress(6, 0, 1)).toEqual({ best: 1, stalls: 0 });
+    expect(fixProgress(1, 0, 6)).toEqual({ best: 1, stalls: 1 });
+    expect(fixProgress(1, 1, 5)).toEqual({ best: 1, stalls: 2 });
+    expect(fixProgress(5, 1, 3)).toEqual({ best: 3, stalls: 0 });
+  });
+
+  it("knows when only contract tests are failing", async () => {
+    const { onlyTestFailures } = await import("./runner");
+    const test = { file: "contracts/test/A.t.sol", message: "A.testX failed", source: "test" as const };
+    const testCompile = { file: "contracts/test/A.t.sol", message: "bad", source: "solc" as const };
+    const contract = { file: "contracts/A.sol", message: "bad", source: "solc" as const };
+    expect(onlyTestFailures([test, testCompile])).toBe(true);
+    expect(onlyTestFailures([test, contract])).toBe(false);
+    expect(onlyTestFailures([])).toBe(false);
   });
 });
