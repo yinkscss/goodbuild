@@ -26,8 +26,8 @@ import { creditsContract } from "./contract-address";
 /** Quick amounts the screen offers, in dollars. Any amount between MIN and MAX can be bought. */
 export const PRESETS = [1, 5, 10, 25] as const;
 export const UNITS = 1_000_000;
-/** The smallest purchase: $0.25 of credit. Celo's network fee is a fraction of a cent, so a quarter-dollar is still worth buying. */
-export const MIN_PURCHASE_MICRO = 250_000;
+/** The smallest purchase: $0.35 of credit, which is what a build needs to start (PAID_MIN_START_MICRO), so the minimum buys one build. */
+export const MIN_PURCHASE_MICRO = 350_000;
 /** The most one quote buys, leaving room for the bonus under the contract's cap of 1,000 credits per quote. */
 export const MAX_PURCHASE_MICRO = 900 * UNITS;
 export const QUOTE_TTL_SECONDS = 600;

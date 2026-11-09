@@ -8,6 +8,7 @@ import { enqueueTurn } from "@/server/jobs/jobs";
 import { createProjectFromPrompt } from "@/server/projects";
 import { eq } from "drizzle-orm";
 import { BUDGET_MESSAGE, checkAiAllowance, shouldOfferVerification, spentMicro } from "./cap";
+import { postLedgerEntry } from "./ledger";
 
 const WALLET = "0x7a3000000000000000000000000000000000e41c";
 let db: Db;
@@ -140,6 +141,13 @@ describe("offering verification", () => {
     expect(await shouldOfferVerification(db, userId, {})).toBe(false);
     await spend(1, "b");
     expect(await shouldOfferVerification(db, userId, {})).toBe(true);
+  });
+
+  it("doesn't offer it to someone who has bought credit: they hear about credit, not free limits", async () => {
+    await spend(200_000, "a");
+    expect(await shouldOfferVerification(db, userId, {})).toBe(true);
+    await postLedgerEntry(db, { userId, kind: "deposit", amountMicro: 350_000, idempotencyKey: "dep-1" });
+    expect(await shouldOfferVerification(db, userId, {})).toBe(false);
   });
 
   it("doesn't offer it to verified or exempt accounts, or when the trial is full", async () => {
