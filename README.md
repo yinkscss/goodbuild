@@ -1,13 +1,25 @@
 # GoodBuild
 
-A Lovable/Replit-style AI app builder for GoodDollar (G$, on Celo) users. Describe a dApp in chat; GoodBuild generates the Solidity contract and a React front end, previews it in the browser, and you deploy it to Celo by signing from your own wallet.
+An AI app builder for the GoodDollar (G$) community on Celo. Describe an app in chat; GoodBuild writes the Solidity contract and the React front end, previews it in the browser, and deploys it to Celo when you sign from your own wallet. Then it publishes the app at its own address.
 
-**Target:** GoodDollar GoodBuilders Season 5 (about 3 months, kickoff 9 Nov 2026, USD 50K+ in G$, streamed). Apply: https://ubi.gd/gbseason5-apply · Program: https://ubi.gd/gbuilders5
+**Live:** https://goodbuildit.xyz · Published apps run at `<slug>.goodbuildit.xyz`.
 
-**Audience:** university students, Web3 newcomers and OG Web3 users. Goal: onboard people into Web3, 500+ returning users.
+GoodBuild never holds your keys. Deploys and admin calls are signed in your wallet.
 
-## Status
-Stage 1 in progress. M1 (landing), M2 (auth and prompt gating), M3 (home) and M4 (workspace and agent) done; see [the build prompt](docs/BUILD_PROMPT_STAGE1.md).
+## What works today
+- **Sign in** with email (Magic wallet) or an external wallet (MetaMask, WalletConnect, MiniPay). See [AUTH.md](docs/AUTH.md).
+- **Build with AI.** A plan-first chat, then generated contracts and front end with a live Sandpack preview. Claude Sonnet 5.5 does the planning and code; DeepSeek Flash handles cheap tasks and fallback.
+- **Template gallery.** 41 landing-page and app templates with screenshots; one click starts a build from a brief. See [TEMPLATES.md](docs/TEMPLATES.md).
+- **Deploy to Celo** (mainnet and Celo Sepolia), with Sourcify verification, redeploy warnings, and optional upgradeable (proxy) contracts. See [CONTRACTS_AND_DEPLOYMENT.md](docs/CONTRACTS_AND_DEPLOYMENT.md).
+- **Publish** an app to its own subdomain, with wallet connection built in.
+- **App data.** Published apps can save visitor data (forms, records) under rules the builder writes. Owners read it in the Backend window. See [APP_DATA.md](docs/APP_DATA.md).
+- **Settings.** An owner-scoped admin panel for your apps, deployed contracts, contract admin functions and app data (D62).
+- **Credits.** AI builds are paid with GoodBuild credits, bought with G$ against signed quotes. GoodDollar-verified wallets get a bonus. Every account starts with a small free allowance. See [CREDITS.md](docs/CREDITS.md) and D56 in [DECISIONS.md](docs/DECISIONS.md).
+
+## Not done yet
+- **Buying G$ or CELO inside GoodBuild.** Waiting on our payment partner (GoodCash's public API only supports cash-out so far).
+- **Audit.** The credits contract and the generated-contract flow are unaudited.
+- **Backend and database for generated apps** beyond the app-data feature above.
 
 ## Develop
 ```bash
@@ -18,25 +30,25 @@ pnpm check        # lint, typecheck, tests, production build
 pnpm smoke:auth   # end-to-end sign-in checks against a running server (BASE_URL)
 node scripts/demo-session.mjs --seed   # throwaway signed-in session with sample projects
 ```
-Set `NEXT_PUBLIC_MAGIC_PUBLISHABLE_KEY` (and `MAGIC_SECRET_KEY` on the server) to turn email sign-in on; wallet sign-in also needs `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` for WalletConnect. Without `DATABASE_URL`, development uses an embedded database in `.data/`.
+- Email sign-in needs `NEXT_PUBLIC_MAGIC_PUBLISHABLE_KEY` and (server) `MAGIC_SECRET_KEY`. WalletConnect needs `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID`.
+- Without `DATABASE_URL`, development uses an embedded database in `.data/`.
+- AI builds run from the Next.js server through the Vercel AI SDK: set `ANTHROPIC_API_KEY` and `DEEPSEEK_API_KEY` in `.env.local`. To try the workspace without keys, set `GOODBUILD_DEMO_MODEL=1` (development only).
+- A separate worker runs builds: `pnpm worker`.
 
-**AI builds** use the Vercel AI SDK from the Next.js server (D18). No proxy and no Python: put `ANTHROPIC_API_KEY` and `DEEPSEEK_API_KEY` in `.env.local`, then run `pnpm dev`. Plan and code use Claude Sonnet 5.5; cheap tasks and fallback use DeepSeek Flash.
-To try the workspace without keys, set `GOODBUILD_DEMO_MODEL=1` (development only).
-Stack: Next.js 16 (App Router), TypeScript, Tailwind v4 + shadcn/ui, Vitest. Design tokens live in `src/app/globals.css` (DESIGN_SYSTEM §6).
+**Stack:** Next.js 16 (App Router), React 19, TypeScript, Tailwind v4 + shadcn/ui, Drizzle + Postgres, viem, Vitest. Design tokens are in `src/app/globals.css`.
+
+## Production
+One VPS behind Cloudflare, deployed by GitHub Actions on every merge to `main` (checks run first). Details and what not to break: [DEPLOY.md](docs/DEPLOY.md).
 
 ## Docs
-- [Decisions](docs/DECISIONS.md): what is fixed and what is recommended
-- [Architecture](docs/ARCHITECTURE.md): components, data flow, suggested stack
-- [AI agent](docs/AI_AGENT.md): models, agent loop, context, steering, UI quality, evals
-- [Contracts and deployment](docs/CONTRACTS_AND_DEPLOYMENT.md): wallet, deploy flow, ownership mapping, templates, interaction panel
-- [Research](docs/RESEARCH.md): G$ economics, competitors, terms, payment pain
-- [Roadmap](docs/ROADMAP.md): Stage 1, S5 weeks 1–12, growth plan, metrics
-- [Open questions](docs/OPEN_QUESTIONS.md): not final; input invited
+- [HANDOFF](docs/HANDOFF.md): current build status and what is unverified
+- [Decisions](docs/DECISIONS.md): what was decided, by whom, and why
+- [Architecture](docs/ARCHITECTURE.md) · [AI agent](docs/AI_AGENT.md) · [Contracts and deployment](docs/CONTRACTS_AND_DEPLOYMENT.md)
+- [Auth and wallets](docs/AUTH.md) · [App data](docs/APP_DATA.md) · [Credits](docs/CREDITS.md) · [Top-ups](docs/TOPUPS.md)
+- [Mainnet plan](docs/MAINNET_PLAN.md) · [Deploying GoodBuild](docs/DEPLOY.md)
+- [Design system](docs/DESIGN_SYSTEM.md): light bento UI (fixed)
+- [Roadmap](docs/ROADMAP.md) · [Open questions](docs/OPEN_QUESTIONS.md) · [Research](docs/RESEARCH.md)
 - [CLAUDE.md](CLAUDE.md): guidance for Claude Code in this repo
-- [Auth and wallets](docs/AUTH.md): Magic email wallet + external wallets, SIWE, prompt gating (D22)
-- [Stage 1 build prompt](docs/BUILD_PROMPT_STAGE1.md): the prompt to hand Claude
-- [Design system](docs/DESIGN_SYSTEM.md): light bento UI (D12, fixed); landing reference in design/landing/index.html
-- **Brand / logo:** official glass 2x2 tile mark (5 Nov 2026, D25) — assets in `design/brand/` and `public/brand/`; UI via `src/components/brand/logo.tsx`
-- [Credits system](docs/CREDITS.md): GoodBuild's own G$ credits (D11)
-- **Mainnet + on-chain credits (D51 to D55):** GoodBuild Credits token on Celo, see [DEPLOY.md](docs/DEPLOY.md#goodbuild-credits-on-celo-mainnet-d51-to-d55) and `contracts/GoodBuildCredits.sol`
-- [GoodDollar AI credits (AntSeed)](docs/GOODDOLLAR_AI_CREDITS.md): researched, deferred
+
+## Rules of the road
+18+ only, no US persons. Generated contracts are unaudited.
