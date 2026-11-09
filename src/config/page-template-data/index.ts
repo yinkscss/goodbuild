@@ -5,9 +5,10 @@ import { PORTFOLIO } from "./portfolio";
 import { SAAS } from "./saas";
 import { STORE } from "./store";
 import { WEB3 } from "./web3";
+import { MORE_COMMUNITY, MORE_EVENTS, MORE_PORTFOLIO, MORE_SAAS, MORE_STORE, MORE_WEB3 } from "./more";
 
 /** Gallery order: SaaS first, then the rest, so the first row shows range. */
-export const PAGE_TEMPLATES: PageTemplate[] = [...SAAS, ...WEB3, ...PORTFOLIO, ...STORE, ...EVENTS, ...COMMUNITY];
+export const PAGE_TEMPLATES: PageTemplate[] = [...SAAS, ...MORE_SAAS, ...WEB3, ...MORE_WEB3, ...PORTFOLIO, ...MORE_PORTFOLIO, ...STORE, ...MORE_STORE, ...EVENTS, ...MORE_EVENTS, ...COMMUNITY, ...MORE_COMMUNITY];
 
 export function getPageTemplate(id: string | null | undefined): PageTemplate | undefined {
   return id ? PAGE_TEMPLATES.find((t) => t.id === id) : undefined;
