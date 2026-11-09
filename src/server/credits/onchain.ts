@@ -1,7 +1,7 @@
 import "server-only";
 
 import { and, desc, eq, isNull } from "drizzle-orm";
-import { getAddress, parseAbi, parseEventLogs, type Address, type Hex, type PublicClient } from "viem";
+import { parseAbi, parseEventLogs, type Hex, type PublicClient } from "viem";
 
 import type { Db } from "@/server/db/client";
 import { onchainCreditEvents } from "@/server/db/onchain-credits-schema";

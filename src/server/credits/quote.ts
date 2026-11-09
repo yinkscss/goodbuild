@@ -121,7 +121,7 @@ export interface SignedQuote {
 export async function previewPacks(db: Db, opts: { root?: string | null; fetcher?: typeof fetch; env?: NodeJS.ProcessEnv; now?: Date } = {}) {
   const env = opts.env ?? process.env;
   const gdUsd = await gdUsdPrice(opts.fetcher, opts.now?.getTime(), env);
-  let room = opts.root ? await bonusRoom(db, opts.root, opts.now) : 0;
+  const room = opts.root ? await bonusRoom(db, opts.root, opts.now) : 0;
   return {
     gdUsd,
     packs: PACKS.map((pack) => {
