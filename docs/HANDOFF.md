@@ -254,6 +254,9 @@ Publish code lives in `src/server/publish/`, `src/server/db/publish-schema.ts` (
 
 Then M6 (credits, D13: USD primary, cost + 25%; usage is already recorded in `usage_events`). **Top-ups (D21) are designed in [TOPUPS.md](TOPUPS.md), waiting for your review: no code until then.**
 
+## Credits v2 (D56, 8-9 Nov 2026)
+Credits are bought with G$ against server-signed quotes; the contract has a fixed 10,000,000 supply and an admin who can withdraw. Code: `contracts/GoodBuildCredits.sol`, `src/server/credits/quote.ts`, `src/app/api/credits/quote`, `src/components/credits/add-credits.tsx`. **Not live yet:** the mainnet deploy needs `deploy/launch-credits.sh --send` on the server (see DEPLOY.md). The templates gallery is not built (its session stopped at a usage limit, branch `claude/templates-gallery-d7e5db`).
+
 ## Open questions worth reading
 Q36 (preview depends on CodeSandbox and the Tailwind CDN), Q37 (chat width), Q38 (read-only code tab), Q40 (top-ups) and Q41 (Magic) in OPEN_QUESTIONS.md. Q39 is resolved (D23).
 

@@ -2,7 +2,7 @@ import "server-only";
 
 import { randomBytes } from "node:crypto";
 
-import { and, eq, gt, isNotNull, or, sql } from "drizzle-orm";
+import { and, eq, gt, gte, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import { getAddress, type Address, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
@@ -94,11 +94,11 @@ export async function bonusRoom(db: Db, root: string, now = new Date()): Promise
   const [row] = await db
     .select({ used: sql<number>`coalesce(sum(${creditQuotes.bonusMicro}), 0)::bigint` })
     .from(creditQuotes)
-    .where(and(eq(creditQuotes.goodidRoot, root.toLowerCase()), sql`${creditQuotes.createdAt} >= ${from}`, sql`${creditQuotes.createdAt} < ${to}`, or(isNotNull(creditQuotes.paidAt), gt(creditQuotes.deadline, now))));
+    .where(and(eq(creditQuotes.goodidRoot, root.toLowerCase()), gte(creditQuotes.createdAt, from), lt(creditQuotes.createdAt, to), or(isNotNull(creditQuotes.paidAt), gt(creditQuotes.deadline, now))));
   return Math.max(0, BONUS_CAP_MICRO_PER_MONTH - Number(row?.used ?? 0));
 }
 
-const QUOTE_TYPES = {
+export const QUOTE_TYPES = {
   Quote: [
     { name: "buyer", type: "address" },
     { name: "gdAmount", type: "uint256" },
@@ -189,5 +189,5 @@ export async function markQuotePaid(db: Db, ref: string, txHash: string) {
   await db
     .update(creditQuotes)
     .set({ paidTx: txHash.toLowerCase(), paidAt: new Date() })
-    .where(and(eq(creditQuotes.ref, ref.toLowerCase()), sql`${creditQuotes.paidAt} is null`));
+    .where(and(eq(creditQuotes.ref, ref.toLowerCase()), isNull(creditQuotes.paidAt)));
 }

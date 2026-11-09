@@ -13,7 +13,7 @@ cd "$(dirname "$0")"
 ENV_FILE=.env.production
 [ -f "$ENV_FILE" ] || { echo "No $ENV_FILE here. Run this in /opt/goodbuild/deploy." >&2; exit 1; }
 SEND=""; [ "${1:-}" = "--send" ] && SEND="--send"
-get() { grep -E "^$1=" "$ENV_FILE" | tail -1 | cut -d= -f2- || true; }
+get() { grep -E "^$1=" "$ENV_FILE" | tail -1 | cut -d= -f2- | sed -e 's/^["'"'"']//' -e 's/["'"'"']$//' || true; }
 set_var() { grep -vE "^$1=" "$ENV_FILE" > "$ENV_FILE.tmp" || true; printf '%s=%s\n' "$1" "$2" >> "$ENV_FILE.tmp"; chmod 600 "$ENV_FILE.tmp"; mv "$ENV_FILE.tmp" "$ENV_FILE"; }
 
 [ -n "$(get GAS_WALLET_PRIVATE_KEY)" ] || { echo "GAS_WALLET_PRIVATE_KEY is not set in $ENV_FILE." >&2; exit 1; }
@@ -27,14 +27,13 @@ if [ -z "$(get CREDITS_QUOTE_SIGNER_KEY)" ] && [ -n "$SEND" ]; then
 fi
 SIGNER_KEY=$(get CREDITS_QUOTE_SIGNER_KEY)
 if [ -z "$SIGNER_KEY" ]; then SIGNER_ADDR=0x0000000000000000000000000000000000000001; else
-  SIGNER_ADDR=$(docker compose run --rm --no-deps -T -e SK="$SIGNER_KEY" web node -e 'const{privateKeyToAccount}=require("viem/accounts");process.stdout.write(privateKeyToAccount(process.env.SK).address)')
+  SIGNER_ADDR=$(docker compose run --rm --no-deps -T web node -e 'const{privateKeyToAccount}=require("viem/accounts");process.stdout.write(privateKeyToAccount(process.env.CREDITS_QUOTE_SIGNER_KEY).address)')
 fi
 echo "Quote signer address: $SIGNER_ADDR"
 
 OUT=$(docker compose run --rm --no-deps -T \
-  -e CREDITS_NETWORK=celo -e CONFIRM_MAINNET=yes -e CREDITS_QUOTE_SIGNER="$SIGNER_ADDR" \
-  -e DEPLOYER_PRIVATE_KEY="$(get GAS_WALLET_PRIVATE_KEY)" web \
-  sh -c "node scripts/compile-credits.mjs && node scripts/deploy-credits.mjs $SEND" | tee /dev/stderr)
+  -e CREDITS_NETWORK=celo -e CONFIRM_MAINNET=yes -e CREDITS_QUOTE_SIGNER="$SIGNER_ADDR" web \
+  sh -c "DEPLOYER_PRIVATE_KEY=\$GAS_WALLET_PRIVATE_KEY node scripts/compile-credits.mjs && DEPLOYER_PRIVATE_KEY=\$GAS_WALLET_PRIVATE_KEY node scripts/deploy-credits.mjs $SEND" | tee /dev/stderr)
 
 [ -n "$SEND" ] || exit 0
 ADDR=$(printf '%s\n' "$OUT" | sed -n 's/^Set on the server: CREDITS_CONTRACT_42220=\(0x[0-9a-fA-F]\{40\}\) and CREDITS_START_BLOCK_42220=\([0-9]*\).*/\1/p')
