@@ -5,6 +5,7 @@ import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import type { Db } from "@/server/db/client";
 import { messages, projectFiles, projects, usageEvents, versions, type FundingSource, type Version } from "@/server/db/schema";
 import { withCurrentAddresses } from "@/server/deploy/addresses";
+import { withCurrentWalletHelpers } from "@/server/agent/wallet-template";
 import { recordPaidUsage } from "@/server/credits/holds";
 import { MARKUP_BPS } from "@/config/model-pricing";
 import { chargedMicro, costMicro } from "@/lib/pricing";
@@ -74,6 +75,28 @@ export async function revertTo(db: Db, projectId: string, number: number): Promi
     content: `Reverted to v${number}. Files are back to that version; your chat and any deployed contracts are unchanged.`,
     status: "done",
     meta: { kind: "revert", from: number, version: next },
+  });
+  return next;
+}
+
+/**
+ * Move a project to another Celo network (mainnet or Sepolia). The project's chain decides where it deploys
+ * and which network its app connects to, so the wallet layer's chain helper is re-rendered for it and the
+ * addresses already deployed on that network go back in. Saved as a new version, so it can be reverted.
+ * Returns the new version, or null when the project is already on that chain.
+ */
+export async function switchProjectChain(db: Db, projectId: string, chainId: number, label: string): Promise<number | null> {
+  const [project] = await db.select({ chainId: projects.chainId }).from(projects).where(eq(projects.id, projectId)).limit(1);
+  if (!project || project.chainId === chainId) return null;
+  await db.update(projects).set({ chainId }).where(eq(projects.id, projectId));
+  const files = await withCurrentAddresses(db, projectId, withCurrentWalletHelpers(await loadFiles(db, projectId), chainId));
+  const next = await checkpoint(db, { projectId, files, summary: `Switched to ${label}` });
+  await db.insert(messages).values({
+    projectId,
+    role: "system",
+    content: `Switched this project to ${label}. Your app now connects to ${label}, and deploys go there.`,
+    status: "done",
+    meta: { kind: "chain_switch", chainId, version: next },
   });
   return next;
 }

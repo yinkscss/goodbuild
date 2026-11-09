@@ -74,6 +74,12 @@ export function Workspace({ initial }: { initial: WorkspaceState }) {
       }}
       onFix={(prompt) => ws.send(prompt, "build")}
       onPublish={() => setPublishOpen(true)}
+      onSwitchChain={async (chainId) => {
+        const res = await fetch(`/api/projects/${state.project.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chainId }) });
+        if (!res.ok) return false;
+        await ws.refresh();
+        return true;
+      }}
     >
     <div className="flex h-dvh flex-col gap-4 p-4">
       <header className="flex h-12 shrink-0 items-center justify-between gap-3 px-2">
