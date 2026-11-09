@@ -257,15 +257,15 @@ UNVERIFIED until the owner's first run:
 - The timer on the server.
 - The drill on a Mac.
 
-## GoodBuild Credits on Celo mainnet (D51 to D55)
-Owner-run checklist. Nothing here was run by the build session: it needs your keys and real CELO.
-1. **Decide the numbers.** `CREDITS_CREDITS_PER_CELO` is credit units (6 decimals, 1,000,000 = $1) per 1 CELO. Work it out from the live CELO price, for example at $0.07 a CELO, 1 CELO buys $0.07 of credit, so 70,000 units; set it a little lower than the market so a small price rise can't be exploited. `CREDITS_MAX_PER_MINT` caps one purchase (100,000,000 = $100). `CREDITS_TREASURY` receives the CELO, and `CREDITS_OWNER` should be a multisig or hardware wallet, never the deploy key.
-2. **Compile and dry run:** `node scripts/compile-credits.mjs`, then `node scripts/deploy-credits.mjs` (prints the plan and sends nothing).
-3. **Try Celo Sepolia first:** `CREDITS_NETWORK=celo-sepolia ... DEPLOYER_PRIVATE_KEY=0x… node scripts/deploy-credits.mjs --send`. Set `CREDITS_CONTRACT_11142220` and `CREDITS_START_BLOCK_11142220`, buy $1 in the app and watch the balance rise.
-4. **Mainnet:** the same with `CREDITS_NETWORK=celo CONFIRM_MAINNET=yes`. The script prints the two values to set on the server. Verify the source on Celoscan or Sourcify (the compiler is solc 0.8.28, optimizer 200 runs, EVM paris, OpenZeppelin 5.1.0).
-5. **Server environment** (`.env.production`): `CREDITS_CONTRACT_42220`, `CREDITS_START_BLOCK_42220`, optionally `CELO_RPC_URL` (a second, faster node), `MAINNET_DEFAULT_MODE` (`everyone` by default; `off` to start closed), and for the card on-ramp `NEXT_PUBLIC_TRANSAK_API_KEY` (a build-time public value). Migration `0014` runs on deploy.
-6. **Watch the first purchases** and keep the per-mint cap low until you trust it. The kill switches: `PUT /api/mainnet {"mode":"off"}` stops new mainnet deploys, and `pause()` on the contract stops buying and minting while `redeem` keeps working.
-7. **Not covered:** an audit, a lawyer's review of selling credits for CELO, reconciliation of treasury CELO against credits sold (D52 says what to compare), and a verification gate for mainnet deploys.
+## GoodBuild Credits v2 on Celo mainnet (D56, replaces D51 to D55's CELO purchase)
+Owner-run checklist. The build session did not deploy: the permission gate refused its SSH to production, so the contract is not live yet.
+1. **Merge the PR and redeploy** (`deploy.sh`) so the image has the new code, the `0015` migration and `scripts/`.
+2. **On the server**, in `/opt/goodbuild/deploy`: `./launch-credits.sh` (dry run), then `./launch-credits.sh --send`. It makes the quote-signing key (`CREDITS_QUOTE_SIGNER_KEY`, stays in `.env.production`), deploys `GoodBuildCredits` from the gas wallet (`GAS_WALLET_PRIVATE_KEY`, about 33 CELO on 8 Nov 2026), with **admin `0xf0449277E30CC9063147bfB9Ecdf036BF9d41531`** and the real G$ `0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A`, then writes `CREDITS_CONTRACT_42220` and `CREDITS_START_BLOCK_42220` and restarts. The script reads `owner()`, `totalSupply()` (10,000,000 credits), `goodDollar()` and `quoteSigner()` back from the chain and prints them: check them.
+3. **Verify the source** on Sourcify or Celoscan (solc 0.8.28, optimizer 200 runs, EVM paris, OpenZeppelin 5.1.0).
+4. **Optional env:** `CREDITS_PRICE_BUFFER_BPS` (default 500 = 5% on top of the G$ market price), `GD_USD_FALLBACK` (the expected G$ price, default 0.00011; quotes are refused if the live price is 5 times off it), `CELO_RPC_URL`, `MAINNET_DEFAULT_MODE`.
+5. **The admin** (a wallet you control) can: `withdraw(token, to, amount)` (G$, any token, or CELO with `address(0)`), `grant(account, credits, ref)`, `setQuoteSigner`, `setMaxPerQuote`, `pause`/`unpause`, and two-step ownership transfer.
+6. **First purchase:** buy the 10-credit pack with a small G$ balance and watch the pill. Quotes last 10 minutes; a quote that was never paid costs nothing.
+7. **Not covered:** an audit, a lawyer's review of selling credits for G$, reconciliation of the G$ held against credits sold, and the G$ exit cost (the 5% buffer is a guess until measured).
 
 ## DNS (Cloudflare)
 `goodbuildit.xyz` and `*` are `A` records to the server, `www` is a `CNAME` to the root, all Proxied. SSL/TLS is Full. The `MX` and SPF `TXT` records are Namecheap email forwarding and were left alone.
