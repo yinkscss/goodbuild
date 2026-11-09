@@ -3,6 +3,9 @@
  * Each chip fills the prompt with a specific, real-sounding brief (DESIGN_SYSTEM §7).
  * The ids line up with the v1 catalog in docs/CONTRACTS_AND_DEPLOYMENT.md §4.
  */
+import { PAGE_TEMPLATES } from "./page-template-data";
+import { templateRequest } from "./page-templates";
+
 export interface StarterTemplate {
   id: string;
   label: string;
@@ -58,6 +61,13 @@ export const TEMPLATES: StarterTemplate[] = [
 /** The three chips the landing prompt box shows (DESIGN_SYSTEM §3). */
 export const LANDING_CHIP_IDS = ["savings-circle", "tip-jar", "event-tickets"] as const;
 
+/**
+ * A starter brief by id: the six dApp starters above, or one of the landing-page templates in
+ * the gallery (src/config/page-templates.ts), shown with its short request as the prompt.
+ */
 export function getTemplate(id: string): StarterTemplate | undefined {
-  return TEMPLATES.find((t) => t.id === id);
+  const starter = TEMPLATES.find((t) => t.id === id);
+  if (starter) return starter;
+  const page = PAGE_TEMPLATES.find((t) => t.id === id);
+  return page ? { id: page.id, label: page.label, description: page.description, examplePrompt: templateRequest(page) } : undefined;
 }

@@ -378,6 +378,14 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 ## Recommended decisions (Ego; adopted unless changed)
 
 
+### D60. A template gallery that builds from a brief held on the server (8 Nov 2026, decided by Claude, owner to review)
+- **What:** the landing page shows 26 page templates with real screenshot thumbnails ([TEMPLATES.md](TEMPLATES.md)). One click sends a short request with the template id; the server adds the full design brief to the first build.
+- **Why a brief and not a long prompt:** the chat stays readable, the user can't see or edit a wall of spec text by mistake, and the id is looked up on the server so a request can't inject its own brief. The cost is about 2 to 3 KB of input once.
+- **Plan-first is skipped for templates** (amends D32 for this case): the template already says what to build, so the questions would only re-ask it and cost a call. Colours come from the brief.
+- **Licensing:** all designs are original; permissive sources inspired layouts only (list in TEMPLATES.md). Preline and Cruip excluded on licence grounds; 21st.dev and Pinterest inspiration only.
+- **Numbering:** D60 is used so it doesn't collide with decisions another branch is adding after D55.
+- **Not done:** gating ("unlockable"), and seeding real template files so the build matches the thumbnail exactly. Both listed in TEMPLATES.md.
+
 ### D25. Official logo: glass 2x2 tile mark
 - Date: 5 Nov 2026 · Decided by: user (Olayinka)
 - The official GoodBuild logo is the glossy glass 2x2 tile mark (white, lilac, lilac, pink; palette purple / lilac / pink, no green). Dated 5 Nov 2026.

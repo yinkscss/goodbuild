@@ -2,6 +2,7 @@ import "server-only";
 
 import { and, asc, eq } from "drizzle-orm";
 
+import { templateBriefFor } from "@/config/page-template-data";
 import type { Db } from "@/server/db/client";
 import { messages, projects } from "@/server/db/schema";
 import { checkApp, checkContracts, formatIssues, mentionsGd, mentionsNativeCelo, type CheckIssue, type CheckReport, type ContractCheckOptions } from "./checks";
@@ -692,7 +693,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       assets: assetManifest(assets),
       memory: memoryBlock(memory),
       deployments: [upgradeable ? upgradeableRules(await liveStorage(db, project)) : "", deploymentsBlock(await loadDeployedAddresses(db, input.projectId), { upgradeable })].filter(Boolean).join("\n\n"),
-      plan: brief.text,
+      plan: [brief.text, firstBuild ? templateBriefFor(project.templateId) : ""].filter(Boolean).join("\n\n"),
       targetChain: project.chainId === 42220 ? "Celo Mainnet (42220)" : project.chainId === 11142220 ? "Celo Sepolia (11142220)" : `Unsupported chain ${project.chainId}`,
     });
     log(`context: ${ctx.picks.length} of ${Object.keys(files).length} files in full (${ctx.picks.map((p) => p.path.split("/").pop()).join(", ")})`);

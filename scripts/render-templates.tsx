@@ -86,7 +86,7 @@ h2{font-size:30px;letter-spacing:-.02em;margin-bottom:18px}
 .art{position:relative;height:340px;border-radius:24px;overflow:hidden;background:var(--card);box-shadow:0 20px 50px -24px rgba(0,0,0,.35)}
 .bar{position:absolute;bottom:0;width:36px;border-radius:8px 8px 0 0;background:color-mix(in srgb,var(--a) 70%,transparent)}
 .ln{position:absolute;left:24px;right:24px;height:10px;border-radius:6px;background:color-mix(in srgb,var(--fg) 14%,transparent)}
-.orb{position:absolute;inset:40px;border-radius:50%;background:radial-gradient(circle at 35% 30%,color-mix(in srgb,var(--a) 85%,#fff),var(--a) 40%,color-mix(in srgb,var(--a) 20%,var(--bg)) 75%);filter:blur(1px)}
+.orb{position:absolute;left:50%;top:50%;width:290px;height:290px;margin:-145px 0 0 -145px;border-radius:50%;background:radial-gradient(circle at 35% 30%,color-mix(in srgb,var(--a) 85%,#fff),var(--a) 40%,color-mix(in srgb,var(--a) 20%,var(--bg)) 75%);filter:blur(1px)}
 .tile{position:absolute;border-radius:16px}
 .phone{position:absolute;left:50%;top:22px;width:190px;height:420px;margin-left:-95px;border-radius:32px;background:var(--fg);padding:8px}
 .phone i{display:block;height:100%;border-radius:25px;background:var(--bg);padding:18px 14px}

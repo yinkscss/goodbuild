@@ -5,6 +5,7 @@ import { and, eq, ne } from "drizzle-orm";
 import type { Db } from "@/server/db/client";
 import { messages, projects, turnJobs } from "@/server/db/schema";
 import { hasPlanHeadroom } from "@/server/credits/cap";
+import { getPageTemplate } from "@/config/page-template-data";
 import { cleanAnswer } from "@/lib/plan";
 import { AUTO_FIX_LEAD, FIX_PROMPT } from "@/lib/preview-errors";
 import type { PlanAnswer, TurnRecord } from "@/lib/turn-types";
@@ -18,7 +19,7 @@ const MAX_PLAN_TRIES = 2;
  * Should this send plan first (D32)? Decided here on the server, so every way into a project gets
  * the same answer: the landing page and home both arrive as a queued first message.
  *
- * Yes while nothing has been planned or built. So "Try again" after a planning turn that failed
+ * Yes while nothing has been planned or built, unless the project started from a gallery template (its brief is the plan). So "Try again" after a planning turn that failed
  * plans again, and a request the model only answered in words ("what can you build?") doesn't use
  * up the plan. No once a build has been asked for, so its "Try again" stays a build. No for fixes,
  * whatever state the project is in. No near the free AI cap (see hasPlanHeadroom).
@@ -32,8 +33,10 @@ export async function shouldPlanFirst(db: Db, input: { projectId: string; userId
   const prompt = input.prompt?.trim() ?? "";
   if (prompt.startsWith(AUTO_FIX_LEAD) || prompt === FIX_PROMPT) return false;
 
-  const [project] = await db.select({ currentVersion: projects.currentVersion }).from(projects).where(eq(projects.id, input.projectId)).limit(1);
+  const [project] = await db.select({ currentVersion: projects.currentVersion, templateId: projects.templateId }).from(projects).where(eq(projects.id, input.projectId)).limit(1);
   if (!project || project.currentVersion > 0) return false;
+  // A gallery template already says what to build (sections, copy, colours): nothing to ask (D56).
+  if (getPageTemplate(project.templateId)) return false;
 
   const jobs = await db
     .select({ mode: turnJobs.mode, status: turnJobs.status })
