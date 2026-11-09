@@ -90,11 +90,11 @@ function MagicBridge({ publishableKey, children }: { publishableKey: string; chi
   const getMagic = React.useCallback((): Promise<MagicInstance> => {
     magicRef.current ??= (async () => {
       const [{ Magic }, { EVMExtension }] = await Promise.all([import("magic-sdk"), import("@magic-ext/evm")]);
-      // Celo Sepolia is the default network (P1); Celo mainnet is selectable. Both RPC hosts
+      // Celo mainnet is the default network; Celo Sepolia is selectable for testing. Both RPC hosts
       // must be allowed in the Magic dashboard's content security policy.
       const evm = new EVMExtension([
-        { rpcUrl: celoSepolia.rpcUrls.default.http[0], chainId: celoSepolia.id, default: true },
-        { rpcUrl: celo.rpcUrls.default.http[0], chainId: celo.id },
+        { rpcUrl: celo.rpcUrls.default.http[0], chainId: celo.id, default: true },
+        { rpcUrl: celoSepolia.rpcUrls.default.http[0], chainId: celoSepolia.id },
       ]);
       return new Magic(publishableKey, { extensions: [evm] }) as unknown as MagicInstance;
     })();

@@ -171,9 +171,9 @@ describe("wallet button", () => {
   });
 
   it("shows the address and network when connected", () => {
-    render(<Harness auth={makeAuth({ user, wallet: { ...wallet, chainId: 11142220 } })} />);
+    render(<Harness auth={makeAuth({ user, wallet: { ...wallet, chainId: 42220 } })} />);
     expect(screen.getByText("0x7a3…e41c")).toBeInTheDocument();
-    expect(screen.getByText("Celo Sepolia")).toBeInTheDocument();
+    expect(screen.getByText("Celo")).toBeInTheDocument();
   });
 
   it("still shows the signed-in account when the browser wallet is disconnected", () => {
@@ -182,11 +182,11 @@ describe("wallet button", () => {
     expect(screen.queryByRole("button", { name: /connect wallet/i })).not.toBeInTheDocument();
   });
 
-  it("shows Switch to Celo Sepolia on the wrong network and switches", async () => {
+  it("shows Switch to Celo on the wrong network and switches", async () => {
     const auth = makeAuth({ user, wallet: { ...wallet, chainId: 1 } });
     render(<Harness auth={auth} />);
-    await userEvent.click(screen.getByRole("button", { name: /switch to celo sepolia/i }));
-    expect(auth.switchChain).toHaveBeenCalledWith(11142220);
+    await userEvent.click(screen.getByRole("button", { name: /switch to celo/i }));
+    expect(auth.switchChain).toHaveBeenCalledWith(42220);
   });
 });
 
