@@ -13,7 +13,7 @@ const QUESTIONS = [
   },
   {
     q: "Which network do apps run on?",
-    a: "Celo mainnet or Celo Sepolia, your choice for each project. Mainnet uses real money, and contracts are unaudited, so start small. Sepolia uses test tokens with no value, a safe place to try ideas.",
+    a: "Celo mainnet or Celo Sepolia, your choice for each project. Mainnet uses real money. Sepolia uses test tokens with no value, a safe place to try ideas.",
   },
   {
     q: "Can I deploy and share my app today?",

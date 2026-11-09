@@ -7,6 +7,7 @@ import path from "node:path";
 
 import type { Message, Plugin } from "esbuild";
 
+import { LOGO_32_DATA_URI } from "./logo-data";
 import { publishRuntimeDir } from "./runtime";
 
 import { CAN_BE_CHANGED_LABEL } from "@/lib/deploy/upgradeable";
@@ -178,14 +179,15 @@ function escapeHtml(text: string) {
   return text.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 }
 
-const BAR_STYLE =
-  "font:500 12px/1.4 system-ui,sans-serif;padding:6px 12px;text-align:center;background:#1a0d26;color:#fff";
+const PILL_STYLE =
+  "position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:2147483000;display:inline-flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:6px;max-width:calc(100vw - 24px);padding:6px 12px 6px 10px;border-radius:999px;background:#fff;color:#1a0d26;box-shadow:0 2px 12px rgba(26,13,38,.18);font:500 12px/1.4 system-ui,sans-serif;text-decoration:none";
 
+/** A small "Built with <logo>" pill at the bottom of every published app (D56). Notices that matter (demo, changeable, report) sit in it. */
 function bar(hasUndeployedContracts: boolean, reportUrl?: string, changeableContract = false) {
   const report = reportUrl ? ` · <a href="${escapeHtml(reportUrl)}" target="_blank" rel="noreferrer" style="color:inherit;text-decoration:underline">Report</a>` : "";
   const demo = hasUndeployedContracts ? " · Demo: this app's contract isn't deployed yet, so on-chain actions won't work." : "";
   const changeable = changeableContract ? ` · ${CAN_BE_CHANGED_LABEL}` : "";
-  return `<div data-goodbuild-bar role="note" style="${BAR_STYLE}">Built with GoodBuild · Unaudited${changeable}${demo}${report}</div>`;
+  return `<div data-goodbuild-bar role="note" style="${PILL_STYLE}"><a href="https://goodbuildit.xyz" target="_blank" rel="noreferrer" style="display:inline-flex;align-items:center;gap:6px;color:inherit;text-decoration:none">Built with <img src="${LOGO_32_DATA_URI}" alt="GoodBuild" width="16" height="16" style="display:block;width:16px;height:16px" /><b style="font-weight:700">GoodBuild</b></a>${changeable}${demo}${report}</div>`;
 }
 
 function hashed(name: string, ext: string, content: string) {
