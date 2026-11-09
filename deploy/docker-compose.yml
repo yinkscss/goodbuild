@@ -69,6 +69,8 @@ services:
       # The run check (D67): builds are opened in the checker's browser. If it is down, builds skip the check.
       RUN_CHECK_WS_ENDPOINT: ws://checker:3001/
       RUN_CHECK_CONCURRENCY: ${RUN_CHECK_CONCURRENCY:-2}
+      # The type check (D68): "warn" notes type errors in the build log, "enforce" sends them to auto-fix, "off" skips it.
+      TYPE_CHECK: ${TYPE_CHECK:-warn}
     depends_on:
       migrate:
         condition: service_completed_successfully
