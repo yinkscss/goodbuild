@@ -6,6 +6,14 @@
 # Runtime variables are listed in docs/HANDOFF.md. NEXT_PUBLIC_* are fixed at build time.
 FROM node:24-slim
 
+# The run check's headless browser and the system libraries it needs (D66). It comes before the
+# app's own files so a normal deploy reuses this layer. The version must be the playwright-core
+# version in package.json (run-check.test.ts checks it): the two sides speak a versioned protocol.
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN npx -y playwright-core@1.65.0 install --with-deps chromium-headless-shell \
+  && rm -rf /var/lib/apt/lists/* /root/.npm \
+  && chmod -R a+rX /ms-playwright
+
 ENV COREPACK_HOME=/corepack
 RUN corepack enable && mkdir -p /corepack && chown node:node /corepack
 

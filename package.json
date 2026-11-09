@@ -48,6 +48,7 @@
     "magic-sdk": "^33.13.0",
     "motion": "^14.9.1",
     "next": "16.4.5",
+    "playwright-core": "1.65.0",
     "postgres": "^4.0.0",
     "radix-ui": "^1.8.1",
     "react": "19.3.0",

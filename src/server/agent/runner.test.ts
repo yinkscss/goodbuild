@@ -480,3 +480,70 @@ describe("the fix loop's guards", () => {
     expect(onlyTestFailures([])).toBe(false);
   });
 });
+
+describe("run check in a turn (D66)", { timeout: 120_000 }, () => {
+  const CRASHES = "export default function App() { const items: string[] = undefined as never; return <main>{items.length}</main>; }\n";
+  const crash = { file: "src/App.tsx", message: "The app crashed when it ran: Cannot read properties of undefined (reading 'length') (in <App>)", source: "runtime" as const };
+
+  it("sends a crash to auto-fix on the strong model, and the build ends ready once the app runs", async () => {
+    const { client, requests } = scriptedModel([
+      { tools: [{ name: "create_file", args: { path: "src/App.tsx", content: CRASHES } }] },
+      { text: "Built the page." },
+      { tools: [{ name: "edit_file", args: { path: "src/App.tsx", edits: [{ search: "undefined as never", replace: "[]" }] } }] },
+      { text: "Fixed." },
+    ]);
+    const opened: string[] = [];
+    const runCheck = async (files: Record<string, string>) => {
+      opened.push(files["src/App.tsx"]);
+      const bad = files["src/App.tsx"].includes("undefined as never");
+      return { ran: true, issues: bad ? [crash] : [], note: bad ? "1 problem when the app ran" : "opened the app with no errors", ms: 1200 };
+    };
+    const { events, emit } = collect();
+    const record = await runTurn({ db, model: client, runCheck }, { projectId, userId, mode: "build", userMessageId: queuedId }, emit);
+
+    expect(record.status).toBe("ready");
+    expect(opened).toHaveLength(2);
+    expect((await loadFiles(db, projectId))["src/App.tsx"]).toContain("= []");
+    // The fix pass got the runtime error, on the strong tier.
+    expect(requests[2].tier).toBe("strong");
+    expect(String(requests[2].messages.at(-1)?.content)).toContain("[runtime] The app crashed when it ran");
+    expect(record.steps.find((s) => s.id === "run")).toMatchObject({ status: "error" });
+    expect(record.steps.find((s) => s.id === "run:1")).toMatchObject({ status: "done", detail: "it runs" });
+    expect(record.steps.find((s) => s.id === "autofix")).toMatchObject({ label: "Auto-fix: fixed" });
+    expect(events.some((e) => e.type === "log" && e.line.includes("run check: opened the app with no errors (1.2s)"))).toBe(true);
+  });
+
+  it("never fails a build because the check couldn't run", async () => {
+    const { client } = scriptedModel([{ tools: [{ name: "create_file", args: { path: "src/App.tsx", content: "export default function App() { return <main>Ready</main>; }\n" } }] }, { text: "Built it." }]);
+    const runCheck = async () => ({ ran: false, issues: [], note: "skipped: the browser wasn't available (connect ECONNREFUSED)", ms: 8000 });
+    const record = await runTurn({ db, model: client, runCheck }, { projectId, userId, mode: "build", userMessageId: queuedId }, () => {});
+    expect(record.status).toBe("ready");
+    expect(record.steps.find((s) => s.id === "run")).toMatchObject({ status: "done", detail: "skipped" });
+  });
+
+  it("doesn't open an app whose other checks failed, and gives the check the contract modules the app imports", async () => {
+    const { client } = scriptedModel([
+      { tools: [{ name: "create_file", args: { path: "contracts/TipJar.sol", content: BROKEN } }, { name: "create_file", args: { path: "src/App.tsx", content: APP } }] },
+      { text: "Built a tip jar." },
+      { tools: [{ name: "edit_file", args: { path: "contracts/TipJar.sol", edits: [{ search: "msg.value) }", replace: "msg.value); }" }] } }] },
+      { text: "Fixed." },
+    ]);
+    const seen: Array<Record<string, string>> = [];
+    const runCheck = async (files: Record<string, string>) => {
+      seen.push(files);
+      return { ran: true, issues: [], note: "opened the app with no errors", ms: 900 };
+    };
+    const record = await runTurn({ db, model: client, runCheck }, { projectId, userId, mode: "build", userMessageId: queuedId }, () => {});
+    expect(record.status).toBe("ready");
+    // Once: not while the contract failed to compile.
+    expect(seen).toHaveLength(1);
+    expect(seen[0]["src/contracts/TipJar.ts"]).toContain("TipJarAbi");
+    expect(seen[0]["src/contracts/index.ts"]).toContain('export * from "./TipJar"');
+  });
+
+  it("stays off when the server hasn't turned it on", async () => {
+    const { client } = scriptedModel([{ tools: [{ name: "create_file", args: { path: "src/App.tsx", content: "export default function App() { return <main>Ready</main>; }\n" } }] }, { text: "Built it." }]);
+    const record = await runTurn({ db, model: client }, { projectId, userId, mode: "build", userMessageId: queuedId }, () => {});
+    expect(record.steps.some((s) => s.id === "run")).toBe(false);
+  });
+});

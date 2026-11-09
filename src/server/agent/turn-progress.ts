@@ -33,6 +33,8 @@ export interface TurnSetup {
   /** Project status before the turn ("building" while it runs). */
   priorStatus: string;
   assetNames: string[];
+  /** The project's chain, for the run check's RPC stub. Missing on setups saved before D66. */
+  chainId?: number;
   contractOptions: ContractCheckOptions;
   /** The project's files when the turn started (starter helpers and the assets module included). */
   baseFiles: Record<string, string>;

@@ -42,6 +42,10 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
+      # The run check's tests open built apps in a real headless browser (D66). Without it they skip.
+      - name: Install the headless browser
+        run: node node_modules/playwright-core/cli.js install --with-deps chromium-headless-shell
+
       - name: Lint
         run: pnpm lint
 

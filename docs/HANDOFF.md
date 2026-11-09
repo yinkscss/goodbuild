@@ -11,6 +11,10 @@ Written 4 Nov 2026 at the end of the first build session (claude.ai), for whoeve
 
 **Template gallery (8 Nov 2026, D60, PR on branch `claude/templates-gallery-d7e5db`):** 41 landing-page templates with real screenshots, one click builds from a server-side brief. Design, licences and open items: [TEMPLATES.md](TEMPLATES.md). **UNVERIFIED:** a real AI build from a template (no provider keys or Magic key were available in the build session); the brief reaching the model and the click-to-sign-in path are tested.
 
+**Run check (9 Nov 2026, D66, branch `claude/web-builder-harness-review-2a9263`):** every build is opened in a headless browser on the server, and crashes go to auto-fix. Measured on the production server in throwaway containers. **UNVERIFIED:** a real AI build with it on, and the `checker` compose service itself. After the first deploy, run `docker compose --env-file .env.production ps checker` and look for `run check:` lines in the worker's log.
+
+**Seen on the server on 9 Nov 2026, not fixed:** the `worker` container exits with code 0 and no log line every 41 to 47 minutes (5 starts between 18:34 and 21:30 UTC) and Docker restarts it. A build running at that moment is interrupted and resumed. PR #60 proposes a fix (an idle timer that let the process end).
+
 **Launch plan (6 Nov 2026, D37 to D43):** M6 and mainnet ship together. [MAINNET_PLAN.md](MAINNET_PLAN.md) replaces the order below, and notes what here is out of date.
 
 **Next: M6**, in this order, with design in [CREDITS.md](CREDITS.md) and [TOPUPS.md](TOPUPS.md):
