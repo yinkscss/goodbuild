@@ -87,10 +87,10 @@ describe.each(testBackends())("quotes on $name", (backend) => {
     expect(recovered).toBe(privateKeyToAccount(KEY).address);
   });
 
-  it("sells any amount from $0.25 with the bonus scaled to it, and refuses less or more", async () => {
+  it("sells any amount from $0.35 with the bonus scaled to it, and refuses less or more", async () => {
     const u = await account();
     const small = await issueQuote(db, { userId: u.id, wallet: u.wallet, chainId: 42220, amountMicro: MIN_PURCHASE_MICRO, root: newWallet() }, opts);
-    expect(small.quote).toMatchObject({ credits: "250000", bonus: "25000", gdAmount: gdWeiForMicro(250_000, 0.0001, 500).toString() });
+    expect(small.quote).toMatchObject({ credits: "350000", bonus: "35000", gdAmount: gdWeiForMicro(350_000, 0.0001, 500).toString() });
     await expect(issueQuote(db, { userId: u.id, wallet: u.wallet, chainId: 42220, amountMicro: MIN_PURCHASE_MICRO - 1 }, opts)).rejects.toMatchObject({ code: "bad_amount" });
     await expect(issueQuote(db, { userId: u.id, wallet: u.wallet, chainId: 42220, amountMicro: MAX_PURCHASE_MICRO + 1 }, opts)).rejects.toMatchObject({ code: "bad_amount" });
   });

@@ -11,14 +11,14 @@ const BUILD_RESERVE_MICRO = 350_000;
 
 /**
  * Shown in the chat when a build can't run because the AI credit is used up. It says the exact amount that would
- * cover the build (the build reserve less what is left, never under the $0.25 minimum), prices it in G$, and one click
+ * cover the build (the build reserve less what is left, never under the $0.35 minimum), prices it in G$, and one click
  * signs the payment. When the credit lands, `onPaid` retries the build.
  */
 export function TopUpPill({ onPaid }: { onPaid?: () => void }) {
   const { info, pricing } = useCreditsInfo(true);
   const { phase, buy, wallet } = useBuyCredits(info);
 
-  const min = pricing?.minMicro ?? 250_000;
+  const min = pricing?.minMicro ?? 350_000;
   const shortfall = Math.max(BUILD_RESERVE_MICRO - (pricing?.balanceMicro ?? 0), 0);
   const amountMicro = Math.min(Math.max(Math.ceil(shortfall / 50_000) * 50_000, min), pricing?.maxMicro ?? 900 * UNITS);
   const gd = pricing ? estimateGdWei(pricing, amountMicro) : null;

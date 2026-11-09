@@ -10,6 +10,8 @@ import { listVersions, loadFiles } from "@/server/agent/store";
 import { starterFiles, withStarterHelpers } from "@/server/agent/template";
 import { activeJobs } from "@/server/jobs/jobs";
 import { shouldOfferVerification } from "@/server/credits/cap";
+import { availableMicro } from "@/server/credits/available";
+import { getCredits } from "@/server/credits";
 import { contractState } from "@/server/deploy/contract-state";
 import { getOwnedProject } from "@/server/projects";
 
@@ -42,6 +44,8 @@ export interface WorkspaceState {
   upgradableContracts: string[];
   /** Used the free AI and verification would unlock more (D30). */
   offerVerification: boolean;
+  /** Paid credit plus free AI left, in micro-USD (null when the ledger is unreadable). Shown in the header chip. */
+  availableMicro: number | null;
   jobs: Array<{ id: string; status: "queued" | "running"; userMessageId: string; assistantMessageId: string | null; mode: string }>;
 }
 
@@ -80,6 +84,7 @@ export async function workspaceState(db: Db, projectId: string, ownerId: string)
     outdatedContracts: contracts.outdated,
     upgradableContracts: contracts.upgradable,
     offerVerification: await shouldOfferVerification(db, ownerId),
+    availableMicro: await availableMicro(db, ownerId, (await getCredits(ownerId, db)).balanceMicro),
     estimate: {
       buildMicro: estimateTurnMicro({ mode: "build", contextChars, firstBuild }),
       planMicro: estimateTurnMicro({ mode: "plan", contextChars, firstBuild }),

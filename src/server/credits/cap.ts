@@ -257,5 +257,7 @@ export async function shouldOfferVerification(db: Db, userId: string, env: Recor
   const [user] = await db.select({ wallet: users.wallet, verifiedAt: users.verifiedAt }).from(users).where(eq(users.id, userId)).limit(1);
   if (!user || user.verifiedAt || isExempt(user.wallet, env)) return false;
   if ((await spentMicro(db, userId)) < capMicro(env)) return false;
+  // Whoever has bought credit hears about credit, never about free limits (plan section 5 item 4).
+  if (await hasPaid(db, userId)) return false;
   return budgetHasRoom(db, undefined, env);
 }

@@ -9,7 +9,7 @@ import { UNITS, estimateGdWei, formatGd, useBuyCredits, useCreditsInfo } from ".
 const PRESET_DOLLARS = [1, 5, 10, 25];
 
 /**
- * "Add credits" (D56): buy AI credits with G$ in one signature, any amount from $0.25. One credit is $1 of AI
+ * "Add credits" (D56): buy AI credits with G$ in one signature, any amount from $0.35. One credit is $1 of AI
  * builds. The server prices the amount in G$ and signs a quote; the wallet sends that exact G$ to the credits
  * contract; the contract burns the credits out of its fixed supply and the server credits the ledger from the
  * event. People verified with GoodDollar get 10% more credits. The screen never decides the balance.
@@ -21,7 +21,7 @@ export function AddCredits({ className }: { className?: string }) {
   const [dollars, setDollars] = React.useState("1");
 
   const amountMicro = Math.round(Number(dollars) * UNITS);
-  const min = pricing?.minMicro ?? 250_000;
+  const min = pricing?.minMicro ?? 350_000;
   const max = pricing?.maxMicro ?? 900 * UNITS;
   const valid = Number.isFinite(amountMicro) && amountMicro >= min && amountMicro <= max;
   const gd = pricing && valid ? estimateGdWei(pricing, amountMicro) : null;
