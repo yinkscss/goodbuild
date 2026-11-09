@@ -600,7 +600,7 @@ export function DeployModal({
 
         <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
           <p className="text-xs text-grey-600">
-            {state.stage === "done" ? "You can find these addresses in the Contract tab." : (state.plan?.chainId ?? chainId) === 42220 ? "This deploy spends real CELO." : "Testnet deploys are free of real money."}
+            {state.stage === "done" ? "You can find these addresses in the Contract tab." : (state.plan?.chainId ?? chainId) === 42220 ? "You pay the network fee in CELO." : "Testnet deploys are free of real money."}
           </p>
           {state.stage === "done" ? (
             <div className="flex gap-2">

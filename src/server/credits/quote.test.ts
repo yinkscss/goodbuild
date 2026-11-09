@@ -7,7 +7,7 @@ import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 
 import type { Db } from "@/server/db/client";
 import { users } from "@/server/db/schema";
-import { BONUS_CAP_MICRO_PER_MONTH, QuoteError, bonusForPack, gdUsdPrice, gdWeiForPack, issueQuote, markQuotePaid, previewPacks, resetPriceCache } from "./quote";
+import { MIN_PURCHASE_MICRO, MAX_PURCHASE_MICRO, gdWeiForMicro, BONUS_CAP_MICRO_PER_MONTH, QuoteError, bonusForPack, gdUsdPrice, gdWeiForPack, issueQuote, markQuotePaid, previewPacks, resetPriceCache } from "./quote";
 import { MIGRATIONS, testBackends, type TestDatabase } from "./test-backends";
 
 const KEY = generatePrivateKey();
@@ -74,7 +74,7 @@ describe.each(testBackends())("quotes on $name", (backend) => {
 
   it("signs a quote the contract's signer check would accept, and records it", async () => {
     const u = await account();
-    const signed = await issueQuote(db, { userId: u.id, wallet: u.wallet, chainId: 42220, pack: 10, root: null }, opts);
+    const signed = await issueQuote(db, { userId: u.id, wallet: u.wallet, chainId: 42220, amountMicro: 10_000_000, root: null }, opts);
     expect(signed.verified).toBe(false);
     expect(signed.quote).toMatchObject({ buyer: getAddress(u.wallet), credits: "10000000", bonus: "0", gdAmount: (BigInt(105_000) * G).toString() });
     const recovered = await recoverTypedDataAddress({
@@ -87,22 +87,30 @@ describe.each(testBackends())("quotes on $name", (backend) => {
     expect(recovered).toBe(privateKeyToAccount(KEY).address);
   });
 
-  it("refuses an unknown pack, an unconfigured signer and a chain with no contract", async () => {
+  it("sells any amount from $0.25 with the bonus scaled to it, and refuses less or more", async () => {
     const u = await account();
-    await expect(issueQuote(db, { userId: u.id, wallet: u.wallet, chainId: 42220, pack: 7 }, opts)).rejects.toMatchObject({ code: "bad_pack" });
-    await expect(issueQuote(db, { userId: u.id, wallet: u.wallet, chainId: 42220, pack: 10 }, { ...opts, env: { CREDITS_CONTRACT_42220: CONTRACT } as unknown as NodeJS.ProcessEnv })).rejects.toMatchObject({ code: "signer_not_configured" });
-    await expect(issueQuote(db, { userId: u.id, wallet: u.wallet, chainId: 11142220, pack: 10 }, opts)).rejects.toMatchObject({ code: "not_live" });
+    const small = await issueQuote(db, { userId: u.id, wallet: u.wallet, chainId: 42220, amountMicro: MIN_PURCHASE_MICRO, root: newWallet() }, opts);
+    expect(small.quote).toMatchObject({ credits: "250000", bonus: "25000", gdAmount: gdWeiForMicro(250_000, 0.0001, 500).toString() });
+    await expect(issueQuote(db, { userId: u.id, wallet: u.wallet, chainId: 42220, amountMicro: MIN_PURCHASE_MICRO - 1 }, opts)).rejects.toMatchObject({ code: "bad_amount" });
+    await expect(issueQuote(db, { userId: u.id, wallet: u.wallet, chainId: 42220, amountMicro: MAX_PURCHASE_MICRO + 1 }, opts)).rejects.toMatchObject({ code: "bad_amount" });
+  });
+
+  it("refuses a bad amount, an unconfigured signer and a chain with no contract", async () => {
+    const u = await account();
+    await expect(issueQuote(db, { userId: u.id, wallet: u.wallet, chainId: 42220, amountMicro: 100 }, opts)).rejects.toMatchObject({ code: "bad_amount" });
+    await expect(issueQuote(db, { userId: u.id, wallet: u.wallet, chainId: 42220, amountMicro: 10_000_000 }, { ...opts, env: { CREDITS_CONTRACT_42220: CONTRACT } as unknown as NodeJS.ProcessEnv })).rejects.toMatchObject({ code: "signer_not_configured" });
+    await expect(issueQuote(db, { userId: u.id, wallet: u.wallet, chainId: 11142220, amountMicro: 10_000_000 }, opts)).rejects.toMatchObject({ code: "not_live" });
   });
 
   it("adds the bonus for a verified person and stops at the monthly cap, counted per person", async () => {
     const root = newWallet();
     const a = await account();
     const b = await account(); // a second wallet of the same person
-    const first = await issueQuote(db, { userId: a.id, wallet: a.wallet, chainId: 42220, pack: 100, root }, opts);
+    const first = await issueQuote(db, { userId: a.id, wallet: a.wallet, chainId: 42220, amountMicro: 100_000_000, root }, opts);
     expect(first.quote.bonus).toBe("10000000");
     expect(first.verified).toBe(true);
     // The cap is $10 a month: the first quote used it all while it can still be paid.
-    const second = await issueQuote(db, { userId: b.id, wallet: b.wallet, chainId: 42220, pack: 50, root }, opts);
+    const second = await issueQuote(db, { userId: b.id, wallet: b.wallet, chainId: 42220, amountMicro: 50_000_000, root }, opts);
     expect(second.quote.bonus).toBe("0");
     expect(BONUS_CAP_MICRO_PER_MONTH).toBe(10_000_000);
     const view = await previewPacks(db, { root, ...opts });
@@ -113,10 +121,10 @@ describe.each(testBackends())("quotes on $name", (backend) => {
     const root = newWallet();
     const u = await account();
     const t0 = new Date();
-    const q = await issueQuote(db, { userId: u.id, wallet: u.wallet, chainId: 42220, pack: 100, root }, { ...opts, now: t0 });
+    const q = await issueQuote(db, { userId: u.id, wallet: u.wallet, chainId: 42220, amountMicro: 100_000_000, root }, { ...opts, now: t0 });
     expect(q.quote.bonus).toBe("10000000");
     const later = new Date(t0.getTime() + 11 * 60_000);
-    const again = await issueQuote(db, { userId: u.id, wallet: u.wallet, chainId: 42220, pack: 100, root }, { ...opts, now: later });
+    const again = await issueQuote(db, { userId: u.id, wallet: u.wallet, chainId: 42220, amountMicro: 100_000_000, root }, { ...opts, now: later });
     expect(again.quote.bonus).toBe("10000000");
   });
 
@@ -124,10 +132,10 @@ describe.each(testBackends())("quotes on $name", (backend) => {
     const root = newWallet();
     const u = await account();
     const t0 = new Date();
-    const q = await issueQuote(db, { userId: u.id, wallet: u.wallet, chainId: 42220, pack: 100, root }, { ...opts, now: t0 });
+    const q = await issueQuote(db, { userId: u.id, wallet: u.wallet, chainId: 42220, amountMicro: 100_000_000, root }, { ...opts, now: t0 });
     await markQuotePaid(db, q.quote.ref, "0xabc");
     const later = new Date(t0.getTime() + 11 * 60_000);
-    const again = await issueQuote(db, { userId: u.id, wallet: u.wallet, chainId: 42220, pack: 100, root }, { ...opts, now: later });
+    const again = await issueQuote(db, { userId: u.id, wallet: u.wallet, chainId: 42220, amountMicro: 100_000_000, root }, { ...opts, now: later });
     expect(again.quote.bonus).toBe("0");
   });
 });

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 import { proxy } from "./proxy";
+import { SESSION_COOKIE } from "./lib/auth/cookie-names";
 import { effectiveHost } from "./server/edge";
 
 function request(url: string, headers: Record<string, string> = {}) {
@@ -150,10 +151,23 @@ describe("main host", () => {
     expect(proxy(request("http://localhost:3000/api/projects", { "x-vercel-ip-country": "US" })).status).toBe(451);
     expect(proxy(request("http://localhost:3000/home")).status).toBe(307);
     expect(proxy(request("http://localhost:3000/p/some-id/preview")).status).toBe(307);
-    expect(proxy(request("http://localhost:3000/home", { cookie: "gb_session=x" })).status).toBe(200);
+    expect(proxy(request("http://localhost:3000/home", { cookie: `${SESSION_COOKIE}=x` })).status).toBe(200);
   });
 
   it("leaves public pages alone", () => {
     for (const path of ["/", "/docs"]) expect(proxy(request(`http://localhost:3000${path}`)).status).toBe(200);
+  });
+});
+
+describe("signed-in app pages", () => {
+  it.each(["/home", "/templates", "/deployments", "/credits", "/p/abc"])("sends %s to the landing page without a session cookie", (path) => {
+    const res = proxy(request(`https://goodbuildit.xyz${path}`));
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location")).toBe("https://goodbuildit.xyz/");
+  });
+
+  it("lets a request with a session cookie through", () => {
+    const res = proxy(request("https://goodbuildit.xyz/templates", { cookie: "gb_session=x" }));
+    expect(res.headers.get("location")).toBeNull();
   });
 });

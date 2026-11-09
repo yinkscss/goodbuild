@@ -2,7 +2,7 @@ import "server-only";
 
 import { randomBytes } from "node:crypto";
 
-import { and, eq, gt, isNotNull, or, sql } from "drizzle-orm";
+import { and, eq, gt, gte, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import { getAddress, type Address, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
@@ -23,9 +23,13 @@ import { creditsContract } from "./contract-address";
  * wallets of the same person don't add up). Even with the bonus, the revenue per credit stays above
  * its cost. The exit cost of G$ itself is UNVERIFIED (not measured on-chain): the buffer is the knob.
  */
-export const PACKS = [10, 50, 100] as const;
-export type Pack = (typeof PACKS)[number];
+/** Quick amounts the screen offers, in dollars. Any amount between MIN and MAX can be bought. */
+export const PRESETS = [1, 5, 10, 25] as const;
 export const UNITS = 1_000_000;
+/** The smallest purchase: $0.25 of credit. Celo's network fee is a fraction of a cent, so a quarter-dollar is still worth buying. */
+export const MIN_PURCHASE_MICRO = 250_000;
+/** The most one quote buys, leaving room for the bonus under the contract's cap of 1,000 credits per quote. */
+export const MAX_PURCHASE_MICRO = 900 * UNITS;
 export const QUOTE_TTL_SECONDS = 600;
 export const BONUS_BPS = 1000;
 export const BONUS_CAP_MICRO_PER_MONTH = 10 * UNITS;
@@ -34,12 +38,12 @@ const PRICE_TTL_MS = 60_000;
 const PRICE_STALE_MS = 60 * 60_000;
 
 export class QuoteError extends Error {
-  constructor(readonly code: "price_unavailable" | "signer_not_configured" | "not_live" | "bad_pack", message: string) {
+  constructor(readonly code: "price_unavailable" | "signer_not_configured" | "not_live" | "bad_amount", message: string) {
     super(message);
   }
 }
 
-export const isPack = (n: number): n is Pack => (PACKS as readonly number[]).includes(n);
+export const isAmount = (micro: number) => Number.isSafeInteger(micro) && micro >= MIN_PURCHASE_MICRO && micro <= MAX_PURCHASE_MICRO;
 
 export const bufferBps = (env: NodeJS.ProcessEnv = process.env) => {
   const n = Number(env.CREDITS_PRICE_BUFFER_BPS);
@@ -47,20 +51,23 @@ export const bufferBps = (env: NodeJS.ProcessEnv = process.env) => {
 };
 
 /**
- * G$ in wei for `pack` dollars of credit at `usdPerGd`, plus the buffer, rounded UP to a whole G$ so the
+ * G$ in wei for `usdMicro` of credit at `usdPerGd`, plus the buffer, rounded UP to a whole G$ so the
  * contract is never underpaid and the user sees a clean number.
  */
-export function gdWeiForPack(pack: number, usdPerGd: number, buffer = 500): bigint {
-  if (!(usdPerGd > 0) || !(pack > 0)) throw new RangeError("price and pack must be positive");
+export function gdWeiForMicro(usdMicro: number, usdPerGd: number, buffer = 500): bigint {
+  if (!(usdPerGd > 0) || !(usdMicro > 0)) throw new RangeError("price and amount must be positive");
   const priceE12 = BigInt(Math.max(1, Math.round(usdPerGd * 1e12)));
-  const usdMicro = BigInt(pack) * BigInt(UNITS);
-  const withBuffer = (usdMicro * BigInt(10_000 + buffer)) / BigInt(10_000);
+  const withBuffer = (BigInt(Math.round(usdMicro)) * BigInt(10_000 + buffer)) / BigInt(10_000);
   const wei = (withBuffer * BigInt(10) ** BigInt(24)) / priceE12;
   return ((wei + WEI - BigInt(1)) / WEI) * WEI;
 }
 
-/** The bonus a pack earns, GBC units, before the monthly cap. */
-export const bonusForPack = (pack: number) => Math.floor((pack * UNITS * BONUS_BPS) / 10_000);
+/** Dollars of credit, for callers that think in whole dollars. */
+export const gdWeiForPack = (dollars: number, usdPerGd: number, buffer = 500) => gdWeiForMicro(dollars * UNITS, usdPerGd, buffer);
+
+/** The bonus an amount earns, GBC units, before the monthly cap. */
+export const bonusForMicro = (usdMicro: number) => Math.floor((usdMicro * BONUS_BPS) / 10_000);
+export const bonusForPack = (dollars: number) => bonusForMicro(dollars * UNITS);
 
 let cache: { price: number; at: number } | null = null;
 
@@ -94,11 +101,11 @@ export async function bonusRoom(db: Db, root: string, now = new Date()): Promise
   const [row] = await db
     .select({ used: sql<number>`coalesce(sum(${creditQuotes.bonusMicro}), 0)::bigint` })
     .from(creditQuotes)
-    .where(and(eq(creditQuotes.goodidRoot, root.toLowerCase()), sql`${creditQuotes.createdAt} >= ${from}`, sql`${creditQuotes.createdAt} < ${to}`, or(isNotNull(creditQuotes.paidAt), gt(creditQuotes.deadline, now))));
+    .where(and(eq(creditQuotes.goodidRoot, root.toLowerCase()), gte(creditQuotes.createdAt, from), lt(creditQuotes.createdAt, to), or(isNotNull(creditQuotes.paidAt), gt(creditQuotes.deadline, now))));
   return Math.max(0, BONUS_CAP_MICRO_PER_MONTH - Number(row?.used ?? 0));
 }
 
-const QUOTE_TYPES = {
+export const QUOTE_TYPES = {
   Quote: [
     { name: "buyer", type: "address" },
     { name: "gdAmount", type: "uint256" },
@@ -112,21 +119,24 @@ const QUOTE_TYPES = {
 export interface SignedQuote {
   quote: { buyer: Address; gdAmount: string; credits: string; bonus: string; ref: Hex; deadline: string };
   signature: Hex;
-  pack: Pack;
+  amountMicro: number;
   gdUsd: number;
   verified: boolean;
 }
 
-/** The price and bonus for a pack without signing anything, for the "Add credits" screen. */
+/** Prices for the quick amounts, plus the G$ price of one dollar so the screen can price any amount, without signing anything. */
 export async function previewPacks(db: Db, opts: { root?: string | null; fetcher?: typeof fetch; env?: NodeJS.ProcessEnv; now?: Date } = {}) {
   const env = opts.env ?? process.env;
   const gdUsd = await gdUsdPrice(opts.fetcher, opts.now?.getTime(), env);
   const room = opts.root ? await bonusRoom(db, opts.root, opts.now) : 0;
   return {
     gdUsd,
-    packs: PACKS.map((pack) => {
-      const bonus = Math.min(bonusForPack(pack), room);
-      return { pack, gdWei: gdWeiForPack(pack, gdUsd, bufferBps(env)).toString(), bonusMicro: opts.root ? bonus : 0, bonusIfVerifiedMicro: bonusForPack(pack) };
+    minMicro: MIN_PURCHASE_MICRO,
+    maxMicro: MAX_PURCHASE_MICRO,
+    gdWeiPerDollar: gdWeiForMicro(UNITS, gdUsd, bufferBps(env)).toString(),
+    packs: PRESETS.map((dollars) => {
+      const bonus = Math.min(bonusForPack(dollars), room);
+      return { pack: dollars, gdWei: gdWeiForPack(dollars, gdUsd, bufferBps(env)).toString(), bonusMicro: opts.root ? bonus : 0, bonusIfVerifiedMicro: bonusForPack(dollars) };
     }),
     verifiedRoom: room,
   };
@@ -135,22 +145,22 @@ export async function previewPacks(db: Db, opts: { root?: string | null; fetcher
 /** Sign a quote for this user and record it. Everything but the pack comes from the server's own records. */
 export async function issueQuote(
   db: Db,
-  input: { userId: string; wallet: string; chainId: number; pack: number; root?: string | null },
+  input: { userId: string; wallet: string; chainId: number; amountMicro: number; root?: string | null },
   opts: { fetcher?: typeof fetch; env?: NodeJS.ProcessEnv; now?: Date } = {},
 ): Promise<SignedQuote> {
   const env = opts.env ?? process.env;
   const now = opts.now ?? new Date();
-  if (!isPack(input.pack)) throw new QuoteError("bad_pack", "Pick 10, 50 or 100 credits.");
+  if (!isAmount(input.amountMicro)) throw new QuoteError("bad_amount", `Pick an amount from $${MIN_PURCHASE_MICRO / UNITS} to $${MAX_PURCHASE_MICRO / UNITS}.`);
   const contract = creditsContract(input.chainId, env);
   if (!contract) throw new QuoteError("not_live", "Credits aren't live on that network yet.");
   const key = env.CREDITS_QUOTE_SIGNER_KEY?.trim();
   if (!key || !/^0x[0-9a-fA-F]{64}$/.test(key)) throw new QuoteError("signer_not_configured", "Credits aren't ready to sell yet.");
 
   const gdUsd = await gdUsdPrice(opts.fetcher, now.getTime(), env);
-  const creditsMicro = input.pack * UNITS;
+  const creditsMicro = input.amountMicro;
   const room = input.root ? await bonusRoom(db, input.root, now) : 0;
-  const bonusMicro = input.root ? Math.min(bonusForPack(input.pack), room) : 0;
-  const gdWei = gdWeiForPack(input.pack, gdUsd, bufferBps(env));
+  const bonusMicro = input.root ? Math.min(bonusForMicro(creditsMicro), room) : 0;
+  const gdWei = gdWeiForMicro(creditsMicro, gdUsd, bufferBps(env));
   const ref = `0x${randomBytes(32).toString("hex")}` as Hex;
   const deadline = Math.floor(now.getTime() / 1000) + QUOTE_TTL_SECONDS;
   const buyer = getAddress(input.wallet);
@@ -168,7 +178,7 @@ export async function issueQuote(
     chainId: input.chainId,
     wallet: buyer.toLowerCase(),
     goodidRoot: bonusMicro > 0 && input.root ? input.root.toLowerCase() : null,
-    pack: input.pack,
+    pack: Math.floor(creditsMicro / UNITS),
     creditsMicro,
     bonusMicro,
     gdWei: gdWei.toString(),
@@ -178,7 +188,7 @@ export async function issueQuote(
   return {
     quote: { buyer, gdAmount: gdWei.toString(), credits: String(creditsMicro), bonus: String(bonusMicro), ref, deadline: String(deadline) },
     signature,
-    pack: input.pack,
+    amountMicro: creditsMicro,
     gdUsd,
     verified: bonusMicro > 0,
   };
@@ -189,5 +199,5 @@ export async function markQuotePaid(db: Db, ref: string, txHash: string) {
   await db
     .update(creditQuotes)
     .set({ paidTx: txHash.toLowerCase(), paidAt: new Date() })
-    .where(and(eq(creditQuotes.ref, ref.toLowerCase()), sql`${creditQuotes.paidAt} is null`));
+    .where(and(eq(creditQuotes.ref, ref.toLowerCase()), isNull(creditQuotes.paidAt)));
 }

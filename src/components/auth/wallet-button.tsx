@@ -1,8 +1,9 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, Check, ChevronDown, Copy, ExternalLink, KeyRound, Loader2, LogOut, Wallet } from "lucide-react";
+import { ArrowLeftRight, Check, ChevronDown, Copy, ExternalLink, KeyRound, Loader2, LogOut, Wallet } from "lucide-react";
 
 import { useSendGate } from "@/components/auth/send-gate";
 import { Button } from "@/components/ui/button";
@@ -80,9 +81,9 @@ export function WalletButton({
               setSwitching(false);
             }
           }}
-          className="inline-flex items-center gap-2 rounded-full bg-warning/12 px-4 py-2.5 text-sm font-medium text-warning outline-none hover:bg-warning/18 focus-visible:shadow-focus"
+          className="inline-flex items-center gap-2 rounded-full bg-tint px-4 py-2.5 text-sm font-medium text-violet outline-none hover:bg-violet/10 focus-visible:shadow-focus"
         >
-          {switching ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <AlertTriangle className="size-4" aria-hidden />}
+          {switching ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <ArrowLeftRight className="size-4" aria-hidden />}
           Switch to {NETWORKS[expected === NETWORKS.celo.chainId ? "celo" : "celo-sepolia"].label}
         </button>
         <AccountMenu compact expectedChainId={expected} />
@@ -188,12 +189,14 @@ function AccountMenu({
         </DropdownMenuRadioGroup>
 
         <DropdownMenuSeparator />
-        <DropdownMenuItem disabled>
-          <Wallet className="mt-0.5 size-4 text-grey-600" />
-          <span>
-            <span className="block">Credits and top-up</span>
-            <span className="block text-xs text-grey-600">Coming with G$ credits</span>
-          </span>
+        <DropdownMenuItem asChild>
+          <Link href="/credits">
+            <Wallet className="mt-0.5 size-4 text-grey-600" />
+            <span>
+              <span className="block">Credits and top-up</span>
+              <span className="block text-xs text-grey-600">Pay with G$</span>
+            </span>
+          </Link>
         </DropdownMenuItem>
         {auth.exportKey && (
           <DropdownMenuItem onSelect={() => void auth.exportKey?.()}>
