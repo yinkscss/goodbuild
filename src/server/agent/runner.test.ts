@@ -9,7 +9,7 @@ import { createProjectFromPrompt } from "@/server/projects";
 import { dbAssetStore, ingestAsset } from "./asset-store";
 import { scriptedModel } from "./fake-model";
 import { KITS, type Kit } from "./kits";
-import { FREE_BUILD_CEILING_MICRO, runTurn, TurnBusyError, type TurnEvent } from "./runner";
+import { FREE_BUILD_CEILING_MICRO, freeBuildCeilingMicro, runTurn, TurnBusyError, type TurnEvent } from "./runner";
 import { claimTurn, listVersions, loadFiles, revertTo, saveFiles } from "./store";
 import { starterFiles } from "./template";
 import { fixTier, isRepeat, plainDashes } from "./runner";
@@ -226,15 +226,25 @@ describe("runTurn", { timeout: 120_000 }, () => {
     expect(String(requests.at(-1)!.messages.at(-1)!.content)).toMatch(/Reply to the user now/);
   });
 
-  it("stops a build on free AI once it has charged the most one free build may, before the next call (D82)", async () => {
+  it("stops a build on free AI at its spending ceiling, then replies and saves what it made (D82)", async () => {
     const { client, requests } = scriptedModel([
-      { text: "Planning.", tools: [{ name: "set_plan", args: { summary: "A page.", steps: ["Page"] } }, { name: "create_file", args: { path: "src/App.tsx", content: PAGE } }], usage: { input: 50_000_000, output: 1_000 } },
-      { text: "Built it." },
+      { text: "Planning.", tools: [{ name: "set_plan", args: { summary: "A page.", steps: ["Page"] } }, { name: "create_file", args: { path: "src/App.tsx", content: PAGE } }], usage: { input: 1_000_000, output: 1_000_000 } }, // about $1.9 charged: over the ceiling, under the hard stop
+      { text: "I built the page; it ran out of room to do more." },
     ]);
     const record = await runTurn({ db, model: client }, { projectId, userId, mode: "build", userMessageId: queuedId }, () => {});
     expect(record.chargedMicro).toBeGreaterThanOrEqual(FREE_BUILD_CEILING_MICRO);
-    expect(requests).toHaveLength(1);
-    expect(record.error).toMatch(/most one build can spend on free AI/);
+    // The build call, then only the reply: no more work, no fix attempts.
+    expect(requests).toHaveLength(2);
+    expect(String(requests[1].messages.at(-1)!.content)).toMatch(/Reply to the user now/);
+    expect(record.log.some((l) => l.includes("most one build may spend on free AI"))).toBe(true);
+    expect(record.status).not.toBe("error");
+    expect((await loadFiles(db, projectId))["src/App.tsx"]).toBe(PAGE);
+  });
+
+  it("reads the free-build ceiling from the environment", () => {
+    expect(freeBuildCeilingMicro({})).toBe(FREE_BUILD_CEILING_MICRO);
+    expect(freeBuildCeilingMicro({ FREE_BUILD_CEILING_MICRO: "2500000" })).toBe(2_500_000);
+    expect(freeBuildCeilingMicro({ FREE_BUILD_CEILING_MICRO: "nope" })).toBe(FREE_BUILD_CEILING_MICRO);
   });
 
   it("asks for the reply again when the only reply came with a tool call", async () => {

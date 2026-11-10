@@ -93,10 +93,16 @@ const MAX_TOOL_ROUNDS_PER_PHASE = 20;
 /**
  * The most one build on free AI (or an exempt wallet) may charge before it stops (D82). Free allowance is only
  * checked when a build starts, so without this a long build could run well past it. About three times the
- * dearest build seen (RESERVED_PER_BUILD_MICRO) and the same as a paid build's hold. Checked before each live
- * call, so a build ends at most one call over it.
+ * dearest build seen (RESERVED_PER_BUILD_MICRO) and the same as a paid build's hold. When it is reached the
+ * build stops working, writes its reply and saves what it made (no more fix attempts). A hard stop at twice the
+ * ceiling catches any call that slips past. Change it with FREE_BUILD_CEILING_MICRO in the environment.
  */
 export const FREE_BUILD_CEILING_MICRO = 1_000_000;
+
+export function freeBuildCeilingMicro(env: Record<string, string | undefined> = process.env): number {
+  const value = Number(env.FREE_BUILD_CEILING_MICRO);
+  return Number.isSafeInteger(value) && value > 0 ? value : FREE_BUILD_CEILING_MICRO;
+}
 /** How often the builder may ask for the checks in one turn (the run_checks tool, D68). Each costs seconds of server time. */
 export const MAX_TOOL_CHECKS = 3;
 const MAX_TOKENS = 16_000;
@@ -136,6 +142,15 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
   if (!job.lockHeld && !(await claimTurn(db, input.projectId, input.userId))) throw new TurnBusyError();
   // Every usage row of the turn takes the job's funding (D48).
   const funding = job.funding ?? (await decideFunding(db, input.userId));
+  // A build on free AI or an exempt wallet stops working at this much (D82); paid builds are checked per call (D49).
+  const ceilingMicro = freeBuildCeilingMicro();
+  let ceilingNoted = false;
+  const atFreeCeiling = () => {
+    if (funding === "paid" || record.chargedMicro < ceilingMicro) return false;
+    if (!ceilingNoted) log("! this build reached the most one build may spend on free AI; stopping and saving what it made");
+    ceilingNoted = true;
+    return true;
+  };
 
   const saved = job.resume?.setup ?? null;
   const replayLog = saved ? (job.resume?.calls ?? []) : [];
@@ -220,7 +235,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
         throw new ResumeFailedError("the saved progress no longer matches this build's steps.");
       }
       if (!logged) goLive();
-      if (!logged && funding !== "paid" && record.chargedMicro >= FREE_BUILD_CEILING_MICRO) {
+      if (!logged && funding !== "paid" && record.chargedMicro >= 2 * ceilingMicro) {
         throw new Error("This build reached the most one build can spend on free AI. Try a smaller change, or ask for it in two steps.");
       }
       let replyText = "";
@@ -356,6 +371,8 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     const phase = async (tier: ModelTier, quiet = false) => {
       for (let round = 0; round < MAX_TOOL_ROUNDS_PER_PHASE; round++) {
         stopIfRequested();
+        // Out of free spend: end the pass the way running out of rounds does, so the reply and the save still happen.
+        if (atFreeCeiling()) return false;
         const toolCalls = await callModel(tier, quiet);
         if (cutOff) {
           // Not finished: the model was mid-write. Run whatever calls did complete, then
@@ -542,6 +559,11 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
         log("! the fix budget for this build is used up, stopping");
         stoppedEarly = true;
         stopNote = "the fix budget for one build was used up";
+        break;
+      }
+      if (atFreeCeiling()) {
+        stoppedEarly = true;
+        stopNote = "this build reached the most one build may spend on free AI";
         break;
       }
       previous = issues;

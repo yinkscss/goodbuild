@@ -59,6 +59,7 @@ const serverEnv = {
   RUN_CHECK: process.env.RUN_CHECK ?? "1",
   TYPE_CHECK: "warn",
   UNVERIFIED_CAP_MICRO: String(Math.round(Math.min(each, budget) * 1e6)),
+  FREE_BUILD_CEILING_MICRO: String(Math.round(Math.min(each, budget) * 1e6)), // one app may use its whole --each
   FREE_AI_BUDGET_MICRO: String(Math.round(budget * 1e6)),
   TURN_CONCURRENCY: String(concurrency),
   PORT: String(port),
