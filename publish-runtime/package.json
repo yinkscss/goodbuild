@@ -4,6 +4,7 @@
   "private": true,
   "description": "The packages generated apps may use, resolved when publishing. Versions must match ALLOWED_DEPENDENCIES in src/server/agent/template.ts.",
   "dependencies": {
+    "@types/three": "0.187.0",
     "@walletconnect/ethereum-provider": "2.26.0",
     "canvas-confetti": "1.9.3",
     "class-variance-authority": "0.7.1",
@@ -15,6 +16,7 @@
     "react-dom": "18.3.1",
     "react-router-dom": "6.30.6",
     "tailwind-merge": "3.7.0",
+    "three": "0.187.0",
     "viem": "2.57.16"
   }
 }
