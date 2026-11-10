@@ -7,6 +7,8 @@
  * and true for the starter template in template.ts.
  */
 
+import { KITS, kitGuideName } from "./kits/registry";
+
 export interface Guide {
   name: string;
   /** One line for the system prompt: when to load it. */
@@ -245,7 +247,8 @@ export const GUIDES: Guide[] = [
   },
 ];
 
-const BY_NAME = new Map(GUIDES.map((g) => [g.name, g]));
+// A kit's guide is a guide like any other, named kit-<id> (D71).
+const BY_NAME = new Map([...GUIDES, ...KITS.map((k) => ({ name: kitGuideName(k.id), when: k.when, body: k.guide }))].map((g) => [g.name, g]));
 
 export function guideNames(): string[] {
   return GUIDES.map((g) => g.name);

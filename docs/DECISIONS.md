@@ -710,3 +710,13 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - **Needs the owner:** `ANTHROPIC_API_KEY` and `DEEPSEEK_API_KEY` as GitHub repository secrets, then one run with `update_baseline` to create the first baseline.
 - **UNVERIFIED:** any run with real models, and the workflow on GitHub. The runner was driven end to end locally with the demo model only.
 - The two refusal scenarios are a contract that drains its users and sports betting (D4). A paid-entry game of chance is left out until the owner confirms where D63's line is.
+
+### D71. Kits: one place for everything a new kind of app needs
+- Date: 10 Nov 2026 · Proposed and built by: Claude · Approved by: the user (phase 3 of the harness plan, "complete the rest of the phases").
+- **The problem.** A new kind of app (a game, a dashboard) meant changing the package list, `publish-runtime/package.json`, the prompt, the guides and the checks, each in its own file.
+- **A kit** (`src/server/agent/kits/registry.ts`) holds all of it: packages, starter files, a guide, extra file types, its own checks, and whether it needs GoodBuild's own preview (D69). `KITS` lists them. This change adds the mechanism and no kit; the first kits come in the changes after it.
+- **Kits add up and never come off.** A tip jar can gain a game later and keeps everything it had. Which kits a project has on is a small file in the project, `src/goodbuild.json`, written by GoodBuild and closed to the builder. It travels with versions and reverts, and needed no migration.
+- **How a kit gets turned on.** The builder calls `add_kit` (its prompt lists the kits and when to use them). As a backstop, a request whose words clearly ask for a kit has it on before the builder starts, with the guide in its context. People are never asked to pick one.
+- **What a kit changes for its project only:** what `add_dependency` accepts, where the builder may write, and which checks run. `ALLOWED_DEPENDENCIES` is now the base list plus every kit's packages (what publishing can bundle); `packagesFor(files)` is what one project may add.
+- **Left out on purpose:** per-kit Content-Security-Policy. Published and preview headers have no project context without a query per request. The one known need (WebAssembly for physics) is a single keyword that can be allowed for every app when the 3D kit arrives.
+- **Tests:** `kits/kits.test.ts` (a stand-in kit through every function, the tools and the checks; and for real kits, that publishing installs their packages at the same versions) and two turns in `runner.test.ts`.

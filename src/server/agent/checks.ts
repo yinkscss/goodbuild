@@ -10,6 +10,7 @@ import { COLLECTION_NAME, DATA_PATH_PREFIX, DATA_RULES_PATH, parseDataRules, par
 import { MANIFEST_PATH, parseManifest, planManifest } from "@/lib/deploy/manifest";
 
 import { assetRefs } from "./assets";
+import { KIT_MARKER, kitForPackage, kitsOf, type Kit } from "./kits/registry";
 import { ALLOWED_DEPENDENCIES, PLATFORM_DIR, WALLET_DIR, dependenciesOf } from "./template";
 
 /** Compiler settings, pinned (CONTRACTS_AND_DEPLOYMENT.md §2, §4). */
@@ -65,12 +66,13 @@ export const MAX_FILES = 80;
 
 const DATA_HELPER_STEMS = ["src/lib/db", "src/lib/useDb"];
 
-/** Where generated files may live. Everything else is refused. */
-export function pathProblem(p: string): string | null {
+/** Where generated files may live. Everything else is refused. `kits`: the project's kits, which can allow more (D71). */
+export function pathProblem(p: string, kits: Kit[] = []): string | null {
   if (!p || p.startsWith("/") || p.includes("\\") || p.split("/").some((seg) => seg === ".." || seg === "." || seg === "")) {
     return `Invalid path "${p}". Use a relative path like src/App.tsx or contracts/TipJar.sol.`;
   }
   if (p === "package.json") return "package.json is managed by GoodBuild. Use add_dependency.";
+  if (p === KIT_MARKER) return `${KIT_MARKER} is written by GoodBuild: it records the project's kits. Use add_kit to turn one on.`;
   if (p.startsWith(PLATFORM_DIR)) return `${PLATFORM_DIR} is written by GoodBuild from the compiled contracts. Import from it instead.`;
   // Any extension and any folder of the same name, so a src/lib/db.tsx can't shadow the real one in imports.
   if (DATA_HELPER_STEMS.some((stem) => p.startsWith(stem + ".") || p.startsWith(stem + "/"))) {
@@ -84,6 +86,7 @@ export function pathProblem(p: string): string | null {
   if (/^contracts\/test\/[A-Za-z0-9_]+\.t\.sol$/.test(p)) return null;
   if (/^src\/[A-Za-z0-9_\-/.]+\.(tsx?|css|json)$/.test(p)) return null;
   if (p === "public/index.html") return null;
+  if (kits.some((k) => k.paths?.some((re) => re.test(p)))) return null;
   return `Files must be under src/ (.ts, .tsx, .css, .json), contracts/ (Name.sol) or contracts/test/ (Name.t.sol). Got "${p}".`;
 }
 
@@ -552,7 +555,8 @@ export function checkApp(files: Record<string, string>, opts: { assets?: string[
       } else {
         const pkg = packageName(spec);
         if (!deps.has(pkg)) {
-          const hint = pkg in ALLOWED_DEPENDENCIES ? ` Call add_dependency("${pkg}") first.` : " It isn't on the allowed package list.";
+          const kit = kitForPackage(pkg);
+          const hint = kit && !kitsOf(files).includes(kit) ? ` It comes with the ${kit.id} kit: call add_kit("${kit.id}") first.` : pkg in ALLOWED_DEPENDENCIES ? ` Call add_dependency("${pkg}") first.` : " It isn't on the allowed package list.";
           errors.push({ file, line, message: `Package "${pkg}" isn't installed.${hint}`, source: "imports" });
         }
       }
@@ -566,6 +570,7 @@ export function checkApp(files: Record<string, string>, opts: { assets?: string[
   errors.push(...lucideIssues(files));
   errors.push(...dataIssues(files));
   errors.push(...walletIssues(files));
+  for (const kit of kitsOf(files)) errors.push(...(kit.checks?.(files) ?? []));
   return { ok: errors.length === 0, errors, warnings: [], contracts: [] };
 }
 

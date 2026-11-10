@@ -71,6 +71,7 @@ flowchart TD
   - Each upload gets a palette and a one-time description from the cheap model, which reads images. A reference is described as a layout spec, and its image is attached to the next turn.
   - Guides: `brand-and-assets` and `match-reference`.
   - Generated images (an image model) are not built. Icons come from lucide-react, which has no brand icons; the app check enforces real icon names.
+- **Kits (D71, implemented):** each further kind of app (games, dashboards) is a kit: packages, starter files, a guide, file types and checks in one module under `src/server/agent/kits/`. The builder turns one on with `add_kit`.
 - **Type check and `run_checks` (D68, implemented):** TypeScript over the app (`TYPE_CHECK=warn` notes errors, `enforce` sends them to auto-fix), and a tool that lets the builder run every check itself, up to 3 times a turn, and fix what it finds before replying. See `type-check.ts`.
 - **Run check (D67, implemented):** after the other checks pass, the server builds the app, opens it in a headless browser and sends crashes, an empty page or a page that throws to auto-fix as `[runtime]` errors. See `run-check.ts`.
 - **Checks:** preview at 375px and 1280px; **screenshot self-review (optional)** using a vision model on a captured iframe (capture of Sandpack iframe e.g. html-to-image: feasibility UNVERIFIED). Lovable has browser testing with screenshots ([glossary](https://docs.lovable.dev/glossary)).

@@ -1,7 +1,8 @@
 import { manifest, selectContext, type ContextPick } from "./codebase";
 import type { ToolSpec } from "./model";
 import { guideCatalog, guideNames } from "./guides";
-import { ALLOWED_DEPENDENCIES, PLATFORM_DIR } from "./template";
+import { KITS, kitCatalog } from "./kits/registry";
+import { BASE_ALLOWED_DEPENDENCIES, PLATFORM_DIR } from "./template";
 
 /** Tools the agent can call (AI_AGENT.md §2). No shell: the preview has none. */
 export const BUILD_TOOLS: ToolSpec[] = [
@@ -47,9 +48,17 @@ export const BUILD_TOOLS: ToolSpec[] = [
   fn("run_checks", "Run GoodBuild's checks on the project as it is now and get the errors back: contracts are compiled and their tests run, the app's imports and types are checked, and the built app is opened in a browser. Call it once after your last edit, fix what it reports, and stop. At most 3 times a turn.", {}, []),
   fn("delete_file", "Delete a file.", { path: { type: "string" } }, ["path"]),
   fn("rename_file", "Rename or move a file.", { from: { type: "string" }, to: { type: "string" } }, ["from", "to"]),
-  fn("add_dependency", `Add an npm package to the app. Allowed: ${Object.keys(ALLOWED_DEPENDENCIES).join(", ")}.`, {
+  fn("add_dependency", `Add an npm package to the app. Allowed: ${Object.keys(BASE_ALLOWED_DEPENDENCIES).join(", ")}${KITS.length ? ", and the packages of the kits this project has on" : ""}.`, {
     name: { type: "string" },
   }, ["name"]),
+  // Only offered when there are kits (D71).
+  ...(KITS.length
+    ? [
+        fn("add_kit", `Turn on a kit for this project: the packages, starter files and guide for one kind of app. Call it before writing code of that kind. Kits: ${KITS.map((k) => k.id).join(", ")}.`, {
+          name: { type: "string" },
+        }, ["name"]),
+      ]
+    : []),
 ];
 
 /** Plan mode: read-only (AI_AGENT.md §4). */
@@ -123,7 +132,14 @@ const CONVERSATION = `Reading the user's message:
 What users build: mostly dApps on Celo (a contract plus its app), and also plain websites and pages (landing pages, event or shop sites, portfolios, about or signup pages for their dApp). A project's chain is selected in GoodBuild and supplied in src/lib/chain.ts; keep every contract read and write on that chain. New projects default to Celo Sepolia, and mainnet use stays subject to GoodBuild's server-side safety gates. Write a contract only when the app needs on-chain state or payments; a website needs none. Data that must be saved but needn't be on-chain (profiles, notes, comments, form entries) goes in GoodBuild's app data store through src/lib/db.ts, with wallet sign-in (load the app-data guide). Never invent a backend, API route or third-party database: there is no other server.
 
 Front-end guides (load the ones you need via set_plan's guides field, or read_guide; they hold the detailed rules):
-${guideCatalog()}`;
+${guideCatalog()}${
+  KITS.length
+    ? `
+
+Kits (each adds the packages, starter files and rules for one more kind of app; the project context says which are on). When the request is for one of these and its kit isn't on, call add_kit first, then follow the guide it returns:
+${kitCatalog()}`
+    : ""
+}`;
 
 const FOLLOW_UP = `Then, in the same response as that reply, call suggest_next with one or two next steps specific to this app, written as the request the user would send ("Add a leaderboard of top tippers", "Let tips carry a short message"). They appear as buttons under your reply. suggest_next is the only place for next steps: don't list or ask them in the reply text. Nothing already built, no pushing.`;
 
