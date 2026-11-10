@@ -42,14 +42,19 @@ const shot = async (name) => { await page.screenshot({ path: path.join(out, `${S
 await page.goto(base + "/");
 await page.getByPlaceholder(/Describe the dApp/i).first().fill(prompt);
 await shot("home-prompt");
-await page.waitForLoadState("networkidle").catch(() => {});
-await page.waitForTimeout(2000);
-const boxes = page.getByPlaceholder(/Describe the dApp/i);
-console.log("prompt boxes:", await boxes.count(), "visible:", await boxes.evaluateAll((els) => els.map((e) => !!e.offsetParent)));
-await boxes.first().fill(prompt);
-const go = page.getByRole("button", { name: /^Build it/ });
-console.log("Build it enabled:", await go.isEnabled().catch(() => "not found"));
-await go.click({ timeout: 30_000 });
+// The dev server can reload the page while it warms up, so try the prompt and the button a few times.
+for (let attempt = 1; attempt <= 4; attempt++) {
+  try {
+    await page.waitForLoadState("load");
+    await page.waitForTimeout(2500);
+    await page.getByPlaceholder(/Describe the dApp/i).first().fill(prompt);
+    await page.getByRole("button", { name: /^Build it/ }).click({ timeout: 15_000 });
+    break;
+  } catch (e) {
+    console.log(`prompt attempt ${attempt} failed: ${String(e.message).split("\n")[0].slice(0, 100)}`);
+    if (attempt === 4) throw e;
+  }
+}
 await page.waitForURL(/\/p\//, { timeout: 30_000 });
 await shot("workspace-opened");
 
