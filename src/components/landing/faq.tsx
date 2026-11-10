@@ -28,6 +28,10 @@ const QUESTIONS = [
     a: "Yes. Describe the game and GoodBuild builds it to play on a phone or a computer, with sound, a best score and a leaderboard if you want one. Games can charge a G$ entry and pay prizes when the winner is decided by play.",
   },
   {
+    q: "Can I build 3D apps?",
+    a: "Yes. Describe a 3D scene, a viewer for your art, a globe or a 3D game and GoodBuild builds it to run on a phone, with drag to look around and pinch to zoom. For now the shapes and textures are made in code. Uploading your own 3D models comes later.",
+  },
+  {
     q: "Can I build a DAO or a vault?",
     a: "Yes: a club treasury where members vote on spending, or a vault where people deposit and take their money back. Because these hold other people's money, GoodBuild builds them from audited parts, writes tests that try to break them, and won't put one on Celo mainnet until those tests pass. That catches the common attacks, but it isn't a full audit, so get one before a vault holds a lot of real money.",
   },
