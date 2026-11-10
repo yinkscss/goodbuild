@@ -5,6 +5,7 @@ import type { EIP1193Provider } from "viem";
 import { celo, celoSepolia } from "viem/chains";
 
 import { AuthContextProvider } from "../context";
+import { isCaip25ScopeError, requestMetaMaskAccount, walletConnectMetadata } from "../metamask";
 import { SignInError, endSession, fetchSession, parseChainId, signInWithEthereum } from "../session-client";
 import type { Attestation, AuthApi, AuthPhase, ExternalWalletId, SessionUser, WalletState } from "../types";
 import { switchWalletChain, walletClientFor } from "../wallet-client";
@@ -300,7 +301,7 @@ function MagicBridge({ publishableKey, children }: { publishableKey: string; chi
               );
             }
           }
-          const address = await readAccount(provider, "eth_requestAccounts");
+          const address = id === "metamask" ? await requestMetaMaskAccount(provider) : await readAccount(provider, "eth_requestAccounts");
           if (!address) throw new SignInError("connect_failed", "The wallet didn't connect. Try again.");
           watch(provider);
           try {
@@ -313,7 +314,10 @@ function MagicBridge({ publishableKey, children }: { publishableKey: string; chi
           await signInWith(wallet, attestation);
         } catch (e) {
           const rejected = (e as { code?: number })?.code === 4001 || /reject|denied|closed|cancel/i.test((e as Error)?.message ?? "");
-          fail(e instanceof SignInError ? e : new SignInError(rejected ? "user_rejected" : "connect_failed", "The wallet didn't connect. Try again."));
+          const message = isCaip25ScopeError(e)
+            ? "MetaMask couldn't finish connecting. Disconnect this site in MetaMask and try again."
+            : "The wallet didn't connect. Try again.";
+          fail(e instanceof SignInError ? e : new SignInError(rejected ? "user_rejected" : "connect_failed", message));
         }
       },
 
@@ -381,11 +385,13 @@ async function initWalletConnect(showQrModal: boolean) {
   const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID;
   if (!projectId) throw new SignInError("wallet_missing", "WalletConnect isn't set up on this deployment (no project id).");
   const { EthereumProvider } = await import("@walletconnect/ethereum-provider");
+  const icon = document.querySelector<HTMLLinkElement>('link[rel~="icon"]')?.href;
   return EthereumProvider.init({
     projectId,
     chains: [celoSepolia.id],
     optionalChains: [celo.id],
     rpcMap: { [celoSepolia.id]: celoSepolia.rpcUrls.default.http[0], [celo.id]: celo.rpcUrls.default.http[0] },
+    metadata: walletConnectMetadata(window.location.origin, icon),
     showQrModal,
   });
 }

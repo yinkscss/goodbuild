@@ -10,6 +10,8 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
+import { numberToHex } from "viem";
+import { celo, celoSepolia } from "viem/chains";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { WALLETCONNECT_MODULE } from "@/server/publish/walletconnect-module";
@@ -283,6 +285,24 @@ describe("the wallet list", () => {
     const { wallet } = await load();
     expect(await wallet.connectWallet()).toBe("0x00000000000000000000000000000000000000a1");
     expect(dialog()).toBeNull();
+  });
+
+  it("asks MetaMask only for the Celo chains, and does not fall back when MetaMask rejects a Tron scope", async () => {
+    const metamask = fakeProvider("0x00000000000000000000000000000000000000a1");
+    install(metamask, { rdns: "io.metamask", name: "MetaMask" });
+    const { wallet } = await load();
+    await wallet.connectWallet();
+    expect(metamask.request).toHaveBeenCalledWith({
+      method: "wallet_requestPermissions",
+      params: [{ eth_accounts: {}, "endowment:permitted-chains": { caveats: [{ type: "restrictNetworkSwitching", value: [numberToHex(celo.id), numberToHex(celoSepolia.id)] }] } }],
+    });
+    expect(metamask.request).not.toHaveBeenCalledWith({ method: "eth_requestAccounts" });
+
+    await wallet.disconnectWallet();
+    metamask.request.mockReset();
+    metamask.request.mockRejectedValue(Object.assign(new Error('endowment:caip25 error: Received scopeString value(s): tron:728126428 for caveat of type "authorizedScopes" that are not supported by the wallet.'), { code: -32603 }));
+    await expect(wallet.connectWallet()).rejects.toThrow(/authorizedScopes/);
+    expect(metamask.request).not.toHaveBeenCalledWith({ method: "eth_requestAccounts" });
   });
 
   it("says what to do when there's no wallet at all", async () => {
