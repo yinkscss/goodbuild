@@ -116,7 +116,7 @@ Nightly backups keep deleted data for up to 7 days (DEPLOY.md). Nothing expires 
 
 ## Known limits
 - **Wallets in published apps** are browser wallets, MiniPay and, once `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` is set, WalletConnect (D36). Magic email wallets still aren't available on an app host, so an owner with an email wallet can't sign in to their own app.
-- No queries beyond listing a collection newest first, optionally by owner. No shared records, files or images.
+- Queries are filters, an order and `since` over the newest 500 records (see Queries). No shared records, no live connection (apps poll), and no files or images from visitors (docs/OPEN_QUESTIONS.md).
 - **UNVERIFIED:** the helper in the real Sandpack preview. It was run in Chromium on another origin with no server and no `goodbuild-data` tag, which is the same code path, but CodeSandbox's bundler wasn't part of that, so its handling of the JSON import is unchecked.
 - **UNVERIFIED:** Cloudflare passing `/__gb/data/` unchanged and not caching it. Every response says `no-store, private`, and nothing about this path has been tried on the live server.
 - **A few addresses can pause one app.** The limit of 1,500 requests a minute per app can be used up by about 5 addresses at the per-IP read limit, and that app's data API then answers 429 for up to a minute. Other apps aren't affected.

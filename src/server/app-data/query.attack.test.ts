@@ -4,7 +4,6 @@
  * under test: a query only ever compares what the viewer is allowed to see. Same harness as
  * rules.attack.test.ts: real proxy, real handler, real signatures.
  */
-import { eq } from "drizzle-orm";
 import { NextRequest } from "next/server";
 import { generatePrivateKey, privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
 import { createSiweMessage } from "viem/siwe";
@@ -95,8 +94,6 @@ async function signIn(account: PrivateKeyAccount, host: string): Promise<string>
 
 const put = (host: string, cookie: string | undefined, collection: string, key: string, value: unknown) =>
   call(host, "PUT", `${V1}/c/${collection}/${key}`, { cookie, headers: page(host), json: { value } });
-const get = (host: string, cookie: string | undefined, path: string) => call(host, "GET", `${V1}/${path}`, { cookie, headers: page(host) });
-const errorCode = async (res: Response) => ((await res.json()) as { error: string }).error;
 
 async function publishedProject(slug: string, rules = RULES): Promise<Project> {
   const project = await createProjectFromPrompt(db, ownerId, { prompt: slug, network: "celo-sepolia" });
