@@ -21,7 +21,8 @@ export function rolesOf(files: Record<string, string>): Role[] {
     .map(([, c]) => c)
     .join("\n");
   const roles: Role[] = [];
-  const deposit = /ERC4626|function\s+(deposit|stake|contribute)\w*\s*\(/.test(source);
+  // Money in: deposit, stake, contribute, or an escrow's fund / pledge / lock (live check: an escrow took cUSD through fundDeal).
+  const deposit = /ERC4626|function\s+(deposit|stake|contribute|fund|pledge|lock)\w*\s*\(/.test(source);
   const withdraw = /ERC4626|function\s+(withdraw|redeem|unstake|claim)\w*\s*\(/.test(source);
   if (deposit && withdraw) roles.push("vault");
   const propose = /\bGovernor\b|function\s+(propose|createProposal|submitProposal)\w*\s*\(/.test(source);
