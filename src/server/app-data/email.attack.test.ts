@@ -302,7 +302,9 @@ describe("who an email visitor is", () => {
     const sy = await subjectOf(other.id, "ada@example.com");
     expect(sx).toMatch(/^email:[0-9a-f-]{36}$/);
     expect(sx).not.toBe(sy);
-    expect(sx).not.toContain("ada");
+    // The id is random hex, so "ada" can appear in it by chance; look for the address itself.
+    expect(sx).not.toContain("example.com");
+    expect(sx).not.toContain("@");
   });
 
   it("is signed in for the rules, but never the owner", async () => {
