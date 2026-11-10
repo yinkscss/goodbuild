@@ -1,6 +1,6 @@
 // @vitest-environment node
 /**
- * The attacker's suite for queries (D78): filters, order and "changed since" on a list. The rule
+ * The attacker's suite for queries (D79): filters, order and "changed since" on a list. The rule
  * under test: a query only ever compares what the viewer is allowed to see. Same harness as
  * rules.attack.test.ts: real proxy, real handler, real signatures.
  */

@@ -163,7 +163,7 @@ function pageParams(url: URL): { limit: number; cursor?: number } {
   return { limit, cursor: rawCursor === null ? undefined : Number(rawCursor) };
 }
 
-/** where=field~op~value (up to four), order=field, dir=asc|desc, since=<ms>: the list's query (D78). */
+/** where=field~op~value (up to four), order=field, dir=asc|desc, since=<ms>: the list's query (D79). */
 function queryParams(url: URL): RecordQuery | undefined {
   const rawWhere = url.searchParams.getAll("where");
   const order = url.searchParams.get("order");

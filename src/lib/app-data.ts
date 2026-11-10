@@ -201,7 +201,7 @@ export function normalizeEmail(raw: unknown): string | null {
 }
 
 // ---------------------------------------------------------------------------
-// Queries (D78)
+// Queries (D79)
 
 export type QueryOp = "eq" | "ne" | "gt" | "gte" | "lt" | "lte";
 export const QUERY_OPS: readonly QueryOp[] = ["eq", "ne", "gt", "gte", "lt", "lte"];

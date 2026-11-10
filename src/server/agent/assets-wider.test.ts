@@ -42,7 +42,7 @@ function memoryStore(): AssetStore & { rows: AssetInfo[] } {
 const ingest = (store: AssetStore, fileName: string, data: Uint8Array, kind: "logo" | "image" | "reference" = "image") =>
   ingestAsset({ store, db: null as never, model: null, projectId: "p", userId: "u", fileName, kind, bytes: data });
 
-describe("uploads beyond images (D77)", () => {
+describe("uploads beyond images (D78)", () => {
   it("knows sounds, fonts and 3D models from their first bytes, not their names", () => {
     expect(sniffType(MP3)).toBe("audio/mpeg");
     expect(sniffType(bytes([0xff, 0xfb, 0x90]))).toBe("audio/mpeg");

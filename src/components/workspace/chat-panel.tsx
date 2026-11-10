@@ -13,6 +13,7 @@ import type { TurnMode, TurnRecord } from "@/lib/turn-types";
 import { cn } from "@/lib/utils";
 import { DeployButton } from "@/components/deploy/deploy-trigger";
 import { AssetBar, AttachMenu, imageFiles } from "./asset-bar";
+import { FirstWait } from "./first-wait";
 import { OldFundsCard } from "./old-funds-card";
 import { TurnView } from "./turn-view";
 import type { UseWorkspace } from "./use-workspace";
@@ -116,9 +117,7 @@ export function ChatPanel({ ws, assetUrls = {} }: { ws: UseWorkspace; assetUrls?
           />
         )}
         {!live && !ws.error && state.messages.at(-1)?.role === "user" && (
-          <p className="flex items-center gap-2 text-sm text-grey-600" role="status">
-            <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden /> Getting started…
-          </p>
+          <FirstWait ahead={Math.max(0, state.jobs.findIndex((j) => j.userMessageId === state.messages.at(-1)?.id))} />
         )}
         {ws.error && (
           <p className="flex items-start gap-2 rounded-block bg-canvas px-4 py-3 text-sm" role="alert">

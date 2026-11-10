@@ -238,7 +238,7 @@ export async function listRecords(
 }
 
 /**
- * A list with filters, an order, or "changed since" (D78). The same rows, shown the same way, as a
+ * A list with filters, an order, or "changed since" (D79). The same rows, shown the same way, as a
  * plain list: each record is turned into what this viewer may see first, and only then compared,
  * so a filter can never reveal a field the viewer can't read. It reads the newest QUERY_SCAN_LIMIT
  * records and says so when there were more.
