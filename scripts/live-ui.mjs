@@ -46,7 +46,7 @@ await page.waitForLoadState("networkidle").catch(() => {});
 await page.waitForTimeout(2000);
 const boxes = page.getByPlaceholder(/Describe the dApp/i);
 console.log("prompt boxes:", await boxes.count(), "visible:", await boxes.evaluateAll((els) => els.map((e) => !!e.offsetParent)));
-await boxes.last().fill(prompt);
+await boxes.first().fill(prompt);
 const go = page.getByRole("button", { name: /^Build it/ });
 console.log("Build it enabled:", await go.isEnabled().catch(() => "not found"));
 await go.click({ timeout: 30_000 });
