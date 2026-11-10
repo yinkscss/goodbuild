@@ -118,8 +118,12 @@ describe("checkContracts", { timeout: 60_000 }, () => {
 });
 
 describe("checkApp", () => {
-  it("accepts the starter template", () => {
-    expect(checkApp(starterFiles()).errors).toEqual([]);
+  it("rejects the starter page and accepts a page that replaced it", () => {
+    const starter = checkApp(starterFiles()).errors;
+    expect(starter).toHaveLength(1);
+    expect(starter[0]).toMatchObject({ file: "src/App.tsx", source: "paths" });
+    expect(starter[0].message).toMatch(/starter page/);
+    expect(checkApp({ ...starterFiles(), "src/App.tsx": "export default function App() { return <main>Ready</main>; }\n" }).errors).toEqual([]);
   });
   it("reports syntax errors, missing files, aliases and unknown packages", () => {
     const files = {
@@ -159,10 +163,10 @@ describe("addressMapIssues", () => {
     const bad = 'import { TipJarAddress as jar } from "../contracts/TipJar";\nconst x = { address: jar };\n';
     expect(addressMapIssues("src/components/Jar.tsx", bad)).toHaveLength(1);
   });
-  it("is part of checkApp, and the starter passes", () => {
+  it("is part of checkApp", () => {
     const files = { ...starterFiles(), "src/App.tsx": head + "export default function App() { return <p>{String(TipJarAddress)}</p>; }\n", "src/contracts/index.ts": "export const TipJarAddress = {}; export const TipJarAbi = [];\n" };
     expect(checkApp(files).errors.some((e) => e.message.includes("map from chain id"))).toBe(true);
-    expect(checkApp(starterFiles()).errors).toEqual([]);
+    expect(checkApp({ ...starterFiles(), "src/App.tsx": "export default function App() { return <main>Ready</main>; }\n" }).errors).toEqual([]);
   });
 });
 

@@ -30,8 +30,10 @@ describe("the rules file", () => {
 });
 
 describe("what the agent is held to", () => {
-  it("the starter passes its own checks, and its helper files are allowed where they are", () => {
-    expect(checkApp(starterFiles()).errors).toEqual([]);
+  it("the starter's only failure is the unfinished page, and its helper files are allowed where they are", () => {
+    const errors = checkApp(starterFiles()).errors;
+    expect(errors).toHaveLength(1);
+    expect(errors[0].message).toMatch(/starter page/);
     for (const p of ["src/lib/db.ts", "src/lib/useDb.ts", DATA_RULES_PATH]) {
       expect(p in starterFiles(), p).toBe(true);
       expect(namingProblem(p), p).toBeNull();

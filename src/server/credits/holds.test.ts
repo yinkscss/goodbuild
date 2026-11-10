@@ -501,7 +501,11 @@ describe.each(testBackends())("holds and charging on $name", (backend) => {
 
   describe("a build stopped at its hold doesn't overspend", () => {
     /** Calls that each really use their whole output limit, reported as the tier's own model. */
-    const costly = (n: number): ScriptedReply[] => Array.from({ length: n }, (_, i) => ({ tools: [{ name: "create_file", args: { path: `src/F${i}.tsx`, content: "x" } }], usage: { input: 2_000, output: 16_000 } }));
+    const costly = (n: number): ScriptedReply[] =>
+      Array.from({ length: n }, (_, i) => ({
+        tools: [{ name: "create_file", args: { path: i === 0 ? "src/App.tsx" : `src/F${i}.tsx`, content: i === 0 ? APP : "x" } }],
+        usage: { input: 2_000, output: 16_000 },
+      }));
 
     it("stops before the call it can't cover, however much the calls cost, with the balance never below zero", async () => {
       const a = await payer(PAID_MIN_START_MICRO);

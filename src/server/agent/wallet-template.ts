@@ -228,8 +228,49 @@ function adopt(info: WalletInfo, provider: Provider, account: Address): Address 
   return account;
 }
 
+/**
+ * MetaMask's plain account request pre-selects every network it knows, including Tron, then
+ * rejects the approval because it can't store a Tron scope. Naming the Celo chains keeps Tron
+ * out. A wallet that doesn't understand that request still gets eth_requestAccounts.
+ */
+function isMetaMask(info: WalletInfo): boolean {
+  return info.id === "io.metamask" || info.id === "io.metamask.flask";
+}
+
+function scopedPermissionUnsupported(error: unknown): boolean {
+  const code = (error as { code?: number })?.code;
+  const message = (error as { message?: string })?.message ?? "";
+  if (code === 4001 || /reject|denied|cancel/i.test(message)) return false;
+  if (message.includes("endowment:caip25") || message.includes("authorizedScopes")) return false;
+  return code === -32601 || code === -32602 || /method not found|does not exist|unrecognized|not supported|unsupported/i.test(message);
+}
+
+async function requestMetaMaskAccount(provider: Provider): Promise<Address | undefined> {
+  // Celo (42220) and Celo Sepolia (11142220). Written as hex so a project on one chain, whose import keeps only that chain, still names both.
+  const chains = ["0xa4ec", "0xaa044c"];
+  const ask = () => provider.request({
+    method: "wallet_requestPermissions",
+    params: [{ eth_accounts: {}, "endowment:permitted-chains": { caveats: [{ type: "restrictNetworkSwitching", value: chains }] } }],
+  });
+  try {
+    await ask();
+  } catch (error) {
+    if (scopedPermissionUnsupported(error)) {
+      const [account] = (await provider.request({ method: "eth_requestAccounts" })) as Address[];
+      return account;
+    }
+    // A permission saved earlier can merge Tron back in. Drop it and ask once more.
+    const message = (error as { message?: string })?.message ?? "";
+    if (!message.includes("endowment:caip25") && !message.includes("authorizedScopes")) throw error;
+    await provider.request({ method: "wallet_revokePermissions", params: [{ eth_accounts: {} }] }).catch(() => {});
+    await ask();
+  }
+  const [account] = (await provider.request({ method: "eth_accounts" })) as Address[];
+  return account;
+}
+
 async function connectInjected(info: WalletInfo, provider: Provider): Promise<Address> {
-  const [account] = (await provider.request({ method: "eth_requestAccounts" })) as Address[];
+  const account = isMetaMask(info) ? await requestMetaMaskAccount(provider) : ((await provider.request({ method: "eth_requestAccounts" })) as Address[])[0];
   if (!account) throw new WalletError("no_account", "Your wallet didn't share an account. Unlock it and try again.");
   adopt(info, provider, account);
   await ensureChain(provider);

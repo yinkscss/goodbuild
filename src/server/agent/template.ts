@@ -116,12 +116,19 @@ const STYLES = `html, body, #root { min-height: 100%; }
 body { margin: 0; }
 `;
 
+/** The sentence on the starter page. A build that still contains it has not written the app. */
+export const STARTER_APP_MARK = "Your app is being written. It will appear here in a moment.";
+
+export function isStarterApp(source: string | undefined): boolean {
+  return !!source && source.includes(STARTER_APP_MARK);
+}
+
 // Deliberately layout-free: a placeholder the agent replaces, so its first build designs a
 // page for the request instead of copying a stock header-plus-card shell.
 const APP = `export default function App() {
   return (
     <div className="grid min-h-screen place-items-center p-6 text-center">
-      <p className="text-sm text-muted-foreground">Your app is being written. It will appear here in a moment.</p>
+      <p className="text-sm text-muted-foreground">${STARTER_APP_MARK}</p>
     </div>
   );
 }
