@@ -94,6 +94,12 @@ export function AddCredits({ className }: { className?: string }) {
               <p className="text-center text-xs text-grey-600">Price follows the live G$ market price, quoted for 10 minutes. Keep about 0.1 CELO in your wallet for the network fee.</p>
             </div>
           )}
+          <p className="mt-4 text-center text-sm text-grey-600">
+            Short on G$ or CELO?{" "}
+            <button type="button" className="font-semibold text-ink underline" onClick={() => setBuyAsset("g")}>
+              Buy with naira
+            </button>
+          </p>
         </DialogContent>
       </Dialog>
       <BuyDialog open={buyAsset !== null} onOpenChange={(v) => !v && setBuyAsset(null)} defaultAsset={buyAsset ?? "g"} onDelivered={() => { reload(); setPhase({ name: "idle" }); }} />

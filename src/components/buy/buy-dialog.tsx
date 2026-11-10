@@ -288,7 +288,7 @@ function BuyPanel({ defaultAsset, onClose, onDelivered }: { defaultAsset: Asset;
         )}
 
         {/* GoodCash's panel (an iframe) is put here by the widget. The container stays mounted so the widget can find it. */}
-        <div ref={container} className={stage === "pay" && !(order && finished) ? "mt-4 flex justify-center overflow-hidden" : "hidden"} />
+        <div ref={container} className={stage === "pay" && !(order && finished) ? "mt-4 flex justify-center overflow-hidden [&_iframe]:h-[min(640px,calc(100dvh-14rem))]!" : "hidden"} />
 
         {config?.enabled && stage === "pay" && (
           <div className="mt-4 space-y-4" aria-live="polite">
