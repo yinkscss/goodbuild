@@ -1,7 +1,7 @@
 import type { Kit } from "./registry";
 
 /**
- * The dashboards kit (D74): pages that show numbers and charts, about a contract on Celo, the app's
+ * The dashboards kit (D75): pages that show numbers and charts, about a contract on Celo, the app's
  * own saved data or both. Charts are small SVG components written for this, so a dashboard adds
  * no package and loads fast on a phone (a charting library is hundreds of kilobytes and more
  * than most dashboards use).
