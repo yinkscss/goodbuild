@@ -190,7 +190,8 @@ async function playApp(browser, scenario, previewUrl) {
         const type = (await f.getAttribute("type")) ?? "text";
         await f.fill(type === "number" ? "5" : "hello from the live check").catch(() => {});
       }
-      const buttons = page.locator("button:visible");
+      // Not the ones that sign the person out or throw their stuff away: that isn't using the app.
+      const buttons = page.locator("button:visible:not([aria-label*='isconnect' i]):not([aria-label*='log out' i]):not([aria-label*='remove' i]):not([aria-label*='delete' i])");
       const n = Math.min(await buttons.count(), 8);
       for (let i = 0; i < n; i++) {
         await buttons.nth(i).click({ timeout: 2000 }).catch(() => {});
