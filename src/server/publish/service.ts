@@ -6,7 +6,7 @@ import { and, eq, ne } from "drizzle-orm";
 import type { PublicClient } from "viem";
 
 import { DATA_RULES_PATH, parseDataRules, parseSignIn } from "@/lib/app-data";
-import { withCurrentDataHelpers, withCurrentWalletHelpers } from "@/server/agent/template";
+import { isStarterApp, withCurrentDataHelpers, withCurrentWalletHelpers } from "@/server/agent/template";
 import { slugFromName, slugProblem } from "@/lib/published-host";
 import { dbAssetStore } from "@/server/agent/asset-store";
 import { loadFiles } from "@/server/agent/store";
@@ -87,7 +87,7 @@ export async function publishStatus(db: Db, project: Project): Promise<PublishSt
     publishedVersion: row && !row.unpublishedAt ? row.versionNumber : null,
     currentVersion: project.currentVersion,
     undeployed: await undeployedContracts(db, project, files),
-    hasApp: "src/App.tsx" in files,
+    hasApp: "src/App.tsx" in files && !isStarterApp(files["src/App.tsx"]),
   };
 }
 
@@ -112,6 +112,9 @@ export async function publishApp(db: Db, project: Project, slug: string, deps: {
   if (!(await slugAvailable(db, slug, project.id))) throw new PublishError("slug_taken", "That address is taken. Try another.");
 
   const saved = await loadFiles(db, project.id);
+  if (!("src/App.tsx" in saved) || isStarterApp(saved["src/App.tsx"])) {
+    throw new PublishError("build_failed", "Build your app first. This project is still the starter page.");
+  }
   const parsedRules = parseDataRules(saved[DATA_RULES_PATH]);
   const signIn = parseSignIn(saved[DATA_RULES_PATH]);
   const { rules: dataRules } = parsedRules;

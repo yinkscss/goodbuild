@@ -24,7 +24,7 @@ import { OutOfCreditsError, ensureHold, worstCaseCallMicro } from "@/server/cred
 import { deploymentsBlock, loadDeployedAddresses } from "@/server/deploy/addresses";
 import { isUpgradeableProject, liveStorage, upgradeChecksFor } from "@/server/deploy/upgradeable";
 import { upgradeableRules } from "./upgradeable-rules";
-import { PLATFORM_DIR, contractModule, contractsIndex, starterFiles, withStarterHelpers } from "./template";
+import { PLATFORM_DIR, contractModule, contractsIndex, isStarterApp, starterFiles, withStarterHelpers } from "./template";
 import {
   LeaseLostError,
   ResumeFailedError,
@@ -484,7 +484,10 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
 
     // Plan mode, or a build-mode question answered without touching files (not a first
     // build, which must still seed and check the starter): nothing to check or save.
-    if (input.mode === "plan" || (!firstBuild && !ws.changed())) {
+    // A project whose page is still the starter sentence is not finished, so a build
+    // turn runs the checks and the fix loop even when the model only replied.
+    const unfinished = isStarterApp(ws.files["src/App.tsx"]);
+    if (input.mode === "plan" || (!firstBuild && !ws.changed() && !unfinished)) {
       goLive();
       stopIfRequested();
       record.status = "answered";
@@ -499,6 +502,10 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     }
 
     keepTheme();
+    // The preview has shown the starter page since the turn began. Hand it what was written
+    // before the checks and auto-fix, which can take minutes. A copy, so later edits don't
+    // change this event while it waits to be saved. The checkpoint emit below still follows.
+    emit({ type: "files", files: { ...ws.files } });
     // Checks and auto-fix (up to MAX_FIX_ATTEMPTS). Stops on the same errors twice, on two attempts in a row without progress, or at the fix budget.
     let report = await checkNow(0);
     let previous = "";
