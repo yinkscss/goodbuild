@@ -4,13 +4,6 @@ export type TopUpStatus = "awaiting_payment" | "paid_in" | "delivered" | "failed
 export const MIN_NAIRA = 1_000;
 export const MAX_NAIRA = 2_000_000;
 
-export const NEEDS = [
-  "A Nigerian bank account you can transfer from",
-  "Your full name, date of birth and BVN or NIN (typed on GoodCash's page, never to us)",
-  "A wallet that can approve one transaction",
-  "To be 18 or older",
-];
-
 /** The steps a person sees. A step is done once the order has reached its status. */
 export const STEPS: Array<{ key: TopUpStatus; label: (asset: string) => string }> = [
   { key: "awaiting_payment", label: () => "Order created. Waiting for your bank transfer" },

@@ -2,11 +2,18 @@
 
 import * as React from "react";
 
-import { Button } from "@/components/ui/button";
+import { Check, ChevronDown, Landmark, ShieldCheck, Wallet } from "lucide-react";
+
+import { ActionButton, Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { useAuth } from "@/lib/auth/context";
-import { NEEDS, STEPS, formatAmount, nairaValid, statusIndex, type Asset, type TopUpStatus } from "./buy-logic";
+import { STEPS, formatAmount, nairaValid, statusIndex, type Asset, type TopUpStatus } from "./buy-logic";
 
+const HOW = [
+  { icon: ShieldCheck, title: "Verify", text: () => "Your name, date of birth and BVN or NIN, on GoodCash" },
+  { icon: Landmark, title: "Transfer", text: () => "Send naira to the account number it shows you" },
+  { icon: Wallet, title: "Receive", text: (asset: string) => `Approve once and ${asset} lands in your wallet` },
+];
 const PRESETS = [2000, 5000, 10000, 25000];
 const WIDGET_SRC = "https://pay.goodcash.xyz/widget.js";
 
@@ -50,7 +57,7 @@ function loadWidget(): Promise<void> {
 export function BuyDialog({ open, onOpenChange, defaultAsset = "g", onDelivered }: { open: boolean; onOpenChange: (open: boolean) => void; defaultAsset?: Asset; onDelivered?: () => void }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg gap-0">
         <BuyPanel defaultAsset={defaultAsset} onClose={() => onOpenChange(false)} onDelivered={onDelivered} />
       </DialogContent>
     </Dialog>
@@ -70,6 +77,7 @@ function BuyPanel({ defaultAsset, onClose, onDelivered }: { defaultAsset: Asset;
   const [starting, setStarting] = React.useState(false);
   // "pay" while GoodCash's panel is open inside this dialog.
   const [stage, setStage] = React.useState<"form" | "pay">("form");
+  const [panelReady, setPanelReady] = React.useState(false);
   const container = React.useRef<HTMLDivElement>(null);
   const handle = React.useRef<{ close: () => void } | null>(null);
   const [error, setError] = React.useState<string | null>(null);
@@ -153,6 +161,7 @@ function BuyPanel({ defaultAsset, onClose, onDelivered }: { defaultAsset: Asset;
     try {
       await loadWidget();
       setOrder(null);
+      setPanelReady(false);
       setStage("pay");
       container.current.replaceChildren();
       // Embed mode with our own container: the panel is an iframe inside this dialog, so the dialog's focus and click handling
@@ -186,6 +195,7 @@ function BuyPanel({ defaultAsset, onClose, onDelivered }: { defaultAsset: Asset;
           setOrder((o) => (o ? { ...(moveForward(o, status) ?? o), id: id ?? o.id } : { id, status }));
         },
       }) as { close: () => void } | null;
+      container.current.querySelector("iframe")?.addEventListener("load", () => setPanelReady(true), { once: true });
     } catch (e) {
       setStage("form");
       setError((e as Error).message);
@@ -207,131 +217,211 @@ function BuyPanel({ defaultAsset, onClose, onDelivered }: { defaultAsset: Asset;
   const total = quote?.fees.reduce((sum, f) => sum + f.usd, 0) ?? 0;
   const idx = order ? statusIndex(order.status) : -1;
 
+  const failed = order?.status === "failed" || order?.status === "expired";
+  const done = order?.status === "delivered";
+  const showForm = config?.enabled && stage === "form";
+  const showPay = config?.enabled && stage === "pay";
+
   return (
     <>
-        <DialogTitle className="display text-xl font-bold">Buy {label}</DialogTitle>
-        <DialogDescription className="mt-1 text-sm text-grey-600">
-          Pay naira from your Nigerian bank account and get {label} in your own wallet. Our payment partner GoodCash handles the payment; we never see your bank or ID details.
-        </DialogDescription>
+      <div className="flex items-center justify-between gap-3 pr-10">
+        <span className="eyebrow">Add funds</span>
+        {config?.test && (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-tint px-2.5 py-1 text-[11px] font-semibold text-violet">
+            <span className="size-1.5 rounded-full bg-violet" aria-hidden />
+            Test mode · no real money
+          </span>
+        )}
+      </div>
+      <DialogTitle className="display mt-2 text-[28px] leading-[0.95] font-bold tracking-[-0.03em] uppercase">Buy {label}</DialogTitle>
+      <DialogDescription className="mt-2 text-sm text-grey-600">Pay naira from a Nigerian bank account. {label} lands in your own wallet in a few minutes.</DialogDescription>
 
-        {config === undefined && <p className="mt-5 text-sm text-grey-600">Checking…</p>}
-        {config === null && <p className="mt-5 text-sm text-grey-600">Sign in with a wallet to buy.</p>}
-        {config && !config.enabled && <p className="mt-5 text-sm text-grey-600">Buying isn&apos;t switched on yet. Check back soon.</p>}
+      {config === undefined && <div className="mt-6 h-64 rounded-card bg-tint motion-safe:animate-pulse" aria-label="Loading" />}
+      {config === null && <p className="mt-6 text-sm text-grey-600">Sign in with a wallet to buy.</p>}
+      {config && !config.enabled && <p className="mt-6 rounded-block bg-tint px-4 py-3 text-sm text-grey-600">Buying isn&apos;t switched on yet. Check back soon.</p>}
 
-        {config?.enabled && stage === "form" && (
-          <div className="mt-5 space-y-4">
-            <div role="radiogroup" aria-label="What to buy" className="grid grid-cols-2 gap-2">
-              {(["g", "celo"] as const).map((a) => (
-                <button key={a} type="button" role="radio" aria-checked={asset === a} onClick={() => setAsset(a)} className={`rounded-2xl px-3 py-2.5 text-sm font-semibold ${asset === a ? "bg-violet text-white" : "bg-tint text-ink"}`}>
-                  {a === "g" ? "G$ (GoodDollar)" : "CELO (network fees)"}
-                </button>
-              ))}
+      {showForm && (
+        <div className="mt-5 space-y-3">
+          <div role="radiogroup" aria-label="What to buy" className="grid grid-cols-2 gap-1 rounded-full bg-tint p-1">
+            {(["g", "celo"] as const).map((a) => (
+              <button
+                key={a}
+                type="button"
+                role="radio"
+                aria-checked={asset === a}
+                onClick={() => setAsset(a)}
+                className={`flex items-center justify-center gap-2 rounded-full px-3 py-2.5 text-sm font-semibold transition-[background-color,box-shadow,color] duration-200 ease-gb outline-none focus-visible:shadow-focus ${asset === a ? "bg-surface text-ink shadow-card" : "text-grey-600 hover:text-ink"}`}
+              >
+                <span className={`grid size-5 place-items-center rounded-full text-[9px] font-bold ${a === "g" ? "bg-violet text-white" : "bg-[#FCFF52] text-ink"}`} aria-hidden>
+                  {a === "g" ? "G$" : "C"}
+                </span>
+                {a === "g" ? "G$" : "CELO"}
+              </button>
+            ))}
+          </div>
+
+          <div className="rounded-card bg-surface p-5 shadow-card">
+            <label htmlFor="buy-naira" className="eyebrow block text-grey-600">
+              You pay
+            </label>
+            <div className="mt-1 flex items-baseline gap-2">
+              <span className="display text-[34px] leading-none font-bold text-grey-400" aria-hidden>
+                ₦
+              </span>
+              <input
+                id="buy-naira"
+                type="number"
+                inputMode="numeric"
+                min={1000}
+                max={2000000}
+                step={500}
+                value={naira}
+                onChange={(e) => setNaira(e.target.value)}
+                className="display min-w-0 flex-1 bg-transparent text-[40px]! leading-none font-bold tracking-[-0.03em] outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
+              />
             </div>
-            <div role="radiogroup" aria-label="Amount in naira" className="grid grid-cols-4 gap-2">
+            <div role="radiogroup" aria-label="Quick amounts" className="mt-3 flex flex-wrap gap-2">
               {PRESETS.map((p) => (
-                <button key={p} type="button" role="radio" aria-checked={amount === p} onClick={() => setNaira(String(p))} className={`rounded-2xl px-1 py-2.5 text-center text-sm font-semibold ${amount === p ? "bg-violet text-white" : "bg-tint text-ink"}`}>
+                <button
+                  key={p}
+                  type="button"
+                  role="radio"
+                  aria-checked={amount === p}
+                  onClick={() => setNaira(String(p))}
+                  className={`rounded-full px-3.5 py-1.5 text-[13px] font-medium transition-colors duration-200 ease-gb outline-none focus-visible:shadow-focus ${amount === p ? "bg-violet text-white" : "bg-tint text-violet hover:bg-violet-soft"}`}
+                >
                   ₦{p.toLocaleString("en-US")}
                 </button>
               ))}
             </div>
-            <label className="block text-sm">
-              <span className="text-grey-600">Or enter an amount (₦1,000 to ₦2,000,000)</span>
-              <input type="number" inputMode="numeric" min={1000} max={2000000} step={500} value={naira} onChange={(e) => setNaira(e.target.value)} className="mt-1 w-full rounded-full bg-tint px-4 py-2.5 text-base outline-none focus-visible:shadow-focus" />
-            </label>
 
-            <div className="rounded-2xl bg-tint px-4 py-3 text-sm" aria-live="polite">
-              {!valid && <span className="text-warning">Pick an amount from ₦1,000 to ₦2,000,000.</span>}
-              {valid && !current && <span className="text-grey-600">Getting your price…</span>}
-              {valid && quoteError && <span className="text-warning">{quoteError}</span>}
+            <div className="my-4 h-px bg-hairline" />
+
+            <div aria-live="polite">
+              <span className="eyebrow block text-grey-600">You get about</span>
+              {!valid && <p className="mt-1 text-sm text-warning">Pick an amount from ₦1,000 to ₦2,000,000.</p>}
+              {valid && !current && <div className="mt-2 h-10 w-48 rounded-block bg-tint motion-safe:animate-pulse" />}
+              {valid && quoteError && <p className="mt-1 text-sm text-warning">{quoteError}</p>}
               {valid && quote && (
                 <>
-                  <p>
-                    You get about <b>{formatAmount(quote.youGet.amount, asset)} {label}</b>
-                    <span className="text-grey-600"> (at least {formatAmount(quote.youGet.minimum, asset)})</span>
+                  <p className="display mt-1 text-[34px] leading-none font-bold tracking-[-0.03em] text-violet">
+                    {formatAmount(quote.youGet.amount, asset)} <span className="text-xl">{label}</span>
                   </p>
-                  <ul className="mt-2 space-y-0.5 text-xs text-grey-600">
-                    {quote.fees.map((f) => (
-                      <li key={f.label} className="flex justify-between gap-3">
-                        <span>{f.label}</span>
-                        <span>${f.usd.toFixed(2)}</span>
-                      </li>
-                    ))}
-                    <li className="flex justify-between gap-3 border-t border-grey-200 pt-1 font-semibold text-ink">
-                      <span>Fees in total</span>
-                      <span>${total.toFixed(2)}</span>
-                    </li>
-                  </ul>
+                  <details className="group mt-3 text-xs text-grey-600">
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-2 rounded-full bg-tint px-3.5 py-2 outline-none focus-visible:shadow-focus [&::-webkit-details-marker]:hidden">
+                      <span>
+                        At least {formatAmount(quote.youGet.minimum, asset)} {label} · fees ${total.toFixed(2)}
+                      </span>
+                      <ChevronDown className="size-3.5 transition-transform duration-200 group-open:rotate-180" aria-hidden />
+                    </summary>
+                    <ul className="mt-2 space-y-1.5 px-1">
+                      {quote.fees.map((f) => (
+                        <li key={f.label} className="flex justify-between gap-3">
+                          <span>{f.label}</span>
+                          <span className="text-ink">${f.usd.toFixed(2)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
                 </>
               )}
             </div>
+          </div>
 
-            <div>
-              <p className="text-sm font-semibold">What you&apos;ll need</p>
-              <ul className="mt-1 list-disc space-y-0.5 pl-5 text-xs text-grey-600">
-                {NEEDS.map((n) => (
-                  <li key={n}>{n}</li>
-                ))}
-              </ul>
-            </div>
+          <ol className="grid grid-cols-3 gap-2" aria-label="How it works">
+            {HOW.map(({ icon: Icon, title, text }, i) => (
+              <li key={title} className="rounded-block bg-tint p-3">
+                <span className="grid size-7 place-items-center rounded-full bg-surface text-violet">
+                  <Icon className="size-3.5" aria-hidden />
+                </span>
+                <p className="mt-2 text-xs font-semibold text-ink">
+                  {i + 1}. {title}
+                </p>
+                <p className="mt-0.5 text-[11px] leading-snug text-grey-600">{text(label)}</p>
+              </li>
+            ))}
+          </ol>
 
-            {config.test && <p className="rounded-xl bg-tint px-3 py-2 text-xs text-grey-600">Test mode: nothing real is bought and no money moves.</p>}
-            {error && (
-              <p role="alert" className="text-sm text-warning">
-                {error}
-              </p>
-            )}
-            <Button variant="primary" className="w-full" disabled={!valid || !quote || !wallet || starting} onClick={() => void start()}>
-              {starting ? "Opening…" : `Continue to pay ₦${valid ? amount.toLocaleString("en-US") : ""}`}
-            </Button>
-            <p className="text-center text-xs text-grey-600">Next, GoodCash&apos;s secure panel opens here. You enter your ID details and see the bank-transfer details there, then approve once in your wallet. Use the wallet you are signed in with.</p>
+          {error && (
+            <p role="alert" className="flex items-start gap-2 rounded-block bg-tint px-3 py-2.5 text-sm text-danger">
+              <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-danger" aria-hidden />
+              {error}
+            </p>
+          )}
+          <ActionButton className="w-full justify-between" disabled={!valid || !quote || !wallet || starting} onClick={() => void start()}>
+            {starting ? "Opening…" : `Continue with ₦${valid ? amount.toLocaleString("en-US") : ""}`}
+          </ActionButton>
+          <p className="text-center text-[11px] text-grey-600">Needs a Nigerian bank account, your BVN or NIN, and to be 18 or older. GoodCash, our payment partner, handles your ID and bank details; we never see them.</p>
+        </div>
+      )}
+
+      {/* GoodCash's panel (an iframe) is put here by the widget. The container stays mounted so the widget can find it. The
+          skeleton behind it shows while the panel loads, and is hidden by the panel's own background once it has. */}
+      <div className={showPay && !(order && finished) ? "relative mt-5 min-h-[min(640px,calc(100dvh-16rem))] overflow-hidden rounded-card" : "hidden"}>
+        {!panelReady && (
+          <div className="absolute inset-0 grid place-items-center bg-tint text-sm text-grey-600 motion-safe:animate-pulse" aria-hidden>
+            Opening GoodCash…
           </div>
         )}
+        <div ref={container} className={`relative flex justify-center transition-opacity duration-300 [&_iframe]:h-[min(640px,calc(100dvh-16rem))]! ${panelReady ? "opacity-100" : "opacity-0"}`} />
+      </div>
 
-        {/* GoodCash's panel (an iframe) is put here by the widget. The container stays mounted so the widget can find it. */}
-        <div ref={container} className={stage === "pay" && !(order && finished) ? "mt-4 flex justify-center overflow-hidden [&_iframe]:h-[min(640px,calc(100dvh-14rem))]!" : "hidden"} />
+      {showPay && (
+        <div className="mt-5 space-y-4" aria-live="polite">
+          {!order && <p className="text-center text-xs text-grey-600">Follow the steps above. This screen updates when your order starts.</p>}
 
-        {config?.enabled && stage === "pay" && (
-          <div className="mt-4 space-y-4" aria-live="polite">
-            {!order && <p className="text-center text-xs text-grey-600">Follow the steps above. This screen updates when your order starts.</p>}
+          {order && !done && !failed && (
+            <ol className="rounded-card bg-surface p-5 shadow-card">
+              {STEPS.map((st, i) => {
+                const complete = i <= idx;
+                const active = i === idx + 1;
+                return (
+                  <li key={st.key} className="relative flex items-start gap-3 pb-5 last:pb-0">
+                    {i < STEPS.length - 1 && <span className={`absolute top-7 left-[13px] h-[calc(100%-20px)] w-0.5 rounded-full ${complete ? "bg-violet" : "bg-tint"}`} aria-hidden />}
+                    <span className={`relative grid size-7 shrink-0 place-items-center rounded-full text-xs font-bold ${complete ? "bg-violet text-white" : active ? "bg-tint text-violet ring-2 ring-violet" : "bg-tint text-grey-400"}`}>
+                      {complete ? <Check className="size-3.5" strokeWidth={3} aria-hidden /> : active ? <span className="size-2 rounded-full bg-violet motion-safe:animate-pulse" /> : i + 1}
+                    </span>
+                    <span className={`pt-1 text-sm ${active ? "font-semibold text-ink" : complete ? "text-ink" : "text-grey-600"}`}>{st.label(label)}</span>
+                  </li>
+                );
+              })}
+            </ol>
+          )}
+
+          {done && (
+            <div role="status" className="rounded-card bg-surface p-6 text-center shadow-card">
+              <span className="mx-auto grid size-14 place-items-center rounded-full bg-violet text-white">
+                <Check className="size-7" strokeWidth={3} aria-hidden />
+              </span>
+              <p className="display mt-4 text-[22px] leading-[1] font-bold tracking-[-0.03em] uppercase">{label} is in your wallet</p>
+              <p className="mt-2 text-sm text-grey-600">All three steps are done. You can use it right away.</p>
+            </div>
+          )}
+
+          {failed && order && (
+            <div role="alert" className="rounded-card bg-surface p-6 shadow-card">
+              <span className="flex items-center gap-2 text-xs font-semibold text-danger">
+                <span className="size-2 rounded-full bg-danger" aria-hidden />
+                {order.status === "expired" ? "Order expired" : "Order didn't go through"}
+              </span>
+              <p className="mt-2 text-sm text-grey-600">If you already sent money, our payment partner refunds it to your bank. Nothing is lost.</p>
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            {(!order || failed) && (
+              <Button variant="secondary" className="flex-1" onClick={back}>
+                {order ? "Try again" : "Back"}
+              </Button>
+            )}
             {order && (
-              <ol className="space-y-2">
-                {STEPS.map((s, i) => {
-                  const failed = order.status === "failed" || order.status === "expired";
-                  const done = !failed && i <= idx;
-                  const current = !failed && i === idx + 1;
-                  return (
-                    <li key={s.key} className={`flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm ${done || current ? "bg-tint text-ink" : "text-grey-600"}`}>
-                      <span className={`inline-flex size-6 items-center justify-center rounded-full text-xs font-bold ${done ? "bg-violet text-white" : "bg-grey-200"}`}>{done ? "✓" : i + 1}</span>
-                      <span className={current ? "font-semibold" : ""}>{s.label(label)}</span>
-                    </li>
-                  );
-                })}
-              </ol>
+              <Button variant={done ? "primary" : "secondary"} className="flex-1" onClick={onClose}>
+                {done ? "Close" : "Hide"}
+              </Button>
             )}
-            {order?.status === "delivered" && (
-              <p role="status" className="text-sm text-success">
-                Done. {label} is in your wallet.
-              </p>
-            )}
-            {(order?.status === "failed" || order?.status === "expired") && (
-              <p role="alert" className="text-sm text-warning">
-                The order {order.status === "expired" ? "expired" : "didn't go through"}. If you already sent money, our payment partner refunds it to your bank.
-              </p>
-            )}
-            <div className="flex gap-2">
-              {(!order || order.status === "failed" || order.status === "expired") && (
-                <Button variant="secondary" className="flex-1" onClick={back}>
-                  {order ? "Try again" : "Back"}
-                </Button>
-              )}
-              {order && (
-                <Button variant={order.status === "delivered" ? "primary" : "secondary"} className="flex-1" onClick={onClose}>
-                  {order.status === "delivered" ? "Close" : "Hide"}
-                </Button>
-              )}
-            </div>
           </div>
-        )}
+        </div>
+      )}
     </>
   );
 }
