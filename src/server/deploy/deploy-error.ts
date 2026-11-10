@@ -4,6 +4,7 @@ export type DeployErrorCode =
   | "manifest_missing"
   | "manifest_invalid"
   | "compile_failed"
+  | "exploit_tests_failed"
   | "gooddollar_missing"
   | "source_changed"
   | "tx_not_found"

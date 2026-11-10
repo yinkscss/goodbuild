@@ -19,6 +19,7 @@ import { allowsMainnet, getMainnetMode } from "@/server/settings/mainnet-access"
 import { withCurrentAddresses } from "./addresses";
 import { compileForDeploy, type DeployCompile, type EvmVersion } from "./compile";
 import { DeployError } from "./deploy-error";
+import { exploitGate } from "./exploit-gate";
 import {
   adoptUnchanged,
   assertUpgradeableChain,
@@ -125,7 +126,7 @@ export async function prepareDeploy(
     /** After a refused upgrade: deploy what changed as new contracts at new addresses instead. */
     fresh?: boolean;
   },
-  deps: { compile?: typeof compileForDeploy; client?: Pick<PublicClient, "readContract" | "getStorageAt"> } = {},
+  deps: { compile?: typeof compileForDeploy; client?: Pick<PublicClient, "readContract" | "getStorageAt">; exploitGate?: typeof exploitGate } = {},
 ): Promise<DeployPlan> {
   assertChain(input.chainId);
   await assertMainnetAccess(db, input.chainId, input.wallet);
@@ -133,6 +134,10 @@ export async function prepareDeploy(
   const upgradeable = await isUpgradeableProject(db, input.projectId);
   if (upgradeable) assertUpgradeableChain(input.chainId);
   const files = await loadFiles(db, input.projectId);
+  if (input.chainId === celo.id) {
+    const problems = await (deps.exploitGate ?? exploitGate)(files);
+    if (problems.length) throw new DeployError("exploit_tests_failed", "This contract holds other people's money, and its safety tests don't all pass yet. Ask the builder to fix them before it goes to Celo.", problems);
+  }
   const [project] = await db.select({ version: projects.currentVersion }).from(projects).where(eq(projects.id, input.projectId)).limit(1);
 
   const manifestSource = files[MANIFEST_PATH];

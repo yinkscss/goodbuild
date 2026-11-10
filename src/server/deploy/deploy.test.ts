@@ -121,6 +121,15 @@ describe("prepareDeploy", () => {
     expect(plan.isTestGooddollar).toBe(false);
   }, 60_000);
 
+  it("refuses a mainnet deploy when the exploit gate has problems, and leaves Sepolia alone (D75)", async () => {
+    await setMainnetMode(db, "everyone", null);
+    const gate = vi.fn(async () => ["contracts/test/V.t.sol: testExploitReentrancy is missing"]);
+    await expect(prepareDeploy(db, { projectId, chainId: 42220, wallet: WALLET }, { exploitGate: gate })).rejects.toMatchObject({ code: "exploit_tests_failed", details: ["contracts/test/V.t.sol: testExploitReentrancy is missing"] });
+    expect(gate).toHaveBeenCalledTimes(1);
+    await prepareDeploy(db, { projectId, chainId: 11142220 }, { exploitGate: gate });
+    expect(gate).toHaveBeenCalledTimes(1);
+  }, 60_000);
+
   it("asks for the test G$ when Sepolia has none", async () => {
     delete process.env.NEXT_PUBLIC_TEST_GD_ADDRESS;
     await expect(prepareDeploy(db, { projectId, chainId: 11142220 })).rejects.toMatchObject({ code: "gooddollar_missing" });

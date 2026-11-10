@@ -28,6 +28,10 @@ const QUESTIONS = [
     a: "Yes. Describe the game and GoodBuild builds it to play on a phone or a computer, with sound, a best score and a leaderboard if you want one. Games can charge a G$ entry and pay prizes when the winner is decided by play.",
   },
   {
+    q: "Can I build a DAO or a vault?",
+    a: "Yes: a club treasury where members vote on spending, or a vault where people deposit and take their money back. Because these hold other people's money, GoodBuild builds them from audited parts, writes tests that try to break them, and won't put one on Celo mainnet until those tests pass. That catches the common attacks, but it isn't a full audit, so get one before a vault holds a lot of real money.",
+  },
+  {
     q: "Can I build a dashboard?",
     a: "Yes. Describe the numbers you want to see and GoodBuild builds a page with stat cards, charts and tables that read from your contract on Celo or from your app's saved data, and update while the page is open. It works well on a phone.",
   },

@@ -1,6 +1,7 @@
 import type { CheckIssue } from "../checks";
 
 import { dashboard } from "./dashboard";
+import { daoVault } from "./dao-vault";
 import { game2d } from "./game-2d";
 import { miniApp } from "./mini-app";
 
@@ -39,7 +40,7 @@ export interface Kit {
 }
 
 /** Every kit GoodBuild has. Each kit is a module beside this one, listed here. */
-export const KITS: Kit[] = [game2d, miniApp, dashboard];
+export const KITS: Kit[] = [game2d, miniApp, dashboard, daoVault];
 
 /** The file that says which kits a project has on. GoodBuild writes it; the builder can't. */
 export const KIT_MARKER = "src/goodbuild.json";
