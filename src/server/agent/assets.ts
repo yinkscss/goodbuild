@@ -8,7 +8,7 @@
  * kind, size, palette and a description.
  */
 
-/** What an upload is for. A person picks one of the first three for an image; the rest follow from the file (D77). */
+/** What an upload is for. A person picks one of the first three for an image; the rest follow from the file (D78). */
 export type AssetKind = "logo" | "image" | "reference" | "audio" | "font" | "model";
 export type ImageMime = "image/png" | "image/jpeg" | "image/webp" | "image/svg+xml";
 export type AssetMime = ImageMime | "audio/mpeg" | "audio/ogg" | "audio/wav" | "font/woff2" | "font/woff" | "font/ttf" | "font/otf" | "model/gltf-binary";
@@ -16,7 +16,7 @@ export type AssetMime = ImageMime | "audio/mpeg" | "audio/ogg" | "audio/wav" | "
 /** The kinds a person can choose between for an image. */
 export const ASSET_KINDS: AssetKind[] = ["logo", "image", "reference"];
 
-/** Size limits by what the file is (D77). Images stay at 5 MB; sounds, fonts and models differ. */
+/** Size limits by what the file is (D78). Images stay at 5 MB; sounds, fonts and models differ. */
 export const MAX_BYTES_BY_CATEGORY = { image: 5_000_000, audio: 10_000_000, font: 2_000_000, model: 15_000_000 } as const;
 /** The largest any single upload may be: the early check on a request's size. */
 export const MAX_ASSET_BYTES = Math.max(...Object.values(MAX_BYTES_BY_CATEGORY));

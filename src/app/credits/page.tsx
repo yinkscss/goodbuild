@@ -2,6 +2,7 @@ import { Suspense } from "react";
 
 import { AddCredits } from "@/components/credits/add-credits";
 import { AppShell } from "@/components/home/app-shell";
+import { RowsSkeleton, Shimmer, SlowLoadNote } from "@/components/ui/wait";
 import { chainName } from "@/lib/format";
 import { relativeTime } from "@/lib/home";
 import { getCredits } from "@/server/credits";
@@ -20,7 +21,19 @@ export default function CreditsPage() {
     <AppShell active="credits" width="max-w-[760px]">
       <p className="eyebrow">Credits</p>
       <h1 className="display mt-3 text-[32px] font-extrabold sm:text-[44px]">Credits pay for your AI builds</h1>
-      <Suspense fallback={<div className="skeleton mt-8 h-[260px] rounded-card motion-reduce:animate-none" />}>
+      <Suspense
+        fallback={
+          <div className="mt-8 grid gap-4" aria-busy="true" aria-label="Loading credits">
+            <div className="rounded-card bg-surface p-6 shadow-card">
+              <p className="eyebrow">Your credits</p>
+              <Shimmer className="mt-3 h-8 w-28 rounded-full" />
+              <Shimmer className="mt-3 h-3 w-48 rounded-full" />
+            </div>
+            <RowsSkeleton rows={3} label="Loading top-ups" />
+            <SlowLoadNote what="your credits" />
+          </div>
+        }
+      >
         <CreditsBody />
       </Suspense>
     </AppShell>

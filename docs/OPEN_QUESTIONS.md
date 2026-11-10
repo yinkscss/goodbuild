@@ -185,9 +185,9 @@
 ### Template gallery: should templates be "unlockable"? (8 Nov 2026, from the gallery build)
 The brief called the section unlockable. Today every template is open. Options: keep open (best for sign-ups), gate a few "premium" ones behind verified or paid credits (touches the credits code), or unlock by publishing a first app. Owner to choose. See [TEMPLATES.md](TEMPLATES.md).
 
-### Files uploaded by an app's visitors (10 Nov 2026, from the app-data upgrades, D78)
+### Files uploaded by an app's visitors (10 Nov 2026, from the app-data upgrades, D79)
 The harness plan listed "file uploads" as an app-data upgrade: a visitor of a published app (a member adding a profile photo, a customer attaching a receipt) uploading a file that GoodBuild stores. Claude did **not** build it, and asks the owner to decide first:
 - **Moderation and law.** Anyone who can add a file to an app can put illegal or abusive content on a `*.goodbuildit.xyz` address that GoodBuild serves and is responsible for. Records are small JSON and are easy to audit; files are not. It needs, at least: images only, a size cap, type check on the bytes, a report path on the file itself, and a takedown that reaches the file (the current takedown covers apps, not visitor files).
 - **Storage.** Visitor files would live in the database now (D65) and Cloudflare R2 later. A free app with open uploads can fill the disk; it needs its own quota, below the 20 MB per-project data limit.
-- **Claude's input.** Start narrow if wanted: signed-in visitors only (never anonymous), images only up to about 300 KB, stored per wallet and counted in the wallet's 2 MB, served from the app's own host with `nosniff` and no scripting, and removed with the wallet's data. The owner's own uploads (logos, sounds, fonts, models) already work (D77); this question is only about visitors'.
+- **Claude's input.** Start narrow if wanted: signed-in visitors only (never anonymous), images only up to about 300 KB, stored per wallet and counted in the wallet's 2 MB, served from the app's own host with `nosniff` and no scripting, and removed with the wallet's data. The owner's own uploads (logos, sounds, fonts, models) already work (D78); this question is only about visitors'.
 

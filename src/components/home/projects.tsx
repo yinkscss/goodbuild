@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FillPromptChip } from "@/components/home/home-prompt";
 import { KindTile } from "@/components/home/kind-tile";
 import { RetryButton } from "@/components/home/retry-button";
+import { SlowLoadNote } from "@/components/ui/wait";
 import type { ContractKind } from "@/lib/contract-kind";
 import { TONE_CLASS, projectStatusMeta, relativeTime } from "@/lib/home";
 import { cn } from "@/lib/utils";
@@ -90,14 +91,17 @@ export function ProjectsEmpty() {
 /** Skeleton cards in surface-tint with a soft shimmer. Never a full-screen spinner. */
 export function ProjectGridSkeleton({ count = 4 }: { count?: number }) {
   return (
-    <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-busy="true" aria-label="Loading projects">
-      {Array.from({ length: count }, (_, i) => (
-        <div key={i} className="flex h-[196px] flex-col rounded-card bg-surface p-5 shadow-card">
-          <div className="skeleton h-[78px] rounded-block motion-reduce:animate-none" />
-          <div className="skeleton mt-4 h-4 w-2/3 rounded-full motion-reduce:animate-none" />
-          <div className="skeleton mt-2 h-3 w-1/2 rounded-full motion-reduce:animate-none" />
-        </div>
-      ))}
+    <div className="mt-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-busy="true" aria-label="Loading projects">
+        {Array.from({ length: count }, (_, i) => (
+          <div key={i} className="flex h-[196px] flex-col rounded-card bg-surface p-5 shadow-card">
+            <div className="skeleton h-[78px] rounded-block motion-reduce:animate-none" />
+            <div className="skeleton mt-4 h-4 w-2/3 rounded-full motion-reduce:animate-none" />
+            <div className="skeleton mt-2 h-3 w-1/2 rounded-full motion-reduce:animate-none" />
+          </div>
+        ))}
+      </div>
+      <SlowLoadNote what="your projects" className="mt-3" />
     </div>
   );
 }
