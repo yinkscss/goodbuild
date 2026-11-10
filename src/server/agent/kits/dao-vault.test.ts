@@ -104,6 +104,8 @@ describe("the DAOs and vaults kit", { timeout: 180_000 }, () => {
     expect(rolesOf(files())).toEqual(["vault"]);
     expect(rolesOf({ "contracts/Club.sol": "contract Club { function propose() external {} function vote() external {} }" })).toEqual(["dao"]);
     expect(rolesOf({ "contracts/Tip.sol": "contract Tip { function tip() external payable {} }" })).toEqual([]);
+    // An escrow that takes money through fundDeal and pays it out through claimPayment / withdraw (live check, D76).
+    expect(rolesOf({ "contracts/Escrow.sol": "contract Escrow { function fundDeal(uint256 id) external {} function claimPayment(uint256 id) external {} }" })).toEqual(["vault"]);
   });
 
   it("asks for each missing exploit test by name, and for tests that check something", () => {
