@@ -259,6 +259,28 @@ describe("bad queries and abuse", () => {
     expect((await list(undefined, "scores", "", "198.51.100.7")).status).toBe(200);
   });
 
+  it("gives each signed-in player their own allowance, even behind one shared address", async () => {
+    limits.queriesPerIpPerMinute = 2;
+    const shared = "198.51.100.8";
+    const codes = async (cookie: string | undefined) => {
+      const out: number[] = [];
+      for (let i = 0; i < 3; i++) out.push((await list(cookie, "scores", q(["order", "points"]), shared)).status);
+      return out;
+    };
+    expect(await codes(aliceX)).toEqual([200, 200, 429]);
+    expect(await codes(bobX)).toEqual([200, 200, 429]);
+    // Visitors who aren't signed in share the address's allowance in this app.
+    expect(await codes(undefined)).toEqual([200, 200, 429]);
+  });
+
+  it("keeps a ceiling per address across everyone", async () => {
+    limits.listsPerIpCeilingPerMinute = 3;
+    const shared = "198.51.100.9";
+    const statuses: number[] = [];
+    for (const cookie of [aliceX, bobX, undefined, aliceX]) statuses.push((await list(cookie, "scores", "", shared)).status);
+    expect(statuses).toEqual([200, 200, 200, 429]);
+  });
+
   it("reads no more than the newest 500 records, and says so", async () => {
     const rows = Array.from({ length: 520 }, (_, i) => ({
       projectId: app.id,

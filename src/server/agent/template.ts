@@ -771,6 +771,8 @@ export function useCollection<T>(
   }
   return {
     records,
+    /** True when the server read only the newest 500 records for this filtered or ordered list. */
+    truncated: enabled ? read.data?.truncated === true : false,
     loading: read.loading,
     error: read.error,
     refresh: read.refresh,

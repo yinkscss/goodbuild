@@ -91,7 +91,7 @@ export const GUIDES: Guide[] = [
 - Queries. A list can be narrowed and sorted on the server, on the fields the visitor can see (a filter never compares a field they can't read, so a hidden field never matches):
     const open = useCollection<Task>("tasks", { where: [["status", "eq", "open"], ["points", "gte", 10]], orderBy: "points", dir: "desc", limit: 20 });
   Comparisons: eq, ne, gt, gte, lt, lte, on text, numbers and true or false, with the value the same type as the field. At most 4 conditions. orderBy is a field or "createdAt" or "updatedAt". A filtered list reads the newest 500 records of the collection and sets truncated when there were more, so a leaderboard over a big collection should keep one record per player (put("best", ...)) rather than add every game. A filtered list has no cursor.
-  To see what changed since a moment, collection("scores").list({ since: lastUpdatedAt }) returns records saved or changed after it, for a cheap refresh.
+  To see what changed since a moment, collection("scores").list({ since: lastUpdatedAt }) returns records saved or changed after it, for a cheap refresh. Take lastUpdatedAt from the newest updatedAt you received (the server's clock), never from Date.now() on the phone. If the answer has truncated: true, there were more changes than one answer holds: ask again with the same since and a bigger limit before moving it forward. since never shows a deleted record, so mark a record finished or removed with a status field rather than deleting it when other screens must notice.
 - Reading and writing:
     const session = useDbSession();
     const notes = useCollection<Note>("notes", { enabled: session.signedIn, wallet: session.wallet ?? session.email });

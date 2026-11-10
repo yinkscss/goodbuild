@@ -16,8 +16,15 @@ export const DEFAULT_LIMITS = {
   maxTotalBytes: 1024 * MIB,
   maxSignInBodyBytes: 16 * KIB,
   readsPerIpPerMinute: 300,
-  /** Lists with filters, an order or since (D79): each reads up to 500 records, and a live app polls them. */
+  /**
+   * Lists with filters, an order or since (D79): each reads up to 500 records, and a live app polls them.
+   * Counted per signed-in person in one app, or per address in one app for visitors who aren't signed in
+   * (lists use readsPerIpPerMinute the same way), so players sharing a mobile network's address don't
+   * share one allowance.
+   */
   queriesPerIpPerMinute: 120,
+  /** Every list request from one address, across all apps and people: the ceiling under the limits above. */
+  listsPerIpCeilingPerMinute: 1200,
   writesPerIpPerMinute: 120,
   writesPerWalletPerMinute: 60,
   /** Writes without sign-in (D34): per IP, and for the whole app. */

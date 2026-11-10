@@ -389,15 +389,19 @@ async function collectionRoute(ctx: Context, method: string, collection: string)
   checkCollection(collection);
   if (method === "POST") return write(ctx, collection, newRecordKey());
   if (method !== "GET") fail("method_not_allowed", 405, "That method isn't allowed here.");
-  limit(ctx, `r:ip:${ctx.ip}`, ctx.limits.readsPerIpPerMinute);
+  // A ceiling per address first, then the real limit: per signed-in person (players behind one mobile
+  // network share an address, D79), or per address in this app for visitors who aren't signed in.
+  limit(ctx, `r:ip-all:${ctx.ip}`, ctx.limits.listsPerIpCeilingPerMinute);
   const viewer = await viewerOf(ctx);
+  const who = viewer?.signedIn ? `viewer:${ctx.app.projectId}:${viewer.subject}` : `ip:${ctx.app.projectId}:${ctx.ip}`;
+  limit(ctx, `r:${who}`, ctx.limits.readsPerIpPerMinute);
   if (!viewer && !openToVisitors(ruleFor(ctx.app.rules, collection))) fail("unauthenticated", 401, "Connect your wallet and sign in first.");
   const owner = ownerParam(ctx.url);
   const query = queryParams(ctx.url);
   const page = pageParams(ctx.url);
   if (query) {
     if (page.cursor !== undefined) fail("invalid_cursor", 400, "A list with filters, an order or since can't be paged with a cursor. Raise limit or narrow the filters.");
-    limit(ctx, `q:ip:${ctx.ip}`, ctx.limits.queriesPerIpPerMinute);
+    limit(ctx, `q:${who}`, ctx.limits.queriesPerIpPerMinute);
   }
   return json(await listRecords(ctx.db, ctx.app, collection, viewer, { owner, ...page, query }));
 }

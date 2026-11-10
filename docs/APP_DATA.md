@@ -84,7 +84,8 @@ Set in `src/server/app-data/limits.ts`.
 | Per wallet, per app | 1,000 records, 2 MB |
 | Per app | 20,000 records, 20 MB |
 | Whole site | 1 GB (`APP_DATA_MAX_TOTAL_BYTES`), checked against a total at most a minute old, so it can overshoot slightly |
-| Reads | 300 a minute per IP |
+| Reads | 300 lists a minute per signed-in person in one app, or per IP in one app for visitors who aren't signed in (D79); 1,200 a minute per IP across everything |
+| Queries (filters, order, since) | 120 a minute, counted the same way as reads (D79) |
 | Writes | 120 a minute per IP, 60 per wallet per app |
 | Per app, all requests | 1,500 a minute |
 | Sign-in | 30 nonces a minute per IP, 300 per app, 20 sign-ins per IP |
