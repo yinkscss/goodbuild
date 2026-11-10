@@ -87,6 +87,8 @@ const OPENROUTER_BASE = "https://openrouter.ai/api/v1";
 const OPENROUTER_IDS: Record<ModelTier, string> = { strong: "anthropic/claude-sonnet-5.5", cheap: "deepseek/deepseek-v4-flash" };
 
 export function strongModel(): Exclude<LanguageModel, string> {
+  // Testing only: with just a DeepSeek key, the fix tier uses DeepSeek too.
+  if (process.env.DEEPSEEK_ONLY_FOR_TESTS === "1" && process.env.DEEPSEEK_API_KEY) return createDeepSeek()(MODEL_IDS.cheap);
   const key = viaOpenRouter();
   return key ? createAnthropic({ baseURL: OPENROUTER_BASE, authToken: key })(OPENROUTER_IDS.strong) : createAnthropic()(MODEL_IDS.strong);
 }

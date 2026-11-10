@@ -3,6 +3,7 @@
 //
 //   node scripts/live-check.mjs                    asks for the two keys (hidden) if they aren't saved yet
 //   node scripts/live-check.mjs --openrouter      use your OpenRouter key for both models (asks for it, hidden)
+//   node scripts/live-check.mjs --deepseek-only --total 1   one DeepSeek key, nothing above $1 in all
 //   node scripts/live-check.mjs --only game-runner,minipay-shop
 //   node scripts/live-check.mjs --each 2          most one app may spend, in dollars (default 1)
 //   node scripts/live-check.mjs --skip-build       reuse the last `pnpm build`
@@ -40,11 +41,12 @@ function envFile() {
   return out;
 }
 const scenarioCount = JSON.parse(readFileSync("docs/evals/live/scenarios.json", "utf8")).scenarios.filter((s) => !only.length || only.includes(s.id)).length;
-const budget = each * scenarioCount;
+const budget = option("total", "") ? Number(option("total", "")) : each * scenarioCount; // --total caps the whole run
 const demo = flag("demo"); // plumbing test with the scripted demo model: no keys, no cost, always the same app
 // With --openrouter, both models go through the owner's OpenRouter key (a test route only).
 const router = flag("openrouter");
-for (const name of demo ? [] : router ? ["OPENROUTER_API_KEY"] : ["ANTHROPIC_API_KEY", "DEEPSEEK_API_KEY"]) {
+const deepseekOnly = flag("deepseek-only"); // test route: DeepSeek writes and fixes; one key
+for (const name of demo ? [] : router ? ["OPENROUTER_API_KEY"] : deepseekOnly ? ["DEEPSEEK_API_KEY"] : ["ANTHROPIC_API_KEY", "DEEPSEEK_API_KEY"]) {
   if (process.env[name] || envFile()[name]) continue;
   console.log(`\n${name} isn't saved yet.`);
   const r = spawnSync("node", ["scripts/set-secret.mjs", name], { stdio: "inherit" });
@@ -56,14 +58,15 @@ const serverEnv = {
   ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ?? keys.ANTHROPIC_API_KEY,
   DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY ?? keys.DEEPSEEK_API_KEY,
   ...(router ? { OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY ?? keys.OPENROUTER_API_KEY, OPENROUTER_FOR_TESTS: "1" } : {}),
+  ...(deepseekOnly ? { DEEPSEEK_ONLY_FOR_TESTS: "1" } : {}),
   ALLOW_PGLITE: "true",
   SESSION_SECRET: "live-check-only-session-secret-0123456789abcdef",
   APP_DOMAIN: `localhost:${port}`,
   PUBLISHED_APPS_DOMAIN: "localhost",
   RUN_CHECK: process.env.RUN_CHECK ?? "1",
   TYPE_CHECK: "warn",
-  UNVERIFIED_CAP_MICRO: String(Math.round(each * 1e6)),
-  FREE_AI_BUDGET_MICRO: String(Math.round(each * 1e6 * Math.max(1, scenarioCount))),
+  UNVERIFIED_CAP_MICRO: String(Math.round(Math.min(each, budget) * 1e6)),
+  FREE_AI_BUDGET_MICRO: String(Math.round(budget * 1e6)),
   TURN_CONCURRENCY: String(concurrency),
   PORT: String(port),
 };
