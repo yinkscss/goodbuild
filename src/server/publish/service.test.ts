@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { dbAssetStore } from "@/server/agent/asset-store";
 import { saveFiles } from "@/server/agent/store";
+import { starterFiles } from "@/server/agent/template";
 import { signInUser } from "@/server/auth/service";
 import { createTestDb, type Db } from "@/server/db/client";
 import { deployments } from "@/server/db/deploy-schema";
@@ -81,6 +82,14 @@ describe("publishApp", () => {
     await unpublishApp(db, project);
     expect(await code(publishApp(db, await newProject("Copycat"), "tip-jar", { build }))).toBe("slug_taken");
     expect((await publishApp(db, project, "tip-jar", { build })).live).toBe(true);
+  });
+
+  it("refuses a project that is still the starter page", async () => {
+    await saveFiles(db, project.id, starterFiles());
+    expect((await publishStatus(db, project)).hasApp).toBe(false);
+    const error = await publishApp(db, project, "tip-jar", { build: fakeBuild() }).catch((e: PublishError) => e);
+    expect(error).toMatchObject({ code: "build_failed" });
+    expect((error as PublishError).message).toMatch(/starter page/);
   });
 
   it("waits for a running build", async () => {

@@ -11,7 +11,7 @@ import { MANIFEST_PATH, parseManifest, planManifest } from "@/lib/deploy/manifes
 
 import { assetRefs } from "./assets";
 import { KIT_MARKER, kitForPackage, kitsOf, type Kit } from "./kits/registry";
-import { ALLOWED_DEPENDENCIES, PLATFORM_DIR, WALLET_DIR, dependenciesOf } from "./template";
+import { ALLOWED_DEPENDENCIES, PLATFORM_DIR, WALLET_DIR, dependenciesOf, isStarterApp } from "./template";
 
 /** Compiler settings, pinned (CONTRACTS_AND_DEPLOYMENT.md §2, §4). */
 export const SOLC_SETTINGS = {
@@ -566,6 +566,13 @@ export function checkApp(files: Record<string, string>, opts: { assets?: string[
     if (/\.(tsx?|jsx?)$/.test(file) && !file.startsWith(PLATFORM_DIR)) errors.push(...addressMapIssues(file, content));
   }
   if (!files["src/App.tsx"]) errors.push({ file: "src/App.tsx", message: "src/App.tsx is missing (it's the app entry).", source: "paths" });
+  else if (isStarterApp(files["src/App.tsx"])) {
+    errors.push({
+      file: "src/App.tsx",
+      message: 'src/App.tsx is still the starter page. Replace it completely with this app. The line "Your app is being written" must not remain.',
+      source: "paths",
+    });
+  }
   if (opts.assets) errors.push(...assetRefIssues(files, opts.assets));
   errors.push(...lucideIssues(files));
   errors.push(...dataIssues(files));

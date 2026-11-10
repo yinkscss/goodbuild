@@ -23,7 +23,9 @@ describe("the wallet layer is GoodBuild's", () => {
   it("ships in every new project, passes the checks and uses no window.ethereum outside itself", () => {
     const files = starterFiles();
     for (const p of LOCKED) expect(files[p], p).toBe(WALLET_HELPERS[p]);
-    expect(checkApp(files).errors).toEqual([]);
+    const errors = checkApp(files).errors;
+    expect(errors).toHaveLength(1);
+    expect(errors[0].message).toMatch(/starter page/);
     expect(files["src/lib/chain.ts"]).toContain('from "./goodbuild/wallet"');
     expect(files["src/lib/db.ts"]).toContain('from "./goodbuild/wallet"');
     expect(files["src/lib/db.ts"]).not.toContain("ethereum");
@@ -112,7 +114,7 @@ describe("the wallet layer is GoodBuild's", () => {
     const edited = withStarterHelpers({ "src/App.tsx": "x", ...OLD_STARTER, "src/lib/chain.ts": oldChain + "\nexport const extra = 1;\n" });
     expect(edited["src/lib/chain.ts"]).toContain("export const extra = 1;");
     expect(edited["src/lib/chain.ts"]).toContain("window as unknown as { ethereum");
-    expect(checkApp({ ...starterFiles(), "src/lib/chain.ts": edited["src/lib/chain.ts"] }).errors).toEqual([]);
+    expect(checkApp({ ...starterFiles(), "src/App.tsx": "export default function App() { return <main>Hi</main>; }\n", "src/lib/chain.ts": edited["src/lib/chain.ts"] }).errors).toEqual([]);
   });
 
   it("moves untouched pre-D36 helpers to the project's chain, and updates only the network in a linked legacy wallet pair", () => {

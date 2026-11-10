@@ -10,7 +10,8 @@ import { dbAssetStore, ingestAsset } from "./asset-store";
 import { scriptedModel } from "./fake-model";
 import { KITS, type Kit } from "./kits";
 import { runTurn, TurnBusyError, type TurnEvent } from "./runner";
-import { claimTurn, listVersions, loadFiles, revertTo } from "./store";
+import { claimTurn, listVersions, loadFiles, revertTo, saveFiles } from "./store";
+import { starterFiles } from "./template";
 import { fixTier, isRepeat, plainDashes } from "./runner";
 
 describe("plainDashes", () => {
@@ -25,6 +26,7 @@ import { DEMO_APP, DEMO_TIP_JAR_DRAFT, demoModel } from "./demo-model";
 const HEADER = "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.24;\n";
 const BROKEN = HEADER + "contract TipJar {\n  event Tipped(address indexed from, uint256 amount);\n  function tip() external payable { emit Tipped(msg.sender, msg.value) }\n}\n";
 const FIXED = HEADER + "contract TipJar {\n  event Tipped(address indexed from, uint256 amount);\n  function tip() external payable { emit Tipped(msg.sender, msg.value); }\n}\n";
+const PAGE = "export default function App() { return <main>Ready</main>; }\n";
 const APP = `import { ConnectButton } from "./components/ConnectButton";
 import { TipJarAbi, TipJarAddress } from "./contracts";
 export default function App() {
@@ -151,6 +153,12 @@ describe("runTurn", { timeout: 120_000 }, () => {
     expect(types).toContain("plan");
     expect(types).toContain("file");
     expect(types.at(-1)).toBe("done");
+    // The sandbox gets the written files before the checks and the fix loop.
+    const filesAt = events.findIndex((e) => e.type === "files");
+    const fixAt = events.findIndex((e) => e.type === "step" && e.step.id === "fix:1");
+    expect(filesAt).toBeGreaterThan(-1);
+    expect(filesAt).toBeLessThan(fixAt);
+    expect(events[filesAt]).toMatchObject({ type: "files", files: { "src/App.tsx": APP } });
   });
 
   it("gives the model uploaded assets: module, manifest, reference image once, and checks /assets/ paths", async () => {
@@ -187,7 +195,7 @@ describe("runTurn", { timeout: 120_000 }, () => {
   it("shows the summary once when the model repeats it after a fix", async () => {
     const summary = "Built a tip jar: supporters send CELO and the page lists every tip.";
     const { client } = scriptedModel([
-      { tools: [{ name: "create_file", args: { path: "contracts/TipJar.sol", content: BROKEN } }] },
+      { tools: [{ name: "create_file", args: { path: "contracts/TipJar.sol", content: BROKEN } }, { name: "create_file", args: { path: "src/App.tsx", content: PAGE } }] },
       { text: summary },
       { tools: [{ name: "edit_file", args: { path: "contracts/TipJar.sol", edits: [{ search: "msg.value) }", replace: "msg.value); }" }] } }] },
       { text: summary + " " },
@@ -205,7 +213,7 @@ describe("runTurn", { timeout: 120_000 }, () => {
   it("asks for a reply when the build pass runs out of tool rounds, and flags no-op edits", async () => {
     const noop = { name: "edit_file", args: { path: "src/App.tsx", edits: [{ search: "export default", replace: "export default" }] } };
     const { client, requests } = scriptedModel([
-      { text: "I'll start by planning this out.", tools: [{ name: "set_plan", args: { summary: "Add a thank-you banner.", steps: ["Banner"] } }] },
+      { text: "I'll start by planning this out.", tools: [{ name: "set_plan", args: { summary: "Add a thank-you banner.", steps: ["Banner"] } }, { name: "create_file", args: { path: "src/App.tsx", content: PAGE } }] },
       ...Array.from({ length: 15 }, () => ({ tools: [noop] })),
       { text: "Added a thank-you banner.\n\nWant it to show the tip amount?" },
     ]);
@@ -219,15 +227,35 @@ describe("runTurn", { timeout: 120_000 }, () => {
   });
 
   it("asks for the reply again when the only reply came with a tool call", async () => {
-    const noop = { name: "edit_file", args: { path: "src/App.tsx", edits: [{ search: "export default", replace: "export default" }] } };
     const { client } = scriptedModel([
-      { text: "Built it.\n\nWant a goal bar?", tools: [noop] },
+      { text: "Built it.\n\nWant a goal bar?", tools: [{ name: "create_file", args: { path: "src/App.tsx", content: PAGE } }] },
       {},
       { text: "Built a tip page.\n\nWant a goal bar?" },
     ]);
     await runTurn({ db, model: client }, { projectId, userId, mode: "build", userMessageId: queuedId }, () => {});
     const [assistant] = (await db.select().from(messages).where(eq(messages.projectId, projectId))).filter((m) => m.role === "assistant");
     expect(assistant.content).toBe("Built a tip page.\n\nWant a goal bar?");
+  });
+
+  it("a saved starter page is rebuilt on the next turn, and the preview updates before the checks", async () => {
+    await saveFiles(db, projectId, starterFiles());
+    const { client } = scriptedModel([
+      { text: "Still looking." },
+      { tools: [{ name: "create_file", args: { path: "src/App.tsx", content: "export default function App() { return <main>Friday</main>; }\n" } }] },
+      { text: "Built the page." },
+    ]);
+    const { events, emit } = collect();
+    const record = await runTurn({ db, model: client }, { projectId, userId, mode: "build", prompt: "The page still says the app is being written. Build it." }, emit);
+    expect(record.status).toBe("ready");
+    expect((await loadFiles(db, projectId))["src/App.tsx"]).toContain("Friday");
+    const filesAt = events.findIndex((e) => e.type === "files");
+    const fixAt = events.findIndex((e) => e.type === "step" && e.step.id === "fix:1");
+    expect(filesAt).toBeGreaterThan(-1);
+    expect(filesAt).toBeLessThan(fixAt);
+    const shown = events[filesAt];
+    const saved = events.filter((e) => e.type === "files").at(-1);
+    expect(shown?.type === "files" ? shown.files["src/App.tsx"] : "").toContain("Your app is being written");
+    expect(saved?.type === "files" ? saved.files["src/App.tsx"] : "").toContain("Friday");
   });
 
   it("a build-mode question on an existing project is answered without checks or a new version", async () => {
@@ -295,7 +323,7 @@ describe("runTurn", { timeout: 120_000 }, () => {
       'import {Test, Actor} from "@goodbuild/Test.sol";\nimport {MockGoodDollar} from "@goodbuild/MockGoodDollar.sol";\nimport {RTX} from "../RTX.sol";\n' +
       "contract RTXTest is Test {\n  function testSupply() public {\n    RTX rtx = new RTX(new MockGoodDollar());\n    assertEq(rtx.totalSupply(), 50_000_001e18, \"supply\");\n  }\n}\n";
     const { client, requests } = scriptedModel([
-      { tools: [{ name: "create_file", args: { path: "contracts/RTX.sol", content: fixed } }, { name: "create_file", args: { path: "contracts/test/RTX.t.sol", content: test } }] },
+      { tools: [{ name: "create_file", args: { path: "contracts/RTX.sol", content: fixed } }, { name: "create_file", args: { path: "contracts/test/RTX.t.sol", content: test } }, { name: "create_file", args: { path: "src/App.tsx", content: PAGE } }] },
       { text: "Built RTX." },
       { tools: [{ name: "edit_file", args: { path: "contracts/test/RTX.t.sol", edits: [{ search: "50_000_001e18", replace: "50_000_000e18" }] } }] },
       { text: "Fixed the test." },
@@ -312,7 +340,7 @@ describe("runTurn", { timeout: 120_000 }, () => {
 
   it("reports the auto-fix result clearly in the step rows", async () => {
     const { client } = scriptedModel([
-      { tools: [{ name: "create_file", args: { path: "contracts/TipJar.sol", content: BROKEN } }] },
+      { tools: [{ name: "create_file", args: { path: "contracts/TipJar.sol", content: BROKEN } }, { name: "create_file", args: { path: "src/App.tsx", content: PAGE } }] },
       { text: "Done." },
       { tools: [{ name: "edit_file", args: { path: "contracts/TipJar.sol", edits: [{ search: "msg.value) }", replace: "msg.value); }" }] } }] },
       { text: "Added the semicolon." },
@@ -334,7 +362,7 @@ describe("runTurn", { timeout: 120_000 }, () => {
   it("stops early on a stuck fix and saves the build as needs_fix", async () => {
     const stuck = { tools: [{ name: "edit_file", args: { path: "contracts/TipJar.sol", edits: [{ search: "event Tipped", replace: "event  Tipped" }] } }] };
     const { client, requests } = scriptedModel([
-      { tools: [{ name: "create_file", args: { path: "contracts/TipJar.sol", content: BROKEN } }] },
+      { tools: [{ name: "create_file", args: { path: "contracts/TipJar.sol", content: BROKEN } }, { name: "create_file", args: { path: "src/App.tsx", content: PAGE } }] },
       { text: "Done." },
       stuck,
       { text: "Tried." },
@@ -358,7 +386,7 @@ describe("runTurn", { timeout: 120_000 }, () => {
     const gd = await createProjectFromPrompt(db, userId, { prompt: "A tip jar that splits G$ 70/30", network: "celo-sepolia" });
     const [q] = await db.select().from(messages).where(eq(messages.projectId, gd.id));
     const { client, requests } = scriptedModel([
-      { tools: [{ name: "create_file", args: { path: "contracts/TipJar.sol", content: FIXED } }] }, // takes msg.value
+      { tools: [{ name: "create_file", args: { path: "contracts/TipJar.sol", content: FIXED } }, { name: "create_file", args: { path: "src/App.tsx", content: PAGE } }] }, // takes msg.value
       { text: "Done." },
       { text: "I'd rather not." },
     ]);
