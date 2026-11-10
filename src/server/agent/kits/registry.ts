@@ -1,6 +1,7 @@
 import type { CheckIssue } from "../checks";
 
 import { game2d } from "./game-2d";
+import { miniApp } from "./mini-app";
 
 /**
  * A kit (D71): everything GoodBuild needs to build one more kind of app, in one place. Turning a
@@ -37,7 +38,7 @@ export interface Kit {
 }
 
 /** Every kit GoodBuild has. Each kit is a module beside this one, listed here. */
-export const KITS: Kit[] = [game2d];
+export const KITS: Kit[] = [game2d, miniApp];
 
 /** The file that says which kits a project has on. GoodBuild writes it; the builder can't. */
 export const KIT_MARKER = "src/goodbuild.json";
