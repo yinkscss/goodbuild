@@ -1,5 +1,7 @@
 import { Suspense } from "react";
 
+import { SITE_URL } from "@/config/site-url";
+
 import { Faq } from "@/components/landing/faq";
 import { FinalCta } from "@/components/landing/final-cta";
 import { HeroCard } from "@/components/landing/hero-card";
@@ -23,9 +25,25 @@ import { TemplateGallery } from "@/components/landing/template-gallery";
  * mobile   hero, prompt, metric, template.
  * The read-through sections follow, each anchored from the top nav.
  */
+const SITE_JSON_LD = [
+  { "@context": "https://schema.org", "@type": "Organization", name: "GoodBuild", url: SITE_URL, logo: `${SITE_URL}/icon.png` },
+  { "@context": "https://schema.org", "@type": "WebSite", name: "GoodBuild", url: SITE_URL },
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    name: "GoodBuild",
+    url: SITE_URL,
+    applicationCategory: "DeveloperApplication",
+    operatingSystem: "Web",
+    description: "An AI app builder that writes the smart contract and front end for dApps, MiniPay apps, games and websites on Celo. You sign the deploy from your own wallet.",
+    offers: { "@type": "Offer", price: "0", priceCurrency: "USD", description: "New accounts get $0.20 of AI free during the testnet beta." },
+  },
+];
+
 export default function LandingPage() {
   return (
     <>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(SITE_JSON_LD).replace(/</g, "\\u003c") }} />
       <SignedInRedirect />
       <SiteNav />
       <main className="mx-auto max-w-[1360px] px-4 sm:px-8">
