@@ -30,7 +30,7 @@ const signed = await call("/api/auth/verify", { method: "POST", headers: { "cont
 if (!signed.ok) throw new Error(`sign-in failed: ${signed.status}`);
 
 const viewport = mobile ? { width: 420, height: 860 } : { width: 1440, height: 900 };
-const browser = await chromium.launch({ headless: !process.argv.includes("--headed") });
+const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH || undefined, headless: !process.argv.includes("--headed"), slowMo: process.argv.includes("--headed") ? 350 : 0, args: ["--disable-backgrounding-occluded-windows", "--disable-renderer-backgrounding", "--disable-background-timer-throttling", "--window-position=40,40"] });
 const context = await browser.newContext({ viewport, recordVideo: { dir: path.join(out, "video"), size: viewport } });
 await context.addCookies(Object.entries(jar).map(([name, value]) => ({ name, value, domain: host, path: "/" })));
 const page = await context.newPage();

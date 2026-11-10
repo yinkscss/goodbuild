@@ -13,7 +13,7 @@
 // Results go to docs/evals/live/runs/<time>/: report.md, results.json, a video and screenshots per app.
 // It starts its own throwaway server (in-memory database, port 3100) and stops it at the end.
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { chromium } from "playwright-core";
 
@@ -89,6 +89,12 @@ if (!flag("skip-build") && !demo) {
   console.log("building (pnpm build)…");
   if (sh("pnpm", ["build"]).status !== 0) { console.error("The build failed; nothing was run."); process.exit(1); }
 }
+// A fresh database, so earlier runs' spend doesn't count against this run's cap. The old one is put back at the end.
+const dbDir = path.resolve(".data/pglite");
+const dbAside = `${dbDir}.before-live-check`;
+if (existsSync(dbAside)) { console.error(`${dbAside} exists from an interrupted run. Move it back to ${dbDir} (or delete it), then run again.`); process.exit(1); }
+if (existsSync(dbDir)) renameSync(dbDir, dbAside);
+const restoreDb = () => { try { rmSync(dbDir, { recursive: true, force: true }); if (existsSync(dbAside)) renameSync(dbAside, dbDir); } catch {} };
 const logFile = path.join(outDir, "server.log");
 const logChunks = [];
 if (await fetch(`${base}/api/auth/nonce`).then(() => true).catch(() => false)) {
@@ -98,7 +104,8 @@ if (await fetch(`${base}/api/auth/nonce`).then(() => true).catch(() => false)) {
 const server = spawn("pnpm", [demo ? "dev" : "start", "-p", String(port)], { env: serverEnv, detached: true });
 server.stdout.on("data", (d) => logChunks.push(d));
 server.stderr.on("data", (d) => logChunks.push(d));
-const stop = () => { try { process.kill(-server.pid, "SIGTERM"); } catch {} writeFileSync(logFile, Buffer.concat(logChunks)); };
+const await_exit = () => { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1500); restoreDb(); };
+const stop = () => { try { process.kill(-server.pid, "SIGTERM"); } catch {} await_exit(); writeFileSync(logFile, Buffer.concat(logChunks)); };
 process.on("SIGINT", () => { stop(); process.exit(130); });
 for (let i = 0; ; i++) {
   if (i > (demo ? 120 : 60)) { stop(); console.error("The server didn't start; see server.log."); process.exit(1); }
