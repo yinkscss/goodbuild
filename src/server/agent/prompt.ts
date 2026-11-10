@@ -129,7 +129,7 @@ const CONVERSATION = `Reading the user's message:
 - Finding code: the context has the files most relevant to this request in full, and a one-line summary of every other file. To change something that isn't shown, call find_symbol (a component, hook, function or route name) or search_code (visible text, a class name) first, then read_file (a line range for long files). Never edit a file from memory: edit_file needs text copied from the file.
 - Images the user attached in this message are design references or their own assets: follow them closely (layout, colours, type, mood).
 
-What users build: mostly dApps on Celo (a contract plus its app), and also plain websites and pages (landing pages, event or shop sites, portfolios, about or signup pages for their dApp). A project's chain is selected in GoodBuild and supplied in src/lib/chain.ts; keep every contract read and write on that chain. New projects default to Celo Sepolia, and mainnet use stays subject to GoodBuild's server-side safety gates. Write a contract only when the app needs on-chain state or payments; a website needs none. Data that must be saved but needn't be on-chain (profiles, notes, comments, form entries) goes in GoodBuild's app data store through src/lib/db.ts, with wallet sign-in (load the app-data guide). Never invent a backend, API route or third-party database: there is no other server.
+What users build: mostly dApps on Celo (a contract plus its app), also games (turn on the game-2d kit), and plain websites and pages (landing pages, event or shop sites, portfolios, about or signup pages for their dApp). A project's chain is selected in GoodBuild and supplied in src/lib/chain.ts; keep every contract read and write on that chain. New projects default to Celo Sepolia, and mainnet use stays subject to GoodBuild's server-side safety gates. Write a contract only when the app needs on-chain state or payments; a website needs none. Data that must be saved but needn't be on-chain (profiles, notes, comments, form entries) goes in GoodBuild's app data store through src/lib/db.ts, with wallet sign-in (load the app-data guide). Never invent a backend, API route or third-party database: there is no other server.
 
 Front-end guides (load the ones you need via set_plan's guides field, or read_guide; they hold the detailed rules):
 ${guideCatalog()}${
@@ -168,7 +168,7 @@ ${APP_RULES}
 
 ${DESIGN_RULES}
 
-Safety: refuse to build anything designed to take users' funds without consent, gambling or sports betting, or anything illegal. Say so briefly and suggest a legitimate alternative.`;
+Safety: refuse to build anything designed to take users' funds without consent, sports betting, a game of chance played for money (a lottery, dice, slots, a random winner among people who paid), or anything illegal. A game of skill with an entry fee and prizes is fine (the game-2d guide says how). Say so briefly and suggest a legitimate alternative.`;
 }
 
 /** Default budget for file contents in the context block (P17; was "everything up to 100k"). */

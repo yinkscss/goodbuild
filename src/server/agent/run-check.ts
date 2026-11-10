@@ -5,6 +5,7 @@ import type { Browser, BrowserContext, Page, Route } from "playwright-core";
 import { buildPublishedApp, moduleStarts, PublishBuildError, type PublishedFile } from "@/server/publish/build";
 
 import type { CheckIssue } from "./checks";
+import { kitIdsOf } from "./kits/registry";
 
 /**
  * The run check (D67): build the app the way publishing does, open it in a headless browser and
@@ -21,6 +22,8 @@ export interface RunCheckOptions {
   assets?: string[];
   /** The project's chain, for the wallet-less RPC stub. */
   chainId?: number;
+  /** The project is a game: start it and play for a moment (set from its kits). */
+  game?: boolean;
   /** Also return screenshots at phone and desktop width. */
   screenshots?: boolean;
   timeoutMs?: number;
@@ -259,6 +262,41 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
     return !root || (root.childElementCount === 0 && !(root.textContent ?? "").trim());
   });
 
+  // A game (D72): play it for a moment. Press the start button, tap and steer, then look at the
+  // canvas. This finds what loading alone can't: a crash on the first frame of play, and a game that
+  // draws nothing.
+  let blankGame = false;
+  if (!blank && !seen.length && options.game) {
+    const start = page.getByRole("button", { name: /\b(play|start|begin|go|tap to)\b/i }).first();
+    if (await start.isVisible().catch(() => false)) await start.click({ timeout: 1_500 }).catch(() => undefined);
+    await settle(page, 250);
+    const canvas = page.locator("canvas").first();
+    if (await canvas.isVisible().catch(() => false)) {
+      for (const key of ["Space", "ArrowRight", "ArrowLeft", "Space"]) {
+        await canvas.click({ timeout: 1_000 }).catch(() => undefined);
+        await page.keyboard.press(key).catch(() => undefined);
+        await settle(page, 180);
+      }
+      await settle(page, 500);
+      blankGame = await page.evaluate(() => {
+        const big = Array.from(document.querySelectorAll("canvas")).filter((c) => c.width >= 50 && c.height >= 50);
+        if (!big.length) return false;
+        return big.every((c) => {
+          try {
+            // A canvas drawn with WebGL gives no 2D context here: leave those alone.
+            const ctx = c.getContext("2d");
+            if (!ctx) return false;
+            const data = ctx.getImageData(0, 0, c.width, c.height).data;
+            for (let i = 3; i < data.length; i += 4 * 53) if (data[i] !== 0) return false;
+            return true;
+          } catch {
+            return false;
+          }
+        });
+      });
+    }
+  }
+
   // Other pages of a multi-page app (HashRouter): follow the links the first page shows.
   const hashes = await page.evaluate((max) => {
     const found = new Set<string>();
@@ -302,6 +340,9 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
     const inside = component ? ` (in <${component}>)` : "";
     return { file, message: `The app crashed when it ran${where}: ${s.message}${inside}`, source: "runtime" };
   });
+  if (blankGame && !issues.length) {
+    issues.push({ file: "src/App.tsx", message: "The game was started and played for a moment, but its canvas stayed blank: nothing was drawn. Draw the game in GameCanvas's onFrame on every frame, and make sure the game isn't left paused once Play is pressed.", source: "runtime" });
+  }
   if (blank && !issues.length) {
     issues.push({ file: "src/App.tsx", message: "The app ran but showed nothing: the page is empty. src/App.tsx must render the app's content.", source: "runtime" });
   }
@@ -332,7 +373,8 @@ export async function runCheck(files: Record<string, string>, options: RunCheckO
     const timeout = new Promise<Omit<RunCheckResult, "ms">>((resolve) => {
       timer = setTimeout(() => resolve({ ran: false, issues: [], note: "skipped: the app took too long to open" }), options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
     });
-    return done(await Promise.race([check(context, built, options), timeout]));
+    const game = options.game ?? kitIdsOf(files).includes("game-2d");
+    return done(await Promise.race([check(context, built, { ...options, game }), timeout]));
   } catch (error) {
     return done({ ran: false, issues: [], note: `skipped: the browser wasn't available (${String((error as Error)?.message ?? error).split("\n")[0].slice(0, 120)})` });
   } finally {

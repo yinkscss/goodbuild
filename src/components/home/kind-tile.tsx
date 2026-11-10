@@ -1,4 +1,4 @@
-import { BadgeCheck, Blocks, Coins, Globe, HandCoins, HandHeart, PiggyBank, ShieldCheck, Ticket, Vote, type LucideIcon } from "lucide-react";
+import { BadgeCheck, Blocks, Coins, Gamepad2, Globe, HandCoins, HandHeart, PiggyBank, ShieldCheck, Ticket, Vote, type LucideIcon } from "lucide-react";
 
 import { KIND_LABEL, type ContractKind } from "@/lib/contract-kind";
 import { cn } from "@/lib/utils";
@@ -12,6 +12,7 @@ const ICONS: Record<ContractKind, LucideIcon> = {
   badges: BadgeCheck,
   token: Coins,
   escrow: ShieldCheck,
+  game: Gamepad2,
   site: Globe,
   custom: Blocks,
 };
