@@ -72,8 +72,11 @@ else delete serverEnv.GOODBUILD_DEMO_MODEL;
 
 // The browser has to exist before anything is spent.
 const chromePath = process.env.CHROME_PATH || undefined;
-if (!chromePath && !existsSync(chromium.executablePath())) {
-  console.error("The headless browser isn't installed. Run this once, then run the check again:\n\n  node node_modules/playwright-core/cli.js install chromium-headless-shell\n");
+try {
+  const probe = await chromium.launch({ headless: true, executablePath: chromePath });
+  await probe.close();
+} catch {
+  console.error("The headless browser won't start. Run this once, then run the check again:\n\n  node node_modules/playwright-core/cli.js install chromium-headless-shell\n");
   process.exit(1);
 }
 
