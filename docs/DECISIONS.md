@@ -732,3 +732,13 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - **Verified:** a flappy-style game written the way the guide asks passes the app check and the type check, and in a real headless browser the run check starts it, plays it and finds it drawing; a version that crashes on the first frame of play and one that never draws are both caught (`kits/game-2d.test.ts`).
 - **UNVERIFIED:** a game built by a real model (no provider keys in the build session), a real phone, and sound, which a headless browser can't judge. The eval suite gained a game scenario for when it first runs.
 - **Not in this change:** uploaded sound files and images drawn as sprites from a sprite sheet (uploads are still images only), and 3D.
+
+### D73. Wait states: one shared kit, six screens, honest about what it knows
+- Date: 10 Nov 2026 · Proposed and built by: Claude · Approved by: the user, who picked A2, B1, C3, D3, E1 and F1 from the wait-state gallery (details.so's loading examples are Pro-only, so the references were BoardUI's agent blocks, redrawn in D12's tokens).
+- **Kit:** `src/components/ui/wait.tsx` (an elapsed clock, wave dots, brand tiles, a calm note, row skeletons, a slow-load note) plus `gb-wave`, `gb-breath`, `gb-lift` in `globals.css`. Reduced motion stays on the existing global rule.
+- **A2 chat turn:** step rows lift in, the running one breathes and shows its seconds, and after 20 s on one step it explains. "Thinking" has a clock. Technical step names are mapped to plain words on the client (`plainStepLabel`); the server's labels are unchanged.
+- **B1 first load:** a status line that moves through plain stages, and "N builds are ahead of yours" from the real job queue. The `queued` stream event in `turn-types.ts` is never sent by the server, so nothing uses it.
+- **C3 preview:** four brand tiles that light with elapsed time. **E1 publish:** a progress pill whose words and fill follow elapsed time, because publishing is one request with no stages. Neither shows a real percentage, and the fill slows near the end instead of promising a finish.
+- **D3 deploy:** the stepper is a rail with a token. Waiting hints appear at 8 s and 30 s while signing, and at 60 s while broadcasting. "Nothing has been charged" shows only before the run's first transaction. The confirmation counts in the mock were dropped: the deploy hook exposes none.
+- **F1 lists:** shape-true skeletons for deployments and credits, a "still loading" note at 12 s, and a Retry card on deployments (projects already had one).
+- **Not done:** the deploy modal still cannot be cancelled while a signature is pending. Per-step timers restart from 0 on a page reload mid-turn. D12 is untouched.
