@@ -1,0 +1,116 @@
+# The eval suite (D70, docs/evals/SUITE.md): about twenty real builds with real model keys, scored
+# and compared with the last baseline. It costs money (a few dollars a run), so it never runs by
+# itself: start it from the Actions tab, or add the "evals" label to a pull request that changes the
+# builder's prompt, guides, checks or model routing.
+name: Evals
+
+on:
+  workflow_dispatch:
+    inputs:
+      only:
+        description: "Scenario ids to run, comma separated (empty runs them all)"
+        required: false
+        default: ""
+      update_baseline:
+        description: "Save this run as the new baseline (commit the file from the artifact)"
+        type: boolean
+        default: false
+  pull_request:
+    types: [labeled]
+
+concurrency:
+  group: evals-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  evals:
+    name: Eval suite
+    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'evals'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+    steps:
+      - name: Check the model keys are set
+        id: keys
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ] || [ -z "$DEEPSEEK_API_KEY" ]; then
+            echo "The eval suite needs ANTHROPIC_API_KEY and DEEPSEEK_API_KEY as repository secrets. Nothing was run." >> "$GITHUB_STEP_SUMMARY"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.keys.outputs.ready == 'true'
+
+      - uses: pnpm/action-setup@v4
+        if: steps.keys.outputs.ready == 'true'
+
+      - uses: actions/setup-node@v4
+        if: steps.keys.outputs.ready == 'true'
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install
+        if: steps.keys.outputs.ready == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Install the headless browser
+        if: steps.keys.outputs.ready == 'true'
+        run: node node_modules/playwright-core/cli.js install --with-deps chromium-headless-shell
+
+      - name: Build
+        if: steps.keys.outputs.ready == 'true'
+        run: pnpm build
+
+      # A throwaway server: its own in-memory-backed database, the run check and type check on, and
+      # caps raised for the suite's throwaway wallets. FREE_AI_BUDGET_MICRO is the most a run can spend.
+      - name: Start GoodBuild
+        if: steps.keys.outputs.ready == 'true'
+        env:
+          ALLOW_PGLITE: "true"
+          SESSION_SECRET: evals-only-session-secret-0123456789abcdef
+          APP_DOMAIN: localhost:3000
+          PUBLISHED_APPS_DOMAIN: localhost
+          RUN_CHECK: "1"
+          TYPE_CHECK: warn
+          UNVERIFIED_CAP_MICRO: "3000000"
+          FREE_AI_BUDGET_MICRO: "15000000"
+          TURN_CONCURRENCY: "3"
+        run: |
+          pnpm start > server.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:3000/api/auth/nonce > /dev/null && exit 0
+            sleep 2
+          done
+          cat server.log
+          exit 1
+
+      - name: Run the suite
+        if: steps.keys.outputs.ready == 'true'
+        env:
+          BASE_URL: http://localhost:3000
+          ONLY: ${{ inputs.only }}
+          UPDATE: ${{ inputs.update_baseline }}
+        run: |
+          args=(--out eval-results.json --baseline docs/evals/suite/baseline.json --concurrency 3)
+          if [ -n "$ONLY" ]; then args+=(--only "$ONLY"); fi
+          if [ "$UPDATE" = "true" ]; then args+=(--update-baseline); fi
+          node scripts/eval-suite.mjs "${args[@]}"
+
+      - name: Keep the results
+        if: always() && steps.keys.outputs.ready == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results
+          path: |
+            eval-results.json
+            docs/evals/suite/baseline.json
+            server.log
+          if-no-files-found: ignore

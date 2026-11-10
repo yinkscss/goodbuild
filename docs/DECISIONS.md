@@ -700,3 +700,13 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - **UNVERIFIED:** on the live site (wildcard DNS and Traefik already route every `*.goodbuildit.xyz` label, and Cloudflare is in front; whether Cloudflare caches or alters anything on a `pv-` host is untested), a real browser wallet inside the own-build frame, and rebuild time on the server.
 - **Known limits.** The visual check (the screenshot review) only runs on Sandpack, so a project on its own build skips it; the run check still opens every build. The own build doesn't update in place: it rebuilds when a version is saved. WalletConnect and saved data behave as in the Sandpack preview (browser wallets only, data stays in the browser).
 - **Q36** stays open until Sandpack is retired, but a blocked network no longer leaves the preview blank.
+
+### D70. An eval suite of twenty real builds, run on demand in CI
+- Date: 10 Nov 2026 · Proposed and built by: Claude · Approved by: the user ("start phase 2").
+- AI_AGENT.md §8 asked for about twenty prompts run on every prompt or model change. There were six scenarios, run by hand. Now: `docs/evals/suite/suite.json` (14 builds, 4 edits, 2 refusals), `scripts/eval-suite.mjs` (runs them against a server, scores them, compares with a baseline) and `.github/workflows/evals.yml`. Details: [evals/SUITE.md](evals/SUITE.md).
+- **On demand, not on every push.** A run is real model calls, a few dollars. It starts from the Actions tab or the `evals` label on a pull request. The server it starts caps its own spend at $15.
+- **"Ready" means it ran.** The suite's server has the run check on (D67), so a pass means the built app opened in a browser, not only that it compiled.
+- **A regression fails the run:** the pass rate down more than 10 points, or the cost per scenario up more than 30%, against the committed baseline.
+- **Needs the owner:** `ANTHROPIC_API_KEY` and `DEEPSEEK_API_KEY` as GitHub repository secrets, then one run with `update_baseline` to create the first baseline.
+- **UNVERIFIED:** any run with real models, and the workflow on GitHub. The runner was driven end to end locally with the demo model only.
+- The two refusal scenarios are a contract that drains its users and sports betting (D4). A paid-entry game of chance is left out until the owner confirms where D63's line is.
