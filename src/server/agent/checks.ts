@@ -10,6 +10,7 @@ import { COLLECTION_NAME, DATA_PATH_PREFIX, DATA_RULES_PATH, parseDataRules, par
 import { MANIFEST_PATH, parseManifest, planManifest } from "@/lib/deploy/manifest";
 
 import { assetRefs } from "./assets";
+import { exploitTestIssues } from "./kits/dao-vault";
 import { KIT_MARKER, kitForPackage, kitsOf, type Kit } from "./kits/registry";
 import { ALLOWED_DEPENDENCIES, PLATFORM_DIR, WALLET_DIR, dependenciesOf, isStarterApp } from "./template";
 
@@ -577,7 +578,13 @@ export function checkApp(files: Record<string, string>, opts: { assets?: string[
   errors.push(...lucideIssues(files));
   errors.push(...dataIssues(files));
   errors.push(...walletIssues(files));
-  for (const kit of kitsOf(files)) errors.push(...(kit.checks?.(files) ?? []));
+  const kits = kitsOf(files);
+  for (const kit of kits) errors.push(...(kit.checks?.(files) ?? []));
+  // A contract that takes deposits and pays them out, or a DAO, needs its exploit tests even when the
+  // DAOs-and-vaults kit is off (D76): the kit is turned on by the request's words, the money is in the code.
+  if (!kits.some((k) => k.id === "dao-vault")) {
+    errors.push(...exploitTestIssues(files).map((i) => ({ ...i, message: `${i.message} Call add_kit("dao-vault") for how to write them.` })));
+  }
   return { ok: errors.length === 0, errors, warnings: [], contracts: [] };
 }
 

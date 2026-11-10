@@ -119,13 +119,18 @@ describe("the DAOs and vaults kit", { timeout: 180_000 }, () => {
     expect(exploitTestIssues(dao).map((i) => i.message).join()).toMatch(/testExploitDoubleVote[\s\S]*testExploitFlashVotes|testExploitFlashVotes[\s\S]*testExploitDoubleVote/);
   });
 
-  it("runs as part of the app check, only when the kit is on", () => {
+  it("runs as part of the app check, and still runs on a vault-shaped contract with the kit off", () => {
     const missing = { ...files(), "contracts/test/SavingsVault.t.sol": HEADER + "contract SavingsVaultTest { }\n", "src/App.tsx": "export default function App() { return <main>Vault</main>; }\n" };
     expect(checkApp(missing).errors.some((e) => e.source === "test")).toBe(true);
     const off = { ...missing };
     delete (off as Record<string, string>)["src/goodbuild.json"];
     expect(kitIdsOf(off)).toEqual([]);
-    expect(checkApp(off).errors.some((e) => e.source === "test")).toBe(false);
+    const offErrors = checkApp(off).errors.filter((e) => e.source === "test");
+    expect(offErrors.length).toBeGreaterThan(0);
+    expect(offErrors[0].message).toMatch(/add_kit\("dao-vault"\)/);
+    const tipJar = { ...off, "contracts/Tip.sol": "contract Tip { function tip() external payable {} }" };
+    delete (tipJar as Record<string, string>)["contracts/SavingsVault.sol"];
+    expect(checkApp(tipJar).errors.some((e) => e.source === "test")).toBe(false);
   });
 
   it("lets a real vault with real exploit tests through to mainnet", async () => {
@@ -141,7 +146,8 @@ describe("the DAOs and vaults kit", { timeout: 180_000 }, () => {
     expect(missing.join("\n")).toMatch(/testExploitDonationInflation/);
   });
 
-  it("doesn't touch projects without the kit", async () => {
-    expect(await exploitGate({ ...starterFiles(), "contracts/SavingsVault.sol": VAULT })).toEqual([]);
+  it("stops a vault without the kit too, and leaves contracts that hold no deposits alone", async () => {
+    expect((await exploitGate({ ...starterFiles(), "contracts/SavingsVault.sol": VAULT })).join("\n")).toMatch(/testExploit/);
+    expect(await exploitGate({ ...starterFiles(), "contracts/Tip.sol": "contract Tip { function tip() external payable {} }" })).toEqual([]);
   });
 });
