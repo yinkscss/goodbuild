@@ -5,8 +5,12 @@ import { and, asc, eq, isNull } from "drizzle-orm";
 import type { Db } from "@/server/db/client";
 import { projectAssets, type ProjectAsset } from "@/server/db/schema";
 import {
-  MAX_ASSET_BYTES,
   MAX_ASSETS_PER_PROJECT,
+  MAX_BYTES_BY_CATEGORY,
+  MAX_PROJECT_ASSET_BYTES,
+  categoryOf,
+  isImage,
+  kindFor,
   analyseImage,
   assetFileName,
   describePrompt,
@@ -130,9 +134,10 @@ export async function ingestAsset(args: {
 }): Promise<AssetInfo> {
   let bytes = args.bytes;
   if (bytes.length === 0) throw new AssetRejected("The file is empty.");
-  if (bytes.length > MAX_ASSET_BYTES) throw new AssetRejected(`Files can be up to ${MAX_ASSET_BYTES / 1_000_000} MB.`);
   const mime = sniffType(bytes);
-  if (!mime) throw new AssetRejected("Upload a PNG, JPEG, WebP or SVG image.");
+  if (!mime) throw new AssetRejected("Upload an image (PNG, JPEG, WebP or SVG), a sound (MP3, OGG or WAV), a font (WOFF2, WOFF, TTF or OTF) or a 3D model (GLB).");
+  const limit = MAX_BYTES_BY_CATEGORY[categoryOf(mime)];
+  if (bytes.length > limit) throw new AssetRejected(`That kind of file can be up to ${limit / 1_000_000} MB.`);
   if (mime === "image/svg+xml") {
     const clean = await sanitizeSvgDocument(new TextDecoder().decode(bytes));
     if (!clean.ok) throw new AssetRejected(clean.error);
@@ -140,6 +145,13 @@ export async function ingestAsset(args: {
   }
   const existing = await args.store.list(args.projectId);
   if (existing.length >= MAX_ASSETS_PER_PROJECT) throw new AssetRejected(`A project can hold up to ${MAX_ASSETS_PER_PROJECT} files. Delete one first.`);
+  if (existing.reduce((n, a) => n + a.size, 0) + bytes.length > MAX_PROJECT_ASSET_BYTES) {
+    throw new AssetRejected(`A project's files can add up to ${MAX_PROJECT_ASSET_BYTES / 1_000_000} MB. Delete one first.`);
+  }
+  const name = assetFileName(args.fileName, mime, existing.map((a) => a.name));
+  const kind = kindFor(mime, args.kind);
+  // Sounds, fonts and models are stored as they are: only an image is read, measured and described.
+  if (!isImage(mime)) return args.store.put(args.projectId, { name, kind, mime, bytes, size: bytes.length, width: null, height: null, palette: [], description: "" });
 
   let facts: Awaited<ReturnType<typeof analyseImage>>;
   try {
@@ -147,9 +159,8 @@ export async function ingestAsset(args: {
   } catch {
     throw new AssetRejected("That image couldn't be read. Try exporting it again as PNG.");
   }
-  const name = assetFileName(args.fileName, mime, existing.map((a) => a.name));
   const description = args.model ? await describeTwice(args, bytes, mime, name).catch((e) => (warnDescribe(name, e), "")) : "";
-  return args.store.put(args.projectId, { name, kind: args.kind, mime, bytes, size: bytes.length, ...facts, description });
+  return args.store.put(args.projectId, { name, kind, mime, bytes, size: bytes.length, ...facts, description });
 }
 
 /**
@@ -168,7 +179,7 @@ export async function reclassifyAsset(args: {
 }): Promise<AssetInfo | null> {
   const asset = await args.store.get(args.projectId, args.id);
   if (!asset) return null;
-  if (asset.kind === args.kind) return asset;
+  if (asset.kind === args.kind || !isImage(asset.mime)) return asset;
   const description = args.model
     ? await describeTwice({ ...args, kind: args.kind }, asset.bytes, asset.mime, asset.name).catch((e) => (warnDescribe(asset.name, e), asset.description))
     : asset.description;
@@ -197,7 +208,7 @@ async function describeImage(
   mime: AssetMime,
   name: string,
 ): Promise<string> {
-  if (!args.model) return "";
+  if (!args.model || !isImage(mime)) return "";
   const image = await visionImage(bytes, mime);
   // Outside any turn, so who funds it is decided now (D48).
   const funding = await decideDirectFunding(args.db, args.userId);

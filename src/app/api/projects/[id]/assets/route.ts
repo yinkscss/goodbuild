@@ -24,7 +24,7 @@ export async function GET(_request: Request, ctx: RouteContext<"/api/projects/[i
   }
 }
 
-/** Upload one image (multipart: file, kind). Type is sniffed from the bytes; SVGs are sanitised. */
+/** Upload one file (multipart: file, kind): an image, sound, font or 3D model. Type is sniffed from the bytes; SVGs are sanitised. */
 export async function POST(request: Request, ctx: RouteContext<"/api/projects/[id]/assets">) {
   try {
     const session = await requireSession();
@@ -35,13 +35,13 @@ export async function POST(request: Request, ctx: RouteContext<"/api/projects/[i
     if (!allowance.allowed) return NextResponse.json({ error: allowance.reason, message: allowance.message }, { status: 402 });
 
     const declared = Number(request.headers.get("content-length") ?? 0);
-    if (declared > MAX_ASSET_BYTES + 64_000) return NextResponse.json({ error: "too_large", message: `Files can be up to ${MAX_ASSET_BYTES / 1_000_000} MB.` }, { status: 413 });
+    if (declared > MAX_ASSET_BYTES + 64_000) return NextResponse.json({ error: "too_large", message: `That file is too large. Images can be up to 5 MB, sounds 10 MB, 3D models 15 MB and fonts 2 MB.` }, { status: 413 });
     const form = await request.formData().catch(() => null);
     const file = form?.get("file");
     if (!form || !(file instanceof File)) return NextResponse.json({ error: "invalid_body", message: "Attach a file." }, { status: 400 });
     const kindRaw = String(form.get("kind") ?? "image");
     const kind: AssetKind = (ASSET_KINDS as string[]).includes(kindRaw) ? (kindRaw as AssetKind) : "image";
-    if (file.size > MAX_ASSET_BYTES) return NextResponse.json({ error: "too_large", message: `Files can be up to ${MAX_ASSET_BYTES / 1_000_000} MB.` }, { status: 413 });
+    if (file.size > MAX_ASSET_BYTES) return NextResponse.json({ error: "too_large", message: `That file is too large. Images can be up to 5 MB, sounds 10 MB, 3D models 15 MB and fonts 2 MB.` }, { status: 413 });
 
     const asset = await ingestAsset({
       store: dbAssetStore(db),

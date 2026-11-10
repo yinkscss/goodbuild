@@ -29,7 +29,7 @@ const QUESTIONS = [
   },
   {
     q: "Can I build 3D apps?",
-    a: "Yes. Describe a 3D scene, a viewer for your art, a globe or a 3D game and GoodBuild builds it to run on a phone, with drag to look around and pinch to zoom. For now the shapes and textures are made in code. Uploading your own 3D models comes later.",
+    a: "Yes. Describe a 3D scene, a viewer for your art, a globe or a 3D game and GoodBuild builds it to run on a phone, with drag to look around and pinch to zoom. You can also upload your own 3D model (a .glb file), and upload sounds and fonts for any app.",
   },
   {
     q: "Can I build a DAO or a vault?",

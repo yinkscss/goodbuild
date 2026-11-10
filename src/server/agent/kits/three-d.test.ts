@@ -64,10 +64,13 @@ describe("the 3D kit", { timeout: 180_000 }, () => {
     expect(types.issues).toEqual([]);
   });
 
-  it("refuses its own renderer, outside model files and react-three-fiber", () => {
+  it("refuses its own renderer, other loaders, web addresses and react-three-fiber", () => {
     const messages = (body: string) => threeDChecks(project(PAGE + body)).map((i) => i.message).join("\n");
     expect(messages("\nconst r = new THREE.WebGLRenderer();\n")).toMatch(/Scene3D/);
-    expect(messages("\nconst l = new THREE.TextureLoader();\n")).toMatch(/CanvasTexture/);
+    expect(messages("\nconst l = new FBXLoader();\n")).toMatch(/GLTFLoader/);
+    expect(messages('\nnew GLTFLoader().load("https://example.com/m.glb", () => {});\n')).toMatch(/web address/);
+    // An uploaded model through GLTFLoader is the supported path.
+    expect(messages('\nnew GLTFLoader().load("/assets/robot.glb", () => {});\nnew THREE.TextureLoader();\n')).toBe("");
     expect(threeDChecks(project())).toEqual([]);
   });
 
