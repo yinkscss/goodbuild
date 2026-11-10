@@ -767,3 +767,11 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - **UNVERIFIED:** a build inside the real MiniPay app (needs a phone and the test page), whether MiniPay accepts the CIP-64 fee-currency transaction type (docs name only legacy; the kit sends `legacy` with `feeCurrency`, as the agent-skills doc shows), and acceptance by MiniPay's listing review.
 - **Front end:** a "Can my app work inside MiniPay?" FAQ entry.
 
+### D75. Dashboards kit: charts with no charting package
+- Date: 10 Nov 2026 · Proposed and built by: Claude · Approved by: the user (phase 4 of the harness plan: "dashboards").
+- **`dashboard` kit** (`kits/dashboard.ts`): `src/dash/Charts.tsx` (Stat, LineChart, BarChart, ShareBars, DataTable as plain SVG and Tailwind) and `src/dash/live.ts` (`useLive` refresh, `perDay`, `compact`). A guide for reading real data (contract reads, event logs in 5,000-block chunks, saved data), phone-first layout and calm per-block failure.
+- **No charting library.** Claude's call, against recharts: a library is hundreds of kilobytes and a dashboard here needs lines, bars, shares and a table. Small components keep it light for phones (and MiniPay), pass both previews and need no change to the publish runtime. If a dashboard needs zoom or tooltips later, a heavier kit can be added.
+- **Real numbers only.** The guide forbids hard-coded figures and asks for "Nothing to show yet." when there is no data, which is also what the preview shows (no chain there).
+- **Also:** a Dashboard project kind and tile, a "Can I build a dashboard?" FAQ entry.
+- **UNVERIFIED:** a dashboard built by a real model on a live contract. Leaderboards are not a trigger word on their own so games keep a game-only build.
+

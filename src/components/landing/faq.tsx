@@ -28,6 +28,10 @@ const QUESTIONS = [
     a: "Yes. Describe the game and GoodBuild builds it to play on a phone or a computer, with sound, a best score and a leaderboard if you want one. Games can charge a G$ entry and pay prizes when the winner is decided by play.",
   },
   {
+    q: "Can I build a dashboard?",
+    a: "Yes. Describe the numbers you want to see and GoodBuild builds a page with stat cards, charts and tables that read from your contract on Celo or from your app's saved data, and update while the page is open. It works well on a phone.",
+  },
+  {
     q: "Can my app work inside MiniPay?",
     a: "Yes. MiniPay is Opera's phone wallet for dollar coins (USDT, USDC and USDm). It has no sign-up: it connects the person's wallet on its own, so there is no login to build. Say you want it for MiniPay and GoodBuild builds a phone-sized app that takes payments in dollars, with plain wording and the footer MiniPay asks for. Once it is published, you can submit it to MiniPay's app list.",
   },
