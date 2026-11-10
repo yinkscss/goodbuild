@@ -399,6 +399,16 @@ let previewEmail: string | null = null;
 const previewSubject = () => previewWallet ?? (previewEmail ? PREVIEW_EMAIL_ID : null);
 const emailOffered = () => (rules as { signIn?: { email?: unknown } }).signIn?.email === true;
 
+/** A key for a new record in the preview. crypto.randomUUID only exists on https and localhost pages, so plain http previews make one from random bytes. */
+function newRecordKey(): string {
+  if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  const b = crypto.getRandomValues(new Uint8Array(16));
+  b[6] = (b[6] & 0x0f) | 0x40;
+  b[8] = (b[8] & 0x3f) | 0x80;
+  const h = Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
+  return h.slice(0, 8) + "-" + h.slice(8, 12) + "-" + h.slice(12, 16) + "-" + h.slice(16, 20) + "-" + h.slice(20);
+}
+
 /** The default note never replaces a more specific one, such as the email sign-in note. */
 function showPreviewNote(special?: string) {
   const text = special ?? "Preview: saved data stays in this browser. It's stored for real once you publish.";
@@ -621,7 +631,7 @@ export function collection<T = unknown>(name: string) {
     },
     /** Save a new record with a generated key. Works without sign-in where the rule says "create": "anyone". */
     async add(value: T): Promise<DbRecord<T>> {
-      if (isPreview) return previewPut(name, crypto.randomUUID(), value);
+      if (isPreview) return previewPut(name, newRecordKey(), value);
       return api<DbRecord<T>>(path, { method: "POST", body: JSON.stringify({ value }) });
     },
     /** Delete your own record. The app's owner can pass owner to delete someone else's, where the rule allows it. */
