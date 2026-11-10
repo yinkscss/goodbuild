@@ -4,7 +4,7 @@ import { parseSiweMessage } from "viem/siwe";
 
 import { randomUUID } from "node:crypto";
 
-import { COLLECTION_NAME, DATA_CLIENT_HEADER, RECORD_KEY, normalizeEmail, ruleFor, type CollectionRule } from "@/lib/app-data";
+import { COLLECTION_NAME, DATA_CLIENT_HEADER, MAX_WHERE, RECORD_KEY, normalizeEmail, parseClause, ruleFor, type CollectionRule, type RecordQuery } from "@/lib/app-data";
 import { APP_SESSION_COOKIE } from "@/lib/auth/cookie-names";
 import { classifyHost, publishedAppUrl, publishedAppsDomain } from "@/lib/published-host";
 import { isProduction } from "@/server/auth/config";
@@ -161,6 +161,24 @@ function pageParams(url: URL): { limit: number; cursor?: number } {
   if (limit < 1 || limit > 100) fail("invalid_limit", 400, "limit must be a number from 1 to 100.");
   if (rawCursor !== null && !/^[0-9]{1,15}$/.test(rawCursor)) fail("invalid_cursor", 400, "That cursor isn't valid.");
   return { limit, cursor: rawCursor === null ? undefined : Number(rawCursor) };
+}
+
+/** where=field~op~value (up to four), order=field, dir=asc|desc, since=<ms>: the list's query (D78). */
+function queryParams(url: URL): RecordQuery | undefined {
+  const rawWhere = url.searchParams.getAll("where");
+  const order = url.searchParams.get("order");
+  const dir = url.searchParams.get("dir");
+  const since = url.searchParams.get("since");
+  if (!rawWhere.length && order === null && dir === null && since === null) return undefined;
+  if (rawWhere.length > MAX_WHERE) fail("invalid_query", 400, `Use at most ${MAX_WHERE} where filters.`);
+  const where = rawWhere.map((w) => {
+    const c = parseClause(w);
+    return typeof c === "string" ? fail("invalid_query", 400, c) : c;
+  });
+  if (order !== null && !/^[A-Za-z][A-Za-z0-9_]{0,47}$/.test(order)) fail("invalid_query", 400, "order must be a field name, or createdAt or updatedAt.");
+  if (dir !== null && dir !== "asc" && dir !== "desc") fail("invalid_query", 400, "dir must be asc or desc.");
+  if (since !== null && !/^[0-9]{1,15}$/.test(since)) fail("invalid_query", 400, "since must be a time in milliseconds.");
+  return { where, ...(order !== null ? { order: { field: order, dir: (dir ?? "desc") as "asc" | "desc" } } : {}), ...(since !== null ? { since: Number(since) } : {}) };
 }
 
 interface Context {
@@ -375,7 +393,13 @@ async function collectionRoute(ctx: Context, method: string, collection: string)
   const viewer = await viewerOf(ctx);
   if (!viewer && !openToVisitors(ruleFor(ctx.app.rules, collection))) fail("unauthenticated", 401, "Connect your wallet and sign in first.");
   const owner = ownerParam(ctx.url);
-  return json(await listRecords(ctx.db, ctx.app, collection, viewer, { owner, ...pageParams(ctx.url) }));
+  const query = queryParams(ctx.url);
+  const page = pageParams(ctx.url);
+  if (query) {
+    if (page.cursor !== undefined) fail("invalid_cursor", 400, "A list with filters, an order or since can't be paged with a cursor. Raise limit or narrow the filters.");
+    limit(ctx, `q:ip:${ctx.ip}`, ctx.limits.queriesPerIpPerMinute);
+  }
+  return json(await listRecords(ctx.db, ctx.app, collection, viewer, { owner, ...page, query }));
 }
 
 async function recordRoute(ctx: Context, method: string, collection: string, key: string): Promise<Response> {

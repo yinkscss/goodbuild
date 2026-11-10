@@ -16,6 +16,8 @@ export const DEFAULT_LIMITS = {
   maxTotalBytes: 1024 * MIB,
   maxSignInBodyBytes: 16 * KIB,
   readsPerIpPerMinute: 300,
+  /** Lists with filters, an order or since (D78): each reads up to 500 records, and a live app polls them. */
+  queriesPerIpPerMinute: 120,
   writesPerIpPerMinute: 120,
   writesPerWalletPerMinute: 60,
   /** Writes without sign-in (D34): per IP, and for the whole app. */

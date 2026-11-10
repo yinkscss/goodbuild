@@ -4,7 +4,7 @@ import { randomBytes, randomUUID, createHash } from "node:crypto";
 
 import { and, desc, eq, gt, isNull, lt, or, sql } from "drizzle-orm";
 
-import { grantOf, ruleFor, type CollectionRule, type DataRole, type RecordGrant } from "@/lib/app-data";
+import { QUERY_SCAN_LIMIT, applyQuery, grantOf, isQuery, ruleFor, type CollectionRule, type DataRole, type RecordGrant, type RecordQuery } from "@/lib/app-data";
 import type { Db } from "@/server/db/client";
 import { appDataEmailCodes, appDataEmailIdentities, appDataNonces, appDataRecords, appDataSessions, appDataUsage } from "@/server/db/app-data-schema";
 import { publications } from "@/server/db/publish-schema";
@@ -210,11 +210,12 @@ export async function listRecords(
   app: LiveApp,
   collection: string,
   viewer: Viewer | null,
-  options: { owner?: string; limit: number; cursor?: number },
-): Promise<{ records: PublicRecord[]; nextCursor: string | null }> {
+  options: { owner?: string; limit: number; cursor?: number; query?: RecordQuery },
+): Promise<{ records: PublicRecord[]; nextCursor: string | null; truncated?: boolean }> {
   const rule = ruleFor(app.rules, collection);
   const others = seesOthers(rule, viewer);
   if (!others && !viewer) return { records: [], nextCursor: null };
+  if (isQuery(options.query)) return queryRecords(db, app, collection, rule, viewer, others, { ...options, query: options.query });
   const rows = await db
     .select()
     .from(appDataRecords)
@@ -234,6 +235,41 @@ export async function listRecords(
     // Filtering by writer only ever matches records shown in full, which already name their writer.
     .filter((r): r is PublicRecord => r !== null && (!options.owner || r.owner === options.owner));
   return { records, nextCursor: rows.length > options.limit ? String(page[page.length - 1].id) : null };
+}
+
+/**
+ * A list with filters, an order, or "changed since" (D78). The same rows, shown the same way, as a
+ * plain list: each record is turned into what this viewer may see first, and only then compared,
+ * so a filter can never reveal a field the viewer can't read. It reads the newest QUERY_SCAN_LIMIT
+ * records and says so when there were more.
+ */
+async function queryRecords(
+  db: Db,
+  app: LiveApp,
+  collection: string,
+  rule: CollectionRule,
+  viewer: Viewer | null,
+  others: boolean,
+  options: { owner?: string; limit: number; query: RecordQuery },
+): Promise<{ records: PublicRecord[]; nextCursor: null; truncated: boolean }> {
+  const { query } = options;
+  const rows = await db
+    .select()
+    .from(appDataRecords)
+    .where(
+      and(
+        eq(appDataRecords.projectId, app.projectId),
+        eq(appDataRecords.collection, collection),
+        others ? undefined : eq(appDataRecords.ownerWallet, viewer!.subject),
+        query.since !== undefined ? gt(appDataRecords.updatedAt, new Date(query.since)) : undefined,
+      ),
+    )
+    .orderBy(desc(appDataRecords.id))
+    .limit(QUERY_SCAN_LIMIT + 1);
+  const scanned = rows.slice(0, QUERY_SCAN_LIMIT);
+  const shown = scanned.map((row) => present(row, rule, viewer)).filter((r): r is PublicRecord => r !== null && (!options.owner || r.owner === options.owner));
+  const matched = applyQuery(shown, query);
+  return { records: matched.slice(0, options.limit), nextCursor: null, truncated: rows.length > QUERY_SCAN_LIMIT || matched.length > options.limit };
 }
 
 /** May this viewer add a record here? Anonymous visitors only where the rule says anyone. */

@@ -88,6 +88,10 @@ export const GUIDES: Guide[] = [
   "private" equals {"read": ["writer"]}. "public-read" equals {"read": ["anyone"]}. Only list "anyone" in read for things people mean to publish (posts, comments, listings), never personal details.
   A rule takes effect when the app is published again. A record is never more visible than the rule it was saved under, so loosening a rule doesn't expose older records.
 - Each wallet has its own records. Two wallets using the same key get two separate records, so there's no shared record everyone edits, and no counter everyone increments: count by listing, or use a contract.
+- Queries. A list can be narrowed and sorted on the server, on the fields the visitor can see (a filter never compares a field they can't read, so a hidden field never matches):
+    const open = useCollection<Task>("tasks", { where: [["status", "eq", "open"], ["points", "gte", 10]], orderBy: "points", dir: "desc", limit: 20 });
+  Comparisons: eq, ne, gt, gte, lt, lte, on text, numbers and true or false, with the value the same type as the field. At most 4 conditions. orderBy is a field or "createdAt" or "updatedAt". A filtered list reads the newest 500 records of the collection and sets truncated when there were more, so a leaderboard over a big collection should keep one record per player (put("best", ...)) rather than add every game. A filtered list has no cursor.
+  To see what changed since a moment, collection("scores").list({ since: lastUpdatedAt }) returns records saved or changed after it, for a cheap refresh.
 - Reading and writing:
     const session = useDbSession();
     const notes = useCollection<Note>("notes", { enabled: session.signedIn, wallet: session.wallet ?? session.email });
@@ -187,6 +191,19 @@ export const GUIDES: Guide[] = [
 - Native CELO (tips, payments, escrow, payable functions): the test contract itself starts with 1,000 CELO, and every actor can hold CELO. Hand some over with fund(alice, 1 ether); send it with a call as that actor with alice.execValue(address(jar), abi.encodeCall(jar.tip, ("hi")), 0.1 ether); expect a failing paid call with expectRevertValue(alice, address(jar), abi.encodeCall(...), 0.1 ether, "msg"). A test that sends value straight from the test contract can call jar.tip{value: 0.1 ether}("hi") directly, but then msg.sender is the test contract. If the test contract is the owner and collects a withdrawal, declare receive() external payable {} in it. Don't write your own helper contracts to carry value: use fund and execValue.
 - No cheatcodes exist (no vm.prank, no warp). block.timestamp is a fixed realistic time, so use block.timestamp + 600 for a live deadline and block.timestamp - 1 for an expired one.
 - Work out expected amounts with the same formula as the contract in the test (e.g. compute getAmountOut first, then assert the balance equals it) instead of hand-typed numbers.`,
+  },
+  {
+    name: "multiplayer",
+    when: "several people using the app at the same time: a game room or lobby, turn-based play between people, live chat, a shared board or leaderboard that updates, or anything that must feel live",
+    body: `Apps where people see each other's changes. GoodBuild has no live connection (no websockets), so these apps ask for the latest every few seconds. That suits turn-based games, lobbies, chats, polls and leaderboards. It doesn't suit fast action games where players must see each other move within a fraction of a second: don't promise that, and say so plainly if asked.
+- Keep it live with useCollection(name, { liveEvery: 3000 }): it fetches again every 3 seconds (never less than 2) while the page is showing. Use where and orderBy to read only what this screen needs (see the app-data guide), for example the moves of one room: useCollection("moves", { where: [["room", "eq", roomId]], orderBy: "n", dir: "asc", liveEvery: 3000 }).
+- Each person writes only their own records. A shared state is the sum of everyone's records: a room is a record its creator saved (with public fields: room id, name, status), each player's join is their own record with the room id, and each move is its own record with the room id and a number. Everyone derives the same state by reading all the records of the room in order, so nobody edits someone else's record and nothing needs a lock.
+- Whose turn it is, who joined and who won are worked out from the records, the same way on every screen: for example the next move number n decides the player by n % players. Two players may submit a move for the same turn; every screen must resolve it the same way (the lower number of n and then the earlier createdAt wins, the other is shown as "too late, try again").
+- Make the fields the room needs public in dataRules.json (room, n, player name, status) so other players can read them without seeing who wrote them, and keep anything personal out of them. Records are readable by everyone in the collection's read list: don't put secrets (a hidden card, a secret word) in a record other players can read.
+- Don't delete to end a game: add a record or set a status field, so late screens still see how it ended. The records of a finished room can stay.
+- Show the live parts calmly: keep the last good list on screen while a fetch is running, show "Updating" only if it takes more than a second, and when a fetch fails show "Reconnecting..." and keep trying. Never blank the board between refreshes.
+- Money (entry fees, prizes, pots) never lives in these records. It goes through a contract, with the organiser settling the result (see the games guide). A score or a winner stored here is a claim, not proof.
+- Be honest about size: about 50 people at a time is what the data store is sized for. A room of 2 to 8 players is the target.`,
   },
   {
     name: "cross-chain",

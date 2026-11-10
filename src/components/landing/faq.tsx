@@ -28,6 +28,10 @@ const QUESTIONS = [
     a: "Yes. Describe the game and GoodBuild builds it to play on a phone or a computer, with sound, a best score and a leaderboard if you want one. Games can charge a G$ entry and pay prizes when the winner is decided by play.",
   },
   {
+    q: "Can people play or chat together in my app?",
+    a: "Yes, for turn-based games, lobbies, chats and live leaderboards: the app checks for new moves every few seconds, so everyone sees the same thing. Fast action games where players must see each other move instantly aren't possible yet.",
+  },
+  {
     q: "Can I build 3D apps?",
     a: "Yes. Describe a 3D scene, a viewer for your art, a globe or a 3D game and GoodBuild builds it to run on a phone, with drag to look around and pinch to zoom. You can also upload your own 3D model (a .glb file), and upload sounds and fonts for any app.",
   },
