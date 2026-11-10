@@ -49,6 +49,7 @@ Review GoodBuild's web-builder agent harness, then build a five-phase roadmap: c
 - Live runs with real models (mostly DeepSeek; OpenRouter for the first run, partly blocked by credit): about 13 of 15 scenarios passed, with video. Files are in `docs/evals/live/runs/` (git-ignored, on the author's machine only).
 - Passed: runner game, puzzle game, bakery shop, bill splitter, two dashboards, DAO, vault, two 3D apps (one with an uploaded sound), multiplayer tic-tac-toe, guestbook, game edit, plus a full website flow (build, change, publish, play) for a mango game.
 - Failing: the entry-fee game (game plus prize pot plus MiniPay payments) runs out of builder steps. Splitting it into two builds is untried.
+- After the review fixes (10 Nov 2026, `--no-claude`, DeepSeek for both tiers): savings circle, crowdfund, escrow, bill splitter, vault and DAO all passed, $0.70 in all. The savings circle, crowdfund and escrow had no DAOs-and-vaults kit; D76's wider rule made each write its exploit tests (unauthorized call, reentrancy, donation inflation) and each still finished ready. The escrow first slipped past (it took money through `fundDeal`); fixed, then passed. The bill splitter holds no money, so it needed none.
 
 ## Please check
 1. Exploit gate (#74): it shows attacks are tried and turned away; it is not an audit (guide, FAQ and D76 say so).
