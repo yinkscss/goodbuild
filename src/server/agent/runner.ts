@@ -82,8 +82,13 @@ export const MAX_FIX_ATTEMPTS = 5;
 export const FIX_BUDGET_MICRO = 300_000;
 /** Stop after this many attempts in a row that didn't bring the error count below its best so far. */
 const MAX_STALLED_ATTEMPTS = 2;
-const MAX_CALLS = 30;
-const MAX_TOOL_ROUNDS_PER_PHASE = 16;
+/**
+ * Model calls in one build, and tool rounds in one pass. A game with a contract, its tests and a kit's files
+ * (live check, entry-fee game) used the old 30 and 16 before it could finish fixing a compile error. The fix budget
+ * above and the person's own allowance still bound the cost.
+ */
+const MAX_CALLS = 40;
+const MAX_TOOL_ROUNDS_PER_PHASE = 20;
 /** How often the builder may ask for the checks in one turn (the run_checks tool, D68). Each costs seconds of server time. */
 export const MAX_TOOL_CHECKS = 3;
 const MAX_TOKENS = 16_000;

@@ -214,7 +214,7 @@ describe("runTurn", { timeout: 120_000 }, () => {
     const noop = { name: "edit_file", args: { path: "src/App.tsx", edits: [{ search: "export default", replace: "export default" }] } };
     const { client, requests } = scriptedModel([
       { text: "I'll start by planning this out.", tools: [{ name: "set_plan", args: { summary: "Add a thank-you banner.", steps: ["Banner"] } }, { name: "create_file", args: { path: "src/App.tsx", content: PAGE } }] },
-      ...Array.from({ length: 15 }, () => ({ tools: [noop] })),
+      ...Array.from({ length: 19 }, () => ({ tools: [noop] })),
       { text: "Added a thank-you banner.\n\nWant it to show the tip amount?" },
     ]);
     const record = await runTurn({ db, model: client }, { projectId, userId, mode: "build", userMessageId: queuedId }, () => {});
