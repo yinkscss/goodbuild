@@ -45,6 +45,29 @@
   --animate-caret: gb-caret 1s steps(1) infinite;
   --animate-draw: gb-draw 2.4s var(--ease-gb) forwards;
   --animate-shimmer: gb-shimmer 1.8s ease-in-out infinite;
+  --animate-wave: gb-wave 1.1s ease-in-out infinite;
+  --animate-breath: gb-breath 2s ease-in-out infinite;
+  --animate-slide: gb-slide 1.6s var(--ease-gb) infinite;
+  --animate-lift: gb-lift 0.4s var(--ease-gb) both;
+
+  /* Wait dots: a quiet wave, one dot rising at a time. */
+  @keyframes gb-wave {
+    0%, 70%, 100% { transform: translateY(0); opacity: 0.4; }
+    35% { transform: translateY(-4px); opacity: 1; }
+  }
+  /* A held wait: lit tiles breathe slowly instead of faking progress. */
+  @keyframes gb-breath {
+    50% { opacity: 0.6; }
+  }
+  /* A new step row rises in with a short blur, so the log grows the way the work does. */
+  @keyframes gb-lift {
+    from { opacity: 0; transform: translateY(6px); filter: blur(3px); }
+    to { opacity: 1; transform: none; filter: none; }
+  }
+  @keyframes gb-slide {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(260%); }
+  }
 
   @keyframes gb-bob {
     50% { transform: translateY(-10px); }

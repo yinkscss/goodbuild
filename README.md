@@ -14,10 +14,11 @@ GoodBuild never holds your keys. Deploys and admin calls are signed in your wall
 - **Publish** an app to its own subdomain, with wallet connection built in.
 - **App data.** Published apps can save visitor data (forms, records) under rules the builder writes. Owners read it in the Backend window. See [APP_DATA.md](docs/APP_DATA.md).
 - **Settings.** An owner-scoped admin panel for your apps, deployed contracts, contract admin functions and app data (D62).
+- **Buy G$ or CELO.** From Add credits, a dialog shows the price and fees, then GoodCash's panel takes the ID and bank-transfer details. Off until GoodCash keys are set.
 - **Credits.** AI builds are paid with GoodBuild credits, bought with G$ against signed quotes. GoodDollar-verified wallets get a bonus. Every account starts with a small free allowance. See [CREDITS.md](docs/CREDITS.md) and D56 in [DECISIONS.md](docs/DECISIONS.md).
 
 ## Not done yet
-- **Buying G$ or CELO inside GoodBuild.** Waiting on our payment partner (GoodCash's public API only supports cash-out so far).
+- **Buy G$ or CELO with naira** through GoodCash is built (D63) but needs GoodCash keys and top-ups switched on before it shows. Not yet tried with real keys.
 - **Audit.** The credits contract and the generated-contract flow are unaudited.
 - **Backend and database for generated apps** beyond the app-data feature above.
 

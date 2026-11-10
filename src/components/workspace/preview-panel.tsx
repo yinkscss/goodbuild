@@ -14,6 +14,7 @@ import { contractAddressKey } from "@/lib/deploy/wiring";
 import { ExternalLink, Monitor, RotateCw, ShieldAlert, Smartphone } from "lucide-react";
 
 import { LogoMark } from "@/components/brand/logo";
+import { BrandTiles, useElapsed } from "@/components/ui/wait";
 import { chainLabel } from "@/lib/deploy/explorer";
 import { OVERRIDE_KEY, chooseEngine, failedKey, parseOverride, type EngineOverride, type PreviewEngine } from "@/lib/preview-engine";
 import { isInfraError, type PreviewError } from "@/lib/preview-errors";
@@ -285,6 +286,8 @@ export function PreviewPanel({
 export function PreviewCover({ rounded, onStuck }: { rounded: boolean; onStuck?: () => void }) {
   const [ready, setReady] = React.useState(false);
   const [slow, setSlow] = React.useState(false);
+  const [run, setRun] = React.useState(0);
+  const seconds = useElapsed(!ready, run);
   const stuck = React.useRef(onStuck);
   React.useEffect(() => {
     stuck.current = onStuck;
@@ -297,6 +300,7 @@ export function PreviewCover({ rounded, onStuck }: { rounded: boolean; onStuck?:
       window.clearTimeout(timer);
       window.clearTimeout(giveUp);
       setSlow(false);
+      setRun((n) => n + 1);
       timer = window.setTimeout(() => setSlow(true), 45_000);
       // CodeSandbox's bundler hasn't answered (down, or blocked on this network): the workspace
       // switches to GoodBuild's own build instead of leaving the person waiting (D69).
@@ -328,9 +332,14 @@ export function PreviewCover({ rounded, onStuck }: { rounded: boolean; onStuck?:
       className={cn("absolute inset-x-0 z-10 flex flex-col items-center justify-center gap-3 bg-surface p-8 text-center", rounded ? "inset-y-3 rounded-[24px]" : "inset-y-0 rounded-block")}
       role="status"
     >
-      <LogoMark className="size-10 animate-pulse opacity-80" />
-      <p className="max-w-xs text-sm text-grey-600">
-        {slow ? "The preview is slow to start. Use the refresh button above to try again." : "Starting the preview. The first load can take a few seconds."}
+      <BrandTiles lit={seconds >= 12 ? 4 : seconds >= 7 ? 3 : seconds >= 3 ? 2 : 1} hold={seconds >= 12} />
+      <p className="text-sm font-medium">{seconds >= 12 ? "Almost there" : seconds >= 7 ? "Starting it up" : seconds >= 3 ? "Loading your app" : "Getting ready"}</p>
+      <p className="max-w-xs text-xs text-grey-600">
+        {slow
+          ? "The preview is slow to start. Use the refresh button above to try again."
+          : seconds >= 15
+            ? "Taking a little longer than usual. If it doesn't start, we'll switch to a backup preview."
+            : "The first load can take a few seconds."}
       </p>
     </div>
   );

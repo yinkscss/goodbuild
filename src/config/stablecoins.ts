@@ -3,7 +3,7 @@ import type { Address } from "viem";
 import { CELO_MAINNET_ID, CELO_SEPOLIA_ID } from "./gooddollar";
 
 /**
- * The dollar stablecoins MiniPay holds (D73), on both Celo networks. Addresses are from Celo's fee
+ * The dollar stablecoins MiniPay holds (D74), on both Celo networks. Addresses are from Celo's fee
  * currency page (docs.celo.org/build/tools/contracts/fee-currencies) and each was read back from the
  * chain on 10 Nov 2026: a contract is there, with this symbol and these decimals. MiniPay's own
  * docs list different Celo Sepolia addresses; on that date none of them had a contract.
