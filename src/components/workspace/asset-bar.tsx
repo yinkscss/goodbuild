@@ -5,7 +5,6 @@ import { Box, Check, ChevronDown, ImageIcon, ImagePlus, Loader2, Music, Type, X 
 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { AssetInfo, AssetKind } from "@/server/agent/assets";
-import { isImage } from "@/server/agent/assets";
 
 export const KIND_LABEL: Record<AssetKind, string> = { logo: "Logo", image: "Image", reference: "Design reference", audio: "Sound", font: "Font", model: "3D model" };
 export const KIND_HELP: Record<AssetKind, string> = {
@@ -18,6 +17,8 @@ export const KIND_HELP: Record<AssetKind, string> = {
 };
 const KINDS: AssetKind[] = ["logo", "image", "reference"];
 export const ACCEPT = "image/png,image/jpeg,image/webp,image/svg+xml,audio/mpeg,audio/ogg,audio/wav,.mp3,.ogg,.wav,.woff2,.woff,.ttf,.otf,.glb";
+// Not imported from the server module, which pulls its image library into the browser bundle.
+const isImage = (mime: string) => mime.startsWith("image/");
 const EXTENSIONS = /\.(png|jpe?g|webp|svg|mp3|ogg|wav|woff2?|ttf|otf|glb)$/i;
 
 /** Files from a drop or paste that GoodBuild can use (others are ignored). Browsers don't know fonts or .glb, so the name counts. */
