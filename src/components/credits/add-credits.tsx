@@ -36,7 +36,7 @@ export function AddCredits({ className }: { className?: string }) {
         Add credits
       </Button>
       <Dialog open={open} onOpenChange={(v) => !busy && setOpen(v)}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:w-[440px]">
           <DialogTitle className="display text-xl font-bold">Add AI credits</DialogTitle>
           <DialogDescription className="mt-1 text-sm text-grey-600">
             Pay with G$. $1 of credit is $1 of AI builds, and you can add as little as ${min / UNITS}. Credits pay for AI, not for network fees, and they are not a token you can trade.
