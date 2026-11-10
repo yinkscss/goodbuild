@@ -57,7 +57,7 @@ function loadWidget(): Promise<void> {
 export function BuyDialog({ open, onOpenChange, defaultAsset = "g", onDelivered }: { open: boolean; onOpenChange: (open: boolean) => void; defaultAsset?: Asset; onDelivered?: () => void }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg gap-0">
+      <DialogContent className="gap-0 sm:w-[520px]">
         <BuyPanel defaultAsset={defaultAsset} onClose={() => onOpenChange(false)} onDelivered={onDelivered} />
       </DialogContent>
     </Dialog>
