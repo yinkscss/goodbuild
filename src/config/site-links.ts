@@ -13,6 +13,7 @@ export const NAV_LINKS: SiteLink[] = [
   { href: "/#how-it-works", label: "How it works" },
   { href: "/#safety", label: "Safety" },
   { href: "/#pricing", label: "Pricing" },
+  { href: "/blog", label: "Blog" },
   { href: "/docs", label: "Docs" },
 ];
 
@@ -31,6 +32,7 @@ export const FOOTER_COLUMNS: Array<{ title: string; links: SiteLink[] }> = [
     title: "Learn",
     links: [
       { href: "/docs", label: "Docs" },
+      { href: "/blog", label: "Blog" },
       { href: "/#safety", label: "Safety" },
       { href: "/#faq", label: "FAQ" },
       { href: "/terms", label: "Terms" },
