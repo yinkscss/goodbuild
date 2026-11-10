@@ -5,6 +5,7 @@ Builds real apps with real keys, then opens each one in a browser, plays it and 
 ```bash
 node node_modules/playwright-core/cli.js install chromium-headless-shell   # once
 node scripts/live-check.mjs                     # asks (hidden) for ANTHROPIC_API_KEY and DEEPSEEK_API_KEY if not saved
+node scripts/live-check.mjs --openrouter            # use your OpenRouter key for both models (test route only)
 node scripts/live-check.mjs --only game-runner,minipay-shop
 node scripts/live-check.mjs --each 2 --headed
 ```
