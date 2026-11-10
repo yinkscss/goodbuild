@@ -31,9 +31,9 @@ describe("AttachMenu", () => {
     const click = vi.spyOn(HTMLInputElement.prototype, "click").mockImplementation(() => undefined);
     const onUpload = vi.fn();
     render(<AttachMenu onUpload={onUpload} uploading={false} />);
-    await pick(screen.getByRole("button", { name: "Attach an image" }), label);
+    await pick(screen.getByRole("button", { name: "Attach a file" }), label);
     await waitFor(() => expect(click).toHaveBeenCalled());
-    const input = screen.getByLabelText("Choose an image file") as HTMLInputElement;
+    const input = screen.getByLabelText("Choose a file") as HTMLInputElement;
     expect(input.dataset.kind).toBe(kind);
     setFiles(input, [png()]);
     expect(onUpload).toHaveBeenCalledWith(expect.any(File), kind);
@@ -42,10 +42,26 @@ describe("AttachMenu", () => {
     click.mockRestore();
   });
 
-  it("ignores files that aren't images", () => {
+  it("takes a sound, a font and a 3D model by their names, since browsers don't know the last two", () => {
     const onUpload = vi.fn();
     render(<AttachMenu onUpload={onUpload} uploading={false} />);
-    setFiles(screen.getByLabelText("Choose an image file") as HTMLInputElement, [new File(["x"], "notes.pdf", { type: "application/pdf" })]);
+    const files = [new File(["x"], "jingle.mp3", { type: "audio/mpeg" }), new File(["x"], "brand.woff2", { type: "" }), new File(["x"], "robot.glb", { type: "" })];
+    setFiles(screen.getByLabelText("Choose a file") as HTMLInputElement, files);
+    expect(onUpload).toHaveBeenCalledTimes(3);
+  });
+
+  it("offers the sound, font or 3D model item", async () => {
+    const click = vi.spyOn(HTMLInputElement.prototype, "click").mockImplementation(() => undefined);
+    render(<AttachMenu onUpload={vi.fn()} uploading={false} />);
+    await pick(screen.getByRole("button", { name: "Attach a file" }), "Sound, font or 3D model");
+    await waitFor(() => expect(click).toHaveBeenCalled());
+    click.mockRestore();
+  });
+
+  it("ignores files that GoodBuild can't use", () => {
+    const onUpload = vi.fn();
+    render(<AttachMenu onUpload={onUpload} uploading={false} />);
+    setFiles(screen.getByLabelText("Choose a file") as HTMLInputElement, [new File(["x"], "notes.pdf", { type: "application/pdf" })]);
     expect(onUpload).not.toHaveBeenCalled();
   });
 });
@@ -57,6 +73,12 @@ describe("AssetBar", () => {
     render(<AssetBar assets={[asset]} assetUrls={{}} onRemove={vi.fn()} onChangeKind={onChangeKind} />);
     await pick(screen.getByRole("button", { name: /kola\.png is a image/i }), "Logo");
     expect(onChangeKind).toHaveBeenCalledWith("a1", "logo");
+  });
+  it("shows a sound as a labelled chip with no role menu", () => {
+    const sound: AssetInfo = { ...asset, id: "a2", name: "jingle.mp3", kind: "audio", mime: "audio/mpeg" };
+    render(<AssetBar assets={[sound]} assetUrls={{}} onRemove={vi.fn()} onChangeKind={vi.fn()} />);
+    expect(screen.getByText("Sound")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /jingle\.mp3 is a/i })).toBeNull();
   });
   it("removes an upload", async () => {
     const onRemove = vi.fn();

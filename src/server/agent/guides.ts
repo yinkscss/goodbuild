@@ -205,6 +205,7 @@ export const GUIDES: Guide[] = [
 - Favicon: in public/index.html <head>: <link rel="icon" href="/assets/logo.png" /> (use the logo's real name and type; type="image/svg+xml" for SVG).
 - Brand colours from the logo: the manifest lists its palette, most dominant first. Set --color-primary to the strongest saturated brand colour and --color-accent to the second (or a lighter tint of the first). Set --color-primary-foreground and --color-accent-foreground to #ffffff or #0b0b0b, whichever gives at least 4.5:1 contrast. Keep --color-background and --color-muted calm (white or a very light tint of the primary, e.g. 4% mix), not the logo's raw colours. Near-black or near-white palette entries are usually the outline or background: ignore them for primary.
 - A logo meant for dark backgrounds (the description says so) goes on a bg-primary or dark header band, or ask for a light version in your reply.
+- Other uploads (sounds, fonts, 3D models) appear in the same list with a note on how to use each. A sound is played with new Audio(assets.<key>.src) from a tap (phones block sound before one), a font goes through @font-face (see its note) and then into --font-display or --font-sans, a .glb model goes to the 3D kit's GLTFLoader.
 - Images: hero and showcase images in a rounded frame with object-cover and a fixed aspect; always alt text from the manifest description; loading="lazy" below the fold. Design references are NOT files to show: see match-reference.`,
   },
   {
