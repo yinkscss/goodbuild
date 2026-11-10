@@ -2,6 +2,7 @@
 
 import * as React from "react";
 
+import { BuyDialog } from "@/components/buy/buy-dialog";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { UNITS, estimateGdWei, formatGd, useBuyCredits, useCreditsInfo } from "./use-buy-credits";
@@ -16,9 +17,10 @@ const PRESET_DOLLARS = [1, 5, 10, 25];
  */
 export function AddCredits({ className }: { className?: string }) {
   const [open, setOpen] = React.useState(false);
-  const { info, pricing } = useCreditsInfo(open);
+  const { info, pricing, reload } = useCreditsInfo(open);
   const { phase, setPhase, buy, wallet } = useBuyCredits(info);
   const [dollars, setDollars] = React.useState("1");
+  const [buyAsset, setBuyAsset] = React.useState<"g" | "celo" | null>(null);
 
   const amountMicro = Math.round(Number(dollars) * UNITS);
   const min = pricing?.minMicro ?? 350_000;
@@ -73,10 +75,10 @@ export function AddCredits({ className }: { className?: string }) {
               {phase.name === "error" && (
                 <p role="alert" className="text-sm text-warning">
                   {phase.message}{" "}
-                  {phase.needsGd && (
-                    <a className="underline" href="https://www.gooddollar.org" target="_blank" rel="noopener noreferrer">
-                      Get G$
-                    </a>
+                  {(phase.needsGd || phase.needsCelo) && (
+                    <button type="button" className="font-semibold underline" onClick={() => setBuyAsset(phase.needsGd ? "g" : "celo")}>
+                      {phase.needsGd ? "Buy G$" : "Buy CELO"}
+                    </button>
                   )}
                 </p>
               )}
@@ -92,8 +94,15 @@ export function AddCredits({ className }: { className?: string }) {
               <p className="text-center text-xs text-grey-600">Price follows the live G$ market price, quoted for 10 minutes. Keep about 0.1 CELO in your wallet for the network fee.</p>
             </div>
           )}
+          <p className="mt-4 text-center text-sm text-grey-600">
+            Short on G$ or CELO?{" "}
+            <button type="button" className="font-semibold text-ink underline" onClick={() => setBuyAsset("g")}>
+              Buy with naira
+            </button>
+          </p>
         </DialogContent>
       </Dialog>
+      <BuyDialog open={buyAsset !== null} onOpenChange={(v) => !v && setBuyAsset(null)} defaultAsset={buyAsset ?? "g"} onDelivered={() => { reload(); setPhase({ name: "idle" }); }} />
     </>
   );
 }

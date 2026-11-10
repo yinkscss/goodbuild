@@ -4,6 +4,7 @@ import * as React from "react";
 import { AlertTriangle, Check, Copy, ExternalLink, Loader2, Wrench } from "lucide-react";
 
 import { useDeployAction } from "@/components/deploy/deploy-trigger";
+import { formatClock, useElapsed } from "@/components/ui/wait";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
@@ -46,6 +47,28 @@ function CopyLink({ url }: { url: string }) {
       {copied ? <Check /> : <Copy />}
       {copied ? "Copied" : "Copy link"}
     </Button>
+  );
+}
+
+/**
+ * The Publish button while it works (wait-state pick E1): a progress pill with the stage inside.
+ * Publishing is one request that reports no stages, so the words and the fill follow elapsed time,
+ * and the fill slows as it nears the end instead of promising a finish it cannot know.
+ */
+function PublishProgress() {
+  const seconds = useElapsed(true);
+  const fill = Math.round(92 * (1 - Math.exp(-seconds / 25)));
+  const stage = seconds < 6 ? "Packing your files" : seconds < 40 ? "Building your app" : "Putting it online";
+  return (
+    <div className="grid justify-items-end gap-1.5" role="status">
+      <span className="relative inline-flex min-w-[220px] items-center gap-2 overflow-hidden rounded-full bg-violet px-6 py-3 text-sm font-medium text-white">
+        <span className="absolute inset-y-0 left-0 bg-white/20 transition-[width] duration-700 ease-gb" style={{ width: `${fill}%` }} aria-hidden />
+        <Loader2 className="relative size-4 animate-spin motion-reduce:animate-none" aria-hidden />
+        <span className="relative">{stage}</span>
+        <span className="relative ml-auto font-mono text-[11px] text-white/70">{formatClock(seconds)}</span>
+      </span>
+      {seconds >= 30 && <span className="text-xs text-grey-600">Bigger apps take about a minute. Keep this window open.</span>}
+    </div>
   );
 }
 
@@ -283,17 +306,13 @@ function PublishBody({
               ) : (
                 <p className="text-xs text-grey-600">{projectBusy ? "Wait for the build to finish." : "You can update or unpublish it at any time."}</p>
               )}
-              <Button variant="primary" disabled={!canPublish} onClick={() => void run("publish")}>
-                {working === "publish" ? (
-                  <>
-                    <Loader2 className="animate-spin motion-reduce:animate-none" /> Building your app
-                  </>
-                ) : info.live ? (
-                  "Publish update"
-                ) : (
-                  "Publish"
-                )}
-              </Button>
+              {working === "publish" ? (
+                <PublishProgress />
+              ) : (
+                <Button variant="primary" disabled={!canPublish} onClick={() => void run("publish")}>
+                  {info.live ? "Publish update" : "Publish"}
+                </Button>
+              )}
             </div>
           </>
         )}

@@ -5,7 +5,7 @@ import type { CheckIssue } from "../checks";
 import type { Kit } from "./registry";
 
 /**
- * The MiniPay kit (D73): apps that work inside MiniPay, Opera's stablecoin wallet on phones.
+ * The MiniPay kit (D74): apps that work inside MiniPay, Opera's stablecoin wallet on phones.
  * MiniPay has no sign-in and no SDK. It puts a wallet in the page (`window.ethereum`, with
  * `isMiniPay` true) and connects on its own, which GoodBuild's wallet layer already handles. What
  * the kit adds is the rest of MiniPay's rules: stablecoin amounts and fees, no message signing,
