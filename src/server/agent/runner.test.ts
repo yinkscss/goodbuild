@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 
 import { createTestDb, type Db } from "@/server/db/client";
@@ -8,6 +8,7 @@ import { signInUser } from "@/server/auth/service";
 import { createProjectFromPrompt } from "@/server/projects";
 import { dbAssetStore, ingestAsset } from "./asset-store";
 import { scriptedModel } from "./fake-model";
+import { KITS, type Kit } from "./kits";
 import { runTurn, TurnBusyError, type TurnEvent } from "./runner";
 import { claimTurn, listVersions, loadFiles, revertTo } from "./store";
 import { fixTier, isRepeat, plainDashes } from "./runner";
@@ -646,5 +647,50 @@ describe("type check and the run_checks tool (D68)", { timeout: 120_000 }, () =>
     const plan = scriptedModel([{ tools: [{ name: "run_checks", args: {} }] }, { text: "Here is the plan." }]);
     await runTurn({ db, model: plan.client }, { projectId, userId, mode: "plan", userMessageId: queuedId }, () => {});
     expect(toolResult(plan.requests[1])).toContain("plan mode can't run the checks");
+  });
+});
+
+describe("kits in a turn (D71)", { timeout: 120_000 }, () => {
+  const demo: Kit = {
+    id: "demo-kit",
+    title: "Demo things",
+    when: "the request is for a demo thing",
+    keywords: /\bdemo thing\b/i,
+    packages: { "date-fns": "4.1.0" },
+    files: { "src/demo/useDemo.ts": "export const useDemo = () => 1;\n" },
+    guide: "Build demo things with useDemo.",
+  };
+  beforeEach(() => void KITS.push(demo));
+  afterEach(() => void KITS.splice(KITS.indexOf(demo), 1));
+  const APP = "export default function App() { return <main>Ready</main>; }\n";
+
+  it("turns on a kit the request asks for before the builder starts, hands it the guide, and saves it with the project", async () => {
+    await db.update(messages).set({ content: "Build me a demo thing for our club" }).where(eq(messages.id, queuedId));
+    const { client, requests } = scriptedModel([{ tools: [{ name: "create_file", args: { path: "src/App.tsx", content: APP } }] }, { text: "Built it." }]);
+    const { events, emit } = collect();
+    const record = await runTurn({ db, model: client }, { projectId, userId, mode: "build", userMessageId: queuedId }, emit);
+    expect(record.status).toBe("ready");
+    const context = String(requests[0].messages.at(-1)?.content);
+    expect(context).toContain("Kits on for this project: demo-kit (Demo things)");
+    expect(context).toContain("Build demo things with useDemo.");
+    expect(context).toContain("src/demo/useDemo.ts");
+    const files = await loadFiles(db, projectId);
+    expect(files["src/goodbuild.json"]).toContain("demo-kit");
+    expect(files["src/demo/useDemo.ts"]).toContain("useDemo");
+    expect(JSON.parse(files["package.json"]).dependencies["date-fns"]).toBe("4.1.0");
+    expect(events.some((e) => e.type === "log" && e.line === "kits: turned on demo-kit for this request")).toBe(true);
+  });
+
+  it("leaves a project alone when the request isn't for a kit, and lets the builder turn one on itself", async () => {
+    const { client, requests } = scriptedModel([
+      { tools: [{ name: "add_kit", args: { name: "demo-kit" } }, { name: "create_file", args: { path: "src/App.tsx", content: APP } }] },
+      { text: "Built it." },
+    ]);
+    const record = await runTurn({ db, model: client }, { projectId, userId, mode: "build", userMessageId: queuedId }, () => {});
+    expect(record.status).toBe("ready");
+    expect(String(requests[0].messages.at(-1)?.content)).not.toContain("Kits on for this project");
+    expect(String(requests[1].messages.find((m) => m.role === "tool")?.content)).toContain("Turned on the demo-kit kit");
+    expect(record.steps.some((s) => s.label === "Adding the demo-kit kit" && s.status === "done")).toBe(true);
+    expect((await loadFiles(db, projectId))["src/goodbuild.json"]).toContain("demo-kit");
   });
 });

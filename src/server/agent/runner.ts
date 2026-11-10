@@ -9,6 +9,7 @@ import { checkApp, checkContracts, formatIssues, mentionsGd, mentionsNativeCelo,
 import { runContractTests } from "./contract-tests";
 import { createHash } from "node:crypto";
 
+import { detectKits, kitGuideName, kitsOf, withKit, withKitHelpers } from "./kits";
 import { runCheck, runCheckEnabled } from "./run-check";
 import { typeCheck, typeCheckMode, type TypeCheckMode } from "./type-check";
 import { dbAssetStore, type AssetStore } from "./asset-store";
@@ -688,7 +689,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
 
     let files = await loadFiles(db, input.projectId);
     const firstBuild = Object.keys(files).length === 0;
-    files = firstBuild ? starterFiles(project.chainId) : withStarterHelpers(files, project.chainId);
+    files = withKitHelpers(firstBuild ? starterFiles(project.chainId) : withStarterHelpers(files, project.chainId));
     // Uploaded assets: the platform-owned module is refreshed before the workspace snapshot,
     // so a new upload alone doesn't count as an edit.
     const assetStore = deps.assets ?? dbAssetStore(db);
@@ -726,6 +727,20 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     const brief = planBrief(latestIntake(await db.select({ role: messages.role, meta: messages.meta }).from(messages).where(eq(messages.projectId, input.projectId)).orderBy(asc(messages.createdAt))), firstBuild);
     const chosenPalette = firstBuild ? paletteById(brief.paletteId) : undefined;
     if (chosenPalette && files["public/index.html"] !== undefined) files["public/index.html"] = applyPalette(files["public/index.html"], chosenPalette);
+
+    // Kits (D71): one the request clearly asks for is on before the builder starts, so its packages and
+    // starter files are there even if the builder forgets to ask. In place before the workspace
+    // snapshot, like an upload's module, so it doesn't count as an edit by itself.
+    const newKits = input.mode === "build" ? detectKits(`${request}\n${brief.answerWords}`, files) : [];
+    for (const kit of newKits) files = withKit(files, kit);
+    if (newKits.length) log(`kits: turned on ${newKits.map((k) => k.id).join(", ")} for this request`);
+    const kitsOn = kitsOf(files);
+    const kitsBlock = kitsOn.length
+      ? [
+          `Kits on for this project: ${kitsOn.map((k) => `${k.id} (${k.title})`).join(", ")}. Their packages are installed and their starter files are in the project. Follow each kit's guide (read_guide "${kitGuideName(kitsOn[0].id)}").`,
+          ...newKits.map((k) => `<guide name="${kitGuideName(k.id)}">\n${k.guide}\n</guide>`),
+        ].join("\n\n")
+      : "";
 
     const all = await conversation(db, input.projectId, [userMessageId, assistantId]);
     const history: ChatMessage[] = all.slice(-HISTORY_WINDOW).map((m) => ({ role: m.role, content: m.content.slice(0, 4000) }));
@@ -773,7 +788,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       assets: assetManifest(assets),
       memory: memoryBlock(memory),
       deployments: [upgradeable ? upgradeableRules(await liveStorage(db, project)) : "", deploymentsBlock(await loadDeployedAddresses(db, input.projectId), { upgradeable })].filter(Boolean).join("\n\n"),
-      plan: [brief.text, firstBuild ? templateBriefFor(project.templateId) : ""].filter(Boolean).join("\n\n"),
+      plan: [brief.text, firstBuild ? templateBriefFor(project.templateId) : "", kitsBlock].filter(Boolean).join("\n\n"),
       targetChain: project.chainId === 42220 ? "Celo Mainnet (42220)" : project.chainId === 11142220 ? "Celo Sepolia (11142220)" : `Unsupported chain ${project.chainId}`,
     });
     log(`context: ${ctx.picks.length} of ${Object.keys(files).length} files in full (${ctx.picks.map((p) => p.path.split("/").pop()).join(", ")})`);
@@ -1062,6 +1077,8 @@ function toolLabel(call: ToolCall): string | null {
       return `Renaming ${String(args.from ?? "").split("/").pop()}`;
     case "add_dependency":
       return `Adding ${String(args.name ?? "package")}`;
+    case "add_kit":
+      return `Adding the ${String(args.name ?? "")} kit`;
     default:
       return null; // set_plan, reads and listings aren't shown as steps
   }

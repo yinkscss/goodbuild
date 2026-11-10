@@ -16,10 +16,13 @@ import { chainSourceFor, CONNECT_BUTTON, USE_WALLET, walletHelpersFor, withCurre
 
 export { WALLET_DIR, WALLET_HELPERS, withCurrentWalletHelpers } from "./wallet-template";
 
+import { allKitPackages } from "./kits/registry";
+
 export const PLATFORM_DIR = "src/contracts/";
 
 /** npm packages the generated app may use. The agent can add only from this list. */
-export const ALLOWED_DEPENDENCIES: Record<string, string> = {
+/** The packages every project may use, whatever kits it has on. */
+export const BASE_ALLOWED_DEPENDENCIES: Record<string, string> = {
   react: "18.3.1",
   "react-dom": "18.3.1",
   viem: "2.57.16",
@@ -33,6 +36,13 @@ export const ALLOWED_DEPENDENCIES: Record<string, string> = {
   "canvas-confetti": "1.9.3",
   "qrcode.react": "4.2.0",
 };
+
+/**
+ * Every package a generated app can have: the base list plus what the kits bring (D71). This is what
+ * publishing bundles from and what publish-runtime installs. What one project may add is narrower:
+ * packagesFor() in kits/index.ts.
+ */
+export const ALLOWED_DEPENDENCIES: Record<string, string> = { ...BASE_ALLOWED_DEPENDENCIES, ...allKitPackages() };
 
 /**
  * Packages only GoodBuild's own code uses: the WalletConnect module publishing swaps into

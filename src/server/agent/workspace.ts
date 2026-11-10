@@ -2,7 +2,8 @@ import { MAX_FILES, MAX_FILE_BYTES, namingProblem, pathProblem } from "./checks"
 import { findSymbol, manifest, readRange, searchCode } from "./codebase";
 import { applyEdits, diffStat, unifiedDiff, type SearchReplace } from "./edits";
 import { loadGuides } from "./guides";
-import { ALLOWED_DEPENDENCIES, dependenciesOf, packageJson } from "./template";
+import { KITS, kitById, kitForPackage, kitIdsOf, kitsOf, packagesFor, withKit } from "./kits";
+import { dependenciesOf, packageJson } from "./template";
 
 import type { FileChange } from "@/lib/turn-types";
 
@@ -68,7 +69,7 @@ export class Workspace {
     } catch {
       return { ok: false, result: `Error: the arguments for ${name} weren't valid JSON. Call it again with valid JSON.` };
     }
-    const editing = ["create_file", "edit_file", "delete_file", "rename_file", "add_dependency"].includes(name);
+    const editing = ["create_file", "edit_file", "delete_file", "rename_file", "add_dependency", "add_kit"].includes(name);
     if (mode === "plan" && editing) return { ok: false, result: "Error: plan mode can't edit files." };
 
     switch (name) {
@@ -125,7 +126,7 @@ export class Workspace {
       case "create_file": {
         const path = String(args.path ?? "");
         const content = typeof args.content === "string" ? args.content : "";
-        const problem = pathProblem(path) ?? (path in this.files ? null : namingProblem(path)) ?? this.sizeProblem(path, content);
+        const problem = pathProblem(path, kitsOf(this.files)) ?? (path in this.files ? null : namingProblem(path)) ?? this.sizeProblem(path, content);
         if (problem) return { ok: false, result: `Error: ${problem}` };
         const prev = this.files[path];
         this.files[path] = content;
@@ -139,7 +140,7 @@ export class Workspace {
       }
       case "edit_file": {
         const path = String(args.path ?? "");
-        const problem = pathProblem(path);
+        const problem = pathProblem(path, kitsOf(this.files));
         if (problem) return { ok: false, result: `Error: ${problem}` };
         if (!(path in this.files)) return { ok: false, result: `Error: ${path} doesn't exist. Use create_file for new files.` };
         const edits = (Array.isArray(args.edits) ? args.edits : []) as SearchReplace[];
@@ -165,7 +166,7 @@ export class Workspace {
       }
       case "delete_file": {
         const path = String(args.path ?? "");
-        const problem = pathProblem(path);
+        const problem = pathProblem(path, kitsOf(this.files));
         if (problem) return { ok: false, result: `Error: ${problem}` };
         if (path === "src/App.tsx") return { ok: false, result: "Error: src/App.tsx is the entry and can't be deleted." };
         if (!(path in this.files)) return { ok: false, result: `Error: ${path} doesn't exist.` };
@@ -177,7 +178,7 @@ export class Workspace {
       case "rename_file": {
         const from = String(args.from ?? "");
         const to = String(args.to ?? "");
-        const problem = pathProblem(from) ?? pathProblem(to) ?? namingProblem(to);
+        const problem = pathProblem(from, kitsOf(this.files)) ?? pathProblem(to, kitsOf(this.files)) ?? namingProblem(to);
         if (problem) return { ok: false, result: `Error: ${problem}` };
         if (!(from in this.files)) return { ok: false, result: `Error: ${from} doesn't exist.` };
         if (to in this.files) return { ok: false, result: `Error: ${to} already exists.` };
@@ -188,8 +189,11 @@ export class Workspace {
       }
       case "add_dependency": {
         const dep = String(args.name ?? "");
-        if (!(dep in ALLOWED_DEPENDENCIES)) {
-          return { ok: false, result: `Error: "${dep}" isn't on the allowed list: ${Object.keys(ALLOWED_DEPENDENCIES).join(", ")}.` };
+        const allowed = packagesFor(this.files);
+        if (!(dep in allowed)) {
+          const kit = kitForPackage(dep);
+          if (kit) return { ok: false, result: `Error: "${dep}" comes with the ${kit.id} kit. Call add_kit("${kit.id}") to turn it on.` };
+          return { ok: false, result: `Error: "${dep}" isn't on the allowed list: ${Object.keys(allowed).join(", ")}.` };
         }
         const deps = dependenciesOf(this.files);
         if (deps.includes(dep)) return { ok: true, result: `${dep} is already installed.` };
@@ -198,8 +202,29 @@ export class Workspace {
         this.touched.add("package.json");
         return {
           ok: true,
-          result: `Added ${dep}@${ALLOWED_DEPENDENCIES[dep]}.`,
+          result: `Added ${dep}@${allowed[dep]}.`,
           change: { path: "package.json", op: "edit", ...diffStat(prev, this.files["package.json"]), diff: unifiedDiff("package.json", prev, this.files["package.json"]) },
+        };
+      }
+      case "add_kit": {
+        const id = String(args.name ?? "").trim();
+        const kit = kitById(id);
+        if (!kit) return { ok: false, result: KITS.length ? `Error: there is no kit "${id}". Kits: ${KITS.map((k) => k.id).join(", ")}.` : "Error: there are no kits to add." };
+        const guide = `<guide name="kit-${kit.id}">\n${kit.guide}\n</guide>`;
+        if (kitIdsOf(this.files).includes(kit.id)) return { ok: true, result: `The ${kit.id} kit is already on. Its guide:\n\n${guide}`, guides: [`kit-${kit.id}`] };
+        const before = this.files;
+        const after = withKit(before, kit);
+        const added = Object.keys(after).filter((p) => !(p in before));
+        for (const p of Object.keys(this.files)) delete this.files[p];
+        Object.assign(this.files, after);
+        for (const p of [...added, "package.json"]) this.touched.add(p);
+        const prev = before["package.json"] ?? "";
+        const packages = Object.keys(kit.packages);
+        return {
+          ok: true,
+          result: `Turned on the ${kit.id} kit.${packages.length ? ` Installed: ${packages.join(", ")}.` : ""}${added.filter((p) => p.startsWith("src/") && !p.endsWith("goodbuild.json")).length ? ` Starter files added: ${added.filter((p) => !p.endsWith("goodbuild.json")).join(", ")}.` : ""} Its guide:\n\n${guide}`,
+          guides: [`kit-${kit.id}`],
+          change: { path: "package.json", op: "edit", ...diffStat(prev, after["package.json"]), diff: unifiedDiff("package.json", prev, after["package.json"]) },
         };
       }
       default:
