@@ -107,6 +107,17 @@ export interface TurnRecord {
   error?: string;
   /** Screenshot review of the preview right after this build (P17 visual check). */
   visualCheck?: VisualCheck;
+  /** The builder's own look at the page on the server (D87). When it is here, the browser's visual check isn't run. */
+  review?: PageReview;
+}
+
+export interface PageReview {
+  /** Nothing needed fixing. */
+  ok: boolean;
+  /** What it saw, at most five. */
+  issues: string[];
+  /** The builder fixed them and the checks still pass. False: the page is as it was, and the person can ask. */
+  fixed: boolean;
 }
 
 export interface VisualCheck {

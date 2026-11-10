@@ -381,13 +381,17 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
       window.location.hash = "#/";
       // The motion kit (D84) hides a section until it is scrolled to: show the page in its final state.
       document.documentElement.setAttribute("data-fx", "off");
+      // GoodBuild's own badge isn't the app's to fix: close it, the way a visitor can.
+      const badge = document.getElementById("gb-bar-off") as HTMLInputElement | null;
+      if (badge) badge.checked = true;
     });
     screenshots = [];
     for (const size of [PHONE, DESKTOP]) {
       await page.setViewportSize(size);
       await settle(page, 250);
       const height = Math.min(await page.evaluate(() => document.documentElement.scrollHeight), MAX_SHOT_HEIGHT);
-      screenshots.push({ width: size.width, png: await page.screenshot({ type: "png", clip: { x: 0, y: 0, width: size.width, height: Math.max(height, size.height) } }) });
+      // fullPage, or the picture stops at the bottom of the window whatever the clip says.
+      screenshots.push({ width: size.width, png: await page.screenshot({ type: "png", fullPage: true, clip: { x: 0, y: 0, width: size.width, height: Math.max(height, size.height) } }) });
     }
   }
 

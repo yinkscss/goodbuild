@@ -174,6 +174,8 @@ describe("the motion kit", { timeout: 180_000 }, () => {
     const shot = await open(browser!, built);
     await shot.evaluate(() => document.documentElement.setAttribute("data-fx", "off"));
     expect(await opacityOf(shot, "#features .fx-reveal")).toBe(1);
+    // A number that hasn't been scrolled to yet shows its real value in the picture, not 0.
+    await shot.waitForFunction(() => document.getElementById("stat")?.innerText === "G$ 1,280", undefined, { timeout: 2_000 });
     expect(await shot.locator(".fx-marquee-track").first().evaluate((el) => getComputedStyle(el).animationName)).toBe("none");
     await shot.context().close();
 

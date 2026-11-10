@@ -12,8 +12,8 @@ import type { Kit } from "./registry";
  * The motion package measured 44 kB gzipped for one animated element (130 kB minified, 10 Nov 2026),
  * about as much again as a whole starter app, and the people these apps are for are on phones and
  * data plans. So these are original components in the same spirit: CSS transitions and keyframes, an
- * IntersectionObserver and pointer events. The whole kit, every piece used, measured 3.3 kB gzipped
- * (2.3 kB of script, 1.0 kB of styles). It needs nothing the in-browser preview lacks: its only
+ * IntersectionObserver and pointer events. The whole kit, every piece used, measured 3.5 kB gzipped
+ * (2.4 kB of script, 1.0 kB of styles). It needs nothing the in-browser preview lacks: its only
  * import beyond React is a stylesheet, the way the starter's main.tsx imports styles.css.
  *
  * Every piece stops moving under prefers-reduced-motion, and nothing stays hidden if the browser
@@ -266,6 +266,24 @@ export function useInView<T extends Element = HTMLDivElement>(options: { once?: 
   return { ref, inView };
 }
 
+/**
+ * True while GoodBuild is taking a picture of the page (it sets data-fx="off" on <html>). Pieces that
+ * animate in script, not CSS, use it to show their final state.
+ */
+export function useFxOff(): boolean {
+  const [off, setOff] = useState(false);
+  useEffect(() => {
+    const root = document.documentElement;
+    const read = () => setOff(root.getAttribute("data-fx") === "off");
+    read();
+    if (typeof MutationObserver === "undefined") return;
+    const watcher = new MutationObserver(read);
+    watcher.observe(root, { attributes: true, attributeFilter: ["data-fx"] });
+    return () => watcher.disconnect();
+  }, []);
+  return off;
+}
+
 export type RevealFrom = "up" | "down" | "left" | "right" | "scale" | "none";
 
 const FROM: Record<RevealFrom, string> = {
@@ -339,7 +357,7 @@ export function Stagger({
 
 const TEXT = `import { createElement, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import "./fx.css";
-import { prefersReducedMotion, useInView } from "./Reveal";
+import { prefersReducedMotion, useFxOff, useInView } from "./Reveal";
 
 type TextTag = "h1" | "h2" | "h3" | "p" | "span" | "div";
 
@@ -485,8 +503,10 @@ export function CountUp({
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [inView, to, seconds]);
-  const text = format ? format(value) : value.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+  const still = useFxOff();
   const final = format ? format(to) : to.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+  // In a picture of the page the number is the real one, not wherever the count had got to.
+  const text = still ? final : format ? format(value) : value.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
   return (
     <span ref={ref} className={className} style={{ fontVariantNumeric: "tabular-nums" }} aria-label={prefix + final + suffix}>
       <span aria-hidden="true">
@@ -622,10 +642,11 @@ import "./fx.css";
 /**
  * Soft blurred colour that drifts slowly behind a hero or a call-to-action band. Put it first inside
  * a section that has "relative overflow-hidden", and give the content after it "relative". colors are
- * up to three CSS colours; they default to the theme's accent and primary. strength is its opacity.
+ * up to three CSS colours; they default to the theme's accent and a softer tint of it (a near-black
+ * primary would only make a grey smudge). strength is its opacity.
  */
 export function Aurora({
-  colors = ["var(--color-accent, #7c3aed)", "var(--color-primary, #0f172a)", "var(--color-accent, #7c3aed)"],
+  colors = ["var(--color-accent, #7c3aed)", "color-mix(in srgb, var(--color-accent, #7c3aed) 45%, var(--color-background, #ffffff))", "var(--color-accent, #7c3aed)"],
   strength = 0.3,
   seconds = 18,
   className,
@@ -672,7 +693,7 @@ const GUIDE = `Motion and effects. The kit's files are in src/fx/: use them, don
 - Reveal.tsx: <Reveal from="up" delay={0.1}> fades its children in when they scroll onto the screen (from: up, down, left, right, scale, none; blur for a soft focus-in). <Stagger className="grid gap-4 sm:grid-cols-3"> reveals each child a moment after the last; it wraps every child, so the grid or flex classes go on Stagger itself. useInView() and prefersReducedMotion() are there for your own pieces.
 - Text.tsx: <SplitText text="..." as="h1" className="..."> brings a headline in word by word (by="letter" for a short one). <GradientText> fills a few words with a moving gradient. <RotatingText words={[...]}> swaps one word of a sentence. <CountUp to={1280} prefix="G$ " /> counts a number up when it is seen.
 - Surfaces.tsx: <SpotlightCard className="rounded-2xl border border-border bg-card p-6"> has a light that follows the pointer. <TiltCard> leans toward the pointer. <Magnetic> pulls the main button toward the pointer. <Marquee seconds={30}> scrolls a row sideways for ever.
-- Backgrounds.tsx: <Aurora /> is slow drifting colour, <GridPattern variant="dots" /> a faint grid that fades at the edges. Both go FIRST inside a section with "relative overflow-hidden", and the content after them needs "relative" so it sits on top.
+- Backgrounds.tsx: <Aurora /> is slow drifting colour in the theme's accent (pass colors={[...]} for others, and never a near-black or grey: it reads as a smudge), <GridPattern variant="dots" /> a faint grid that fades at the edges. Both go FIRST inside a section with "relative overflow-hidden", and the content after them needs "relative" so it sits on top.
 
 Motion is part of the design, not decoration on top of it. Choose it the way a designer would:
 - One hero moment per page: SplitText on the headline, OR Aurora or GridPattern behind it, with the supporting line and the button in a <Reveal delay>. Not all of them at once.

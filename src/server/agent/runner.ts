@@ -10,10 +10,11 @@ import { runContractTests } from "./contract-tests";
 import { createHash } from "node:crypto";
 
 import { detectKits, kitById, kitGuideName, kitsOf, withKit, withKitHelpers } from "./kits";
+import { parseReview, reviewEnabled, reviewFixMessage, reviewPrompt, REVIEW_MAX_TOKENS, worthReviewing } from "./review";
 import { runCheck, runCheckEnabled } from "./run-check";
 import { typeCheck, typeCheckMode, type TypeCheckMode } from "./type-check";
 import { dbAssetStore, type AssetStore } from "./asset-store";
-import { ASSETS_MODULE, assetManifest, assetsModule, visionImage } from "./assets";
+import { ASSETS_MODULE, assetManifest, assetsModule, reviewImage, visionImage } from "./assets";
 import { HISTORY_WINDOW, memoryBlock, updateMemory, type Memory, type MemoryMessage } from "./memory";
 import { MODEL_IDS, TIER_FOR, ModelUnavailableError, type ChatMessage, type ModelClient, type ModelEvent, type ModelTier, type ToolCall, type UserPart } from "./model";
 import { INTAKE_MAX_TOKENS, INTAKE_PROMPT, INTAKE_TOOLS, fallbackIntake, intakeContext, latestIntake, parseIntake, planBrief } from "./plan-intake";
@@ -54,6 +55,8 @@ export interface TurnDeps {
   typeCheck?: typeof typeCheck;
   /** "warn" notes type errors, "enforce" sends them to auto-fix. Default: TYPE_CHECK. */
   typeCheckMode?: TypeCheckMode;
+  /** The builder looks at screenshots of the finished page and fixes what it sees (D87). Default: VISUAL_REVIEW. Needs the run check. */
+  review?: boolean;
   /** Uploaded assets (default: the DB store). */
   assets?: AssetStore;
   /** The background job running this turn (P18). Without one the turn runs directly (tests). */
@@ -136,6 +139,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
   const openWith = deps.runCheck ?? (runCheckEnabled() ? runCheck : undefined);
   let chainId: number | undefined;
   const open = openWith ? (files: Record<string, string>) => openWith(files, { assets: assetNames, chainId }) : undefined;
+  const reviewOn = (deps.review ?? reviewEnabled()) && Boolean(openWith);
   const typesMode = deps.typeCheckMode ?? (deps.typeCheck ? "enforce" : typeCheckMode());
   const types = typesMode === "off" ? undefined : { run: deps.typeCheck ?? typeCheck, enforce: typesMode === "enforce" };
 
@@ -226,7 +230,11 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     // quiet: a fix pass. Its text goes to the model's history but not to the user, so the
     // first pass's reply (and its follow-up questions) stays the last thing they read; the
     // auto-fix steps already show what happened.
-    const callModel = async (tier: ModelTier, quiet = false, wrapUp = false) => {
+    // side: a question of its own (the review's screenshots), not part of the build's conversation. It is
+    // saved and replayed like any other call, so a resumed build doesn't ask or pay for it twice.
+    let sideReply = "";
+    const callModel = async (tier: ModelTier, quiet = false, wrapUp = false, side?: { messages: ChatMessage[]; maxTokens: number }) => {
+      if (side) quiet = true;
       stopIfRequested();
       if (++calls > MAX_CALLS) throw new Error("This build used too many steps. Try a smaller change.");
       const idx = callIdx++;
@@ -279,7 +287,8 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
         // nothing from the failed attempt has been executed, so drop its partial text and calls.
         for (let attempt = 0; ; attempt++) {
           try {
-            for await (const ev of model.stream({ tier, messages: convo, tools, maxTokens: intake ? INTAKE_MAX_TOKENS : MAX_TOKENS, signal: job.signal, ...(intake ? { noThinking: true } : {}) })) {
+            const ask = side ? { tier, messages: side.messages, maxTokens: side.maxTokens } : { tier, messages: convo, tools, maxTokens: intake ? INTAKE_MAX_TOKENS : MAX_TOKENS, ...(intake ? { noThinking: true } : {}) };
+            for await (const ev of model.stream({ ...ask, signal: job.signal })) {
               if (ev.type === "text") {
                 deltas.push(ev.delta);
                 onText(ev.delta);
@@ -334,6 +343,11 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
           return rows;
         });
         for (const u of priced) addUsage(u);
+      }
+      if (side) {
+        // Its answer goes to whoever asked, never into the build's conversation.
+        sideReply = replyText;
+        return toolCalls;
       }
       // A reply that repeats one already shown in this turn (models often restate the
       // summary after a fix) is dropped from what the user sees, live and saved.
@@ -461,7 +475,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       return `${report.ok ? "Nothing blocks the build, but these are worth fixing" : "The checks found problems"}. Fix them with edit_file (read a file before editing it), then run_checks again if you changed more than a line or two:\n${formatIssues(found)}`;
     };
     /** The checks on the files as they are, or the builder's own last check if nothing changed since. */
-    const checkNow = async (attempt: number): Promise<CheckReport> => {
+    const checkNow = async (attempt: number | string): Promise<CheckReport> => {
       if (checked && checked.key === filesKey(ws.files)) {
         log("· checks: nothing changed since the builder's last check, using that result");
         return checked.report;
@@ -587,6 +601,58 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
         stoppedEarly = true;
         stopNote = "two attempts in a row made no progress";
         break;
+      }
+    }
+    // The review (D87): the checks pass, so look at the page. Screenshots on a phone and a computer go
+    // to the strong model, what it lists goes to the build model for one pass, and the result is kept
+    // only if the checks still pass. It never leaves the build worse than it found it.
+    if (reviewOn && openWith && report.ok && worthReviewing(firstBuild, ws.netChanges()) && record.chargedMicro - fixStartMicro < FIX_BUDGET_MICRO && !atFreeCeiling()) {
+      stopIfRequested();
+      keepTheme();
+      step({ id: "review", label: "Looking at the page", status: "running" });
+      // A resumed build that already asked has the answer saved: no need for the pictures again.
+      const answered = replayLog[callIdx] !== undefined;
+      const shots = answered ? [] : await screenshots(openWith, ws.files, report, { assets: assetNames, chainId });
+      if (!answered && shots.length < 2) {
+        log("· review: skipped, no screenshots of the page");
+        step({ id: "review", label: "Looking at the page", detail: "skipped", status: "done" });
+      } else {
+        const direction = record.plan?.summary;
+        await callModel(TIER_FOR.review, true, false, { messages: [{ role: "user", content: [{ type: "text", text: reviewPrompt({ request: setup.request, direction }) }, ...shots] }], maxTokens: REVIEW_MAX_TOKENS });
+        const verdict = parseReview(sideReply);
+        if (!verdict) {
+          log(`· review: the reply couldn't be used (${sideReply.length} chars), nothing changed`);
+          step({ id: "review", label: "Looking at the page", detail: "couldn't tell", status: "done" });
+        } else if (verdict.ok) {
+          record.review = { ok: true, issues: [], fixed: false };
+          log("✓ review: the page looks right on a phone and a computer");
+          step({ id: "review", label: "Looking at the page", detail: "looks right on a phone and a computer", status: "done" });
+        } else {
+          for (const i of verdict.issues) log(`! review: ${i}`);
+          step({ id: "review", label: "Looking at the page", detail: `${plural(verdict.issues.length, "thing")} to fix: ${verdict.issues[0].slice(0, 110)}`, status: "done" });
+          step({ id: "review:fix", label: "Fixing what it saw", status: "running" });
+          const before = { ...ws.files };
+          const beforeKey = filesKey(before);
+          convo.push({ role: "user", content: reviewFixMessage(verdict.issues) });
+          await phase(TIER_FOR.build, true);
+          keepTheme();
+          const untouched = filesKey(ws.files) === beforeKey;
+          const after = untouched ? report : await checkNow("review");
+          if (!untouched && after.ok) {
+            report = after;
+            record.review = { ok: false, issues: verdict.issues, fixed: true };
+            log(`✓ review: fixed ${plural(verdict.issues.length, "thing")}, and the checks still pass`);
+            step({ id: "review:fix", label: "Fixing what it saw", detail: `${plural(verdict.issues.length, "thing")} fixed`, status: "done" });
+          } else {
+            // A fix that breaks a check isn't worth a second round of fixing: the page goes back to how it was.
+            for (const path of Object.keys(ws.files)) delete ws.files[path];
+            Object.assign(ws.files, before);
+            checked = undefined;
+            record.review = { ok: false, issues: verdict.issues, fixed: false };
+            log(untouched ? "· review: the builder changed nothing" : "! review: the fixes broke a check, so the page was left as it was");
+            step({ id: "review:fix", label: "Fixing what it saw", detail: untouched ? "nothing was changed" : "left as it was: the fixes broke a check", status: "done" });
+          }
+        }
       }
     }
     keepTheme();
@@ -1000,9 +1066,7 @@ async function runChecks(
     stopIfRequested();
     // The app imports its contracts' ABIs from platform modules that are written at the end of the
     // turn. The checks get them now, with no addresses, as the app is before anything is deployed.
-    const withContracts = { ...files };
-    for (const c of contracts.contracts) withContracts[`${PLATFORM_DIR}${c.name}.ts`] = contractModule(c.name, c.abi, {});
-    if (contracts.contracts.length) withContracts[`${PLATFORM_DIR}index.ts`] = contractsIndex(contracts.contracts.map((c) => c.name));
+    const withContracts = withContractModules(files, contracts.contracts);
     if (types) step({ id: `types${suffix}`, label: "Checking types", status: "running" });
     if (open) step({ id: `run${suffix}`, label: "Opening the app", status: "running" });
     const [typeResult, runResult] = await Promise.all([types?.run(withContracts), open?.(withContracts)]);
@@ -1039,6 +1103,23 @@ async function runChecks(
     // Type errors in "warn" mode: shown to the builder when it asks, never held against the build.
     ...(typed.length && !types?.enforce ? { notes: typed } : {}),
   };
+}
+
+/** The app as the checks see it: with its contracts' ABI modules, which are otherwise written at the end of the turn. */
+function withContractModules(files: Record<string, string>, contracts: CheckReport["contracts"]): Record<string, string> {
+  const out = { ...files };
+  for (const c of contracts) out[`${PLATFORM_DIR}${c.name}.ts`] = contractModule(c.name, c.abi, {});
+  if (contracts.length) out[`${PLATFORM_DIR}index.ts`] = contractsIndex(contracts.map((c) => c.name));
+  return out;
+}
+
+/** The finished page at phone and computer width, as images for the review (D87). Empty when the run check couldn't take them. */
+async function screenshots(open: typeof runCheck, files: Record<string, string>, report: CheckReport, options: { assets: string[]; chainId?: number }): Promise<UserPart[]> {
+  const result = await open(withContractModules(files, report.contracts), { ...options, screenshots: true });
+  if (!result.ran || result.issues.length || !result.screenshots?.length) return [];
+  const out: UserPart[] = [];
+  for (const shot of result.screenshots) out.push({ type: "image", ...(await reviewImage(shot.png, shot.width)) });
+  return out;
 }
 
 /** A fingerprint of the project's files, to tell whether anything changed between two checks. */

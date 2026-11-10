@@ -193,7 +193,7 @@ The harness plan listed "file uploads" as an app-data upgrade: a visitor of a pu
 
 
 ## Q42. Should the builder look at its own page, and should the strong model write first builds? (raised by the audit, 10 Nov 2026)
-- **The builder can't see what it built.** The visual check runs in the owner's browser, on the Sandpack preview only, and never edits. The run check already takes phone and desktop screenshots on the server and nothing reads them. Claude's input: one server-side call after the checks pass, to a model that reads images, returning concrete defects into the existing fix loop once, with a cost cap. Measure it with the evals before turning it on for everyone.
+- **The builder couldn't see what it built.** Answered by D87 (10 Nov 2026): the review is built and off by default. Still open: whether to turn it on, which the evals decide.
 - **D19 (DeepSeek builds, Claude fixes) was chosen on cost before quality was measured.** Design judgement is where the models differ most. Claude's input: three eval runs (today's routing, strong for the first build only, strong for every build) and decide on cost per good build.
 - **Both wait on the eval baseline**, which has never been run with real models. Details: [AUDIT_2026-11-10.md](AUDIT_2026-11-10.md) section 3.
 
