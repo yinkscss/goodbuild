@@ -3,7 +3,7 @@
 //
 //   node scripts/live-check.mjs                    asks for the two keys (hidden) if they aren't saved yet
 //   node scripts/live-check.mjs --only game-runner,minipay-shop
-//   node scripts/live-check.mjs --budget 25        most it may spend, in dollars (default 20)
+//   node scripts/live-check.mjs --each 2          most one app may spend, in dollars (default 1)
 //   node scripts/live-check.mjs --skip-build       reuse the last `pnpm build`
 //   node scripts/live-check.mjs --demo            test the runner itself with the scripted demo model (free)
 //   node scripts/live-check.mjs --headed           show the browser while it plays
@@ -19,7 +19,7 @@ const args = process.argv.slice(2);
 const flag = (n) => args.includes(`--${n}`);
 const option = (n, d) => (args.includes(`--${n}`) ? args[args.indexOf(`--${n}`) + 1] : d);
 const port = Number(option("port", "3100"));
-const budget = Number(option("budget", "20"));
+const each = Number(option("each", "1")); // most one app may spend, in dollars (each app is a fresh wallet)
 const only = option("only", "").split(",").filter(Boolean);
 const concurrency = Math.max(1, Number(option("concurrency", "2")));
 const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
@@ -38,6 +38,8 @@ function envFile() {
   if (existsSync(f)) for (const l of readFileSync(f, "utf8").split("\n")) { const m = l.match(/^([A-Z][A-Z0-9_]*)=(.*)$/); if (m) out[m[1]] = m[2].replace(/^["']|["']$/g, ""); }
   return out;
 }
+const scenarioCount = JSON.parse(readFileSync("docs/evals/live/scenarios.json", "utf8")).scenarios.filter((s) => !only.length || only.includes(s.id)).length;
+const budget = each * scenarioCount;
 const demo = flag("demo"); // plumbing test with the scripted demo model: no keys, no cost, always the same app
 for (const name of demo ? [] : ["ANTHROPIC_API_KEY", "DEEPSEEK_API_KEY"]) {
   if (process.env[name] || envFile()[name]) continue;
@@ -56,8 +58,8 @@ const serverEnv = {
   PUBLISHED_APPS_DOMAIN: "localhost",
   RUN_CHECK: process.env.RUN_CHECK ?? "1",
   TYPE_CHECK: "warn",
-  UNVERIFIED_CAP_MICRO: "3000000",
-  FREE_AI_BUDGET_MICRO: String(Math.round(budget * 1e6)),
+  UNVERIFIED_CAP_MICRO: String(Math.round(each * 1e6)),
+  FREE_AI_BUDGET_MICRO: String(Math.round(each * 1e6 * Math.max(1, scenarioCount))),
   TURN_CONCURRENCY: String(concurrency),
   PORT: String(port),
 };

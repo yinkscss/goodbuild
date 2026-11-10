@@ -6,7 +6,7 @@ Builds real apps with real keys, then opens each one in a browser, plays it and 
 node node_modules/playwright-core/cli.js install chromium-headless-shell   # once
 node scripts/live-check.mjs                     # asks (hidden) for ANTHROPIC_API_KEY and DEEPSEEK_API_KEY if not saved
 node scripts/live-check.mjs --only game-runner,minipay-shop
-node scripts/live-check.mjs --budget 25 --headed
+node scripts/live-check.mjs --each 2 --headed
 ```
 
 It builds the app, starts its own throwaway server on port 3100 (run check and type check on) and stops it at the end. Results are in `docs/evals/live/runs/<time>/` (git-ignored): `report.md`, `results.json`, a `.webm` video and screenshots per app.
