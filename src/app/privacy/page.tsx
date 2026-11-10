@@ -1,10 +1,10 @@
 import { ContactLine, LegalPage } from "@/components/legal/legal-page";
 
-export const metadata = { title: "Privacy · GoodBuild", description: "What GoodBuild collects during the testnet beta and who it goes to." };
+export const metadata = { title: "Privacy · GoodBuild", description: "What GoodBuild collects and who it goes to." };
 
 export default function PrivacyPage() {
   return (
-    <LegalPage eyebrow="Privacy" title="Privacy" intro="What GoodBuild keeps during the testnet beta, and who else sees it.">
+    <LegalPage eyebrow="Privacy" title="Privacy" intro="What GoodBuild keeps, and who else sees it.">
       <h2>What we keep</h2>
       <ul>
         <li>Your wallet address, and that you confirmed you are 18 or over and not a US person.</li>
@@ -17,7 +17,8 @@ export default function PrivacyPage() {
         <li>Magic handles email sign-in and your email wallet, so it receives your email address.</li>
         <li>WalletConnect, if you connect through it.</li>
         <li>Sourcify receives your contract&apos;s source code when it is verified.</li>
-        <li>Resend sends sign-in codes for apps that offer email sign-in, so it receives the email address and the code.</li>
+        <li>Resend sends sign-in codes for apps that offer email sign-in, so it receives the email address and the code. It also sends the support tickets you submit, so it receives your email, your message and your country.</li>
+        <li>Telegram receives the same support ticket, because we read tickets there.</li>
         <li>Cloudflare sits in front of GoodBuild and its published apps, so it handles every request, including your IP address.</li>
       </ul>
       <h2>What is public</h2>

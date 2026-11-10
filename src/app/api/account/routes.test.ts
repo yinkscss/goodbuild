@@ -31,6 +31,7 @@ import { publishApp } from "@/server/publish/service";
 import { GET as adminGet } from "./admin-functions/route";
 import { GET as appsGet } from "./apps/route";
 import { GET as contractsGet } from "./contracts/route";
+import { GET as prefsGet, PATCH as prefsPatch } from "./preferences/route";
 import { GET as recordsGet } from "@/app/api/projects/[id]/app-data/records/route";
 
 const abi = [
@@ -167,3 +168,25 @@ describe("the Data tab's records route", () => {
     expect(text).not.toMatch(SECRET_KEYS);
   });
 });
+
+describe("account preferences", () => {
+  const patch = (body: unknown) => prefsPatch(new Request("http://x/api/account/preferences", { method: "PATCH", body: JSON.stringify(body) }));
+
+  it("defaults the badge on, saves a change, and only changes the signed-in user", async () => {
+    session = { user: alice };
+    expect(await (await prefsGet()).json()).toEqual({ showBadge: true });
+    expect(await (await patch({ showBadge: false })).json()).toEqual({ showBadge: false });
+    expect(await (await prefsGet()).json()).toEqual({ showBadge: false });
+    session = { user: bob };
+    expect(await (await prefsGet()).json()).toEqual({ showBadge: true });
+  });
+
+  it("refuses bad input and signed-out requests", async () => {
+    session = { user: alice };
+    expect((await patch({ showBadge: "no" })).status).toBe(400);
+    expect((await patch({ showBadge: true, wallet: "0x1" })).status).toBe(400);
+    session = null;
+    expect((await prefsGet()).status).toBe(401);
+  });
+});
+

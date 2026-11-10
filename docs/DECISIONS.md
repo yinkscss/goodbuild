@@ -756,3 +756,22 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - **Claude's calls.** One target query per post, so posts don't compete with each other, instead of many near-identical "top AI builders" lists. Roundups name GoodBuild by niche and are dated "November 2026". Competitors are described by stable traits only, with no prices. Posts are plain typed data, not MDX, so tests can check them.
 - **Kept out on purpose.** Sports betting, games of chance, US-targeted keywords, "free forever", and any claim that MiniPay was tested on a real phone.
 - **UNVERIFIED.** Search volumes and rankings (none measured). The content has not had a human or legal read. See "Owner to do" in BLOG.md.
+
+### D75. Support page, and the "beta" wording removed (10 Nov 2026, decided by the owner's brief; written by Claude)
+- **What.** `/support` is a ticket form (email, topic, message). `POST /api/support` sends each ticket to the owner by email (Resend, `SUPPORT_EMAIL`) and Telegram (a bot: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_SUPPORT_CHAT_ID`). A ticket counts as sent if either accepts it. The page also links to the owner's Telegram group (`SUPPORT_TELEGRAM_URL`, default is the link from G1/D41) and, when set, the contact email. With neither channel configured the page shows the links only, no form.
+- **Safeguards.** No sign-in (people without a wallet need help too). Per-IP limit of 3 per 10 minutes and 200 a day for the site, in memory (a restart resets them); a hidden field drops most bots; plain-text Telegram messages; exactly one email recipient. Privacy page now names Resend and Telegram as receiving tickets.
+- **Beta wording.** Removed "testnet beta on Celo Sepolia" from the footer and every "during the beta" claim (landing, pricing, docs, terms, privacy, blog, in-app hints). The $0.20 free AI stays, without the beta framing; pricing says "After that: cost + 25%". Celo Sepolia stays available as a network choice. The legal pages keep a "Draft. Not yet reviewed by a lawyer." badge.
+- **Owner to do.** Set the three env values on the server. Use a **private** Telegram chat for tickets (they hold visitors' emails), not the public group.
+- **UNVERIFIED.** Live delivery to Resend and Telegram (tested with a stub only); the terms text still needs a lawyer's read now that it no longer says "beta".
+
+
+### D76. Owners can turn off the "Built with GoodBuild" badge (11 Nov 2026, decided by the owner's brief; written by Claude)
+- **What.** Settings has a **Preferences** tab with a switch, on by default (`users.show_badge`, migration 0016, `GET/PATCH /api/account/preferences`). Published apps are static, so the choice applies at the next publish; the page says so.
+- **Claude's call.** Off removes the branding only. The pill stays, without branding, when the app has a visitor notice (demo contract, changeable contract), and then keeps its Report link. With no notice there is no pill, so a clean app carries no Report link on the page (reports still work from `/report`). Say if you'd rather always keep a small Report link.
+- **Open.** Whether the badge should become a paid perk (it is free for everyone now), and whether already-published apps should be rebuilt automatically when the switch changes.
+
+### D77. Mail to the support address shows up in the owner's Telegram (11 Nov 2026, decided by the owner's brief; written by Claude)
+- **What.** Resend receives mail for the support address and calls `POST /api/support/inbound` (event `email.received`). The route checks the Svix signature (`RESEND_WEBHOOK_SECRET`), fetches the body with `RESEND_API_KEY`, and posts sender, subject, SPF/DKIM/DMARC result and text to the same private bot chat as tickets. Retries are deduplicated in memory.
+- **Owner to do (dashboard, not code).** In Resend: enable Receiving on the domain and add the MX record it shows, then add the webhook. If the domain already has mail (MX records), keep `support@<domain>` with the current mail provider, add Resend Receiving on a subdomain (`mail.<domain>`, its own MX record) and forward `support@` to `tickets@mail.<domain>`. Never put Resend's MX on the main domain beside the existing ones: it must have the lowest priority or Resend gets nothing, and it would take over the main mailbox. Replies still go out through Resend, not through the bot.
+- **UNVERIFIED.** Live delivery (tested against stubs); the Svix check follows Svix's documented scheme, not tested against a real Resend call; Resend's pricing for receiving.
+

@@ -47,7 +47,7 @@ export interface PromptBoxProps {
   ref?: React.Ref<PromptBoxHandle>;
   /** "inside" (landing) or "below" the card (home, mockup b). */
   chipsPlacement?: "inside" | "below";
-  /** Replaces the credits hint, e.g. "Free during the testnet beta". */
+  /** Replaces the credits hint, e.g. "Free to start". */
   hint?: React.ReactNode;
   /** Example chips shown under the textarea. */
   chips?: StarterTemplate[];

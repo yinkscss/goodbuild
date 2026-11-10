@@ -1,10 +1,10 @@
 import { ContactLine, LegalPage } from "@/components/legal/legal-page";
 
-export const metadata = { title: "Terms · GoodBuild", description: "The terms for using GoodBuild during the testnet beta." };
+export const metadata = { title: "Terms · GoodBuild", description: "The terms for using GoodBuild." };
 
 export default function TermsPage() {
   return (
-    <LegalPage eyebrow="Terms" title="Terms of use" intro="The rules for using GoodBuild during the testnet beta.">
+    <LegalPage eyebrow="Terms" title="Terms of use" intro="The rules for using GoodBuild.">
       <h2>Who can use GoodBuild</h2>
       <p>You must be 18 or over and not a US person. GoodBuild isn&apos;t available in some regions.</p>
       <h2>What you can build</h2>
@@ -30,8 +30,8 @@ export default function TermsPage() {
         <li>Each app has limits on how much it can store. We can refuse writes over those limits.</li>
         <li>If we take down your app, its data stays for review, and we can delete it. Data is also deleted if your project is deleted.</li>
       </ul>
-      <p>During the beta, saved data can be lost. Don&apos;t use a published app as the only copy of anything important.</p>
-      <h2>Testnet beta</h2>
+      <p>Saved data can be lost. Don&apos;t use a published app as the only copy of anything important.</p>
+      <h2>No guarantees</h2>
       <p>The service is provided as it is, can change or stop, and may lose data. Testnet tokens have no value.</p>
       <h2>Contact</h2>
       <p>

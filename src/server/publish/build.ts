@@ -32,6 +32,8 @@ export interface BuildInput {
   changeableContract?: boolean;
   /** A link for visitors to report this app, on the main site. */
   reportUrl?: string;
+  /** Show the "Built with GoodBuild" badge. The owner can turn it off in Settings. Default on. Safety notices stay either way. */
+  showBadge?: boolean;
   /** The public id src/lib/db.ts reads from the page. Its presence is also how the helper knows it isn't in the preview. */
   dataClientId?: string;
   /**
@@ -210,12 +212,19 @@ function escapeHtml(text: string) {
 const PILL_STYLE =
   "position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:2147483000;display:inline-flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:6px;max-width:calc(100vw - 24px);padding:6px 12px 6px 10px;border-radius:999px;background:#fff;color:#1a0d26;box-shadow:0 2px 12px rgba(26,13,38,.18);font:500 12px/1.4 system-ui,sans-serif;text-decoration:none";
 
-/** A small "Built with <logo>" pill at the bottom of every published app (D56). Notices that matter (demo, changeable, report) sit in it. */
-function bar(hasUndeployedContracts: boolean, reportUrl?: string, changeableContract = false) {
-  const report = reportUrl ? ` · <a href="${escapeHtml(reportUrl)}" target="_blank" rel="noreferrer" style="color:inherit;text-decoration:underline">Report</a>` : "";
-  const demo = hasUndeployedContracts ? " · Demo: this app's contract isn't deployed yet, so on-chain actions won't work." : "";
-  const changeable = changeableContract ? ` · ${CAN_BE_CHANGED_LABEL}` : "";
-  return `<div data-goodbuild-bar role="note" style="${PILL_STYLE}"><a href="https://goodbuildit.xyz" target="_blank" rel="noreferrer" style="display:inline-flex;align-items:center;gap:6px;color:inherit;text-decoration:none">Built with <img src="${LOGO_32_DATA_URI}" alt="GoodBuild" width="16" height="16" style="display:block;width:16px;height:16px" /><b style="font-weight:700">GoodBuild</b></a>${changeable}${demo}${report}</div>`;
+/**
+ * A small "Built with <logo>" pill at the bottom of every published app (D56). Notices that matter (demo, changeable, report) sit in it.
+ * With the badge off (the owner's choice, D76) the branding goes, but a pill with the notices stays when there is one, because
+ * visitors need to know a contract can be changed or isn't deployed. With no notice, no pill at all.
+ */
+export function bar(hasUndeployedContracts: boolean, reportUrl?: string, changeableContract = false, showBadge = true) {
+  const report = reportUrl ? `<a href="${escapeHtml(reportUrl)}" target="_blank" rel="noreferrer" style="color:inherit;text-decoration:underline">Report</a>` : "";
+  const demo = hasUndeployedContracts ? "Demo: this app's contract isn't deployed yet, so on-chain actions won't work." : "";
+  const changeable = changeableContract ? CAN_BE_CHANGED_LABEL : "";
+  const brand = `<a href="https://goodbuildit.xyz" target="_blank" rel="noreferrer" style="display:inline-flex;align-items:center;gap:6px;color:inherit;text-decoration:none">Built with <img src="${LOGO_32_DATA_URI}" alt="GoodBuild" width="16" height="16" style="display:block;width:16px;height:16px" /><b style="font-weight:700">GoodBuild</b></a>`;
+  if (!showBadge && !demo && !changeable) return "";
+  const parts = [showBadge ? brand : "", changeable, demo, report].filter(Boolean);
+  return `<div data-goodbuild-bar role="note" style="${PILL_STYLE}">${parts.join(" · ")}</div>`;
 }
 
 function hashed(name: string, ext: string, content: string) {
@@ -241,7 +250,7 @@ export async function buildPublishedApp(input: BuildInput): Promise<PublishedFil
   const walletMeta = input.walletConnectProjectId ? `<meta name="goodbuild-walletconnect" content="${escapeHtml(input.walletConnectProjectId)}" />\n` : "";
   page = page.replace("</head>", () => `${dataMeta}${walletMeta}<link rel="stylesheet" href="/${cssName}" />\n</head>`);
   const bridge = input.preview?.bridge(js, jsName);
-  if (!input.preview) page = page.replace(/<body[^>]*>/, (open) => `${open}\n${bar(input.hasUndeployedContracts, input.reportUrl, input.changeableContract)}`);
+  if (!input.preview) page = page.replace(/<body[^>]*>/, (open) => `${open}\n${bar(input.hasUndeployedContracts, input.reportUrl, input.changeableContract, input.showBadge ?? true)}`);
   // The bridge is a classic script, so it is listening before the app's module runs.
   page = page.replace("</body>", () => `${bridge ? `<script src="/${PREVIEW_BRIDGE_PATH}"></script>\n` : ""}<script type="module" src="/${jsName}"></script>\n</body>`);
 
