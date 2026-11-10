@@ -24,12 +24,16 @@ const QUESTIONS = [
     a: "GoodBuild builds your latest saved version into a website on its own address. Anyone with the link can open it and connect their own wallet. You can update or unpublish it at any time.",
   },
   {
+    q: "Can I build games?",
+    a: "Yes. Describe the game and GoodBuild builds it to play on a phone or a computer, with sound, a best score and a leaderboard if you want one. Games can charge a G$ entry and pay prizes when the winner is decided by play.",
+  },
+  {
     q: "Who can use GoodBuild?",
     a: "You must be 18 or over. GoodBuild isn't available to US persons or in comprehensively sanctioned regions.",
   },
   {
     q: "Is there anything I can't build?",
-    a: "Yes. Sports betting is out of scope. GoodBuild builds dApps and websites, but for now there is no separate server or database behind them.",
+    a: "Yes. Sports betting and games of chance for money are out of scope. GoodBuild builds dApps, games and websites, but for now there is no separate server behind them.",
   },
 ];
 

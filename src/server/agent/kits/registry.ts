@@ -1,5 +1,7 @@
 import type { CheckIssue } from "../checks";
 
+import { game2d } from "./game-2d";
+
 /**
  * A kit (D71): everything GoodBuild needs to build one more kind of app, in one place. Turning a
  * kit on for a project adds its packages and starter files, opens its guide to the builder, allows
@@ -35,7 +37,7 @@ export interface Kit {
 }
 
 /** Every kit GoodBuild has. Each kit is a module beside this one, listed here. */
-export const KITS: Kit[] = [];
+export const KITS: Kit[] = [game2d];
 
 /** The file that says which kits a project has on. GoodBuild writes it; the builder can't. */
 export const KIT_MARKER = "src/goodbuild.json";

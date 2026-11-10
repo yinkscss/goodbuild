@@ -1,3 +1,4 @@
+import { game2d } from "./kits/game-2d";
 import { answerText } from "@/lib/plan";
 import { PALETTES, paletteById } from "@/lib/palettes";
 import type { PlanIntake, PlanOption, PlanQuestion, TurnRecord } from "@/lib/turn-types";
@@ -63,7 +64,7 @@ export const INTAKE_TOOLS: ToolSpec[] = [
   },
 ];
 
-export const INTAKE_PROMPT = `You are GoodBuild's planner. GoodBuild turns a description into a working app on Celo or a plain website. Someone just described what they want. Before anything is built, ask a few quick questions so the first build is right. Most users are students and newcomers to crypto in Nigeria and across Africa, and many use G$ (GoodDollar).
+export const INTAKE_PROMPT = `You are GoodBuild's planner. GoodBuild turns a description into a working app on Celo, a game or a plain website. Someone just described what they want. Before anything is built, ask a few quick questions so the first build is right. Most users are students and newcomers to crypto in Nigeria and across Africa, and many use G$ (GoodDollar).
 
 Write one short friendly sentence, then call ask_questions once. Do nothing else.
 
@@ -72,7 +73,7 @@ The questions:
 - Everyday words. Ask what people should be able to do (send, withdraw, vote), who can do it, and how much. Never use technical words like ERC-20, token standard, contract function, modifier, mapping, gas, ABI, deploy or wallet address.
 - Each question has 2 to 4 short, concrete options that fit this request, and exactly one is marked recommended. An "Other" box is added for you, so don't write one.
 - Set multiple to true when several options can apply together.
-- Ask only about the kind of thing it is. Money or ownership on Celo (payments, savings, tickets, votes): what people can do with the money, who, how much. A regular app with no money (bookings, lists, sign-ups, a quiz): what people do in it, what it remembers for them, who sees what (offer "Only me, the owner" for forms sent to them, never a passcode). A plain website: the main thing visitors do, its sections, its tone. Never ask an app without money about money, tokens, voting or wallets.
+- Ask only about the kind of thing it is. Money or ownership on Celo (payments, savings, tickets, votes): what people can do with the money, who, how much. A regular app with no money (bookings, lists, sign-ups, a quiz): what people do in it, what it remembers for them, who sees what (offer "Only me, the owner" for forms sent to them, never a passcode). A game: how it is played, how you win, and scores. A plain website: the main thing visitors do, its sections, its tone. Never ask an app without money about money, tokens, voting or wallets.
 - Don't ask about colours, GoodBuild adds that question itself. Set recommended_palette to the one that suits the app: ${PALETTES.map((p) => `${p.id} (${p.mood.toLowerCase()})`).join("; ")}. Use "none" only if they already named their colours.
 - Never ask about the network, pricing or how the code is written.
 - Never use em dashes.
@@ -84,7 +85,7 @@ Example for "a savings circle for my friends":
 
 Example for "a booking page for my salon": "What should customers be able to do?" (multiple): Pick a time (recommended) / Choose a style / Leave a phone number
 
-If the message is only a question and not something to build, answer it in a sentence or two and don't call the tool. If it asks for gambling, sports betting, taking people's money without consent or anything illegal, say briefly that you can't build that, suggest a legitimate alternative, and don't call the tool.`;
+If the message is only a question and not something to build, answer it in a sentence or two and don't call the tool. A skill game with an entry fee is fine. If it asks for sports betting, a game of chance for money (lottery, dice, slots), taking people's money without consent or anything illegal, say briefly that you can't build that, suggest a legitimate alternative, and don't call the tool.`;
 
 /** The whole context of the planning call: the request, and a note that files came with it. */
 export function intakeContext(request: string, assets: { kind: string; name: string }[]): string {
@@ -164,6 +165,11 @@ export function parseIntake(rawArguments: string, request: string): PlanIntake |
   };
 }
 
+/** A game by its words (the same test that turns on the game-2d kit). */
+export function looksLikeGame(request: string): boolean {
+  return game2d.keywords.test(request);
+}
+
 export function looksLikeWebsite(request: string): boolean {
   return /\b(web ?sites?|landing page|portfolio|blog|about page|home ?page|site for)\b/i.test(request) && !/\b(contract|token|tip|pay|vote|voting|savings?|G\$|mint|nft)\b/i.test(request);
 }
@@ -182,7 +188,13 @@ export function fallbackIntake(request: string): PlanIntake {
     multiple,
     options: options.map((text, i) => ({ id: `o${i + 1}`, label: text, ...(i === 0 ? { recommended: true } : {}) })),
   });
-  const questions = website
+  const game = looksLikeGame(request);
+  const questions = game
+    ? [
+        choice("q1", "How to play", "How should people play?", false, ["One tap or click", "Move left and right", "Answer questions"]),
+        choice("q2", "Scores", "What should happen with scores?", false, ["Keep my own best score", "A leaderboard everyone can see"]),
+      ]
+    : website
     ? [
         choice("q1", "Main action", "What's the main thing visitors should do?", false, ["Learn what this is", "Get in touch", "Sign up or join"]),
         choice("q2", "Tone", "How should it sound?", false, ["Friendly and simple", "Professional", "Bold and exciting"]),

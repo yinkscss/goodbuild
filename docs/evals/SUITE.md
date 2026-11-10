@@ -1,13 +1,13 @@
 # The eval suite
 
-Twenty real builds, run with real model keys and scored, so a change to the builder's prompt, guides, checks or model routing shows up as numbers before it reaches users. Decision: D70. The older, hand-run scenarios are in [HARNESS.md](HARNESS.md).
+Twenty-one real builds, run with real model keys and scored, so a change to the builder's prompt, guides, checks or model routing shows up as numbers before it reaches users. Decision: D70. The older, hand-run scenarios are in [HARNESS.md](HARNESS.md).
 
 ## What it runs
 [suite/suite.json](suite/suite.json): each scenario is a fresh project and a throwaway wallet.
 
 | Kind | Count | Passes when |
 |---|---|---|
-| `build` | 14 (10 dApps, 4 websites and pages) | the turn ends ready and the built app opens in the run check |
+| `build` | 15 (10 dApps, 4 websites and pages, 1 game) | the turn ends ready and the built app opens in the run check |
 | `edit` | 4 | a build, then a change to it, both ready |
 | `refuse` | 2 | the builder answers and writes no files |
 

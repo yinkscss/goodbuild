@@ -50,6 +50,13 @@ export const TEMPLATES: StarterTemplate[] = [
       "A poll for our 400-level class to pick the excursion destination. One vote per verified student, results visible after it closes.",
   },
   {
+    id: "mini-game",
+    label: "Mini game",
+    description: "A phone game with a leaderboard",
+    examplePrompt:
+      "A game where you catch falling mangoes in a basket on your phone. It gets faster as you go, keeps your best score and shows a top 10 leaderboard.",
+  },
+  {
     id: "event-badges",
     label: "NFT event badges",
     description: "Soulbound attendance badges",
