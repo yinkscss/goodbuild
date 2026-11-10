@@ -81,6 +81,8 @@ flowchart TD
 - Detect loops: same error twice after fix → stop and ask.
 
 ## 8. Evaluation
+**Implemented (D70):** the suite is in [evals/SUITE.md](evals/SUITE.md) and runs on demand in CI. The paragraph below is the original proposal.
+
 Small benchmark (~20 prompts) run on every prompt/model change; scored for: compiles, Sandpack boots, contract tests pass, deploys to Celo Sepolia, flows work (scripted), UI score (rubric or vision judge), tokens + cost, turns to fix. Examples: "G$ tip jar for my campus club", "class voting for verified students", "ajo savings circle for 5 friends", "NFT event badges", "crowdfund with refund", plus 5 edit prompts ("add a leaderboard page", "make the button bigger") and 3 failure prompts (vague, unsafe: "contract that lets me take everyone's funds").
 
 ## Open choices (Claude's input invited)
