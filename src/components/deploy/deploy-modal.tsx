@@ -4,6 +4,7 @@ import * as React from "react";
 import { AlertTriangle, Check, ChevronDown, Copy, ExternalLink, Loader2 } from "lucide-react";
 import { formatUnits } from "viem";
 
+import { BuyDialog } from "@/components/buy/buy-dialog";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { useElapsed } from "@/components/ui/wait";
@@ -192,6 +193,7 @@ export function FaucetGuide({ className }: { className?: string }) {
 /** Where to send CELO: email wallets start empty, and their owners may not know the address. */
 function FundWallet({ chainId }: { chainId: number }) {
   const { wallet } = useAuth();
+  const [buying, setBuying] = React.useState(false);
   if (!wallet) return null;
   if (chainId !== 42220) return <FaucetGuide className="mt-3" />;
   return (
@@ -201,6 +203,10 @@ function FundWallet({ chainId }: { chainId: number }) {
         <code className="min-w-0 flex-1 truncate font-mono text-xs">{wallet.address}</code>
         <CopyButton value={wallet.address} />
       </div>
+      <Button variant="secondary" className="mt-3 w-full" onClick={() => setBuying(true)}>
+        Buy CELO with naira
+      </Button>
+      <BuyDialog open={buying} onOpenChange={setBuying} defaultAsset="celo" />
     </div>
   );
 }
