@@ -3,7 +3,7 @@ import type { CheckIssue } from "../checks";
 import type { Kit } from "./registry";
 
 /**
- * The DAOs and vaults kit (D75): contracts that hold other people's money, which is where hacks
+ * The DAOs and vaults kit (D76): contracts that hold other people's money, which is where hacks
  * happen. A mistake in a tip jar costs a tip; a mistake in a vault costs every depositor.
  *
  * The kit does three things: a guide that steers the builder to audited OpenZeppelin parts and

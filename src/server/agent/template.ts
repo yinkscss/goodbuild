@@ -50,7 +50,7 @@ export const ALLOWED_DEPENDENCIES: Record<string, string> = { ...BASE_ALLOWED_DE
  */
 export const PLATFORM_DEPENDENCIES: Record<string, string> = {
   "@walletconnect/ethereum-provider": "2.26.0",
-  // Types for three.js, so the type check can read it (D76). Only the kit's three is importable.
+  // Types for three.js, so the type check can read it (D77). Only the kit's three is importable.
   "@types/three": "0.187.0",
 };
 

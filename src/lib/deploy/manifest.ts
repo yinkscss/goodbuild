@@ -13,7 +13,7 @@ import { z } from "zod";
  *
  * References: `${Name.address}` (a contract in this manifest), `${GOODDOLLAR}` (G$ on the target
  * chain), `${DEPLOYER}` (the signing wallet) and `${USDT}`, `${USDC}`, `${USDM}` (that dollar
- * stablecoin on the target chain, D73). Everything else is a literal.
+ * stablecoin on the target chain, D74). Everything else is a literal.
  */
 
 export const MANIFEST_PATH = "contracts/deploy.json";
@@ -72,7 +72,7 @@ export function referencesIn(value: ArgValue): Array<{ raw: string; ref: Referen
 function toReference(name: string, member: string | undefined): Reference | null {
   if (!member && name === "GOODDOLLAR") return { kind: "gooddollar" };
   if (!member && name === "DEPLOYER") return { kind: "deployer" };
-  // The dollar stablecoins MiniPay holds (D73): ${USDT}, ${USDC}, ${USDM}.
+  // The dollar stablecoins MiniPay holds (D74): ${USDT}, ${USDC}, ${USDM}.
   if (!member && (STABLECOIN_SYMBOLS as string[]).includes(name)) return { kind: "stablecoin", symbol: name as StablecoinSymbol };
   if (member === "address") return { kind: "contract", name };
   return null;

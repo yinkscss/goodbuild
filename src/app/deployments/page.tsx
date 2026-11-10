@@ -3,6 +3,8 @@ import Link from "next/link";
 import { ExternalLink } from "lucide-react";
 
 import { AppShell } from "@/components/home/app-shell";
+import { RetryButton } from "@/components/home/retry-button";
+import { RowsSkeleton, SlowLoadNote } from "@/components/ui/wait";
 import { chainName, explorerAddressUrl, shortAddress } from "@/lib/format";
 import { relativeTime } from "@/lib/home";
 import { cn } from "@/lib/utils";
@@ -26,7 +28,14 @@ export default function DeploymentsPage() {
       <p className="eyebrow">Deployments</p>
       <h1 className="display mt-3 text-[32px] font-extrabold sm:text-[44px]">Your contracts, live on Celo</h1>
       <p className="mt-3 max-w-xl text-base text-grey-600">Every contract you have deployed from GoodBuild, with its address, network and whether its source is verified on Sourcify.</p>
-      <Suspense fallback={<div className="skeleton mt-8 h-[220px] rounded-card motion-reduce:animate-none" />}>
+      <Suspense
+        fallback={
+          <div className="mt-8">
+            <RowsSkeleton rows={4} label="Loading deployments" />
+            <SlowLoadNote what="your contracts" className="mt-3" />
+          </div>
+        }
+      >
         <DeploymentList />
       </Suspense>
     </AppShell>
@@ -41,9 +50,16 @@ async function DeploymentList() {
   } catch (error) {
     console.error(error);
     return (
-      <p role="alert" className="mt-8 rounded-card bg-surface p-6 text-sm text-danger shadow-card">
-        We could not load your deployments. Reload the page to try again.
-      </p>
+      <div role="alert" className="mt-8 flex flex-wrap items-start justify-between gap-4 rounded-card bg-surface p-6 shadow-card">
+        <div className="flex items-start gap-3">
+          <span className="mt-1.5 size-2 shrink-0 rounded-full bg-danger" aria-hidden />
+          <div>
+            <p className="text-sm font-medium">We couldn&apos;t load your deployments.</p>
+            <p className="text-sm text-grey-600">Your contracts are safe. This is usually a brief connection problem.</p>
+          </div>
+        </div>
+        <RetryButton />
+      </div>
     );
   }
   if (rows.length === 0) {

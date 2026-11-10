@@ -4,8 +4,10 @@ import * as React from "react";
 import { AlertTriangle, Check, ChevronDown, Copy, ExternalLink, Loader2 } from "lucide-react";
 import { formatUnits } from "viem";
 
+import { BuyDialog } from "@/components/buy/buy-dialog";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { useElapsed } from "@/components/ui/wait";
 import { useAuth } from "@/lib/auth/context";
 import { chainLabel, explorerAddressUrl, explorerTxUrl } from "@/lib/deploy/explorer";
 import type { StepPart, StepPhase } from "@/lib/deploy/run";
@@ -62,39 +64,44 @@ export function stageIndex(step: StepView | undefined): { active: number; done: 
   }
 }
 
+/** Sign → Broadcast → Verified as a rail with a token that travels (wait-state pick D3). */
 function Stepper({ step }: { step: StepView | undefined }) {
   const { active, done } = stageIndex(step);
   const failed = step?.phase === "failed";
   const verifying = step && (step.phase === "done" || step.phase === "reused") && step.verify !== "verified";
   const labels = ["Sign", "Broadcast", "Verified"];
+  const at = Math.min(Math.max(active, 0), 2);
+  const all = done >= 3;
   return (
-    <ol className="flex items-center gap-2" aria-label="Deploy progress">
+    <ol className="relative mx-3 mt-1 mb-7 flex items-start justify-between" aria-label="Deploy progress">
+      <span className="absolute top-3 right-3 left-3 h-[3px] -translate-y-1/2 rounded-full bg-ink/10" aria-hidden />
+      <span
+        className="absolute top-3 left-3 h-[3px] -translate-y-1/2 rounded-full bg-violet transition-[width] duration-500 ease-gb"
+        style={{ width: `calc((100% - 1.5rem) * ${all ? 1 : done / 2})` }}
+        aria-hidden
+      />
+      {!all && !failed && active >= 0 && (
+        <span
+          className="absolute top-3 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-violet shadow-focus transition-[left] duration-500 ease-gb"
+          style={{ left: `calc(0.75rem + (100% - 1.5rem) * ${at / 2})` }}
+          aria-hidden
+        />
+      )}
       {labels.map((label, i) => {
         const complete = i < done;
         const current = i === active && !complete;
         return (
-          <React.Fragment key={label}>
-            <li className="flex items-center gap-2" aria-current={current ? "step" : undefined}>
-              <span
-                className={cn(
-                  "grid size-6 place-items-center rounded-full text-[11px] font-semibold transition-colors duration-200 ease-gb",
-                  complete ? "bg-success text-white" : current && failed ? "bg-danger text-white" : current ? "bg-violet text-white" : "bg-tint text-grey-600",
-                )}
-              >
-                {complete ? (
-                  <Check className="size-3.5" />
-                ) : current && failed ? (
-                  "!"
-                ) : current && (i < 2 || verifying) ? (
-                  <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" />
-                ) : (
-                  i + 1
-                )}
-              </span>
-              <span className={cn("text-sm", complete || current ? "font-medium text-ink" : "text-grey-600")}>{label}</span>
-            </li>
-            {i < labels.length - 1 && <span className={cn("h-px flex-1", i < done - 0 ? "bg-success/50" : "bg-ink/10")} aria-hidden />}
-          </React.Fragment>
+          <li key={label} className="relative flex w-6 flex-col items-center" aria-current={current ? "step" : undefined}>
+            <span
+              className={cn(
+                "relative grid size-6 place-items-center rounded-full text-[11px] font-semibold transition-colors duration-200 ease-gb",
+                complete ? "bg-success text-white" : current && failed ? "bg-danger text-white" : current ? "bg-surface text-violet shadow-card" : "bg-tint text-grey-600",
+              )}
+            >
+              {complete ? <Check className="size-3.5" /> : current && failed ? "!" : current && (i < 2 || verifying) ? <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" /> : i + 1}
+            </span>
+            <span className={cn("absolute top-8 text-sm whitespace-nowrap", complete || current ? "font-medium text-ink" : "text-grey-600")}>{label}</span>
+          </li>
         );
       })}
     </ol>
@@ -186,6 +193,7 @@ export function FaucetGuide({ className }: { className?: string }) {
 /** Where to send CELO: email wallets start empty, and their owners may not know the address. */
 function FundWallet({ chainId }: { chainId: number }) {
   const { wallet } = useAuth();
+  const [buying, setBuying] = React.useState(false);
   if (!wallet) return null;
   if (chainId !== 42220) return <FaucetGuide className="mt-3" />;
   return (
@@ -195,6 +203,10 @@ function FundWallet({ chainId }: { chainId: number }) {
         <code className="min-w-0 flex-1 truncate font-mono text-xs">{wallet.address}</code>
         <CopyButton value={wallet.address} />
       </div>
+      <Button variant="secondary" className="mt-3 w-full" onClick={() => setBuying(true)}>
+        Buy CELO with naira
+      </Button>
+      <BuyDialog open={buying} onOpenChange={setBuying} defaultAsset="celo" />
     </div>
   );
 }
@@ -500,6 +512,20 @@ export function DeployModal({
   const todo = state.steps.filter((s) => s.phase !== "reused" && s.phase !== "done").length;
   const current = state.steps.find((s) => !["waiting", "reused", "done"].includes(s.phase)) ?? [...state.steps].reverse().find((s) => s.phase === "done" || s.phase === "reused") ?? state.steps[0];
   const upgrading = (state.plan?.upgrades ?? []).length > 0;
+  const waited = useElapsed(running, `${current?.name}:${current?.phase}`);
+  // "Nothing was charged" is true only before this run's first transaction; a second contract or
+  // the second step of a proxied one follows a transaction that already cost gas.
+  const nothingSentYet = current?.phase === "signing" && (!current.part || current.part === "code") && !state.steps.some((s) => s.phase === "done" || s.phase === "reused");
+  const waitHint =
+    current?.phase === "signing"
+      ? waited >= 30
+        ? `Still nothing? Open your wallet app and look for a pending request.${nothingSentYet ? " Nothing has been sent, so nothing has been charged." : ""}`
+        : waited >= 8
+          ? "Still waiting for your signature. If you don't see a request, open your wallet app."
+          : null
+      : current?.phase === "broadcasting" && waited >= 60
+        ? "Celo is taking longer than usual. Your transaction is sent, so it is safe to wait."
+        : null;
 
   function handleOpenChange(next: boolean) {
     if (!next && running) return; // a signature is pending; don't strand it
@@ -602,6 +628,7 @@ export function DeployModal({
                   {state.steps.length > 1 && `${current.name}: `}
                   {current.part && `${PART_COPY[current.part]}. `}
                   {PHASE_COPY[current.phase]}
+                  {waitHint && <span className="mt-1 block text-ink">{waitHint}</span>}
                 </p>
               )}
             </div>
