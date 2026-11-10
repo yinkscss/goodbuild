@@ -75,31 +75,12 @@ export class ModelUnavailableError extends Error {
   }
 }
 
-/**
- * Testing only: send both tiers through the owner's own OpenRouter key (scripts/live-check.mjs).
- * It needs OPENROUTER_FOR_TESTS=1 as well as the key, and is never set on a real server: GoodBuild
- * doesn't resell through OpenRouter. The usage events keep the direct model names, so prices apply.
- */
-export function viaOpenRouter(env: Record<string, string | undefined> = process.env): string | null {
-  return env.OPENROUTER_FOR_TESTS === "1" && env.OPENROUTER_API_KEY ? env.OPENROUTER_API_KEY : null;
-}
-const OPENROUTER_BASE = "https://openrouter.ai/api/v1";
-const OPENROUTER_IDS: Record<ModelTier, string> = { strong: "anthropic/claude-sonnet-5.5", cheap: "deepseek/deepseek-v4-flash" };
-
-export function strongModel(): Exclude<LanguageModel, string> {
-  // Testing only: with just a DeepSeek key, the fix tier uses DeepSeek too.
-  if (process.env.DEEPSEEK_ONLY_FOR_TESTS === "1" && process.env.DEEPSEEK_API_KEY) return createDeepSeek()(MODEL_IDS.cheap);
-  const key = viaOpenRouter();
-  return key ? createAnthropic({ baseURL: OPENROUTER_BASE, authToken: key })(OPENROUTER_IDS.strong) : createAnthropic()(MODEL_IDS.strong);
-}
-export function cheapModel(): Exclude<LanguageModel, string> {
-  const key = viaOpenRouter();
-  return key ? createDeepSeek({ baseURL: OPENROUTER_BASE, apiKey: key })(OPENROUTER_IDS.cheap) : createDeepSeek()(MODEL_IDS.cheap);
-}
-
 function defaultModels(): Record<ModelTier, LanguageModel> {
   // Created lazily so a missing key surfaces as a mapped error on the first call, not at import.
-  return { strong: strongModel(), cheap: cheapModel() };
+  return {
+    strong: createAnthropic()(MODEL_IDS.strong),
+    cheap: createDeepSeek()(MODEL_IDS.cheap),
+  };
 }
 
 /**
@@ -146,7 +127,7 @@ export function aiSdkClient(models?: Record<ModelTier, LanguageModel>): ModelCli
               finishReason = part.finishReason ?? null;
               yield {
                 type: "usage",
-                model: viaOpenRouter() ? MODEL_IDS[tier] : part.response?.modelId || MODEL_IDS[tier],
+                model: part.response?.modelId || MODEL_IDS[tier],
                 inputTokens: part.usage?.inputTokens ?? 0,
                 outputTokens: part.usage?.outputTokens ?? 0,
                 cachedInputTokens: part.usage?.inputTokenDetails?.cacheReadTokens ?? 0,

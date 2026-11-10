@@ -218,12 +218,3 @@ describe("withFallback", () => {
     expect(calls).toHaveLength(0);
   });
 });
-
-describe("viaOpenRouter (testing route)", () => {
-  it("needs both the test flag and a key", async () => {
-    const { viaOpenRouter } = await import("./model");
-    expect(viaOpenRouter({ OPENROUTER_API_KEY: "k" })).toBeNull();
-    expect(viaOpenRouter({ OPENROUTER_FOR_TESTS: "1" })).toBeNull();
-    expect(viaOpenRouter({ OPENROUTER_FOR_TESTS: "1", OPENROUTER_API_KEY: "k" })).toBe("k");
-  });
-});

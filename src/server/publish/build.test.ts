@@ -47,6 +47,10 @@ describe("buildPublishedApp", () => {
     expect(deployed).toContain('aria-label="Built with GoodBuild"');
     expect(deployed).not.toMatch(/>Built with</);
     expect(deployed).toContain('for="gb-bar-off"');
+    // The close control is a real, focusable checkbox (Tab, then Space), not a hidden one only a pointer can reach.
+    expect(deployed).toContain('<input type="checkbox" id="gb-bar-off" aria-label="Close the Built with GoodBuild badge"');
+    expect(deployed).not.toContain('id="gb-bar-off" hidden');
+    expect(deployed).toContain("#gb-bar-off:focus-visible");
     expect(deployed).toContain("left:12px");
     expect(deployed).toContain("data:image/png;base64,");
     expect(deployed).not.toContain("Unaudited");

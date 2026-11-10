@@ -83,12 +83,20 @@ export const FIX_BUDGET_MICRO = 300_000;
 /** Stop after this many attempts in a row that didn't bring the error count below its best so far. */
 const MAX_STALLED_ATTEMPTS = 2;
 /**
- * Model calls in one build, and tool rounds in one pass. A game with a contract, its tests and a kit's files
- * (live check, entry-fee game) used the old 30 and 16 before it could finish fixing a compile error. The fix budget
- * above and the person's own allowance still bound the cost.
+ * Model calls in one build, and tool rounds in one pass (D82). A game with a contract, its tests and a kit's
+ * files (live check, entry-fee game) used the old 30 and 16 before it could finish fixing a compile error, and
+ * money contracts now need exploit tests too. What bounds the cost is not these counts: a paid build checks its
+ * hold before every call (D49), and a free or exempt build stops at FREE_BUILD_CEILING_MICRO.
  */
-const MAX_CALLS = 40;
+const MAX_CALLS = 50;
 const MAX_TOOL_ROUNDS_PER_PHASE = 20;
+/**
+ * The most one build on free AI (or an exempt wallet) may charge before it stops (D82). Free allowance is only
+ * checked when a build starts, so without this a long build could run well past it. About three times the
+ * dearest build seen (RESERVED_PER_BUILD_MICRO) and the same as a paid build's hold. Checked before each live
+ * call, so a build ends at most one call over it.
+ */
+export const FREE_BUILD_CEILING_MICRO = 1_000_000;
 /** How often the builder may ask for the checks in one turn (the run_checks tool, D68). Each costs seconds of server time. */
 export const MAX_TOOL_CHECKS = 3;
 const MAX_TOKENS = 16_000;
@@ -212,6 +220,9 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
         throw new ResumeFailedError("the saved progress no longer matches this build's steps.");
       }
       if (!logged) goLive();
+      if (!logged && funding !== "paid" && record.chargedMicro >= FREE_BUILD_CEILING_MICRO) {
+        throw new Error("This build reached the most one build can spend on free AI. Try a smaller change, or ask for it in two steps.");
+      }
       let replyText = "";
       const toolCalls: ToolCall[] = [];
       const textBefore = text;

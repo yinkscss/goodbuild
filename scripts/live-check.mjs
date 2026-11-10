@@ -2,8 +2,6 @@
 // plays it, and records a video. Run it before merging, so a break shows up here and not in production.
 //
 //   node scripts/live-check.mjs                    asks for the two keys (hidden) if they aren't saved yet
-//   node scripts/live-check.mjs --openrouter      use your OpenRouter key for both models (asks for it, hidden)
-//   node scripts/live-check.mjs --deepseek-only --total 1   one DeepSeek key, nothing above $1 in all
 //   node scripts/live-check.mjs --only game-runner,minipay-shop
 //   node scripts/live-check.mjs --each 2          most one app may spend, in dollars (default 1)
 //   node scripts/live-check.mjs --skip-build       reuse the last `pnpm build`
@@ -43,10 +41,7 @@ function envFile() {
 const scenarioCount = JSON.parse(readFileSync("docs/evals/live/scenarios.json", "utf8")).scenarios.filter((s) => !only.length || only.includes(s.id)).length;
 const budget = option("total", "") ? Number(option("total", "")) : each * scenarioCount; // --total caps the whole run
 const demo = flag("demo"); // plumbing test with the scripted demo model: no keys, no cost, always the same app
-// With --openrouter, both models go through the owner's OpenRouter key (a test route only).
-const router = flag("openrouter");
-const deepseekOnly = flag("deepseek-only"); // test route: DeepSeek writes and fixes; one key
-for (const name of demo ? [] : router ? ["OPENROUTER_API_KEY"] : deepseekOnly ? ["DEEPSEEK_API_KEY"] : ["ANTHROPIC_API_KEY", "DEEPSEEK_API_KEY"]) {
+for (const name of demo ? [] : ["ANTHROPIC_API_KEY", "DEEPSEEK_API_KEY"]) {
   if (process.env[name] || envFile()[name]) continue;
   console.log(`\n${name} isn't saved yet.`);
   const r = spawnSync("node", ["scripts/set-secret.mjs", name], { stdio: "inherit" });
@@ -57,8 +52,6 @@ const serverEnv = {
   ...process.env,
   ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ?? keys.ANTHROPIC_API_KEY,
   DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY ?? keys.DEEPSEEK_API_KEY,
-  ...(router ? { OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY ?? keys.OPENROUTER_API_KEY, OPENROUTER_FOR_TESTS: "1" } : {}),
-  ...(deepseekOnly ? { DEEPSEEK_ONLY_FOR_TESTS: "1" } : {}),
   ALLOW_PGLITE: "true",
   SESSION_SECRET: "live-check-only-session-secret-0123456789abcdef",
   APP_DOMAIN: `localhost:${port}`,

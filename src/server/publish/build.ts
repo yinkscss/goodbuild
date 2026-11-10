@@ -211,7 +211,12 @@ const PILL_STYLE =
   "position:fixed;left:12px;bottom:12px;z-index:2147483000;display:inline-flex;flex-wrap:wrap;align-items:center;gap:6px;max-width:calc(100vw - 24px);padding:5px 6px 5px 6px;border-radius:999px;background:#fff;color:#1a0d26;box-shadow:0 2px 12px rgba(26,13,38,.18);font:500 12px/1.4 system-ui,sans-serif;text-decoration:none";
 
 /** Hides the bar and the space under it when the visitor taps the cross. Pure CSS, so it works under the published page's script rules. */
-const BAR_DISMISS_CSS = "#gb-bar-off:checked~[data-goodbuild-bar],#gb-bar-off:checked~[data-goodbuild-bar-space]{display:none!important}";
+// The checkbox is the control keyboards and screen readers use (Tab, then Space); the cross is its label for
+// taps, and shows a focus ring while the checkbox has keyboard focus.
+const BAR_DISMISS_CSS =
+  "#gb-bar-off:checked~[data-goodbuild-bar],#gb-bar-off:checked~[data-goodbuild-bar-space]{display:none!important}" +
+  "#gb-bar-off:focus-visible~[data-goodbuild-bar] label[for=gb-bar-off]{outline:2px solid #1a0d26;outline-offset:2px;opacity:1}";
+const BAR_TOGGLE_STYLE = "position:fixed;left:12px;bottom:12px;width:1px;height:1px;margin:0;padding:0;border:0;opacity:0;z-index:2147483000";
 
 /**
  * Just the logo at the bottom left, with a cross to close it (D56). The words "Built with GoodBuild" are in the
@@ -223,14 +228,15 @@ function bar(hasUndeployedContracts: boolean, reportUrl?: string, changeableCont
   const notices = [changeableContract ? CAN_BE_CHANGED_LABEL : "", demo, report].filter(Boolean).join(" · ");
   const note = notices ? `<span style="padding:0 4px">${notices}</span>` : "";
   const logo = `<a href="https://goodbuildit.xyz" target="_blank" rel="noreferrer" aria-label="Built with GoodBuild" title="Built with GoodBuild" style="display:inline-flex;align-items:center;padding:2px"><img src="${LOGO_32_DATA_URI}" alt="" width="20" height="20" style="display:block;width:20px;height:20px" /></a>`;
-  const close = `<label for="gb-bar-off" role="button" aria-label="Close" title="Close" style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:999px;cursor:pointer;font-size:15px;line-height:1;opacity:.6">&times;</label>`;
-  return `<input type="checkbox" id="gb-bar-off" hidden /><style>${BAR_DISMISS_CSS}</style><div data-goodbuild-bar role="note" style="${PILL_STYLE}">${logo}${note}${close}</div>`;
+  const close = `<label for="gb-bar-off" aria-hidden="true" title="Close" style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:999px;cursor:pointer;font-size:15px;line-height:1;opacity:.6">&times;</label>`;
+  return `<input type="checkbox" id="gb-bar-off" aria-label="Close the Built with GoodBuild badge" style="${BAR_TOGGLE_STYLE}" /><style>${BAR_DISMISS_CSS}</style><div data-goodbuild-bar role="note" style="${PILL_STYLE}">${logo}${note}${close}</div>`;
 }
 
 /**
  * The bar is fixed to the bottom of the screen, so on a phone it sat on top of whatever the app put last
  * (a Play button, a Pay button). This empty block at the end of the page gives the app's last content room
- * to scroll up clear of it. It is taller when notices make the bar wrap onto more lines.
+ * to scroll up clear of it. It is taller when notices make the bar wrap onto more lines. On a full-screen game it adds a
+ * short strip to scroll into; that is the price of the Play button never sitting under the badge (D80).
  */
 function barSpace(hasNotices: boolean) {
   return `<div data-goodbuild-bar-space aria-hidden="true" style="height:calc(${hasNotices ? 96 : 60}px + env(safe-area-inset-bottom,0px));pointer-events:none"></div>`;

@@ -8,7 +8,7 @@ Review GoodBuild's web-builder agent harness, then build a five-phase roadmap: c
 ## Phase 1: the builder checks its own work
 | PR | State | What |
 |---|---|---|
-| [#62](https://github.com/yinkscss/goodbuild/pull/62) | merged | Run check: every build opens in headless Chromium; crashes go to auto-fix (D66) |
+| [#62](https://github.com/yinkscss/goodbuild/pull/62) | merged | Run check: every build opens in headless Chromium; crashes go to auto-fix (D67) |
 | [#64](https://github.com/yinkscss/goodbuild/pull/64) | merged | Type check and a `run_checks` tool, capped at 3 per turn (D68) |
 
 ## Phase 2: preview and evals
@@ -39,7 +39,7 @@ Review GoodBuild's web-builder agent harness, then build a five-phase roadmap: c
 
 ## Extra
 - [#70](https://github.com/yinkscss/goodbuild/pull/70) (merged): fix for apps stuck on the starter page (owner-reported; reviewed, one test fix pushed).
-- [#79](https://github.com/yinkscss/goodbuild/pull/79) (open): live-check scripts; logo-only closable bottom-left badge on published apps (D80); ready-made MiniPay info pages (edits the kit from #71); builder limits raised to 40 model calls and 20 tool rounds per pass (edits the runner).
+- [#79](https://github.com/yinkscss/goodbuild/pull/79) (open): live-check scripts; logo-only closable bottom-left badge on published apps (D80); ready-made MiniPay info pages (edits the kit from #71); builder limits raised to 50 model calls and 20 tool rounds per pass, with a $1 ceiling on a build on free AI (D82) (edits the runner).
 - Not by the author: #60, #61, #63, #69, #73, #78.
 
 **Stack and merge order:** #71 (base `main`), #72, #74, #75, #76, #77, #79, each based on the one before. Retarget each to `main` as the one below it lands.
@@ -54,8 +54,11 @@ Review GoodBuild's web-builder agent harness, then build a five-phase roadmap: c
 1. Exploit gate (#74): it shows attacks are tried and turned away; it is not an audit (guide, FAQ and D76 say so).
 2. App-data queries (#77): filters compare only after the server applies its privacy rules, so hidden fields can't be guessed. See `src/server/app-data/query.attack.test.ts`.
 3. Casino refusal: the model said it couldn't build a real-money slot machine yet wrote a play-money one with no money code, and the reply was misleading. D72 and D63 are the owner's call.
-4. Builder limits (#79): more calls and rounds trade cost for finishing power; the fix budget still bounds cost.
+4. Builder limits (#79): now 50 model calls and 20 tool rounds per pass. A build on free AI stops once it has charged $1; paid builds are checked before every call (D49). See D82.
 5. MiniPay info pages (#79): Terms and Privacy are plain-words starter text, not legal advice.
+
+## Changes after review (10 Nov 2026)
+A review found these and they are fixed on the branches (D82 lists them): decision numbers clashed with main (this stack is now D74–D80, GoodCash D81); the test-only model switches (`OPENROUTER_FOR_TESTS`, `DEEPSEEK_ONLY_FOR_TESTS`) are removed; the exploit tests and mainnet gate now follow what the contract does, not only the kit (D76); app-data lists and queries are counted per signed-in person, `useCollection` returns `truncated`, and the polling guide is safer (D79); the badge closes from a keyboard (D80); the builder must say plainly when it built a play-money alternative. #71 now also carries a merge of main. Typecheck, lint, the full test suite and `pnpm build` pass on the top of the stack merged with main.
 
 ## Not verified
 Nothing was run with Claude (fix tier was DeepSeek). No MiniPay payment was completed and nothing was tried in the real MiniPay app. No Celo deploy, real phone or production-server test. Cloudflare passing the data route uncached is untested. The eval suite has never run in CI. After deploy: check `?preview=own` and the `type check:` and `run check:` log lines. Visitor file uploads are an open owner question (`docs/OPEN_QUESTIONS.md`).
