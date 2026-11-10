@@ -43,11 +43,25 @@ describe("buildPublishedApp", () => {
   it("always labels the app, and adds the demo notice only when contracts aren't deployed", async () => {
     const page = (out: Awaited<ReturnType<typeof build>>) => text(named(out, /^index\.html$/));
     const deployed = page(await build({}));
-    expect(deployed).toContain("Built with <img");
+    // Only the logo shows (its words are the link's label), with a cross to close it.
+    expect(deployed).toContain('aria-label="Built with GoodBuild"');
+    expect(deployed).not.toMatch(/>Built with</);
+    expect(deployed).toContain('for="gb-bar-off"');
+    expect(deployed).toContain("left:12px");
     expect(deployed).toContain("data:image/png;base64,");
     expect(deployed).not.toContain("Unaudited");
     expect(deployed).not.toContain("Demo:");
     expect(page(await build({}, { hasUndeployedContracts: true }))).toContain("isn't deployed yet");
+  });
+
+  it("leaves room under the app's last content so the bar never covers it", async () => {
+    const page = (out: Awaited<ReturnType<typeof build>>) => text(named(out, /^index\.html$/));
+    const plain = page(await build({}));
+    expect(plain).toContain("data-goodbuild-bar-space");
+    // The space comes after the app's root and before the scripts, and is taller when notices wrap the bar.
+    expect(plain.indexOf("<div data-goodbuild-bar-space")).toBeGreaterThan(plain.indexOf('id="root"'));
+    expect(page(await build({}, { hasUndeployedContracts: true }))).toContain("height:calc(96px");
+    expect(plain).toContain("height:calc(60px");
   });
 
   it("says when the app's contract can be changed (D33), and only then", async () => {

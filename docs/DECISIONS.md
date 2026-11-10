@@ -792,3 +792,9 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - **Left out on purpose:** deletes in a `since` poll (a deleted record just disappears from the next full list; the guide says to set a status instead), a shared counter, and a real realtime channel. If the owner wants real-time, a websocket service beside the web process is the next step; it needs its own plan.
 - **UNVERIFIED:** a multiplayer app built by a real model, the cost of polling at 50 concurrent users on the real server (120 queries a minute per address is the limit, each reading up to 500 rows), and the preview's filtered list matching the server's on every edge (checked for the main cases only).
 
+## D79: The published-app badge is the logo only, bottom left, closable (10 Nov 2026, owner request, built by Claude)
+- **What.** The "Built with GoodBuild" pill on published apps is now just the logo at the bottom left with a cross to close it. The words are the logo link's label for screen readers. Notices that matter (demo, "can be changed", Report) still show beside the logo when there are any; the cross hides the whole badge for that visit (pure CSS, so it works under the published page's script rules).
+- **Why.** The old centred pill covered the last thing on a phone screen. The live check (docs/evals/live) found a game's Play button unreachable under it. The page now ends with an empty block under the app's content, so the last control can scroll clear.
+- **Open.** Closing it also hides the Report link and the demo notice for that visit. If a visitor must always be able to reach Report, keep that link outside the closable badge. Not verified on a real phone.
+- **Also found by the live check, not a product bug.** The home page's Build button stayed disabled in dev-mode runs because the dev server kept reloading the page while files in the project folder changed. On a production build it enables at once.
+

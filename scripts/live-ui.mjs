@@ -3,6 +3,7 @@
 // next to the video. Needs a server on BASE_URL (default http://localhost:3100).
 //   node scripts/live-ui.mjs "A phone game where I catch falling mangoes" "Make it faster every 10 seconds" [--out dir] [--mobile]
 import { mkdirSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { chromium } from "playwright-core";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
@@ -11,7 +12,7 @@ import { createSiweMessage } from "viem/siwe";
 const argv = process.argv.slice(2).filter((a, i, all) => !a.startsWith("--") && !(all[i - 1] ?? "").startsWith("--out"));
 const [prompt = "A phone game where I catch falling mangoes in a basket", change = "Make it get faster every 10 seconds"] = argv;
 const outIdx = process.argv.indexOf("--out");
-const out = path.resolve(outIdx > 0 ? process.argv[outIdx + 1] : "docs/evals/live/runs/ui");
+const out = path.resolve(outIdx > 0 ? process.argv[outIdx + 1] : path.join(os.tmpdir(), "goodbuild-live-ui")) // outside the repo: a dev server reloads the page when files in the project change;
 const mobile = process.argv.includes("--mobile");
 mkdirSync(out, { recursive: true });
 const base = process.env.BASE_URL ?? "http://localhost:3100";
