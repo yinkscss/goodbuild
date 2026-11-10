@@ -39,24 +39,19 @@ page.on("pageerror", (e) => log.push(`page error: ${e.message.slice(0, 200)}`));
 let n = 0;
 const shot = async (name) => { await page.screenshot({ path: path.join(out, `${String(++n).padStart(2, "0")}-${name}.png`) }); console.log(`step ${n}: ${name}`); };
 
-await page.goto(base + "/");
-await page.getByPlaceholder(/Describe the dApp/i).first().fill(prompt);
-await shot("home-prompt");
-// The dev server can reload the page while it warms up, so try the prompt and the button a few times.
-for (let attempt = 1; attempt <= 4; attempt++) {
-  try {
-    await page.waitForLoadState("load");
-    await page.waitForTimeout(2500);
-    await page.getByPlaceholder(/Describe the dApp/i).first().fill(prompt);
-    await page.getByRole("button", { name: /^Build it/ }).click({ timeout: 15_000 });
-    break;
-  } catch (e) {
-    console.log(`prompt attempt ${attempt} failed: ${String(e.message).split("\n")[0].slice(0, 100)}`);
-    if (attempt === 4) throw e;
-  }
-}
-await page.waitForURL(/\/p\//, { timeout: 30_000 });
-await shot("workspace-opened");
+// The project is created through the API (the home page's Build button is a separate check); the workspace is
+// then driven in the browser like a person would.
+const json = { "content-type": "application/json" };
+const created = await call("/api/projects", { method: "POST", headers: json, body: JSON.stringify({ prompt, network: "celo-sepolia" }) });
+if (!created.ok) throw new Error(`couldn't create the project: ${created.status} ${(await created.text()).slice(0, 200)}`);
+const projectId = (await created.json()).id;
+const state = await (await call(`/api/projects/${projectId}`)).json();
+const queued = state.messages.find((m) => m.status === "queued")?.id;
+const started = await call(`/api/projects/${projectId}/turns`, { method: "POST", headers: json, body: JSON.stringify({ mode: "build", userMessageId: queued, skipPlan: true }) });
+console.log("build started:", started.status);
+await page.goto(`${base}/p/${projectId}`);
+await page.waitForTimeout(3000);
+await shot("workspace-building");
 
 /** Wait until the builder stops: no "stop" control and no streaming message. */
 async function settle(label, ms = 600_000) {
