@@ -7,9 +7,8 @@ import { SiteFooter } from "@/components/landing/site-footer";
 import { SiteNav } from "@/components/landing/site-nav";
 import { SITE_URL } from "@/config/site-url";
 import { getPost, POSTS, readMinutes, relatedPosts } from "@/content/blog";
+import { keywordsFor } from "@/content/blog/markdown";
 import { CLUSTERS } from "@/content/blog/types";
-
-export const dynamicParams = false;
 
 export function generateStaticParams() {
   return POSTS.map((p) => ({ slug: p.slug }));
@@ -23,7 +22,8 @@ export async function generateMetadata({ params }: PageProps<"/blog/[slug]">): P
   return {
     title: { absolute: post.title },
     description: post.description,
-    alternates: { canonical: url },
+    keywords: keywordsFor(post),
+    alternates: { canonical: url, types: { "application/rss+xml": `${SITE_URL}/blog/feed.xml` } },
     openGraph: { type: "article", url, title: post.title, description: post.description, publishedTime: post.date, siteName: "GoodBuild" },
     twitter: { card: "summary", title: post.title, description: post.description },
   };
@@ -43,8 +43,20 @@ export default async function BlogPostPage({ params }: PageProps<"/blog/[slug]">
       datePublished: post.date,
       dateModified: post.date,
       mainEntityOfPage: url,
+      keywords: keywordsFor(post).join(", "),
+      inLanguage: "en",
+      articleSection: CLUSTERS[post.cluster].label,
       author: { "@type": "Organization", name: "GoodBuild" },
       publisher: { "@type": "Organization", name: "GoodBuild", url: SITE_URL },
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      itemListElement: [
+        { "@type": "ListItem", position: 1, name: "GoodBuild", item: SITE_URL },
+        { "@type": "ListItem", position: 2, name: "Blog", item: `${SITE_URL}/blog` },
+        { "@type": "ListItem", position: 3, name: post.title, item: url },
+      ],
     },
     ...(post.faq?.length
       ? [

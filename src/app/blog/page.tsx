@@ -10,7 +10,8 @@ import { CLUSTERS, type PostCluster } from "@/content/blog/types";
 export const metadata: Metadata = {
   title: { absolute: "Blog: build apps with AI on Celo · GoodBuild" },
   description: "Guides to building MiniPay apps, blockchain apps and dApps with AI, free AI builders compared, and app ideas you can run with G$.",
-  alternates: { canonical: `${SITE_URL}/blog` },
+  keywords: ["AI app builder", "MiniPay app", "build a dApp", "free AI builder", "Celo", "vibe coding", "GoodBuild"],
+  alternates: { canonical: `${SITE_URL}/blog`, types: { "application/rss+xml": `${SITE_URL}/blog/feed.xml` } },
 };
 
 export default function BlogIndexPage() {
@@ -19,6 +20,18 @@ export default function BlogIndexPage() {
     <>
       <SiteNav />
       <main className="mx-auto max-w-[1360px] px-4 sm:px-8">
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@type": "CollectionPage",
+              name: "GoodBuild blog",
+              url: `${SITE_URL}/blog`,
+              mainEntity: { "@type": "ItemList", itemListElement: POSTS.map((p, i) => ({ "@type": "ListItem", position: i + 1, url: `${SITE_URL}/blog/${p.slug}`, name: p.title })) },
+            }).replace(/</g, "\\u003c"),
+          }}
+        />
         <div className="rounded-card bg-surface p-8 shadow-card md:p-12">
           <p className="eyebrow">Blog</p>
           <h1 className="display mt-3 max-w-4xl text-[28px] font-bold sm:text-[40px]">Build apps with AI, on Celo</h1>

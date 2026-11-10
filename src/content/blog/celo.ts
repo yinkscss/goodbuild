@@ -146,7 +146,7 @@ export const celoPosts: Post[] = [
     slug: "ai-smart-contract-generator",
     query: "ai smart contract generator",
     cluster: "celo",
-    title: "AI Smart Contract Generators: What They Do and Where They Fail",
+    title: "AI Smart Contract Generators: Uses and Limits",
     description: "An AI smart contract generator writes Solidity from a description. What to expect, where it goes wrong, and how to use one without losing money.",
     date,
     intro: "An AI smart contract generator turns a plain description into Solidity code. It is fast and good at common patterns, and it still needs a human to check the result.",
@@ -387,6 +387,11 @@ export const celoPosts: Post[] = [
         ],
       },
     ],
+    faq: [
+      { q: "What does ERC-20 mean?", a: "It is a shared standard for tokens, so wallets, apps and exchanges all know how to read balances and send the coin. Celo follows the same standard as Ethereum." },
+      { q: "Can I change the supply after launch?", a: "Only if the contract was written to allow it, and only by whoever it names. Decide this before you deploy, because the contract itself usually can't be edited afterwards." },
+      { q: "Is my own token the same as G$?", a: "No. G$ is the GoodDollar token. Your token is a separate coin with its own contract and its own rules. Your apps can still accept G$ as payment." },
+    ],
     related: ["build-airdrop-app", "is-ai-generated-smart-contract-safe", "what-is-a-dapp"],
   },
   {
@@ -426,6 +431,11 @@ export const celoPosts: Post[] = [
         ],
       },
     ],
+    faq: [
+      { q: "Where are the images stored?", a: "Usually not on the blockchain itself, which would be costly. The token points to an image kept at a stable web address. Pick a home that will still be there in five years." },
+      { q: "Can I limit how many one person mints?", a: "Yes, but put the limit in the contract. A limit that only exists on the web page can be bypassed by calling the contract directly." },
+      { q: "Do NFTs have to be art?", a: "No. Tickets, membership passes and badges are often more useful than pictures, because owning one gives the holder something to do." },
+    ],
     related: ["create-erc20-token-no-code", "build-event-ticket-app", "how-to-build-a-dapp-on-celo"],
   },
   {
@@ -464,6 +474,11 @@ export const celoPosts: Post[] = [
         ],
       },
     ],
+    faq: [
+      { q: "What does DAO stand for?", a: "Decentralized autonomous organization. In practice it is a group whose decisions are recorded by a smart contract that counts votes, so the tally can't be quietly changed." },
+      { q: "Can a vote move money automatically?", a: "It can, if the contract is written that way. That makes the contract hold funds, so test it carefully and get a human review before using real money." },
+      { q: "How do I stop one person voting many times?", a: "A plain wallet vote can't. Tie voting power to something harder to fake, such as holding a token for a period, or a verified identity." },
+    ],
     related: ["create-erc20-token-no-code", "build-crowdfunding-dapp", "is-ai-generated-smart-contract-safe"],
   },
   {
@@ -499,6 +514,11 @@ export const celoPosts: Post[] = [
           "Apps published by [GoodBuild](/) get its own wallet layer: a wallet list, WalletConnect and a MiniPay auto-connect. Some parts, such as phone deep links and a MiniPay session, are not yet confirmed on every real device, so test on your own phone before you share a link.",
         ],
       },
+    ],
+    faq: [
+      { q: "What is WalletConnect?", a: "A protocol that links a website to a wallet on your phone. On a computer you scan a QR code; on a phone the page opens the wallet app directly." },
+      { q: "Why does my dApp need a network check?", a: "A wallet can be on the wrong network. The page should say so and offer to switch, so the user doesn't sign something on a chain you didn't mean." },
+      { q: "Do I write this code myself?", a: "Not with an AI builder. It adds a wallet layer for you, and you check it on your own devices." },
     ],
     related: ["what-is-a-minipay-app", "mobile-first-web3-app-low-data", "how-to-build-a-dapp-on-celo"],
   },
