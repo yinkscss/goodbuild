@@ -511,7 +511,7 @@ export const celoPosts: Post[] = [
       {
         heading: "What GoodBuild does",
         paragraphs: [
-          "Apps published by [GoodBuild](/) get its own wallet layer: a wallet list, WalletConnect and a MiniPay auto-connect. Some parts, such as phone deep links and a MiniPay session, are not yet confirmed on every real device, so test on your own phone before you share a link.",
+          "Apps published by [GoodBuild](/) get its own wallet layer: a wallet list, a MiniPay auto-connect and, when the owner has set it up, WalletConnect. Some parts, such as phone deep links and a MiniPay session, are not yet confirmed on every real device, so test on your own phone before you share a link.",
         ],
       },
     ],

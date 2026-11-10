@@ -147,7 +147,7 @@ export const comparePosts: Post[] = [
         ],
       },
       { heading: "Questions to ask any of them", bullets: ["Does it run what I need: a contract, a server, a game?", "Can I export the code?", "How does it handle mistakes: does it check its own work?", "What are the limits when the free credit runs out?"] },
-      { heading: "A GoodBuild detail", paragraphs: ["Every GoodBuild build is opened in a headless browser on the server to check that it runs, and crashes go to an automatic fix step. It is one example of what to ask other builders about too."] },
+      { heading: "A GoodBuild detail", paragraphs: ["GoodBuild is designed to open each build in a headless browser on the server to check that it runs, and to send crashes to an automatic fix step. It is one example of what to ask other builders about too."] },
     ],
     faq: [
       { q: "Which Bolt.new alternative is best for blockchain apps?", a: "A builder that writes and deploys contracts. GoodBuild does this for Celo; general web app builders mostly don't." },

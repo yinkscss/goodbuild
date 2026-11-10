@@ -55,7 +55,7 @@ export default function BlogIndexPage() {
             <ul className="mt-6 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
               {POSTS.filter((p) => p.cluster === c).map((p) => (
                 <li key={p.slug}>
-                  <Link href={`/blog/${p.slug}`} className="flex h-full flex-col justify-between gap-3 rounded-inner bg-surface-tint p-5 transition-colors duration-200 ease-gb hover:text-violet">
+                  <Link href={`/blog/${p.slug}`} className="flex h-full flex-col justify-between gap-3 rounded-block bg-surface-tint p-5 transition-colors duration-200 ease-gb hover:text-violet">
                     <span className="text-sm font-semibold">{p.title}</span>
                     <span className="text-xs text-grey-600">{p.description}</span>
                   </Link>

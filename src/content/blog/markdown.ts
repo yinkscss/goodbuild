@@ -45,7 +45,7 @@ export const PRODUCT_FACTS = [
   "You describe an app in plain words. GoodBuild asks a few questions, then writes the Solidity smart contract and the React front end, and shows a live preview.",
   "You deploy the contract by signing from your own wallet. GoodBuild never holds private keys.",
   "Apps run on Celo mainnet or on Celo Sepolia, the test network. Publishing puts the front end at its own address, <name>.goodbuildit.xyz.",
-  "Published apps are built to connect automatically inside the MiniPay wallet and to offer a wallet list and WalletConnect elsewhere.",
+  "Published apps are built to connect automatically inside the MiniPay wallet (not yet confirmed on a real MiniPay), and to offer a list of browser wallets elsewhere, plus WalletConnect when it is configured.",
   "Apps can collect, split and pay out G$ (GoodDollar) and Celo stablecoins. Forms and saved data work without a separate server; there is no custom backend yet.",
   "Free to try: new accounts get $0.20 of AI free during the testnet beta. After the beta, each build costs the AI cost plus 25%, with an estimate shown first.",
   "Generated contracts are unaudited. People who deploy are responsible for what they deploy.",

@@ -63,7 +63,7 @@ export default async function BlogPostPage({ params }: PageProps<"/blog/[slug]">
           {
             "@context": "https://schema.org",
             "@type": "FAQPage",
-            mainEntity: post.faq.map((f) => ({ "@type": "Question", name: f.q, acceptedAnswer: { "@type": "Answer", text: f.a.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1") } })),
+            mainEntity: post.faq.map((f) => ({ "@type": "Question", name: f.q, acceptedAnswer: { "@type": "Answer", text: f.a.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").replace(/\*\*/g, "") } })),
           },
         ]
       : []),
@@ -157,7 +157,7 @@ export default async function BlogPostPage({ params }: PageProps<"/blog/[slug]">
             <ul className="mt-4 grid gap-3 md:grid-cols-3">
               {related.map((r) => (
                 <li key={r.slug}>
-                  <Link href={`/blog/${r.slug}`} className="block rounded-inner bg-surface-tint p-5 text-sm font-semibold transition-colors duration-200 ease-gb hover:text-violet">
+                  <Link href={`/blog/${r.slug}`} className="block rounded-block bg-surface-tint p-5 text-sm font-semibold transition-colors duration-200 ease-gb hover:text-violet">
                     {r.title}
                   </Link>
                 </li>
