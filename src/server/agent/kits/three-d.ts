@@ -3,7 +3,7 @@ import type { CheckIssue } from "../checks";
 import type { Kit } from "./registry";
 
 /**
- * The 3D kit (D76): scenes, viewers and 3D games, on three.js with no wrapper library.
+ * The 3D kit (D77): scenes, viewers and 3D games, on three.js with no wrapper library.
  *
  * Why plain three.js and not react-three-fiber and drei: two more packages (and drei is large), a
  * React-reconciler layer to keep in step with React 18, and a style the builder gets wrong more

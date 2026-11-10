@@ -8,7 +8,23 @@ import { Button } from "@/components/ui/button";
 import { chainLabel } from "@/lib/deploy/explorer";
 import { formatMicroUsd } from "@/lib/pricing";
 import type { Step, TurnRecord } from "@/lib/turn-types";
+import { formatClock, useElapsed, WaitNote, WaveDots } from "@/components/ui/wait";
+import { cn } from "@/lib/utils";
 import { PlanCard, type PlanActions } from "./plan-card";
+
+/** A step running this long gets a calm explanation (A2). */
+const SLOW_STEP_SECONDS = 20;
+
+/** Plain words for the steps a non-technical person sees. Unknown labels pass through unchanged. */
+export function plainStepLabel(label: string): string {
+  if (/^Writing .+\.sol$/.test(label)) return "Writing your contract";
+  if (label === "Compiling contracts" || label.startsWith("Compiling with solc")) return "Building your contract";
+  if (label === "Testing contracts") return "Trying your contract out";
+  if (label === "Checking types") return "Checking the code";
+  const fix = /^Fixing errors \(attempt (\d+) of (\d+)\)$/.exec(label);
+  if (fix) return `Fixing a problem (try ${fix[1]} of ${fix[2]})`;
+  return label;
+}
 
 /** Status dot for a step row: violet check, pink spinner, or danger dot. */
 function StepDot({ status }: { status: Step["status"] }) {
@@ -34,19 +50,36 @@ function StepDot({ status }: { status: Step["status"] }) {
   );
 }
 
-/** Step rows (DESIGN_SYSTEM §4). They fold away once a turn has ended well. */
-export function StepRows({ steps, open = true }: { steps: Step[]; open?: boolean }) {
+/** One step row. A running step shows its own seconds, its title breathes, and past 20s it explains. */
+function StepRow({ step, live }: { step: Step; live: boolean }) {
+  const running = live && step.status === "running";
+  const seconds = useElapsed(running);
+  return (
+    <li className={cn("py-2", live && "animate-lift motion-reduce:animate-none")}>
+      <div className="flex items-start gap-3">
+        <StepDot status={step.status} />
+        <div className="min-w-0 flex-1">
+          <p className={cn("text-sm font-medium", running && "animate-pulse-dot motion-reduce:animate-none")}>{plainStepLabel(step.label)}</p>
+          {step.detail && <p className="truncate text-xs text-grey-600">{step.detail}</p>}
+        </div>
+        {running && seconds > 0 && <span className="mt-0.5 font-mono text-[11px] text-grey-600">{seconds}s</span>}
+      </div>
+      {running && seconds >= SLOW_STEP_SECONDS && (
+        <WaitNote tone="calm" className="mt-2 ml-7">
+          This part is taking longer than usual. Nothing is lost, and you can leave this tab open.
+        </WaitNote>
+      )}
+    </li>
+  );
+}
+
+/** Step rows (DESIGN_SYSTEM §4, wait-state pick A2). They fold away once a turn has ended well. */
+export function StepRows({ steps, open = true, live = false }: { steps: Step[]; open?: boolean; live?: boolean }) {
   if (!steps.length) return null;
   const rows = (
     <ol className="mt-3 rounded-block bg-[#FAFAFA] px-4 py-1" aria-label="Build steps">
       {steps.map((s) => (
-        <li key={s.id} className="flex items-start gap-3 py-2">
-          <StepDot status={s.status} />
-          <div className="min-w-0">
-            <p className="text-sm font-medium">{s.label}</p>
-            {s.detail && <p className="truncate text-xs text-grey-600">{s.detail}</p>}
-          </div>
-        </li>
+        <StepRow key={s.id} step={s} live={live} />
       ))}
     </ol>
   );
@@ -224,19 +257,24 @@ export function TurnView({
   onSkipPlan?: () => void;
 }) {
   const showError = !live && (record.status === "needs_fix" || record.status === "error");
+  const thinking = live && !text && !record.steps.length;
+  const thinkingFor = useElapsed(thinking);
   return (
     <div>
       {text ? (
         <p className="text-sm leading-relaxed whitespace-pre-wrap">{text}</p>
       ) : live ? (
-        <p className="text-sm text-grey-600">Thinking…</p>
+        <p className="flex items-center gap-2 text-sm text-grey-600" role="status">
+          <WaveDots /> Thinking
+          {thinkingFor > 0 && <span className="font-mono text-[11px]">{formatClock(thinkingFor)}</span>}
+        </p>
       ) : null}
       {onSkipPlan && (
         <Button variant="ghost" size="sm" className="mt-2 -ml-3.5" onClick={onSkipPlan}>
           Skip, just build it
         </Button>
       )}
-      <StepRows steps={record.steps} open={live || record.status === "needs_fix" || record.status === "error" || record.status === "stopped"} />
+      <StepRows steps={record.steps} live={live} open={live || record.status === "needs_fix" || record.status === "error" || record.status === "stopped"} />
       {record.intake && <PlanCard intake={record.intake} actions={plan} />}
       {!live && record.status === "ready" && <DeployCard record={record} chainId={chainId} />}
       {showError && <TurnError record={record} onFix={onFix} disabled={fixDisabled} />}
