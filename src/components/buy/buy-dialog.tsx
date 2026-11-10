@@ -17,12 +17,18 @@ interface Quote {
 }
 interface WidgetEvent {
   type: string;
+  message?: string;
   topUp?: { id?: string; status?: TopUpStatus };
 }
 declare global {
   interface Window {
     GoodCash?: { open: (options: Record<string, unknown>) => unknown };
   }
+}
+
+/** Moves an order forward, never back: a late or repeated event cannot undo a newer status. */
+function moveForward(order: { id: string | null; status: TopUpStatus } | null, status: TopUpStatus) {
+  return order && statusIndex(status) > statusIndex(order.status) ? { ...order, status } : order;
 }
 
 function loadWidget(): Promise<void> {
@@ -44,7 +50,7 @@ function loadWidget(): Promise<void> {
 export function BuyDialog({ open, onOpenChange, defaultAsset = "g", onDelivered }: { open: boolean; onOpenChange: (open: boolean) => void; defaultAsset?: Asset; onDelivered?: () => void }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-lg">
         <BuyPanel defaultAsset={defaultAsset} onClose={() => onOpenChange(false)} onDelivered={onDelivered} />
       </DialogContent>
     </Dialog>
@@ -62,6 +68,10 @@ function BuyPanel({ defaultAsset, onClose, onDelivered }: { defaultAsset: Asset;
   const [quoteState, setQuoteState] = React.useState<{ key: string; quote: Quote | null; error: string | null } | null>(null);
   const [order, setOrder] = React.useState<{ id: string | null; status: TopUpStatus } | null>(null);
   const [starting, setStarting] = React.useState(false);
+  // "pay" while GoodCash's panel is open inside this dialog.
+  const [stage, setStage] = React.useState<"form" | "pay">("form");
+  const container = React.useRef<HTMLDivElement>(null);
+  const handle = React.useRef<{ close: () => void } | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const delivered = React.useRef(onDelivered);
   React.useEffect(() => {
@@ -86,7 +96,7 @@ function BuyPanel({ defaultAsset, onClose, onDelivered }: { defaultAsset: Asset;
 
   // A live price, asked a moment after the person stops typing, and again before the old one runs out (about 30 seconds).
   React.useEffect(() => {
-    if (!config?.enabled || !valid || order) return;
+    if (!config?.enabled || !valid || stage === "pay") return;
     let live = true;
     let timer: ReturnType<typeof setTimeout>;
     const key = `${amount}:${asset}`;
@@ -110,9 +120,10 @@ function BuyPanel({ defaultAsset, onClose, onDelivered }: { defaultAsset: Asset;
       clearTimeout(first);
       clearTimeout(timer);
     };
-  }, [config?.enabled, valid, amount, asset, order]);
+  }, [config?.enabled, valid, amount, asset, stage]);
 
   // Follow the order after the widget made it. The widget's events move the steps at once; this keeps them true if an event is missed.
+  const forward = (status: TopUpStatus) => setOrder((o) => moveForward(o, status));
   const orderId = order?.id ?? null;
   const finished = order?.status === "delivered" || order?.status === "failed" || order?.status === "expired";
   React.useEffect(() => {
@@ -121,7 +132,7 @@ function BuyPanel({ defaultAsset, onClose, onDelivered }: { defaultAsset: Asset;
     const timer = setInterval(() => {
       fetch(`/api/buy/topups/${orderId}`, { cache: "no-store", credentials: "same-origin" })
         .then((r) => (r.ok ? r.json() : null))
-        .then((d: { status?: TopUpStatus } | null) => d?.status && live && advance(d.status))
+        .then((d: { status?: TopUpStatus } | null) => d?.status && live && forward(d.status))
         .catch(() => undefined);
     }, 4000);
     return () => {
@@ -135,41 +146,59 @@ function BuyPanel({ defaultAsset, onClose, onDelivered }: { defaultAsset: Asset;
     if (isDelivered) delivered.current?.();
   }, [isDelivered]);
 
-  function advance(status: TopUpStatus) {
-    setOrder((o) => {
-      if (!o || statusIndex(status) < statusIndex(o.status)) return o;
-      return { ...o, status };
-    });
-  }
-
   async function start() {
-    if (!config?.publishableKey || !valid || !wallet) return;
+    if (!config?.publishableKey || !valid || !wallet || !container.current) return;
     setStarting(true);
     setError(null);
     try {
       await loadWidget();
-      setOrder({ id: null, status: "awaiting_payment" });
-      window.GoodCash?.open({
+      setOrder(null);
+      setStage("pay");
+      container.current.replaceChildren();
+      // Embed mode with our own container: the panel is an iframe inside this dialog, so the dialog's focus and click handling
+      // never fights an overlay on the page. The wallet is pinned to the signed-in one.
+      handle.current = window.GoodCash?.open({
         publishableKey: config.publishableKey,
         flow: "topup",
         mode: "embed",
+        container: container.current,
         amountNaira: amount,
         asset,
+        wallet,
         partnerRef: auth.user?.id,
         onEvent: (e: WidgetEvent) => {
+          if (e.type === "closed") {
+            // Closed before an order existed: back to the form. With an order, keep following it.
+            setOrder((o) => {
+              if (!o) setStage("form");
+              return o;
+            });
+            return;
+          }
+          if (e.type === "error") {
+            setError(e.message ?? "Something went wrong. Nothing was charged.");
+            setStage("form");
+            return;
+          }
           if (!e.type.startsWith("topup.")) return;
-          const status = e.topUp?.status;
           const id = e.topUp?.id ?? null;
-          setOrder((o) => ({ id: id ?? o?.id ?? null, status: status ?? o?.status ?? "awaiting_payment" }));
-          if (status) advance(status);
+          const status = e.topUp?.status ?? (e.type === "topup.paid_in" ? "paid_in" : e.type === "topup.delivered" ? "delivered" : e.type === "topup.failed" ? "failed" : "awaiting_payment");
+          setOrder((o) => (o ? { ...(moveForward(o, status) ?? o), id: id ?? o.id } : { id, status }));
         },
-      });
+      }) as { close: () => void } | null;
     } catch (e) {
-      setOrder(null);
+      setStage("form");
       setError((e as Error).message);
     } finally {
       setStarting(false);
     }
+  }
+
+  function back() {
+    handle.current?.close();
+    handle.current = null;
+    setOrder(null);
+    setStage("form");
   }
 
   const current = quoteState?.key === quoteKey ? quoteState : null;
@@ -189,7 +218,7 @@ function BuyPanel({ defaultAsset, onClose, onDelivered }: { defaultAsset: Asset;
         {config === null && <p className="mt-5 text-sm text-grey-600">Sign in with a wallet to buy.</p>}
         {config && !config.enabled && <p className="mt-5 text-sm text-grey-600">Buying isn&apos;t switched on yet. Check back soon.</p>}
 
-        {config?.enabled && !order && (
+        {config?.enabled && stage === "form" && (
           <div className="mt-5 space-y-4">
             <div role="radiogroup" aria-label="What to buy" className="grid grid-cols-2 gap-2">
               {(["g", "celo"] as const).map((a) => (
@@ -254,44 +283,52 @@ function BuyPanel({ defaultAsset, onClose, onDelivered }: { defaultAsset: Asset;
             <Button variant="primary" className="w-full" disabled={!valid || !quote || !wallet || starting} onClick={() => void start()}>
               {starting ? "Opening…" : `Continue to pay ₦${valid ? amount.toLocaleString("en-US") : ""}`}
             </Button>
-            <p className="text-center text-xs text-grey-600">You&apos;ll enter your ID details and see the bank-transfer details on GoodCash&apos;s secure page, then approve once in your wallet. The price is held for about 30 seconds on that page.</p>
+            <p className="text-center text-xs text-grey-600">Next, GoodCash&apos;s secure panel opens here. You enter your ID details and see the bank-transfer details there, then approve once in your wallet. Use the wallet you are signed in with.</p>
           </div>
         )}
 
-        {config?.enabled && order && (
-          <div className="mt-5 space-y-4" aria-live="polite">
-            <ol className="space-y-2">
-              {STEPS.map((s, i) => {
-                const failed = order.status === "failed" || order.status === "expired";
-                const done = !failed && i <= idx;
-                const current = !failed && i === idx + 1;
-                return (
-                  <li key={s.key} className={`flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm ${done ? "bg-tint text-ink" : current ? "bg-tint text-ink" : "text-grey-600"}`}>
-                    <span className={`inline-flex size-6 items-center justify-center rounded-full text-xs font-bold ${done ? "bg-violet text-white" : "bg-grey-200"}`}>{done ? "✓" : i + 1}</span>
-                    <span className={current ? "font-semibold" : ""}>{s.label(label)}</span>
-                  </li>
-                );
-              })}
-            </ol>
-            {order.status === "delivered" && (
+        {/* GoodCash's panel (an iframe) is put here by the widget. The container stays mounted so the widget can find it. */}
+        <div ref={container} className={stage === "pay" && !(order && finished) ? "mt-4 flex justify-center overflow-hidden" : "hidden"} />
+
+        {config?.enabled && stage === "pay" && (
+          <div className="mt-4 space-y-4" aria-live="polite">
+            {!order && <p className="text-center text-xs text-grey-600">Follow the steps above. This screen updates when your order starts.</p>}
+            {order && (
+              <ol className="space-y-2">
+                {STEPS.map((s, i) => {
+                  const failed = order.status === "failed" || order.status === "expired";
+                  const done = !failed && i <= idx;
+                  const current = !failed && i === idx + 1;
+                  return (
+                    <li key={s.key} className={`flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm ${done || current ? "bg-tint text-ink" : "text-grey-600"}`}>
+                      <span className={`inline-flex size-6 items-center justify-center rounded-full text-xs font-bold ${done ? "bg-violet text-white" : "bg-grey-200"}`}>{done ? "✓" : i + 1}</span>
+                      <span className={current ? "font-semibold" : ""}>{s.label(label)}</span>
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
+            {order?.status === "delivered" && (
               <p role="status" className="text-sm text-success">
                 Done. {label} is in your wallet.
               </p>
             )}
-            {(order.status === "failed" || order.status === "expired") && (
+            {(order?.status === "failed" || order?.status === "expired") && (
               <p role="alert" className="text-sm text-warning">
-                The order {order.status === "expired" ? "expired" : "didn't go through"}. If you already sent money, it is refunded to your bank by our payment partner.
+                The order {order.status === "expired" ? "expired" : "didn't go through"}. If you already sent money, our payment partner refunds it to your bank.
               </p>
             )}
             <div className="flex gap-2">
-              {(order.status === "failed" || order.status === "expired") && (
-                <Button variant="secondary" className="flex-1" onClick={() => setOrder(null)}>
-                  Try again
+              {(!order || order.status === "failed" || order.status === "expired") && (
+                <Button variant="secondary" className="flex-1" onClick={back}>
+                  {order ? "Try again" : "Back"}
                 </Button>
               )}
-              <Button variant={order.status === "delivered" ? "primary" : "secondary"} className="flex-1" onClick={onClose}>
-                {order.status === "delivered" ? "Close" : "Hide"}
-              </Button>
+              {order && (
+                <Button variant={order.status === "delivered" ? "primary" : "secondary"} className="flex-1" onClick={onClose}>
+                  {order.status === "delivered" ? "Close" : "Hide"}
+                </Button>
+              )}
             </div>
           </div>
         )}

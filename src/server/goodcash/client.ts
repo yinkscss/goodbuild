@@ -77,6 +77,9 @@ async function call<T>(path: string, config: GoodCashConfig, fetcher: Fetch): Pr
     throw new GoodCashError("unavailable", "We can't reach our payment partner right now. Try again in a minute.", 503);
   }
   if (res.status === 404 || res.status === 403) {
+    // Log GoodCash's reason (a wrong origin or key reads the same as "not enabled" to the person).
+    const detail = (await res.clone().json().catch(() => null)) as { error?: { code?: string } | string; code?: string } | null;
+    console.warn("goodcash: refused", res.status, typeof detail?.error === "object" ? detail.error?.code : (detail?.code ?? detail?.error));
     // GoodCash answers "not found" until it switches top-ups on for a partner (docs: Availability).
     throw new GoodCashError("not_enabled", "Buying isn't switched on yet.", 503);
   }
