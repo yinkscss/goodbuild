@@ -5,6 +5,7 @@
 //   node scripts/live-check.mjs --only game-runner,minipay-shop
 //   node scripts/live-check.mjs --each 2          most one app may spend, in dollars (default 1)
 //   node scripts/live-check.mjs --skip-build       reuse the last `pnpm build`
+//   node scripts/live-check.mjs --no-claude        no Claude key: the fix calls fall back to DeepSeek, the way production does when Claude fails
 //   node scripts/live-check.mjs --demo            test the runner itself with the scripted demo model (free)
 //   node scripts/live-check.mjs --headed           show the browser while it plays
 //
@@ -41,7 +42,8 @@ function envFile() {
 const scenarioCount = JSON.parse(readFileSync("docs/evals/live/scenarios.json", "utf8")).scenarios.filter((s) => !only.length || only.includes(s.id)).length;
 const budget = option("total", "") ? Number(option("total", "")) : each * scenarioCount; // --total caps the whole run
 const demo = flag("demo"); // plumbing test with the scripted demo model: no keys, no cost, always the same app
-for (const name of demo ? [] : ["ANTHROPIC_API_KEY", "DEEPSEEK_API_KEY"]) {
+const noClaude = flag("no-claude"); // no Anthropic key: strong calls fail before any output and withFallback retries them on DeepSeek
+for (const name of demo ? [] : noClaude ? ["DEEPSEEK_API_KEY"] : ["ANTHROPIC_API_KEY", "DEEPSEEK_API_KEY"]) {
   if (process.env[name] || envFile()[name]) continue;
   console.log(`\n${name} isn't saved yet.`);
   const r = spawnSync("node", ["scripts/set-secret.mjs", name], { stdio: "inherit" });
@@ -50,7 +52,7 @@ for (const name of demo ? [] : ["ANTHROPIC_API_KEY", "DEEPSEEK_API_KEY"]) {
 const keys = envFile();
 const serverEnv = {
   ...process.env,
-  ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ?? keys.ANTHROPIC_API_KEY,
+  ANTHROPIC_API_KEY: noClaude ? "" : process.env.ANTHROPIC_API_KEY ?? keys.ANTHROPIC_API_KEY,
   DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY ?? keys.DEEPSEEK_API_KEY,
   ALLOW_PGLITE: "true",
   SESSION_SECRET: "live-check-only-session-secret-0123456789abcdef",
