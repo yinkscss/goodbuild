@@ -9,7 +9,7 @@ import { checkApp, checkContracts, formatIssues, mentionsGd, mentionsNativeCelo,
 import { runContractTests } from "./contract-tests";
 import { createHash } from "node:crypto";
 
-import { detectKits, kitGuideName, kitsOf, withKit, withKitHelpers } from "./kits";
+import { detectKits, kitById, kitGuideName, kitsOf, withKit, withKitHelpers } from "./kits";
 import { runCheck, runCheckEnabled } from "./run-check";
 import { typeCheck, typeCheckMode, type TypeCheckMode } from "./type-check";
 import { dbAssetStore, type AssetStore } from "./asset-store";
@@ -776,18 +776,25 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     // Kits (D71): one the request clearly asks for is on before the builder starts, so its packages and
     // starter files are there even if the builder forgets to ask. In place before the workspace
     // snapshot, like an upload's module, so it doesn't count as an edit by itself.
-    const newKits = input.mode === "build" ? detectKits(`${request}\n${brief.answerWords}`, files) : [];
+    const all = await conversation(db, input.projectId, [userMessageId, assistantId]);
+    // On a first build the request is often just "Start building" (the plan-first questions came first, D32),
+    // so what the person asked for is in their earlier messages: those words count too. Later turns go by
+    // the request alone, so a word from long ago doesn't turn a kit on.
+    const kitWords = [request, brief.answerWords, ...(firstBuild ? all.filter((m) => m.role === "user").map((m) => m.content) : [])].join("\n");
+    const newKits = input.mode === "build" ? detectKits(kitWords, files) : [];
+    // A gallery template is a designed page (D60): it gets the motion kit (D84) whatever its words say.
+    const motionKit = kitById("motion");
+    if (input.mode === "build" && firstBuild && motionKit && templateBriefFor(project.templateId) && !newKits.includes(motionKit)) newKits.push(motionKit);
     for (const kit of newKits) files = withKit(files, kit);
     if (newKits.length) log(`kits: turned on ${newKits.map((k) => k.id).join(", ")} for this request`);
     const kitsOn = kitsOf(files);
     const kitsBlock = kitsOn.length
       ? [
-          `Kits on for this project: ${kitsOn.map((k) => `${k.id} (${k.title})`).join(", ")}. Their packages are installed and their starter files are in the project. Follow each kit's guide (read_guide "${kitGuideName(kitsOn[0].id)}").`,
+          `Kits on for this project: ${kitsOn.map((k) => `${k.id} (${k.title})`).join(", ")}. Their packages are installed and their starter files are in the project. Follow each kit's guide (read_guide ${kitsOn.map((k) => `"${kitGuideName(k.id)}"`).join(", ")}).`,
           ...newKits.map((k) => `<guide name="${kitGuideName(k.id)}">\n${k.guide}\n</guide>`),
         ].join("\n\n")
       : "";
 
-    const all = await conversation(db, input.projectId, [userMessageId, assistantId]);
     const history: ChatMessage[] = all.slice(-HISTORY_WINDOW).map((m) => ({ role: m.role, content: m.content.slice(0, 4000) }));
     let memoryResult: { fallback: boolean; outputTokens: number; chars: number } | null = null;
     // The memory call's usage and the new memory are committed together: a crash in between

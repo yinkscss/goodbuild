@@ -51,7 +51,8 @@ export const GUIDES: Guide[] = [
 - Big sites: one component per section in src/components/sections/ (Hero.tsx, Features.tsx, Faq.tsx), composed by the page, so later edits find the right file.
 - Copy: write from the request. Never invent testimonials, customer names, logos, prices, addresses, opening hours or stats and present them as real. If a section needs facts you don't have, write clearly marked sample copy ("Your opening hours here") and mention it in your reply.
 - If the site belongs to a dApp, the landing page explains it in plain words and its button goes to the app page (Link to "/app") or connects the wallet.
-- A single h1 on the page; h2 per section. Buttons and links have visible focus styles (the starter Button does).`,
+- A single h1 on the page; h2 per section. Buttons and links have visible focus styles (the starter Button does).
+- Look and movement: load the visual-design guide and choose a direction before writing. Turn on the motion kit (add_kit("motion")) for the hero headline, scroll reveals and count-up stats, and follow its guide: one hero moment, the same reveal down the page, forms stay still.`,
   },
   {
     name: "forms-and-signup",
@@ -106,6 +107,30 @@ export const GUIDES: Guide[] = [
 - Offer a "Delete my data" action (deleteMyData() from src/lib/db.ts) somewhere reasonable, such as a settings or profile area, in any app that stores anything personal.
 - Never trust record values when rendering: React escapes text, so render them as text and never with dangerouslySetInnerHTML. Treat another wallet's values as untrusted, including links (allow only https:).
 - States: Skeleton while loading (session.loading, notes.loading); when signed out, explain what signing in gives, with the button; an empty state; errors in a Notice. In the preview records stay in that browser and sign-in needs no signature, and a small note says so; say this once in your reply when you add saved data, and that they need to publish for real storage.`,
+  },
+  {
+    name: "visual-design",
+    when: "the first build of any website or page people will judge by its looks (landing page, portfolio, shop, event, a dApp's front door), a redesign, or the user says it looks plain, generic, boring or like a template",
+    body: `Visual design: decide the look on purpose, then hold to it on every screen.
+- Art direction first. Before any file, write one sentence in set_plan's summary: who it is for, the mood, and the one thing a visitor should remember. Then pick ONE direction and take its whole recipe, set through the tokens in public/index.html (design-tokens guide):
+  1. Editorial: off-white background (#faf8f5), near-black text, a serif display font (Fraunces or Playfair Display), big headlines with tight tracking, thin rules between sections, one muted accent, photos or large type instead of icons. For causes, stories, portfolios, cafes.
+  2. Soft and friendly: light tinted background, rounded-2xl or rounded-3xl cards, a rounded display font (Fredoka, Nunito), pastel surfaces with one saturated accent, icon tiles. For communities, clubs, kids, savings groups.
+  3. Bold poster: a strong colour or near-black behind the hero, very large uppercase or heavy display type (Unbounded, Archivo Black), high contrast, blocks of flat colour, few words. For events, launches, music, sport.
+  4. Clean product: white, a geometric sans (Space Grotesk or Outfit for headings, Inter for body), a bento grid of mixed-size cards, hairline borders in place of shadows, one accent used sparingly. For tools, dashboards, SaaS, wallets.
+  5. Dark and technical: near-black background (#0b0d12), surfaces one step lighter, light text, one bright accent that seems to glow (a soft blurred shape of it behind the hero), mono labels (JetBrains Mono, text-xs uppercase). For DAOs, protocols, developer tools, games.
+  6. Warm market: cream or sand background, earthy accent (terracotta, deep green, indigo), Outfit or DM Sans, generous photos if uploaded, pattern or texture from simple CSS shapes. For shops, food, crafts, local services.
+  The person's chosen palette (in the context, if they picked one) wins on colour; take the type, shape and layout from the direction that suits it.
+- Type does most of the work. Two families at most. A real scale with contrast: the hero headline is 3 to 4 times the body size (text-4xl sm:text-6xl against text-base), tracking-tight on large type, leading-relaxed on body, lines no longer than about 65 characters (max-w-prose or max-w-xl on paragraphs). One weight for headings, one for body, font-medium for labels. Numbers get tabular-nums.
+- Colour: mostly neutral, some surface, a little accent (about 60 / 30 / 10). Neutrals tinted toward the accent look designed; pure grey looks default. The accent is for the main action, key numbers and small marks only. Give long pages rhythm with one section in a contrasting band (bg-primary text-primary-foreground, or bg-muted).
+- Layout: vary it. A centred hero followed by three identical cards, repeated, is the template look. Alternate: a split hero (words one side, a mock of the product or a big number the other), a bento grid where one card spans two columns, a full-width band, a two-column section with a sticky heading. Align everything to one content width (max-w-6xl) and one spacing step between sections (py-16 sm:py-24). Leave more empty space than feels necessary.
+- Show the product. The strongest hero visual for an app is the app: a card built from the real components (the tip form, a stat row, a proposal card) at a slight tilt or overlapping the edge, not an abstract shape. For a dApp, real numbers from the contract, or clearly labelled examples before deploy.
+- Depth, lightly: borders at low contrast (border-border), shadow-sm on cards and one larger soft shadow on the hero mock, a gradient only as a faint wash (from-accent/10 to-transparent). No heavy drop shadows, no rainbow gradients, no glass blur on light pages.
+- Every clickable thing answers: hover (hover:bg-*, hover:-translate-y-0.5 with transition), active, focus-visible ring, disabled. Cards that link somewhere lift a little on hover. Links in text are underlined or accent-coloured.
+- Motion, when the page should feel alive: turn on the motion kit (add_kit("motion")) and follow its guide. One hero moment, reveals on scroll, nothing on forms.
+- Details that read as finished: an eyebrow chip above the headline (rounded-full border px-3 py-1 text-xs), icon tiles (size-10 rounded-xl bg-accent/10 text-accent) instead of bare icons, a footer with real links, a favicon and title that match, consistent radius everywhere.
+- The template tells, never ship these: emoji used as icons, a purple-to-blue gradient on white for no reason, every section centred, the same card repeated in every section, more than two fonts, placeholder names like "Acme" or "John Doe", invented testimonials or statistics, a headline that is only the app's name.
+- Phone first: one column, the main action reachable by a thumb, tap targets at least 44px tall (h-11 or py-3), text no smaller than text-sm, nothing that scrolls sideways.
+- Before run_checks, look at your own page as a visitor would: is there one clear thing to do, does the top of the page say what this is in five words, and would two different apps you built look different from each other?`,
   },
   {
     name: "design-tokens",

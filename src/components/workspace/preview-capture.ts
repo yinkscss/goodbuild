@@ -20,6 +20,12 @@ window.addEventListener("message", async (event: MessageEvent) => {
   try {
     const { toPng } = await import("html-to-image");
     const node = document.documentElement;
+    // The motion kit hides a section until it is scrolled to. A screenshot of the whole page must show
+    // every section in its final state, or the ones further down would be reported as blank.
+    const fxBefore = node.getAttribute("data-fx");
+    node.setAttribute("data-fx", "off");
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const restoreFx = () => (fxBefore === null ? node.removeAttribute("data-fx") : node.setAttribute("data-fx", fxBefore));
     const height = Math.min(Math.max(node.scrollHeight, window.innerHeight), data.maxHeight ?? 2400);
     // A broken image must not fail the capture: it's one of the defects the check looks for.
     const options = { width: window.innerWidth, height, pixelRatio: 1, cacheBust: true, backgroundColor: getComputedStyle(document.body).backgroundColor || "#ffffff", onImageErrorHandler: () => undefined };
@@ -30,8 +36,10 @@ window.addEventListener("message", async (event: MessageEvent) => {
       // Web fonts from another origin can block embedding; the layout still matters most.
       url = await toPng(node, { ...options, skipFonts: true });
     }
+    restoreFx();
     reply({ ok: true, url, width: window.innerWidth, height });
   } catch (error) {
+    document.documentElement.removeAttribute("data-fx");
     reply({ ok: false, error: String((error as Error)?.message ?? error) });
   }
 });

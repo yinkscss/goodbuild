@@ -191,3 +191,11 @@ The harness plan listed "file uploads" as an app-data upgrade: a visitor of a pu
 - **Storage.** Visitor files would live in the database now (D65) and Cloudflare R2 later. A free app with open uploads can fill the disk; it needs its own quota, below the 20 MB per-project data limit.
 - **Claude's input.** Start narrow if wanted: signed-in visitors only (never anonymous), images only up to about 300 KB, stored per wallet and counted in the wallet's 2 MB, served from the app's own host with `nosniff` and no scripting, and removed with the wallet's data. The owner's own uploads (logos, sounds, fonts, models) already work (D78); this question is only about visitors'.
 
+
+## Q42. Should the builder look at its own page, and should the strong model write first builds? (raised by the audit, 10 Nov 2026)
+- **The builder can't see what it built.** The visual check runs in the owner's browser, on the Sandpack preview only, and never edits. The run check already takes phone and desktop screenshots on the server and nothing reads them. Claude's input: one server-side call after the checks pass, to a model that reads images, returning concrete defects into the existing fix loop once, with a cost cap. Measure it with the evals before turning it on for everyone.
+- **D19 (DeepSeek builds, Claude fixes) was chosen on cost before quality was measured.** Design judgement is where the models differ most. Claude's input: three eval runs (today's routing, strong for the first build only, strong for every build) and decide on cost per good build.
+- **Both wait on the eval baseline**, which has never been run with real models. Details: [AUDIT_2026-11-10.md](AUDIT_2026-11-10.md) section 3.
+
+## Q43. React Bits' licence on GoodBuild's own landing page (raised by D84)
+`src/components/react-bits/BlurText.tsx` is React Bits code (MIT with the Commons Clause) on the landing page of a paid product. The Commons Clause restricts selling a product whose value derives substantially from the software; one hero animation is unlikely to be that, but it is the owner's call. The motion kit's `SplitText` does the same job and could replace it.

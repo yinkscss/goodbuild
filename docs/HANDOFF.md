@@ -13,6 +13,8 @@ Written 4 Nov 2026 at the end of the first build session (claude.ai), for whoeve
 
 **Run check (9 Nov 2026, D67, branch `claude/web-builder-harness-review-2a9263`):** every build is opened in a headless browser on the server, and crashes go to auto-fix. Measured on the production server in throwaway containers. **UNVERIFIED:** a real AI build with it on, and the `checker` compose service itself. After the first deploy, run `docker compose --env-file .env.production ps checker` and look for `run check:` lines in the worker's log.
 
+**Audit and design kit (10 Nov 2026, D84 to D86, branch `claude/vigilant-curie-5siryg`):** a sweep of the builder, kits, preview and flow is in [AUDIT_2026-11-10.md](AUDIT_2026-11-10.md), with a ranked list of what to do next. The same branch adds a motion kit for generated apps, a `visual-design` guide, fixes to the 2D and 3D game kits, and a run check that plays 3D scenes. **UNVERIFIED** with a real model. **Needs the owner:** run the eval baseline first (see the Eval suite line below), then again on this branch; and read D84 on React Bits' licence.
+
 **Games (10 Nov 2026, D71 and D72):** GoodBuild can build 2D games through the first kit, `game-2d`. **UNVERIFIED** with a real model and on a real phone. **Owner to confirm:** games of chance for money are still refused (D72).
 
 **Blog and search visibility (10 Nov 2026, D83, branch `worktree-blog-seo-50`):** 50 posts at `/blog`, plus sitemap, robots (AI crawlers named), `/llms.txt`, `/llms-full.txt` and RSS. Details and owner steps: [BLOG.md](BLOG.md). **UNVERIFIED:** rankings, and whether Cloudflare's AI-bot blocking overrides `robots.txt`.
