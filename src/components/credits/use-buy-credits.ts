@@ -38,7 +38,7 @@ export interface Pricing {
   balanceMicro: number | null;
 }
 
-export type BuyPhase = { name: "idle" } | { name: "signing" } | { name: "crediting"; hash: string } | { name: "done"; addedMicro: number; balanceMicro: number } | { name: "error"; message: string; needsGd?: boolean };
+export type BuyPhase = { name: "idle" } | { name: "signing" } | { name: "crediting"; hash: string } | { name: "done"; addedMicro: number; balanceMicro: number } | { name: "error"; message: string; needsGd?: boolean; needsCelo?: boolean };
 
 export const UNITS = 1_000_000;
 
@@ -124,7 +124,7 @@ export function useBuyCredits(info: ChainInfo | null | undefined) {
         const noGd = NO_GD_PATTERN.test(text);
         const refused = /user rejected|denied|rejected the request/i.test(text);
         const noGas = /gas required exceeds|insufficient funds for gas/i.test(text);
-        setPhase({ name: "error", needsGd: noGd && !noGas, message: noGas ? "You need a little CELO for the network fee." : noGd ? "You don't have enough G$ for that." : refused ? "You cancelled it in your wallet. Nothing was charged." : text.slice(0, 200) || "Something went wrong. Nothing was charged." });
+        setPhase({ name: "error", needsGd: noGd && !noGas, needsCelo: noGas, message: noGas ? "You need a little CELO for the network fee." : noGd ? "You don't have enough G$ for that." : refused ? "You cancelled it in your wallet. Nothing was charged." : text.slice(0, 200) || "Something went wrong. Nothing was charged." });
         return false;
       }
     },
