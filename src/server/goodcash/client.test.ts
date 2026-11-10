@@ -36,6 +36,10 @@ describe("topUpQuote", () => {
     await expect(topUpQuote({ amountNaira: 1000, asset: "g" }, { origin: "x" }, vi.fn())).rejects.toMatchObject({ code: "not_configured" });
     await expect(topUpQuote({ amountNaira: 1000, asset: "g" }, cfg, vi.fn().mockResolvedValue(json(404, {})))).rejects.toMatchObject({ code: "not_enabled" });
   });
+  it("shows the message from GoodCash's { error: { message } } shape", async () => {
+    const fetcher = vi.fn().mockResolvedValue(json(400, { error: { code: "asset_unavailable", message: "CELO top-ups aren't available yet.", detail: "x" } }));
+    await expect(topUpQuote({ amountNaira: 5000, asset: "celo" }, cfg, fetcher)).rejects.toMatchObject({ code: "bad_request", message: "CELO top-ups aren't available yet." });
+  });
   it("passes a short partner message for a bad amount and hides server faults", async () => {
     await expect(topUpQuote({ amountNaira: 1000, asset: "g" }, cfg, vi.fn().mockResolvedValue(json(400, { message: "Too small" })))).rejects.toMatchObject({ code: "bad_request", message: "Too small" });
     await expect(topUpQuote({ amountNaira: 1000, asset: "g" }, cfg, vi.fn().mockResolvedValue(json(500, { message: "stack trace" })))).rejects.toMatchObject({ code: "unavailable" });
