@@ -3,6 +3,7 @@ import localFont from "next/font/local";
 import "./globals.css";
 import { Providers } from "@/components/providers";
 import { SendGateProvider } from "@/components/auth/send-gate";
+import { SITE_URL } from "@/config/site-url";
 
 // Self-hosted variable fonts (OFL), vendored from @fontsource-variable so builds
 // don't depend on Google Fonts being reachable.
@@ -28,6 +29,9 @@ const jetbrains = localFont({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
+  keywords: ["AI app builder", "free AI app builder", "MiniPay app", "build a dApp", "Celo", "smart contract generator", "vibe coding", "no-code blockchain", "G$ GoodDollar", "GoodBuild"],
+  openGraph: { siteName: "GoodBuild", type: "website" },
   title: "GoodBuild: describe a dApp, sign it, ship it on Celo",
   description:
     "GoodBuild writes the Solidity contract and React front end for your dApp. You deploy it to Celo by signing from your own wallet.",

@@ -83,8 +83,13 @@ async function call<T>(path: string, config: GoodCashConfig, fetcher: Fetch): Pr
     // GoodCash answers "not found" until it switches top-ups on for a partner (docs: Availability).
     throw new GoodCashError("not_enabled", "Buying isn't switched on yet.", 503);
   }
-  const body = (await res.json().catch(() => null)) as (T & { message?: string }) | null;
-  if (res.status >= 400 && res.status < 500) throw new GoodCashError("bad_request", body?.message?.slice(0, 200) ?? "That amount can't be bought.", 400);
+  const body = (await res.json().catch(() => null)) as (T & { message?: string; error?: { code?: string; message?: string; detail?: string } | string }) | null;
+  if (res.status >= 400 && res.status < 500) {
+    // GoodCash errors look like { error: { code, message, detail } }; the message is written for customers.
+    const err = body && typeof body.error === "object" ? body.error : undefined;
+    console.warn("goodcash: rejected", res.status, err?.code ?? "unknown", err?.detail ?? "");
+    throw new GoodCashError("bad_request", (err?.message ?? body?.message)?.slice(0, 200) ?? "That amount can't be bought.", 400);
+  }
   if (!res.ok || !body) throw new GoodCashError("unavailable", "Our payment partner had a problem. Try again in a minute.", 503);
   return body;
 }
