@@ -199,3 +199,82 @@ export function normalizeEmail(raw: unknown): string | null {
   if (!/^(?=.{3,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/.test(domain)) return null;
   return email;
 }
+
+// ---------------------------------------------------------------------------
+// Queries (D79)
+
+export type QueryOp = "eq" | "ne" | "gt" | "gte" | "lt" | "lte";
+export const QUERY_OPS: readonly QueryOp[] = ["eq", "ne", "gt", "gte", "lt", "lte"];
+export const MAX_WHERE = 4;
+/** The newest records a query reads before it stops. Bounds the work one request can cost. */
+export const QUERY_SCAN_LIMIT = 500;
+
+export interface QueryClause {
+  field: string;
+  op: QueryOp;
+  value: string | number | boolean;
+}
+
+export interface RecordQuery {
+  where: QueryClause[];
+  /** A field of the record's value, or "createdAt" / "updatedAt". Absent: newest first. */
+  order?: { field: string; dir: "asc" | "desc" };
+  /** Only records saved or changed after this time (milliseconds since 1970). For polling. */
+  since?: number;
+}
+
+export const isQuery = (q: RecordQuery | undefined): q is RecordQuery => Boolean(q && (q.where.length || q.order || q.since !== undefined));
+
+const FIELD = /^[A-Za-z][A-Za-z0-9_]{0,47}$/;
+
+/** One "where" clause as the data API receives it: field~op~value, the value as JSON ("5", "true", "\"open\"") or plain text. */
+export function parseClause(text: string): QueryClause | string {
+  const [field, op, ...rest] = text.split("~");
+  const raw = rest.join("~");
+  if (!field || !FIELD.test(field)) return `where: "${field ?? ""}" isn't a field name.`;
+  if (!op || !(QUERY_OPS as readonly string[]).includes(op)) return `where: the comparison must be one of ${QUERY_OPS.join(", ")}.`;
+  if (raw.length === 0 || raw.length > 200) return "where: give a value of up to 200 characters.";
+  let value: unknown = raw;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    // Plain text is a string.
+  }
+  if (typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean") return "where: the value must be text, a number or true or false.";
+  return { field, op: op as QueryOp, value };
+}
+
+/** Does a value pass a clause? A field the viewer can't see, or of another type, never matches: a filter must not reveal what a viewer can't read. */
+export function matchesClause(value: unknown, clause: QueryClause): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value) || !Object.hasOwn(value, clause.field)) return false;
+  const got = (value as Record<string, unknown>)[clause.field];
+  if (typeof got !== typeof clause.value) return false;
+  if (clause.op === "eq") return got === clause.value;
+  if (clause.op === "ne") return got !== clause.value;
+  // Order comparisons: numbers and text only, and the same type on both sides (checked above).
+  if (typeof got === "boolean") return false;
+  const a = got as string | number;
+  const b = clause.value as string | number;
+  return clause.op === "gt" ? a > b : clause.op === "gte" ? a >= b : clause.op === "lt" ? a < b : a <= b;
+}
+
+/** The records a query keeps, in its order. `get` reads what the viewer sees of a record. */
+export function applyQuery<T extends { value: unknown; createdAt: Date | string; updatedAt: Date | string }>(records: T[], query: RecordQuery): T[] {
+  const kept = records.filter((r) => query.where.every((c) => matchesClause(r.value, c)));
+  const order = query.order;
+  if (!order) return kept;
+  const sign = order.dir === "asc" ? 1 : -1;
+  const keyOf = (r: T): string | number | boolean | null => {
+    if (order.field === "createdAt" || order.field === "updatedAt") return new Date(r[order.field]).getTime();
+    const v = r.value && typeof r.value === "object" && !Array.isArray(r.value) ? (r.value as Record<string, unknown>)[order.field] : undefined;
+    return typeof v === "string" || typeof v === "number" || typeof v === "boolean" ? v : null;
+  };
+  // Records without the field go last, in either direction. Mixed types sort by type name first, so the order is always total.
+  return [...kept].sort((a, b) => {
+    const x = keyOf(a);
+    const y = keyOf(b);
+    if (x === null || y === null) return x === y ? 0 : x === null ? 1 : -1;
+    if (typeof x !== typeof y) return typeof x < typeof y ? -sign : sign;
+    return x === y ? 0 : x < y ? -sign : sign;
+  });
+}

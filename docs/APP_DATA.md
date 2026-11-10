@@ -84,7 +84,8 @@ Set in `src/server/app-data/limits.ts`.
 | Per wallet, per app | 1,000 records, 2 MB |
 | Per app | 20,000 records, 20 MB |
 | Whole site | 1 GB (`APP_DATA_MAX_TOTAL_BYTES`), checked against a total at most a minute old, so it can overshoot slightly |
-| Reads | 300 a minute per IP |
+| Reads | 300 lists a minute per signed-in person in one app, or per IP in one app for visitors who aren't signed in (D79); 1,200 a minute per IP across everything |
+| Queries (filters, order, since) | 120 a minute, counted the same way as reads (D79) |
 | Writes | 120 a minute per IP, 60 per wallet per app |
 | Per app, all requests | 1,500 a minute |
 | Sign-in | 30 nonces a minute per IP, 300 per app, 20 sign-ins per IP |
@@ -94,6 +95,10 @@ Quotas use running totals, updated in the same transaction as the record under a
 Rate limits are per process, in memory. Production runs one web process, so they're exact there. They reset on restart. IPs come from `cf-connecting-ip`, which is trustworthy only because the firewall lets only Cloudflare reach the server (DEPLOY.md).
 
 Fresh wallets are free, so the per-wallet limit alone doesn't stop one person filling an app. The per-IP write rate and the per-app total are what bound that.
+
+## Queries (D79)
+
+A list can be narrowed and sorted by the server: `where=field~op~value` (up to 4; `op` is eq, ne, gt, gte, lt or lte, the value JSON or plain text), `order=<field | createdAt | updatedAt>`, `dir=asc|desc` and `since=<ms>` (records saved or changed after it). The server reads the newest 500 records, turns each into what this viewer may see (the same code as a plain list), and only then compares, so a filter or an order can never reveal a field the viewer can't read: a hidden field never matches, and a hit and a miss look the same. The answer says `truncated` when there were more records than it read or returned. A query has no cursor, and its own limit of 120 per minute per address (`queriesPerIpPerMinute`) on top of the read limit. `useCollection` takes `where`, `orderBy`, `dir` and `liveEvery` (re-fetch every 2 s or more while the page shows). There is no live connection: apps that must feel live poll (D79).
 
 ## The preview
 The preview runs on a CodeSandbox origin, and the app has no host before it's published. Calling the real API from there would mean opening CORS and losing per-app cookies, so it doesn't. With no `goodbuild-data` tag on the page, `db.ts` uses a stand-in with the same API and the same rules, in that browser's localStorage. Sign-in asks for no signature, and a small note on the page says the data stays in the browser. **Preview data never reaches the real store, and published data never appears in the preview.**
@@ -112,7 +117,7 @@ Nightly backups keep deleted data for up to 7 days (DEPLOY.md). Nothing expires 
 
 ## Known limits
 - **Wallets in published apps** are browser wallets, MiniPay and, once `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` is set, WalletConnect (D36). Magic email wallets still aren't available on an app host, so an owner with an email wallet can't sign in to their own app.
-- No queries beyond listing a collection newest first, optionally by owner. No shared records, files or images.
+- Queries are filters, an order and `since` over the newest 500 records (see Queries). No shared records, no live connection (apps poll), and no files or images from visitors (docs/OPEN_QUESTIONS.md).
 - **UNVERIFIED:** the helper in the real Sandpack preview. It was run in Chromium on another origin with no server and no `goodbuild-data` tag, which is the same code path, but CodeSandbox's bundler wasn't part of that, so its handling of the JSON import is unchecked.
 - **UNVERIFIED:** Cloudflare passing `/__gb/data/` unchanged and not caching it. Every response says `no-store, private`, and nothing about this path has been tried on the live server.
 - **A few addresses can pause one app.** The limit of 1,500 requests a minute per app can be used up by about 5 addresses at the per-IP read limit, and that app's data API then answers 429 for up to a minute. Other apps aren't affected.
