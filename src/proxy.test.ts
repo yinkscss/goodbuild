@@ -171,3 +171,26 @@ describe("signed-in app pages", () => {
     expect(res.headers.get("location")).toBeNull();
   });
 });
+
+describe("preview hosts (D69)", () => {
+  const host = "http://pv-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.localhost:3000";
+  it("rewrites every path into that project's preview, and nothing else", () => {
+    expect(rewrittenTo(proxy(request(`${host}/`)))).toMatch(/\/preview-app\/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa$/);
+    expect(rewrittenTo(proxy(request(`${host}/app.abc.js`)))).toContain("/preview-app/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/app.abc.js");
+    for (const path of ["/api/projects", "/home", "/__gb/data/x"]) expect(rewrittenTo(proxy(request(`${host}${path}`)))).toContain(`/preview-app/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa${path}`);
+  });
+
+  it("is read-only", () => {
+    const res = proxy(new NextRequest(`${host}/api/projects`, { method: "POST", headers: { host: "pv-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.localhost:3000" } }));
+    expect(res.status).toBe(404);
+    expect(rewrittenTo(res)).toBeNull();
+  });
+
+  it("blocks restricted regions", () => {
+    expect(proxy(request(`${host}/`, { "x-vercel-ip-country": "US" })).status).toBe(451);
+  });
+
+  it("doesn't exist on the main host", () => {
+    expect(proxy(request("http://localhost:3000/preview-app/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")).status).toBe(404);
+  });
+});

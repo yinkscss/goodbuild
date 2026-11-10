@@ -44,6 +44,7 @@ const APP_PAGES = new Set(["/home", "/templates", "/deployments", "/credits"]);
  * - Published app hosts: serve that app's files and nothing else, so generated code can't reach the
  *   API or any page of the main site. Blocked regions get a 451, because these pages transact (D10).
  *   The one exception is the app's data API at /__gb/data/, after the same region check (docs/APP_DATA.md).
+ * - Preview hosts (pv-<token>, D69): a project's own-build preview, served the same way, read-only.
  * - The routes that serve those files and that data don't exist on the main host.
  * - API: region gate (D10). Sign-in, building and credits return 451 from blocked regions.
  * - App pages (/home, /templates, /deployments, /credits, /p/*): without a session cookie, go to the landing page before
@@ -64,6 +65,13 @@ export function proxy(request: NextRequest) {
 
   const host = classifyHost(request.headers.get("host"), publishedAppsDomain());
   if (host.kind === "unknown") return new NextResponse("Not found", { status: 404 });
+  if (host.kind === "preview") {
+    // A project's own-build preview (D69): its files and nothing else, like a published app, and no data API.
+    if (isBlockedRegion(request.headers)) return new NextResponse(UNAVAILABLE, { status: 451, headers: { "Content-Type": "text/html; charset=utf-8" } });
+    if (!["GET", "HEAD"].includes(request.method)) return new NextResponse("Not found", { status: 404 });
+    const previewPath = `/preview-app/${host.token}${pathname === "/" ? "" : pathname}`;
+    return backend ? toBackend(request, backend, previewPath) : NextResponse.rewrite(new URL(previewPath, request.url));
+  }
   if (host.kind === "app") {
     const isData = pathname.startsWith(DATA_PATH_PREFIX);
     if (isBlockedRegion(request.headers)) {
@@ -81,7 +89,7 @@ export function proxy(request: NextRequest) {
     return backend ? toBackend(request, backend, appPath) : NextResponse.rewrite(new URL(appPath, request.url));
   }
 
-  if (pathname.startsWith("/published-app") || pathname.startsWith(DATA_ROUTE_PREFIX)) return new NextResponse("Not found", { status: 404 });
+  if (pathname.startsWith("/published-app") || pathname.startsWith("/preview-app") || pathname.startsWith(DATA_ROUTE_PREFIX)) return new NextResponse("Not found", { status: 404 });
   if (pathname.startsWith("/api/")) {
     if (isForeignWrite(request)) return NextResponse.json({ error: "forbidden_origin" }, { status: 403 });
     if (isBlockedRegion(request.headers)) {
