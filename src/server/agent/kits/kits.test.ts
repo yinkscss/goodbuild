@@ -119,11 +119,12 @@ describe("kits in the builder's tools", () => {
   });
 
   it("runs the kit's own checks with the app checks", () => {
-    const on = withKit(starterFiles(), demo);
+    const page = { ...starterFiles(), "src/App.tsx": "export default function App() { return <main>Ready</main>; }\n" };
+    const on = withKit(page, demo);
     expect(checkApp(on).ok).toBe(true);
     expect(checkApp({ ...on, "src/demo/forbidden.ts": "export {};\n" }).errors.map((e) => e.message)).toContain("Demo kits can't have this file.");
     // The same file in a project without the kit is nobody's business.
-    expect(checkApp({ ...starterFiles(), "src/demo/forbidden.ts": "export {};\n" }).ok).toBe(true);
+    expect(checkApp({ ...page, "src/demo/forbidden.ts": "export {};\n" }).ok).toBe(true);
   });
 });
 
