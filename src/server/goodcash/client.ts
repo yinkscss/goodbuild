@@ -1,7 +1,7 @@
 import "server-only";
 
 /**
- * GoodCash top-ups (naira in, G$ or CELO out to the user's own wallet), D63. GoodCash's page collects the payer's
+ * GoodCash top-ups (naira in, G$ or CELO out to the user's own wallet), D81. GoodCash's page collects the payer's
  * ID details and shows the bank-transfer details; we never see them. This file only asks for quotes and reads a
  * top-up's status. Docs: https://pay.goodcash.xyz/docs/quickstarts/topups
  *

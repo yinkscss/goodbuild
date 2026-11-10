@@ -15,7 +15,7 @@ Written 4 Nov 2026 at the end of the first build session (claude.ai), for whoeve
 
 **Games (10 Nov 2026, D71 and D72):** GoodBuild can build 2D games through the first kit, `game-2d`. **UNVERIFIED** with a real model and on a real phone. **Owner to confirm:** games of chance for money are still refused (D72).
 
-**Blog and search visibility (10 Nov 2026, D74, branch `worktree-blog-seo-50`):** 50 posts at `/blog`, plus sitemap, robots (AI crawlers named), `/llms.txt`, `/llms-full.txt` and RSS. Details and owner steps: [BLOG.md](BLOG.md). **UNVERIFIED:** rankings, and whether Cloudflare's AI-bot blocking overrides `robots.txt`.
+**Blog and search visibility (10 Nov 2026, D83, branch `worktree-blog-seo-50`):** 50 posts at `/blog`, plus sitemap, robots (AI crawlers named), `/llms.txt`, `/llms-full.txt` and RSS. Details and owner steps: [BLOG.md](BLOG.md). **UNVERIFIED:** rankings, and whether Cloudflare's AI-bot blocking overrides `robots.txt`.
 
 **Eval suite (10 Nov 2026, D70):** twenty real builds, scored, on demand in CI ([evals/SUITE.md](evals/SUITE.md)). **Needs the owner:** add `ANTHROPIC_API_KEY` and `DEEPSEEK_API_KEY` as GitHub repository secrets, then run Actions → Evals once with `update_baseline` ticked and commit the baseline. Until then it has never run with real models.
 

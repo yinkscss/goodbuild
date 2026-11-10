@@ -1,6 +1,6 @@
 # Blog and search visibility
 
-Written 10 Nov 2026 (D74). 50 posts live at `/blog`, written to rank for what builders search and to be easy for AI assistants to read and cite.
+Written 10 Nov 2026 (D83). 50 posts live at `/blog`, written to rank for what builders search and to be easy for AI assistants to read and cite.
 
 ## Where things are
 - Posts: `src/content/blog/{minipay,celo,compare,free,ideas,vibe}.ts`, typed in `types.ts`. Plain data, no MDX. Text may hold `[label](/path)` links.
