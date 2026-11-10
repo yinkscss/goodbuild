@@ -15,3 +15,5 @@ It builds the app, starts its own throwaway server on port 3100 (run check and t
 Scenarios: `scenarios.json` (games, MiniPay apps, dashboards, a DAO, a vault, 3D, an upload, multiplayer, app data, an edit, a refusal). `--demo` tests the runner with the scripted demo model (free; the demo always builds the same app, so its failures mean nothing).
 
 A scenario fails if the build doesn't end ready, the app shows the starter page, is blank, throws, or (MiniPay) asks to connect or sign a message, or pays with a non-legacy transaction. MiniPay is a stand-in wallet answering like MiniPay; it does not replace trying the app in the real MiniPay app (Developer Mode).
+
+A refusal scenario can set `freePlayOk`: it passes if the builder offers (and builds) a free, play-money version, and fails if any file moves money (stablecoin names, `writeContract`, a contract). The files each app got are saved in `<id>-files/` next to its video.
