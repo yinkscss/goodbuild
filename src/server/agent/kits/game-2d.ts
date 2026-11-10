@@ -338,7 +338,8 @@ Money in a game (only when the user asks for entry fees, prizes or things to buy
 - A paid tournament is allowed: players pay a G$ entry, the pot goes to the winner or the top few. Write a contract in contracts/ following the contract rules: entries with transferAndCall, a deadline, a refund to every player if nothing is settled within a set time after the deadline, and custom errors.
 - A score comes from the player's own device, so a contract can't trust it. Don't write a contract that pays whoever submits the biggest number. Use an organiser who settles: the contract's owner calls a function naming the winners after the deadline, and the page says plainly that the organiser confirms the results. For a turn-based game with simple rules (noughts and crosses, a guessing duel between two players who both commit), the contract can run the rules itself instead.
 - The winner must be decided by play. Never build a game for money where chance alone picks the winner (a lottery, a dice roll, a slot machine, a random draw among payers): refuse that and offer a skill game or a free draw instead.
-- Things to buy (skins, extra lives, a pass): an ERC-1155 or a simple purchases mapping paid in G$, read by the game to unlock them. Keep the game fair to play without paying.`;
+- Things to buy (skins, extra lives, a pass): an ERC-1155 or a simple purchases mapping paid in G$, read by the game to unlock them. Keep the game fair to play without paying.
+- Several people playing together (a room, taking turns, a shared leaderboard that updates): load the multiplayer guide. There is no live connection, so it suits turn-based and lobby games, not fast action games.`;
 
 export const game2d: Kit = {
   id: "game-2d",

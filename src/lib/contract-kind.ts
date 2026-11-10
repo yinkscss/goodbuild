@@ -2,7 +2,7 @@
  * What kind of dApp a project is, for card tiles and (later) agent template choice.
  * Taken from the template when one was picked, otherwise inferred from the name or prompt.
  */
-export type ContractKind = "savings" | "tips" | "tickets" | "crowdfund" | "vote" | "badges" | "token" | "escrow" | "game" | "site" | "custom";
+export type ContractKind = "savings" | "tips" | "tickets" | "crowdfund" | "vote" | "badges" | "token" | "escrow" | "game" | "dashboard" | "site" | "custom";
 
 export const KIND_LABEL: Record<ContractKind, string> = {
   savings: "Savings circle",
@@ -14,6 +14,7 @@ export const KIND_LABEL: Record<ContractKind, string> = {
   token: "Token",
   escrow: "Escrow",
   game: "Game",
+  dashboard: "Dashboard",
   site: "Website",
   custom: "Custom dApp",
 };
@@ -32,6 +33,7 @@ const TEMPLATE_KIND: Record<string, ContractKind> = {
 const RULES: Array<[ContractKind, RegExp]> = [
   // First: "a quiz game with G$ prizes and a token" is a game.
   ["game", /\b(arcade|platformer|flappy|tetris|pong|breakout|endless runner|mini[- ]?games?|video games?|(?:clicker|snake|puzzle|quiz|card|memory|2d|browser) games?|a game (?:where|about|like|with|in which|for)|(?:build|make|create|want)(?: me| us)? an? (?:\w+ ){0,3}game)\b/i],
+  ["dashboard", /\b(dashboards?|analytics|leaderboards?|kpis?|metrics|stats page|statistics)\b/i],
   ["savings", /\b(savings?|ajo|esusu|rosca|susu|thrift|contribution circle)\b/i],
   ["tips", /\b(tips?|tip ?jar|donat(e|ion)s?)\b/i],
   ["tickets", /\b(tickets?|ticketing|check-?in)\b/i],

@@ -28,6 +28,26 @@ const QUESTIONS = [
     a: "Yes. Describe the game and GoodBuild builds it to play on a phone or a computer, with sound, a best score and a leaderboard if you want one. Games can charge a G$ entry and pay prizes when the winner is decided by play.",
   },
   {
+    q: "Can people play or chat together in my app?",
+    a: "Yes, for turn-based games, lobbies, chats and live leaderboards: the app checks for new moves every few seconds, so everyone sees the same thing. Fast action games where players must see each other move instantly aren't possible yet.",
+  },
+  {
+    q: "Can I build 3D apps?",
+    a: "Yes. Describe a 3D scene, a viewer for your art, a globe or a 3D game and GoodBuild builds it to run on a phone, with drag to look around and pinch to zoom. You can also upload your own 3D model (a .glb file), and upload sounds and fonts for any app.",
+  },
+  {
+    q: "Can I build a DAO or a vault?",
+    a: "Yes: a club treasury where members vote on spending, or a vault where people deposit and take their money back. Because these hold other people's money, GoodBuild builds them from audited parts, writes tests that try to break them, and won't put one on Celo mainnet until those tests pass. That catches the common attacks, but it isn't a full audit, so get one before a vault holds a lot of real money.",
+  },
+  {
+    q: "Can I build a dashboard?",
+    a: "Yes. Describe the numbers you want to see and GoodBuild builds a page with stat cards, charts and tables that read from your contract on Celo or from your app's saved data, and update while the page is open. It works well on a phone.",
+  },
+  {
+    q: "Can my app work inside MiniPay?",
+    a: "Yes. MiniPay is Opera's phone wallet for dollar coins (USDT, USDC and USDm). It has no sign-up: it connects the person's wallet on its own, so there is no login to build. Say you want it for MiniPay and GoodBuild builds a phone-sized app that takes payments in dollars, with plain wording and the footer MiniPay asks for. Once it is published, you can submit it to MiniPay's app list.",
+  },
+  {
     q: "Who can use GoodBuild?",
     a: "You must be 18 or over. GoodBuild isn't available to US persons or in comprehensively sanctioned regions.",
   },

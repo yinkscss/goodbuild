@@ -34,3 +34,4 @@ export function withKitHelpers(files: Record<string, string>, kits: Kit[] = KITS
 export function kitAllowsPath(path: string, files: Record<string, string>, kits: Kit[] = KITS): boolean {
   return kitsOf(files, kits).some((k) => k.paths?.some((re) => re.test(path)));
 }
+export { exploitTestIssues, exploitTests, rolesOf } from "./dao-vault";

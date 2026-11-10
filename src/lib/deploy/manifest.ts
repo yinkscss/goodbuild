@@ -1,3 +1,4 @@
+import { STABLECOIN_SYMBOLS, stablecoin, type StablecoinSymbol } from "@/config/stablecoins";
 import { getAddress, isAddress, isHex, type Abi, type AbiParameter, type Address } from "viem";
 import { z } from "zod";
 
@@ -11,7 +12,8 @@ import { z } from "zod";
  *     { "name": "RTXPool",  "args": { "gd_": "${GOODDOLLAR}", "rtx_": "${RTXToken.address}" } } ] }
  *
  * References: `${Name.address}` (a contract in this manifest), `${GOODDOLLAR}` (G$ on the target
- * chain) and `${DEPLOYER}` (the signing wallet). Everything else is a literal.
+ * chain), `${DEPLOYER}` (the signing wallet) and `${USDT}`, `${USDC}`, `${USDM}` (that dollar
+ * stablecoin on the target chain, D74). Everything else is a literal.
  */
 
 export const MANIFEST_PATH = "contracts/deploy.json";
@@ -55,7 +57,7 @@ export function parseManifest(source: string): ParseResult {
 
 const REF = /\$\{([A-Za-z_][A-Za-z0-9_]*)(?:\.(address))?\}/g;
 
-export type Reference = { kind: "contract"; name: string } | { kind: "gooddollar" } | { kind: "deployer" };
+export type Reference = { kind: "contract"; name: string } | { kind: "gooddollar" } | { kind: "deployer" } | { kind: "stablecoin"; symbol: StablecoinSymbol };
 
 /** Every reference inside an argument value. */
 export function referencesIn(value: ArgValue): Array<{ raw: string; ref: Reference | null }> {
@@ -70,6 +72,8 @@ export function referencesIn(value: ArgValue): Array<{ raw: string; ref: Referen
 function toReference(name: string, member: string | undefined): Reference | null {
   if (!member && name === "GOODDOLLAR") return { kind: "gooddollar" };
   if (!member && name === "DEPLOYER") return { kind: "deployer" };
+  // The dollar stablecoins MiniPay holds (D74): ${USDT}, ${USDC}, ${USDM}.
+  if (!member && (STABLECOIN_SYMBOLS as string[]).includes(name)) return { kind: "stablecoin", symbol: name as StablecoinSymbol };
   if (member === "address") return { kind: "contract", name };
   return null;
 }
@@ -167,7 +171,7 @@ export function planManifest(manifest: DeployManifest, contracts: ContractAbi[],
     for (const value of Object.values(entry.args)) {
       for (const { raw, ref } of referencesIn(value)) {
         if (!ref) {
-          issues.push({ message: `${entry.name}: unknown reference ${raw}. Use \${Name.address}, \${GOODDOLLAR} or \${DEPLOYER}.` });
+          issues.push({ message: `${entry.name}: unknown reference ${raw}. Use \${Name.address}, \${GOODDOLLAR}, \${DEPLOYER}, or \${USDT}, \${USDC} or \${USDM} for a dollar stablecoin.` });
         } else if (ref.kind === "contract") {
           if (ref.name === entry.name) issues.push({ message: `${entry.name} refers to its own address (${raw}).` });
           else if (!listed.has(ref.name) && !manifest.contracts.some((c) => c.name === ref.name)) {
@@ -193,6 +197,8 @@ export interface ResolveContext {
   deployed: Record<string, Address>;
   gooddollar: Address | null;
   deployer: Address;
+  /** The network being deployed to, for the stablecoin references. */
+  chainId?: number;
 }
 
 /** Replace references in one value. A whole-string reference becomes the bare address. */
@@ -205,6 +211,11 @@ function fill(value: ArgValue, ctx: ResolveContext): ArgValue {
       if (ref.kind === "gooddollar") {
         if (!ctx.gooddollar) throw new Error("There is no G$ address for this network yet.");
         return ctx.gooddollar;
+      }
+      if (ref.kind === "stablecoin") {
+        const coin = ctx.chainId === undefined ? null : stablecoin(ref.symbol, ctx.chainId);
+        if (!coin) throw new Error(`There is no ${ref.symbol} address for this network.`);
+        return coin.address;
       }
       const address = ctx.deployed[ref.name];
       if (!address) throw new Error(`${ref.name} must be deployed before it can be used here.`);

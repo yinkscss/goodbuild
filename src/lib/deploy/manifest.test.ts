@@ -91,6 +91,14 @@ describe("resolveArgs", () => {
     expect(() => resolveArgs(plan.steps[1], abis.RTXPool, { deployed: {}, gooddollar: null, deployer: A })).toThrow(/must be deployed before/);
   });
 
+  it("fills ${USDC} and ${USDT} with the coin for the network", () => {
+    const plan = planManifest(manifest([{ name: "RTXPool", args: { gd_: "${USDC}", rtx_: "${USDT}", rate_: 1 } }]), contracts);
+    if (!plan.ok) throw new Error("plan failed");
+    const on = (chainId: number) => resolveArgs(plan.steps[0], abis.RTXPool, { deployed: {}, gooddollar: null, deployer: A, chainId });
+    expect(on(42220).slice(0, 2)).toEqual(["0xcebA9300f2b948710d2653dD7B07f33A8B32118C", "0x48065fbBE25f71C9282ddf5e1cD6D6A887483D5e"]);
+    expect(on(11142220)[0]).toBe("0x01C5C0122039549AD1493B8220cABEdD739BC44E");
+    expect(() => on(1)).toThrow();
+  });
   it("refuses ${GOODDOLLAR} when the chain has no G$ address", () => {
     const plan = planManifest(manifest([{ name: "RTXPool", args: { gd_: "${GOODDOLLAR}", rtx_: A, rate_: 1 } }]), contracts);
     if (!plan.ok) throw new Error("plan failed");

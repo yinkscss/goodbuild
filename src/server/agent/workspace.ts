@@ -1,3 +1,4 @@
+import { ASSET_EXTENSIONS } from "./assets";
 import { MAX_FILES, MAX_FILE_BYTES, namingProblem, pathProblem } from "./checks";
 import { findSymbol, manifest, readRange, searchCode } from "./codebase";
 import { applyEdits, diffStat, unifiedDiff, type SearchReplace } from "./edits";
@@ -99,11 +100,11 @@ export class Workspace {
       case "read_file": {
         const path = String(args.path ?? "");
         // Measured live: models try to read an uploaded image as a file (public/assets/logo.svg).
-        const upload = /(?:^|\/)assets\/([A-Za-z0-9][A-Za-z0-9._-]*\.(?:png|jpe?g|webp|svg))$/i.exec(path);
+        const upload = new RegExp(`(?:^|/)assets/([A-Za-z0-9][A-Za-z0-9._-]*\\.(?:${ASSET_EXTENSIONS}))$`, "i").exec(path);
         if (upload && !(path in this.files)) {
           return {
             ok: true,
-            result: `${upload[1]} is an uploaded image, not a code file, so there is nothing to read. Use it by its path "/assets/${upload[1]}" or through import { assets } from the src/assets folder (its key, size, palette and description are in the context under Uploaded assets).`,
+            result: `${upload[1]} is an uploaded file, not a code file, so there is nothing to read. Use it by its path "/assets/${upload[1]}" or through import { assets } from the src/assets folder (its key, size, palette and description are in the context under Uploaded assets).`,
             access: `read_file ${path} (uploaded image)`,
           };
         }

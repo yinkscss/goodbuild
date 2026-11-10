@@ -50,6 +50,8 @@ export const ALLOWED_DEPENDENCIES: Record<string, string> = { ...BASE_ALLOWED_DE
  */
 export const PLATFORM_DEPENDENCIES: Record<string, string> = {
   "@walletconnect/ethereum-provider": "2.26.0",
+  // Types for three.js, so the type check can read it (D77). Only the kit's three is importable.
+  "@types/three": "0.187.0",
 };
 
 export const BASE_DEPENDENCIES = ["react", "react-dom", "react-router-dom", "viem", "lucide-react", "clsx", "tailwind-merge", "class-variance-authority"];
@@ -293,6 +295,24 @@ export interface DbRecord<T = unknown> {
 export interface DbPage<T = unknown> {
   records: DbRecord<T>[];
   nextCursor: string | null;
+  /** Set on a filtered list when there were more matching records than were returned, or older ones weren't read. */
+  truncated?: boolean;
+}
+
+/** One condition on a record's fields. Only fields you can see are compared. */
+export type DbWhere = [field: string, op: "eq" | "ne" | "gt" | "gte" | "lt" | "lte", value: string | number | boolean];
+
+export interface DbListOptions {
+  owner?: string;
+  limit?: number;
+  cursor?: string;
+  /** Keep only records whose fields pass every condition (up to 4), e.g. [["status", "eq", "open"], ["score", "gte", 10]]. */
+  where?: DbWhere[];
+  /** Sort by a field of the value, or "createdAt" / "updatedAt". Default: newest first. */
+  orderBy?: string;
+  dir?: "asc" | "desc";
+  /** Only records saved or changed after this time (an ISO date or milliseconds). For polling a live app. */
+  since?: string | number;
 }
 
 export class DbError extends Error {
@@ -379,6 +399,16 @@ let previewEmail: string | null = null;
 const previewSubject = () => previewWallet ?? (previewEmail ? PREVIEW_EMAIL_ID : null);
 const emailOffered = () => (rules as { signIn?: { email?: unknown } }).signIn?.email === true;
 
+/** A key for a new record in the preview. crypto.randomUUID only exists on https and localhost pages, so plain http previews make one from random bytes. */
+function newRecordKey(): string {
+  if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  const b = crypto.getRandomValues(new Uint8Array(16));
+  b[6] = (b[6] & 0x0f) | 0x40;
+  b[8] = (b[8] & 0x3f) | 0x80;
+  const h = Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
+  return h.slice(0, 8) + "-" + h.slice(8, 12) + "-" + h.slice(12, 16) + "-" + h.slice(16, 20) + "-" + h.slice(20);
+}
+
 /** The default note never replaces a more specific one, such as the email sign-in note. */
 function showPreviewNote(special?: string) {
   const text = special ?? "Preview: saved data stays in this browser. It's stored for real once you publish.";
@@ -427,6 +457,38 @@ function previewVisible(collection: string, owner?: string): DbRecord[] {
     .filter((r) => r.collection === collection)
     .map((r) => (rule.read.some((x) => x === "anyone" || x === "owner" || (x === "signed-in" && previewSubject()) || (x === "writer" && r.owner === (previewSubject() ?? PREVIEW_ANON))) ? r : null))
     .filter((r): r is Stored => r !== null && (!owner || r.owner === owner.toLowerCase()));
+}
+
+/** The preview's version of a filtered list, the same comparisons the server makes. */
+function previewList<T>(name: string, options: DbListOptions, since: number | undefined): DbPage<T> {
+  let records = previewVisible(name, options.owner) as DbRecord<T>[];
+  if (since !== undefined) records = records.filter((r) => Date.parse(r.updatedAt) > since);
+  for (const [field, op, expected] of options.where ?? []) {
+    records = records.filter((r) => {
+      const v = r.value as unknown as Record<string, unknown> | null;
+      if (!v || typeof v !== "object" || !(field in v) || typeof v[field] !== typeof expected) return false;
+      const got = v[field] as string | number;
+      const want = expected as string | number;
+      return op === "eq" ? got === want : op === "ne" ? got !== want : op === "gt" ? got > want : op === "gte" ? got >= want : op === "lt" ? got < want : got <= want;
+    });
+  }
+  if (options.orderBy) {
+    const sign = options.dir === "asc" ? 1 : -1;
+    const keyOf = (r: DbRecord<T>): string | number | boolean | null => {
+      if (options.orderBy === "createdAt" || options.orderBy === "updatedAt") return Date.parse(r[options.orderBy]);
+      const x = (r.value as unknown as Record<string, unknown> | null)?.[options.orderBy!];
+      return typeof x === "string" || typeof x === "number" || typeof x === "boolean" ? x : null;
+    };
+    records = [...records].sort((a, b) => {
+      const x = keyOf(a);
+      const y = keyOf(b);
+      if (x === null || y === null) return x === y ? 0 : x === null ? 1 : -1;
+      if (typeof x !== typeof y) return typeof x < typeof y ? -sign : sign;
+      return x === y ? 0 : x < y ? -sign : sign;
+    });
+  }
+  const limit = options.limit ?? 50;
+  return { records: records.slice(0, limit), nextCursor: null, ...(options.where?.length || options.orderBy || since !== undefined ? { truncated: records.length > limit } : {}) };
 }
 
 // --- The API ------------------------------------------------------------------------------------
@@ -530,15 +592,21 @@ export function collection<T = unknown>(name: string) {
   const path = "/c/" + encodeURIComponent(name);
   return {
     /** Newest first: what the rules let you read, in full or only its public fields. */
-    async list(options: { owner?: string; limit?: number; cursor?: string } = {}): Promise<DbPage<T>> {
+    async list(options: DbListOptions = {}): Promise<DbPage<T>> {
+      const since = options.since === undefined ? undefined : typeof options.since === "number" ? options.since : Date.parse(options.since);
+      if (since !== undefined && !Number.isFinite(since)) throw new DbError("invalid_query", "since must be a date or a number of milliseconds.", 400);
       if (isPreview) {
         showPreviewNote();
-        return { records: previewVisible(name, options.owner).slice(0, options.limit ?? 50) as DbRecord<T>[], nextCursor: null };
+        return previewList<T>(name, options, since);
       }
       const query = new URLSearchParams();
       if (options.owner) query.set("owner", options.owner);
       if (options.limit) query.set("limit", String(options.limit));
       if (options.cursor) query.set("cursor", options.cursor);
+      for (const [field, op, value] of options.where ?? []) query.append("where", field + "~" + op + "~" + JSON.stringify(value));
+      if (options.orderBy) query.set("order", options.orderBy);
+      if (options.dir) query.set("dir", options.dir);
+      if (since !== undefined) query.set("since", String(Math.floor(since)));
       const text = query.toString();
       return api<DbPage<T>>(path + (text ? "?" + text : ""));
     },
@@ -563,7 +631,7 @@ export function collection<T = unknown>(name: string) {
     },
     /** Save a new record with a generated key. Works without sign-in where the rule says "create": "anyone". */
     async add(value: T): Promise<DbRecord<T>> {
-      if (isPreview) return previewPut(name, crypto.randomUUID(), value);
+      if (isPreview) return previewPut(name, newRecordKey(), value);
       return api<DbRecord<T>>(path, { method: "POST", body: JSON.stringify({ value }) });
     },
     /** Delete your own record. The app's owner can pass owner to delete someone else's, where the rule allows it. */
@@ -580,7 +648,7 @@ export function collection<T = unknown>(name: string) {
 `;
 
 const USE_DB = `import { useCallback, useEffect, useRef, useState } from "react";
-import { collection, isPreview, sendEmailCode, sessionInfo, signIn as dbSignIn, signOut as dbSignOut, verifyEmailCode, type DbRecord } from "./db";
+import { collection, isPreview, sendEmailCode, sessionInfo, signIn as dbSignIn, signOut as dbSignOut, verifyEmailCode, type DbRecord, type DbWhere } from "./db";
 import { errorMessage } from "./format";
 import { subscribeWallet, walletState } from "./goodbuild/wallet";
 import { useRead } from "./hooks";
@@ -685,10 +753,24 @@ export function useDbSession() {
  *   const notes = useCollection<Note>("notes", { enabled: session.signedIn, wallet: session.wallet ?? session.email });
  *   await notes.add({ text });
  */
-export function useCollection<T>(name: string, options: { owner?: string; limit?: number; enabled?: boolean; wallet?: string | null } = {}) {
-  const { owner, limit, enabled = true, wallet } = options;
+export function useCollection<T>(
+  name: string,
+  options: { owner?: string; limit?: number; enabled?: boolean; wallet?: string | null; where?: DbWhere[]; orderBy?: string; dir?: "asc" | "desc"; liveEvery?: number } = {},
+) {
+  const { owner, limit, enabled = true, wallet, where, orderBy, dir, liveEvery } = options;
   const store = collection<T>(name);
-  const read = useRead(() => store.list({ owner, limit }), [name, owner, limit, wallet], enabled);
+  const queryKey = JSON.stringify([where ?? [], orderBy ?? "", dir ?? ""]);
+  const read = useRead(() => store.list({ owner, limit, where, orderBy, dir }), [name, owner, limit, wallet, queryKey], enabled);
+  // Live apps (a lobby, a turn-based game): fetch again every few seconds while the page is showing.
+  const refreshRef = useRef(read.refresh);
+  refreshRef.current = read.refresh;
+  useEffect(() => {
+    if (!enabled || !liveEvery) return;
+    const timer = setInterval(() => {
+      if (document.visibilityState === "visible") void refreshRef.current();
+    }, Math.max(2_000, liveEvery));
+    return () => clearInterval(timer);
+  }, [enabled, liveEvery]);
   // Not while disabled, so one visitor's records don't stay on screen after they sign out.
   const records: DbRecord<T>[] = enabled ? read.data?.records ?? [] : [];
 
@@ -699,6 +781,8 @@ export function useCollection<T>(name: string, options: { owner?: string; limit?
   }
   return {
     records,
+    /** True when the server read only the newest 500 records for this filtered or ordered list. */
+    truncated: enabled ? read.data?.truncated === true : false,
     loading: read.loading,
     error: read.error,
     refresh: read.refresh,

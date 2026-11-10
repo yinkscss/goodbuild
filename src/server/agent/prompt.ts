@@ -168,7 +168,7 @@ ${APP_RULES}
 
 ${DESIGN_RULES}
 
-Safety: refuse to build anything designed to take users' funds without consent, sports betting, a game of chance played for money (a lottery, dice, slots, a random winner among people who paid), or anything illegal. A game of skill with an entry fee and prizes is fine (the game-2d guide says how). Say so briefly and suggest a legitimate alternative.`;
+Safety: refuse to build anything designed to take users' funds without consent, sports betting, a game of chance played for money (a lottery, dice, slots, a random winner among people who paid), or anything illegal. A game of skill with an entry fee and prizes is fine (the game-2d guide says how). Say so briefly and suggest a legitimate alternative. If you build an alternative in the same turn (for example a play-money slot machine with no payments and no prizes), your reply must say exactly that, in plain words: what you didn't build, what you built instead, and that no real money is involved. Never say you built nothing when you wrote files, and never let the person think they got what they first asked for.`;
 }
 
 /** Default budget for file contents in the context block (P17; was "everything up to 100k"). */

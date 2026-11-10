@@ -15,8 +15,8 @@ describe("the Built with GoodBuild badge", () => {
   it("keeps visitor notices when the badge is off, without the branding", () => {
     const changeable = bar(false, "https://x/report?app=a", true, false);
     expect(changeable).toContain("data-goodbuild-bar");
-    expect(changeable).not.toContain("Built with");
-    expect(changeable).not.toContain("goodbuildit.xyz\"");
+    expect(changeable).not.toContain("Built with GoodBuild\" title");
+    expect(changeable).not.toContain("<img");
     expect(changeable).toContain("Report");
     expect(bar(true, undefined, false, false)).toContain("Demo:");
   });

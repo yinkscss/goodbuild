@@ -50,7 +50,7 @@ function loadWidget(): Promise<void> {
 }
 
 /**
- * Buy G$ or CELO with naira (D63), through our payment partner GoodCash. Our dialog takes the amount, shows the price
+ * Buy G$ or CELO with naira (D81), through our payment partner GoodCash. Our dialog takes the amount, shows the price
  * with every fee, says what the person needs, and follows the order to the end. The ID details and the bank-transfer
  * details are typed and shown on GoodCash's own page (we never see them), which opens over this dialog.
  */

@@ -171,6 +171,7 @@ export async function runDeploy(
         deployed,
         gooddollar: plan.gooddollar,
         deployer: env.account,
+        chainId: plan.chainId,
       });
       const data = args.length || hasConstructor(step.abi) ? encodeDeployData({ abi: step.abi, bytecode: step.bytecode, args }) : step.bytecode;
 
@@ -271,7 +272,7 @@ async function runProxiedStep(
 
   let second: { data: Hex; to?: Address };
   if (how.kind === "first") {
-    const args = resolveArgs({ name: step.name, args: step.args, dependsOn: step.dependsOn }, step.abi, { deployed, gooddollar: plan.gooddollar, deployer: env.account }, { upgradeable: true });
+    const args = resolveArgs({ name: step.name, args: step.args, dependsOn: step.dependsOn }, step.abi, { deployed, gooddollar: plan.gooddollar, deployer: env.account, chainId: plan.chainId }, { upgradeable: true });
     second = { data: encodeProxyDeploy(how, code.contractAddress, env.account, initializerData(step.abi, args)) };
   } else {
     second = { data: encodeUpgrade(how.proxy, code.contractAddress), to: how.admin };
