@@ -34,7 +34,7 @@ export const MAX_COST_RISE = 0.3;
 
 const json = { "content-type": "application/json" };
 
-function session() {
+export function session() {
   const jar = {};
   const call = async (p, init = {}) => {
     const res = await fetch(base + p, { ...init, headers: { ...(init.headers ?? {}), cookie: Object.entries(jar).map(([k, v]) => `${k}=${v}`).join("; ") } });
@@ -47,7 +47,7 @@ function session() {
   return call;
 }
 
-async function signIn(call) {
+export async function signIn(call) {
   const account = privateKeyToAccount(generatePrivateKey());
   const { nonce } = await (await call("/api/auth/nonce")).json();
   const message = createSiweMessage({ address: account.address, chainId: 11142220, domain: new URL(base).host, uri: base, version: "1", nonce, issuedAt: new Date() });
@@ -56,7 +56,7 @@ async function signIn(call) {
 }
 
 /** Every event of a job, reconnecting with ?after= until the server sends `event: end`. */
-async function streamJob(call, projectId, jobId, onEvent) {
+export async function streamJob(call, projectId, jobId, onEvent) {
   let after = -1;
   for (let failures = 0; failures < 20; ) {
     const res = await call(`/api/projects/${projectId}/turns/${jobId}/events?after=${after}`).catch(() => null);
@@ -91,7 +91,7 @@ async function streamJob(call, projectId, jobId, onEvent) {
 }
 
 /** One turn, summarised from its events. */
-async function runTurn(call, projectId, body, prompt) {
+export async function runTurn(call, projectId, body, prompt) {
   const t0 = Date.now();
   const res = await call(`/api/projects/${projectId}/turns`, { method: "POST", headers: json, body: JSON.stringify(body) });
   if (res.status !== 202) return { prompt, status: "error", error: `not queued: ${res.status} ${(await res.text()).slice(0, 200)}`, seconds: 0, usd: 0, strongUsd: 0, fixAttempts: 0, firstTryClean: false, toolChecks: 0, files: 0, steps: [], log: [], reply: "" };
@@ -160,7 +160,7 @@ export function verdict(kind, turns) {
   return null;
 }
 
-async function runScenario(scenario) {
+export async function runScenario(scenario) {
   const call = session();
   const turns = [];
   try {

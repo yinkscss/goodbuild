@@ -79,7 +79,112 @@ export function paymentProblem(error: unknown): string {
 }
 `;
 
+const APP_TS = `/**
+ * Fill this in once for the app. The About, How to use, Terms, Privacy and Support pages
+ * (InfoPages.tsx) are written from it, so they stay true to what the app does.
+ */
+export const MINI_APP = {
+  name: "My app",
+  tagline: "What this app does, in one line.",
+  publisher: "Your name or team",
+  /** Where people write for help. Leave empty if there is no email yet. */
+  supportEmail: "",
+  /** Three or four short steps, in plain words. */
+  howTo: ["Open the app in MiniPay.", "Choose what you want.", "Confirm the payment in your wallet."],
+  /** Anything the app keeps about people besides their wallet address, e.g. "Your orders are kept on this phone." Empty if nothing. */
+  keeps: "",
+};
+`;
+
+const INFO_TSX = `import type { ReactNode } from "react";
+
+import { MINI_APP } from "./app";
+
+export type InfoKind = "about" | "how" | "terms" | "privacy" | "support";
+
+/** Route paths for the five pages (HashRouter). Add them inside the Layout route: INFO_ROUTES.map((r) => <Route key={r.path} path={r.path} element={<InfoPage kind={r.kind} />} />) */
+export const INFO_ROUTES: Array<{ path: string; kind: InfoKind }> = [
+  { path: "about", kind: "about" },
+  { path: "how-to-use", kind: "how" },
+  { path: "terms", kind: "terms" },
+  { path: "privacy", kind: "privacy" },
+  { path: "support", kind: "support" },
+];
+
+/** What MiniFooter links to when it isn't given links of its own. */
+export const MINI_LINKS = { about: "#/about", howToUse: "#/how-to-use", terms: "#/terms", privacy: "#/privacy", support: "#/support" };
+
+function Page({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <main className="mx-auto max-w-sm space-y-4 px-4 py-6">
+      <a href="#/" className="inline-flex min-h-11 items-center text-sm text-muted-foreground underline-offset-2 hover:underline">
+        Back
+      </a>
+      <h1 className="text-2xl font-semibold">{title}</h1>
+      <div className="space-y-3 leading-relaxed text-muted-foreground">{children}</div>
+    </main>
+  );
+}
+
+export function InfoPage({ kind }: { kind: InfoKind }) {
+  const a = MINI_APP;
+  if (kind === "about") {
+    return (
+      <Page title={"About " + a.name}>
+        <p>{a.tagline}</p>
+        <p>{a.name} is made by {a.publisher}. It works inside MiniPay and takes payments in dollar coins.</p>
+      </Page>
+    );
+  }
+  if (kind === "how") {
+    return (
+      <Page title="How to use">
+        <ol className="list-decimal space-y-2 pl-5">
+          {a.howTo.map((step) => (
+            <li key={step}>{step}</li>
+          ))}
+        </ol>
+        <p>Need money in your wallet first? Use Add cash in MiniPay.</p>
+      </Page>
+    );
+  }
+  if (kind === "terms") {
+    return (
+      <Page title="Terms">
+        <p>{a.name} is run by {a.publisher}. It is not run by Opera or MiniPay.</p>
+        <p>Payments are sent from your own MiniPay wallet. You confirm every payment yourself, and this app cannot take money from your wallet without it.</p>
+        <p>A payment that has gone through cannot be undone by this app. Check the amount before you confirm.</p>
+        <p>The app is offered as it is, and it may change or stop. These are plain-words terms, not legal advice.</p>
+      </Page>
+    );
+  }
+  if (kind === "privacy") {
+    return (
+      <Page title="Privacy">
+        <p>{a.name} does not ask for your name, email or phone number.</p>
+        <p>Your wallet address and your payments are public on the blockchain. Nobody, including us, can remove them.</p>
+        {a.keeps ? <p>{a.keeps}</p> : <p>The app keeps nothing else about you.</p>}
+      </Page>
+    );
+  }
+  return (
+    <Page title="Support">
+      {a.supportEmail ? (
+        <p>
+          Write to <a className="underline" href={"mailto:" + a.supportEmail}>{a.supportEmail}</a> and say what happened and when.
+        </p>
+      ) : (
+        <p>Message {a.publisher} where you found this app, and say what happened and when.</p>
+      )}
+      <p>A payment that failed does not take your money. If one looks stuck, check your MiniPay history first.</p>
+    </Page>
+  );
+}
+`;
+
 const FOOTER_TSX = `import type { ReactNode } from "react";
+
+import { MINI_LINKS } from "./InfoPages";
 
 export interface FooterLinks {
   about: string;
@@ -91,9 +196,9 @@ export interface FooterLinks {
 
 /**
  * The footer MiniPay's listing asks for: About, How to use, Terms, Privacy and Support, plus the
- * line that says the app isn't run by Opera or MiniPay. Pass the app's own pages as links.
+ * line that says the app isn't run by Opera or MiniPay. With no links it points at the kit's own five pages.
  */
-export function MiniFooter({ links, children }: { links: FooterLinks; children?: ReactNode }) {
+export function MiniFooter({ links = MINI_LINKS, children }: { links?: FooterLinks; children?: ReactNode }) {
   const items: Array<[string, string]> = [
     ["About", links.about],
     ["How to use", links.howToUse],
@@ -126,7 +231,9 @@ const GUIDE = `MiniPay apps. MiniPay is Opera's stablecoin wallet on phones. The
 - To send a coin, call sendCoin({ coin, to, amount }). It pays the fee in that coin and sends a plain transaction. For a contract call, pass feeCurrency (coinInfo(coin).feeCurrency) and type: "legacy" in the same way, and don't set maxFeePerGas or maxPriorityFeePerGas.
 - A payment has four states, each with its own plain words: waiting for the person to confirm, sending, done (what happened, with what it cost), failed (paymentProblem(error), then a button to try again). If the balance is too low, show an "Add cash" link to ADD_CASH_URL instead of letting the payment fail.
 - Don't show raw 0x addresses. Show a name, a short label or "Your account". Don't offer a box to type any address to withdraw to.
-- Put MiniFooter at the bottom of every page, with the app's own About, How to use, Terms, Privacy and Support pages (write real short pages for these, reachable by routes in the app).
+- The About, How to use, Terms, Privacy and Support pages are already written: src/minipay/InfoPages.tsx. Don't write them yourself and don't load the content-pages guide for them. Do three small things: (1) fill in MINI_APP in src/minipay/app.ts once (name, tagline, publisher, support email, how-to steps, anything the app keeps); (2) add the five routes inside the Layout route: INFO_ROUTES.map((r) => <Route key={r.path} path={r.path} element={<InfoPage kind={r.kind} />} />); (3) put <MiniFooter /> at the bottom of Layout, so every page has it. In your reply, tell the owner the Terms and Privacy pages are plain-words starters to read before listing.
+- If a page has a bar fixed to the bottom (a cart or checkout bar), give the page bottom padding at least as tall as the bar, so the footer links are never hidden behind it.
+- Don't spend rounds on anything the kit already has. Write the app's own screens and, if there is one, its contract; write several files in the same round.
 - Only the app's own pinned packages. MiniPay doesn't support ethers: use viem.
 - When the person wants it listed in MiniPay: the listing form (developer.minipay.to/mini-app-listing) needs a name, a one-line tagline, publisher, support link, Terms and Privacy links, a category, the app's address and a 512 x 512 icon; the contracts must be verified on Celoscan with a sample transaction. Tell them this once the app is published, in plain words.`;
 
@@ -154,6 +261,13 @@ export function miniAppChecks(files: Record<string, string>): CheckIssue[] {
   if (!Object.entries(files).some(([f, c]) => !f.startsWith("src/minipay/") && c.includes("<MiniFooter"))) {
     issues.push({ file: "src/App.tsx", source: "paths", message: "A MiniPay app needs MiniFooter (src/minipay/MiniFooter.tsx) at the bottom of its pages, with the About, How to use, Terms, Privacy and Support links." });
   }
+  const outside = Object.entries(files).filter(([f]) => !f.startsWith("src/minipay/"));
+  if (!outside.some(([, c]) => c.includes("INFO_ROUTES"))) {
+    issues.push({ file: "src/App.tsx", source: "paths", message: "Add the kit's five pages to the route table inside the Layout route: INFO_ROUTES.map((r) => <Route key={r.path} path={r.path} element={<InfoPage kind={r.kind} />} />), imported from src/minipay/InfoPages." });
+  }
+  if (/name:\s*"My app"/.test(files["src/minipay/app.ts"] ?? "")) {
+    issues.push({ file: "src/minipay/app.ts", source: "paths", message: "Fill in MINI_APP (name, tagline, publisher, how-to steps) so the About, Terms and Privacy pages describe this app." });
+  }
   return issues;
 }
 
@@ -165,6 +279,8 @@ export const miniApp: Kit = {
   packages: {},
   files: {
     "src/minipay/minipay.ts": MINIPAY_TS,
+    "src/minipay/app.ts": APP_TS,
+    "src/minipay/InfoPages.tsx": INFO_TSX,
     "src/minipay/MiniFooter.tsx": FOOTER_TSX,
   },
   guide: GUIDE,
