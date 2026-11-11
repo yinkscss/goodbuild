@@ -198,9 +198,11 @@ export function judgeRounds(report: ProbeReport | null, options: { pressedPlay?:
 
   const declared = [...(report.declared?.obstacles ?? []), ...(report.declared?.powerups ?? []), ...(report.declared?.npcs ?? [])];
   // Judged within rounds: a kind counts when it appeared in the first 15 seconds of a round that lasted at least that long.
+  // Every kind must show in the same round: the long round that met the most of them is the one judged.
   const longEnough = played.filter((r) => seconds(r, report.time) >= ALL_KINDS_S);
-  const early = new Set(longEnough.flatMap((r) => Object.entries(r.kinds ?? {}).filter(([, t]) => t <= ALL_KINDS_S).map(([k]) => k)));
-  const unseen = declared.filter((k) => !(longEnough.length ? early.has(k) : k in report.seen));
+  const earlyIn = (r: ProbeRound) => new Set(Object.entries(r.kinds ?? {}).filter(([, t]) => t <= ALL_KINDS_S).map(([k]) => k));
+  const best = longEnough.map(earlyIn).sort((a, b) => declared.filter((k) => b.has(k)).length - declared.filter((k) => a.has(k)).length)[0];
+  const unseen = declared.filter((k) => !(best ? best.has(k) : k in report.seen));
   if (unseen.length && longEnough.length) {
     issues.push(`In a round of ${Math.round(longest)} seconds these never appeared in the first 15: ${list(unseen)}. Bring each kind in within the first 15 seconds of a round, and call spawned(kind) with the same name when one is created.`);
   }

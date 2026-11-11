@@ -363,10 +363,16 @@ export function useShop(items: ShopItem[], abi: Abi | readonly unknown[], addres
   }, [account, address]);
 
   // Only the newest read may set state: an older one finishing late would show another wallet's things.
+  // A purchase or setup finishing after the wallet changed still calls the load it captured: that load
+  // belongs to the old wallet, so it must neither start a read nor apply one.
+  const live = useRef({ account, address });
+  live.current = { account, address };
   const latest = useRef(0);
   const load = useCallback(async () => {
+    const stillOurs = () => live.current.account === account && live.current.address === address;
+    if (!stillOurs()) return;
     const request = ++latest.current;
-    const current = () => request === latest.current;
+    const current = () => request === latest.current && stillOurs();
     if (!address) {
       setLoading(false);
       return;

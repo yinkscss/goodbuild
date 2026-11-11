@@ -75,8 +75,9 @@ describe("the MiniPay leaderboard contract (D93)", { timeout: 180_000 }, () => {
     expect(errors.map((e) => e.message).join(" ")).toMatch(/MiniPay players can't post to the leaderboard/);
   });
 
-  it("is only turned on by its own words, never by a plain leaderboard", () => {
-    expect(gameBoard.keywords.test("a snake game with a leaderboard")).toBe(false);
-    expect(gameBoard.keywords.test("an onchain leaderboard for my game")).toBe(true);
+  it("is never turned on by words, only by the plan (a refusal names it too)", () => {
+    for (const words of ["a snake game with a leaderboard", "an onchain leaderboard for my game", "A snake game for MiniPay without an onchain leaderboard"]) {
+      expect(gameBoard.keywords.test(words), words).toBe(false);
+    }
   });
 });

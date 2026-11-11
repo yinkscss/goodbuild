@@ -401,12 +401,17 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
       }
       await settle(page, 500);
       blankGame = await flat2dCanvas(page);
-      // A short round may already be over: the "playing" picture must show play, so start another first.
-      if (options.screenshots && options.game2d && (await probeReport(page))?.rounds.at(-1)?.end !== undefined) {
+      // A short round may already be over: the "playing" picture must show play, so start another first,
+      // and take it only once a round is confirmed running. Otherwise the review gets no "playing" picture.
+      const running = async () => {
+        const last = (await probeReport(page))?.rounds.at(-1);
+        return Boolean(last && last.end === undefined);
+      };
+      if (options.screenshots && options.game2d && !(await running())) {
         await page.getByRole("button", { name: /\b(play|again|retry|restart|start|race)\b/i }).first().click({ timeout: 1_000 }).catch(() => undefined);
-        await settle(page, 400);
+        await settle(page, 300);
       }
-      await phoneShot("playing");
+      if (!options.screenshots || !options.game2d || (await running())) await phoneShot("playing");
     }
   }
 

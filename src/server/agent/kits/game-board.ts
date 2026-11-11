@@ -254,7 +254,8 @@ export const gameBoard: Kit = {
   id: "game-board",
   title: "MiniPay leaderboard contract",
   when: "a game with a leaderboard that must work inside MiniPay (GoodBuild turns it on from the plan)",
-  keywords: /\b(on-?chain|onchain) (leader ?board|high ?scores?)\b/i,
+  // Never by its words alone ("without an onchain leaderboard" names it too): the runner turns it on from the plan.
+  keywords: /(?!)/,
   packages: {},
   files: {
     "contracts/GameBoard.sol": GAME_BOARD_SOL,

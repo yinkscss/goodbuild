@@ -50,6 +50,9 @@ describe("judging a played game (D94)", () => {
     // Judged within a round: a kind first seen at 19 seconds, or only in another round, doesn't count.
     const late = report([round({ end: 20, kinds: { oncoming: 1, nitro: 19, rival: 6 } }), round({ start: 20, end: 24, kinds: { nitro: 2 } })]);
     expect(issues(late)).toMatch(/never appeared in the first 15: "nitro"/);
+    // Split across two long rounds: neither round met everything, so the best one is judged.
+    const split = report([round({ end: 16, kinds: { oncoming: 1, nitro: 3 } }), round({ start: 16, end: 33, kinds: { rival: 2 } })]);
+    expect(issues(split)).toMatch(/never appeared in the first 15: "rival"/);
     const short = report([round({ end: 12 })], { seen: { oncoming: 1 } });
     expect(issues(short)).not.toMatch(/never appeared/);
     expect(judgeRounds(short).note).toMatch(/not long enough to judge nitro, rival/);

@@ -793,6 +793,13 @@ describe("kits in a turn (D71)", { timeout: 120_000 }, () => {
     expect(files["src/game/GameOver.tsx"]).toContain("export function GameOver");
   });
 
+  it("leaves the contract off for a MiniPay game that says it wants no leaderboard, even naming an onchain one", async () => {
+    const files = await buildFromPlan("A snake game for MiniPay without an onchain leaderboard");
+    expect(JSON.parse(files["src/goodbuild.json"]).kits).toEqual(expect.arrayContaining(["game-2d", "mini-app"]));
+    expect(files["src/goodbuild.json"]).not.toContain("game-board");
+    expect(files["contracts/GameBoard.sol"]).toBeUndefined();
+  });
+
   it("leaves the contract off for a web-only game with a leaderboard: no deploy needed", async () => {
     const web = await buildFromPlan("A snake game with a leaderboard");
     expect(web["src/goodbuild.json"]).toContain("game-2d");
