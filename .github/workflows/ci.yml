@@ -43,8 +43,13 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # The run check's tests open built apps in a real headless browser (D67). Without it they skip.
+      # --with-deps also installs extra font packages through apt. The runner already has every library
+      # the browser needs, so when Ubuntu's mirrors can't be reached (11 Nov 2026, every PR failed here
+      # before a test ran) install the browser alone instead of failing the whole job.
       - name: Install the headless browser
-        run: node node_modules/playwright-core/cli.js install --with-deps chromium-headless-shell
+        run: |
+          node node_modules/playwright-core/cli.js install --with-deps chromium-headless-shell \
+            || { echo "::warning::apt could not install the browser's extra fonts; installing the browser alone"; node node_modules/playwright-core/cli.js install chromium-headless-shell; }
 
       - name: Lint
         run: pnpm lint
