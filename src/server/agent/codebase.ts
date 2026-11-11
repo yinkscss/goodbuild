@@ -292,7 +292,7 @@ export function selectContext(
   // (about 11k chars). The manifest still lists them, so read_file can fetch them.
   // The same goes for GoodBuild's wallet layer (src/lib/goodbuild/), which the prompt documents.
   // And the motion kit's stylesheet: keyframes the builder never edits or needs to read.
-  // And the ten further UI pieces (D88): about 25k chars that the ui-components guide documents. Sent
+  // And the ten further UI pieces (D89): about 25k chars that the ui-components guide documents. Sent
   // with every turn they would cost more than most small edits do.
   files = Object.fromEntries(
     Object.entries(files).filter(([p]) => p !== "src/lib/db.ts" && p !== "src/lib/useDb.ts" && p !== "src/fx/fx.css" && !p.startsWith("src/lib/goodbuild/") && !(p in UI_PRIMITIVES)),

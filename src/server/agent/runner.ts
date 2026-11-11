@@ -848,6 +848,9 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     // the request alone, so a word from long ago doesn't turn a kit on.
     const kitWords = [request, brief.answerWords, ...(firstBuild ? all.filter((m) => m.role === "user").map((m) => m.content) : [])].join("\n");
     const newKits = input.mode === "build" ? detectKits(kitWords, files) : [];
+    // A Yes to the plan's MiniPay question (D88) turns the MiniPay kit on, whatever its words.
+    const miniAppKit = kitById("mini-app");
+    if (input.mode === "build" && brief.miniPay && miniAppKit && !kitsOf(files).includes(miniAppKit) && !newKits.includes(miniAppKit)) newKits.push(miniAppKit);
     // A gallery template is a designed page (D60): it gets the motion kit (D84) whatever its words say.
     const motionKit = kitById("motion");
     if (input.mode === "build" && firstBuild && motionKit && templateBriefFor(project.templateId) && !newKits.includes(motionKit)) newKits.push(motionKit);

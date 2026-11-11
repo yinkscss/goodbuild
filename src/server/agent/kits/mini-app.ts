@@ -1,8 +1,10 @@
 import { STABLECOINS } from "@/config/stablecoins";
 
-import type { CheckIssue } from "../checks";
+import { MINIPAY_CHECKLIST, miniAppChecks } from "@/lib/minipay-checklist";
 
 import type { Kit } from "./registry";
+
+export { MINIPAY_CHECKLIST, miniAppChecks, miniPayChecklist } from "@/lib/minipay-checklist";
 
 /**
  * The MiniPay kit (D74): apps that work inside MiniPay, Opera's stablecoin wallet on phones.
@@ -222,6 +224,8 @@ export function MiniFooter({ links = MINI_LINKS, children }: { links?: FooterLin
 }
 `;
 
+const CHECKLIST_TEXT = MINIPAY_CHECKLIST.map((i) => `  - ${i.label}${i.how === "checked" ? " (checked)" : i.how === "phone" ? " (on a phone)" : " (for the listing)"}`).join("\n");
+
 const GUIDE = `MiniPay apps. MiniPay is Opera's stablecoin wallet on phones. There is no sign-in and no SDK: it connects the wallet by itself when the page loads (GoodBuild's wallet layer already does this), and the person pays in dollar coins. The kit's files are in src/minipay/: use them, don't rewrite them.
 - Phone only. Design for 360 x 640 and up, one column, no horizontal scroll, no hover-only controls. Every button and link is at least 44px tall (min-h-11).
 - Never show a "Connect wallet" button or a wallet list. Inside MiniPay the wallet is already connected: show the app straight away, and show the person's balance where it matters. Outside MiniPay (a desktop check, the preview) the normal ConnectButton still works, so keep it as the fallback for when there is no wallet yet.
@@ -233,43 +237,16 @@ const GUIDE = `MiniPay apps. MiniPay is Opera's stablecoin wallet on phones. The
 - Don't show raw 0x addresses. Show a name, a short label or "Your account". Don't offer a box to type any address to withdraw to.
 - The About, How to use, Terms, Privacy and Support pages are already written: src/minipay/InfoPages.tsx. Don't write them yourself and don't load the content-pages guide for them. Do three small things: (1) fill in MINI_APP in src/minipay/app.ts once (name, tagline, publisher, support email, how-to steps, anything the app keeps); (2) add the five routes inside the Layout route: INFO_ROUTES.map((r) => <Route key={r.path} path={r.path} element={<InfoPage kind={r.kind} />} />); (3) put <MiniFooter /> at the bottom of Layout, so every page has it. In your reply, tell the owner the Terms and Privacy pages are plain-words starters to read before listing.
 - If a page has a bar fixed to the bottom (a cart or checkout bar), give the page bottom padding at least as tall as the bar, so the footer links are never hidden behind it.
+- Links never open a new tab. MiniPay has no tabs, so target="_blank" goes nowhere: use in-app routes (#/...) and plain links.
+- A game: the play area fills the phone and is played with the thumb, and MiniFooter goes on the start screen (the Layout under it), never over the play area. A game with no money in it needs none of the payment parts: no balance, no Pay button, no Add cash.
+- Before you finish, go through the MiniPay checklist below. GoodBuild checks the items marked (checked) itself and lists the rest for the owner to try on a phone, so build every one:
+${CHECKLIST_TEXT}
 - Don't spend rounds on anything the kit already has. Write the app's own screens and, if there is one, its contract; write several files in the same round.
 - Only the app's own pinned packages. MiniPay doesn't support ethers: use viem.
 - When the person wants it listed in MiniPay: the listing form (developer.minipay.to/mini-app-listing) needs a name, a one-line tagline, publisher, support link, Terms and Privacy links, a category, the app's address and a 512 x 512 icon; the contracts must be verified on Celoscan with a sample transaction. Tell them this once the app is published, in plain words.`;
 
 /** Words that mean this kind of app. */
 const KEYWORDS = /\b(mini ?pay|mini ?app|opera mini|opera wallet|stablecoin (?:app|wallet|payments?)|pay (?:with|in) (?:usdt|usdc|stablecoins?)|usdt|usdc|usdm)\b/i;
-
-export function miniAppChecks(files: Record<string, string>): CheckIssue[] {
-  const issues: CheckIssue[] = [];
-  for (const [file, content] of Object.entries(files)) {
-    if (!/^src\/.*\.(tsx?|jsx?)$/.test(file) || file.startsWith("src/lib/") || file.startsWith("src/minipay/")) continue;
-    const line = (re: RegExp) => content.slice(0, content.search(re)).split("\n").length;
-    if (/\b(signMessage|personal_sign|signTypedData|eth_sign)\b/.test(content)) {
-      issues.push({ file, line: line(/\b(signMessage|personal_sign|signTypedData|eth_sign)\b/), source: "guardrail", message: "MiniPay doesn't allow asking for a signature to log in. Use the wallet address as the person's identity and remove the signing." });
-    }
-    if (/\bsignIn\s*\(/.test(content) && /from ["'][^"']*(db|useDb|useAuth)["']/.test(content)) {
-      issues.push({ file, line: line(/\bsignIn\s*\(/), source: "guardrail", message: "App-data sign-in needs a signature, which MiniPay doesn't allow. Keep this on the contract or in this device's storage." });
-    }
-    if (/\b(maxFeePerGas|maxPriorityFeePerGas)\b/.test(content)) {
-      issues.push({ file, line: line(/\b(maxFeePerGas|maxPriorityFeePerGas)\b/), source: "guardrail", message: "MiniPay takes plain (legacy) transactions. Remove maxFeePerGas and maxPriorityFeePerGas, and use sendCoin or type: \"legacy\" with feeCurrency." });
-    }
-    if (/\bparseEther\s*\(/.test(content) && /\b(USDT|USDC|USDm|USDM|dollar)/i.test(content)) {
-      issues.push({ file, line: line(/\bparseEther\s*\(/), source: "guardrail", message: "USDT and USDC have 6 decimals, not 18. Use coinAmount(coin, text) from src/minipay/minipay.ts." });
-    }
-  }
-  if (!Object.entries(files).some(([f, c]) => !f.startsWith("src/minipay/") && c.includes("<MiniFooter"))) {
-    issues.push({ file: "src/App.tsx", source: "paths", message: "A MiniPay app needs MiniFooter (src/minipay/MiniFooter.tsx) at the bottom of its pages, with the About, How to use, Terms, Privacy and Support links." });
-  }
-  const outside = Object.entries(files).filter(([f]) => !f.startsWith("src/minipay/"));
-  if (!outside.some(([, c]) => c.includes("INFO_ROUTES"))) {
-    issues.push({ file: "src/App.tsx", source: "paths", message: "Add the kit's five pages to the route table inside the Layout route: INFO_ROUTES.map((r) => <Route key={r.path} path={r.path} element={<InfoPage kind={r.kind} />} />), imported from src/minipay/InfoPages." });
-  }
-  if (/name:\s*"My app"/.test(files["src/minipay/app.ts"] ?? "")) {
-    issues.push({ file: "src/minipay/app.ts", source: "paths", message: "Fill in MINI_APP (name, tagline, publisher, how-to steps) so the About, Terms and Privacy pages describe this app." });
-  }
-  return issues;
-}
 
 export const miniApp: Kit = {
   id: "mini-app",

@@ -970,7 +970,7 @@ export function starterFiles(chainId = NETWORKS["celo-sepolia"].chainId): Record
     "src/components/ui/skeleton.tsx": SKELETON,
     "src/components/ui/notice.tsx": NOTICE,
     "src/components/ui/textarea.tsx": TEXTAREA,
-    // Dialog, sheet, tabs, select, dropdown menu, tooltip, toast, accordion, avatar and switch (D88).
+    // Dialog, sheet, tabs, select, dropdown menu, tooltip, toast, accordion, avatar and switch (D89).
     ...UI_PRIMITIVES,
   };
 }

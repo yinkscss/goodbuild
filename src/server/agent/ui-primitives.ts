@@ -1,5 +1,5 @@
 /**
- * Ten more UI pieces for every generated app (D88): dialog, sheet, tabs, select, dropdown menu,
+ * Ten more UI pieces for every generated app (D89): dialog, sheet, tabs, select, dropdown menu,
  * tooltip, toast, accordion, avatar and switch. Before these the starter had eight (button, card,
  * input, textarea, label, badge, skeleton, notice), so every modal, tab bar and menu was written
  * by hand by the builder, differently each time and usually without the keyboard and screen-reader

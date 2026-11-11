@@ -125,7 +125,7 @@ export function Workspace({ initial }: { initial: WorkspaceState }) {
 
       <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-[420px_minmax(0,1fr)] xl:grid-cols-[460px_minmax(0,1fr)]">
         <div className={cn("min-h-0 flex-col", pane === "chat" ? "flex" : "hidden lg:flex", "[&>*]:flex-1")}>
-          <ChatPanel ws={ws} assetUrls={assetUrls} />
+          <ChatPanel ws={ws} assetUrls={assetUrls} publish={publish.info} onPublish={() => setPublishOpen(true)} />
         </div>
         <div className={cn("min-h-0 flex-col", pane === "preview" ? "flex" : "hidden lg:flex", "[&>*]:flex-1")}>
           <PreviewPanel
