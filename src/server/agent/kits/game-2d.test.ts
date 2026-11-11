@@ -740,7 +740,7 @@ describe("the 2D games kit", { timeout: 120_000 }, () => {
     const all = r.issues.map((i) => i.message).join("\n");
     expect(all).toMatch(/score never went up/);
     expect(all).toMatch(/Nothing got in the player's way/);
-    expect(all).toMatch(/never appeared: "rock", "star"/);
+    expect(all).toMatch(/never appeared in the first 15: "rock", "star"/);
     expect(all).toMatch(/never moved the player/);
     expect(all).toMatch(/didn't get harder/);
   });
@@ -789,5 +789,29 @@ describe("the 2D games kit", { timeout: 120_000 }, () => {
     const r = await runCheck(files);
     expect(r.issues).toEqual([]);
     expect(r.note).toMatch(/saw rock/);
+  });
+
+  it("finds declareGame, spawned and probe in a .ts module of the game's own (D95)", () => {
+    const moved = GAME.replace(/import \{ declareGame, probe, spawned \} from "\.\/game\/probe";\n/, 'import { declareGame, probe, spawned } from "./logic";\n');
+    const files = { ...project(moved), "src/logic.ts": 'export { declareGame, probe, spawned } from "./game/probe";\n' };
+    // The App still calls them, through the module; a module that only calls them is found too.
+    expect(gameChecks(files)).toEqual([]);
+    const only = { ...project(GAME.replace(/declareGame\(\{[^}]*\}\);\n/, "")), "src/rules.ts": 'import { declareGame } from "./game/probe";\ndeclareGame({ obstacles: ["pipe"] });\n' };
+    expect(gameChecks(only).map((i) => i.message).join()).not.toMatch(/can't test this game/);
+  });
+
+  it.skipIf(!hasBrowser)("catches a Play button that starts nothing (D95)", async () => {
+    const dead = BOARD_GAME.replace('<button id="play" type="button" onClick={start}', '<button id="play" type="button" onClick={() => undefined}');
+    expect(dead).not.toEqual(BOARD_GAME);
+    const r = await runCheck(withScoresRule(project(dead)));
+    expect(r.issues.map((i) => i.message).join(" ")).toMatch(/Pressing Play didn't start the game/);
+  });
+
+  it.skipIf(!hasBrowser)("a drawn Sprite elsewhere on the page doesn't hide a blank game canvas (D95)", async () => {
+    // BOARD_GAME draws a car Sprite in its header; with nothing drawn on the game itself, the blank start screen must still be caught.
+    const blank = BOARD_GAME.replace("const onIdleFrame = ({ ctx, width, height }: Frame) => drawWorld(ctx, width, height);", "const onIdleFrame = ({ ctx }: Frame) => void ctx;");
+    expect(blank).not.toEqual(BOARD_GAME);
+    const r = await runCheck(withScoresRule(project(blank)));
+    expect(r.issues.map((i) => i.message).join(" ")).toMatch(/start screen shows the game area as an empty box/);
   });
 });

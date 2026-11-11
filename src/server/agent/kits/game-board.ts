@@ -208,7 +208,7 @@ export function gameBoard(abi: Abi | readonly unknown[], address: Address | unde
         address,
         abi,
         functionName: "submit",
-        args: [BigInt(score), name.slice(0, 24)],
+        args: [BigInt(score), fitBytes(name, 24)],
         feeCurrency,
         type: "legacy",
       } as never);
@@ -217,6 +217,17 @@ export function gameBoard(abi: Abi | readonly unknown[], address: Address | unde
       return true;
     },
   };
+}
+
+/** The name cut to the contract's limit in UTF-8 bytes (é is two), never in the middle of a character. */
+function fitBytes(name: string, max: number): string {
+  const encoder = new TextEncoder();
+  let out = "";
+  for (const ch of name) {
+    if (encoder.encode(out + ch).length > max) break;
+    out += ch;
+  }
+  return out || "Player";
 }
 
 /** The fee-currency address of the first dollar coin this wallet has a few cents of. */

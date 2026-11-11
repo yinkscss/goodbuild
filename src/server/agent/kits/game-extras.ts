@@ -111,18 +111,31 @@ export class Missions {
 
   constructor(private readonly all: Mission[], private readonly perDay = 3) {
     const saved = load<Missions["state"] | null>("game:missions", null);
-    if (saved && saved.day === today()) this.state = saved;
-    else {
-      const rand = seededRandom(dailySeed());
-      const pool = [...all];
-      const ids: string[] = [];
-      while (pool.length && ids.length < perDay) ids.push(pool.splice(Math.floor(rand() * pool.length), 1)[0].id);
-      this.state = { day: today(), ids, progress: {}, done: [] };
-      save("game:missions", this.state);
+    this.state = saved && saved.day === today() ? saved : this.newDay();
+  }
+
+  /** Today's missions, picked the same way for everyone. */
+  private newDay(): Missions["state"] {
+    const rand = seededRandom(dailySeed());
+    const pool = [...this.all];
+    const ids: string[] = [];
+    while (pool.length && ids.length < this.perDay) ids.push(pool.splice(Math.floor(rand() * pool.length), 1)[0].id);
+    const state = { day: today(), ids, progress: {}, done: [] };
+    save("game:missions", state);
+    return state;
+  }
+
+  /** A game left open past midnight moves on to the new day's missions. */
+  private current(): Missions["state"] {
+    if (this.state.day !== today()) {
+      this.state = this.newDay();
+      this.run = {};
     }
+    return this.state;
   }
 
   get list(): Array<Mission & { progress: number; done: boolean }> {
+    this.current();
     return this.state.ids
       .map((id) => this.all.find((m) => m.id === id))
       .filter((m): m is Mission => Boolean(m))
@@ -131,6 +144,7 @@ export class Missions {
 
   /** Count a stat. Returns the missions this finished, to celebrate (a popup, a sound). */
   track(stat: string, amount = 1): Mission[] {
+    this.current();
     this.run[stat] = (this.run[stat] ?? 0) + amount;
     this.state.progress[stat] = (this.state.progress[stat] ?? 0) + amount;
     const finished: Mission[] = [];

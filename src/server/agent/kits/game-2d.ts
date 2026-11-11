@@ -271,6 +271,8 @@ export function GameCanvas({
     <div className={className} style={{ width: "100%", maxWidth: fit, minWidth: Math.min(width, 200), marginInline: "auto", ...style }}>
       <canvas
         ref={canvasRef}
+        // GoodBuild's check looks at this canvas, not at Sprite drawings elsewhere on the page.
+        data-game-canvas=""
         role="img"
         aria-label={label}
         // touch-action stops the page scrolling or zooming under a thumb that is playing.
@@ -660,6 +662,14 @@ export function jsxTags(content: string, name: string): { at: number; text: stri
   return tags;
 }
 
+/** Kit files in src/game/ that GoodBuild wrote: every 2D game kit file, and the board and shop kits' own. */
+const KIT_GAME_FILES = new Set(["src/game/chainBoard.ts", "src/game/shop.ts", "src/game/Store.tsx"]);
+
+/** The game's own source files: what the builder wrote, not the kits' files or the starter's library. */
+function authoredFiles(files: Record<string, string>): Array<[string, string]> {
+  return Object.entries(files).filter(([f]) => /^src\/.*\.(tsx?|jsx?)$/.test(f) && !f.startsWith("src/lib/") && !KIT_GAME_FILES.has(f) && !(f in game2d.files));
+}
+
 const lineOf = (content: string, re: RegExp) => content.slice(0, Math.max(0, content.search(re))).split("\n").length;
 
 /**
@@ -683,9 +693,10 @@ export function gameChecks(files: Record<string, string>): CheckIssue[] {
     }
   }
   // The game reports to GoodBuild's check (D94): without the probe it can only be looked at, not tested.
+  // The calls may live in a .ts module of the game's own, so look at every file the builder wrote.
   const canvas = own.find(([, c]) => /<GameCanvas\b/.test(c));
   if (canvas) {
-    const all = own.map(([, c]) => c).join("\n");
+    const all = authoredFiles(files).map(([, c]) => c).join("\n");
     const missing = [/\bdeclareGame\s*\(/.test(all) ? "" : "declareGame({ obstacles, powerups, npcs }) once at module level", /\bspawned\s*\(/.test(all) ? "" : "spawned(kind) whenever an obstacle, power-up or character is created", /\bprobe\s*\(/.test(all) ? "" : "probe(score, player.x, player.y, speed) once per frame in onFrame"].filter(Boolean);
     if (missing.length) {
       issues.push({

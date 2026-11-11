@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { judgeRounds, standInWalletScript, type ProbeReport, type ProbeRound } from "./game-check";
 
-const round = (over: Partial<ProbeRound> = {}): ProbeRound => ({ start: 0, end: 12, frames: 400, score0: 0, scoreMax: 50, speed0: 200, speedMax: 260, xMin: 90, xMax: 270, yMin: 520, yMax: 520, firstHazard: 1.2, ...over });
+const round = (over: Partial<ProbeRound> = {}): ProbeRound => ({ start: 0, end: 12, frames: 400, score0: 0, scoreMax: 50, speed0: 200, speedMax: 260, xMin: 90, xMax: 270, yMin: 520, yMax: 520, firstHazard: 1.2, kinds: { oncoming: 1, nitro: 4, rival: 6 }, ...over });
 const report = (rounds: ProbeRound[], over: Partial<ProbeReport> = {}): ProbeReport => ({
   time: 30,
   rounds,
@@ -19,6 +19,11 @@ describe("judging a played game (D94)", () => {
     const r = judgeRounds(report([round({ end: 16 }), round({ start: 16, end: 20 })]));
     expect(r.issues).toEqual([]);
     expect(r.note).toBe("played 2 rounds, 20s of game, saw oncoming, nitro, rival");
+  });
+
+  it("reports a Play that started no round, only when Play was pressed on a canvas that reports rounds", () => {
+    expect(judgeRounds(report([], { probes: 0 }), { pressedPlay: true }).issues.join()).toMatch(/Pressing Play didn't start the game/);
+    expect(judgeRounds(report([], { probes: 0 })).issues).toEqual([]);
   });
 
   it("asks for the probe when it was never called", () => {
@@ -40,8 +45,11 @@ describe("judging a played game (D94)", () => {
   });
 
   it("names declared kinds that never appeared, but only after a round of 15 seconds", () => {
-    const missing = report([round({ end: 16 })], { seen: { oncoming: 1 } });
-    expect(issues(missing)).toMatch(/never appeared: "nitro", "rival"/);
+    const missing = report([round({ end: 16, kinds: { oncoming: 1 } })], { seen: { oncoming: 1 } });
+    expect(issues(missing)).toMatch(/never appeared in the first 15: "nitro", "rival"/);
+    // Judged within a round: a kind first seen at 19 seconds, or only in another round, doesn't count.
+    const late = report([round({ end: 20, kinds: { oncoming: 1, nitro: 19, rival: 6 } }), round({ start: 20, end: 24, kinds: { nitro: 2 } })]);
+    expect(issues(late)).toMatch(/never appeared in the first 15: "nitro"/);
     const short = report([round({ end: 12 })], { seen: { oncoming: 1 } });
     expect(issues(short)).not.toMatch(/never appeared/);
     expect(judgeRounds(short).note).toMatch(/not long enough to judge nitro, rival/);

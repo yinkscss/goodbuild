@@ -552,6 +552,14 @@ describe("a game's plan (D93)", () => {
     expect(detectKits(yes.answerWords, starterFiles())).toEqual([]);
   });
 
+  it("still asks when the request says it wants no leaderboard", () => {
+    for (const request of ["A snake game for MiniPay without a leaderboard", "A puzzle game, no leaderboard please", "a racing game, I don't want a high score table"]) {
+      const intake = fallbackIntake(request);
+      expect(intake.leaderboard, request).toBeUndefined();
+      expect(intake.questions.some((q) => q.id === LEADERBOARD_QUESTION_ID), request).toBe(true);
+    }
+  });
+
   it("a request that already asks for a leaderboard has one even when every card is skipped", () => {
     const intake = fallbackIntake("A snake game with a leaderboard");
     expect(intake.questions.some((q) => q.id === LEADERBOARD_QUESTION_ID)).toBe(false);

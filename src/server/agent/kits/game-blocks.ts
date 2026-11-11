@@ -38,6 +38,8 @@ interface Round {
   yMax?: number;
   /** Seconds of play before the first obstacle or character appeared. */
   firstHazard?: number;
+  /** Each kind's first appearance in this round, in seconds since the round started. */
+  kinds?: Record<string, number>;
 }
 
 interface Check {
@@ -78,6 +80,10 @@ export function spawned(kind: string): void {
   const d = c.declared;
   const hazard = !d || Boolean(d.obstacles?.includes(kind) || d.npcs?.includes(kind));
   if (r && hazard && r.firstHazard === undefined) r.firstHazard = c.time - r.start;
+  if (r) {
+    r.kinds ??= {};
+    if (!(kind in r.kinds)) r.kinds[kind] = c.time - r.start;
+  }
 }
 
 /** Once per frame while playing: the score, where the player is, and how fast the game is going. */

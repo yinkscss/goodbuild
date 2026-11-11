@@ -36,6 +36,11 @@ const SAYS_MINIPAY = /\bmini ?pay\b/i;
 export const LEADERBOARD_QUESTION_ID = "leaderboard";
 /** The request already asks for one: nothing to ask, the plan has one. */
 const SAYS_LEADERBOARD = /\b(leader ?boards?|high ?score (?:board|table|list)s?|top scores?|ranking)\b/i;
+/** "without a leaderboard", "no leaderboard", "don't need a high score table": then the card is still asked. */
+const REFUSES_LEADERBOARD = /\b(no|without|not|don'?t (?:want|need)|skip)\b[\w\s]{0,20}?\b(leader ?boards?|high ?score (?:board|table|list)s?|top scores?|ranking)\b/i;
+
+/** The request already asks for a leaderboard (and doesn't say it wants none). */
+const asksLeaderboard = (request: string) => SAYS_LEADERBOARD.test(request) && !REFUSES_LEADERBOARD.test(request);
 /** A question about scores or a leaderboard, which the server's card asks instead for a game. */
 const ASKS_SCORES = /\b(leader ?boards?|high ?scores?|scores?|rankings?)\b/i;
 
@@ -324,7 +329,7 @@ export function parseIntake(rawArguments: string, request: string): PlanIntake |
   let questions = parseQuestions(args.questions, game ? MAX_GAME_MODEL_QUESTIONS : miniPay ? MAX_MODEL_QUESTIONS - 1 : MAX_MODEL_QUESTIONS, game);
   if (!questions.length) return null;
   if (game) questions = withGameParts(questions);
-  const saidBoard = game && SAYS_LEADERBOARD.test(request);
+  const saidBoard = game && asksLeaderboard(request);
   const palette = clean(args.recommended_palette, 20).toLowerCase();
   const all = [...questions, ...(game && !saidBoard ? [leaderboardQuestion()] : []), ...(miniPay ? [miniPayQuestion()] : [])];
   const brief = game ? parseGameBrief(args.game_brief) : undefined;
@@ -354,7 +359,7 @@ export function fallbackIntake(request: string): PlanIntake {
   const website = looksLikeWebsite(request);
   const choice = fixedChoice;
   const game = isGameRequest(request);
-  const saidBoard = game && SAYS_LEADERBOARD.test(request);
+  const saidBoard = game && asksLeaderboard(request);
   const questions = game
     ? [
         choice("q1", "How to play", "How should people play?", false, ["One tap or click", "Move left and right", "Answer questions"]),

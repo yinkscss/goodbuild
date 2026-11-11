@@ -289,7 +289,7 @@ contract GameShopTest is Test {
 }
 `;
 
-const SHOP_TS = `import { useCallback, useEffect, useState } from "react";
+const SHOP_TS = `import { useCallback, useEffect, useRef, useState } from "react";
 import { encodeAbiParameters, formatUnits, parseUnits, type Abi, type Address } from "viem";
 
 import { publicClient } from "../lib/chain";
@@ -355,7 +355,18 @@ export function useShop(items: ShopItem[], abi: Abi | readonly unknown[], addres
 
   useEffect(() => subscribeWallet(() => setAccount(walletState().account ?? null)), []);
 
+  // What one wallet owns never shows for another: clear it the moment the wallet or the shop changes.
+  useEffect(() => {
+    setOwned({});
+    setPass(false);
+    setBalance(null);
+  }, [account, address]);
+
+  // Only the newest read may set state: an older one finishing late would show another wallet's things.
+  const latest = useRef(0);
   const load = useCallback(async () => {
+    const request = ++latest.current;
+    const current = () => request === latest.current;
     if (!address) {
       setLoading(false);
       return;
@@ -364,6 +375,7 @@ export function useShop(items: ShopItem[], abi: Abi | readonly unknown[], addres
     try {
       const read = <T,>(functionName: string, args: unknown[] = []) => publicClient.readContract({ address, abi, functionName, args } as never) as Promise<T>;
       const [list, ownerAddress, gdAddress, ends] = await Promise.all([read<ChainItem[]>("catalogue"), read<Address>("owner"), read<Address>("gd"), read<bigint>("seasonEnds")]);
+      if (!current()) return;
       setOnChain([...list]);
       setOwner(ownerAddress);
       setGd(gdAddress);
@@ -374,6 +386,7 @@ export function useShop(items: ShopItem[], abi: Abi | readonly unknown[], addres
           read<boolean>("hasPass", [account]),
           publicClient.readContract({ address: gdAddress, abi: gdTokenAbi, functionName: "balanceOf", args: [account] } as never) as Promise<bigint>,
         ]);
+        if (!current()) return;
         setOwned(Object.fromEntries(ids.map((id, i) => [Number(id), Number(counts[i])])));
         setPass(hasPass);
         setBalance(gdBalance);
@@ -383,9 +396,9 @@ export function useShop(items: ShopItem[], abi: Abi | readonly unknown[], addres
         setBalance(null);
       }
     } catch (e) {
-      setError(errorMessage(e));
+      if (current()) setError(errorMessage(e));
     } finally {
-      setLoading(false);
+      if (current()) setLoading(false);
     }
   }, [address, abi, account]);
 
@@ -393,13 +406,22 @@ export function useShop(items: ShopItem[], abi: Abi | readonly unknown[], addres
     void load();
   }, [load]);
 
+  // The pass ends with the season, even while the game stays open past it: re-render then.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!pass || !seasonEnds || seasonEnds <= Date.now()) return;
+    const timer = setTimeout(() => setNow(Date.now()), Math.min(seasonEnds - Date.now() + 50, 2 ** 31 - 1));
+    return () => clearTimeout(timer);
+  }, [pass, seasonEnds, now]);
+  const passNow = pass && seasonEnds !== null && seasonEnds > now;
+
   const priceOf = (item: ShopItem): bigint => onChain.find((c) => Number(c.id) === item.id)?.price ?? parseUnits(item.price, 18);
   const forSale = (item: ShopItem) => Boolean(onChain.find((c) => Number(c.id) === item.id)?.forSale);
 
   /** How many the player has: 1 for an owned car, the count for level ups and packs. Free items are always 1. */
   const count = (item: ShopItem): number => {
     if (Number(item.price) === 0) return 1;
-    if (item.kind === "pass") return pass ? 1 : 0;
+    if (item.kind === "pass") return passNow ? 1 : 0;
     return owned[item.id] ?? 0;
   };
   const owns = (item: ShopItem) => count(item) > 0;
@@ -436,7 +458,8 @@ export function useShop(items: ShopItem[], abi: Abi | readonly unknown[], addres
   /** Items whose price or sale isn't on the contract yet: the owner puts them on sale with setup(). */
   const notOnSale = paid.filter((i) => {
     const c = onChain.find((x) => Number(x.id) === i.id);
-    return !c || !c.forSale || c.price !== parseUnits(i.price, 18) || c.kind !== KIND[i.kind];
+    const per = i.kind === "count" ? i.perPurchase ?? 1 : 1;
+    return !c || !c.forSale || c.price !== parseUnits(i.price, 18) || c.kind !== KIND[i.kind] || Number(c.perPurchase) !== per;
   });
 
   /** The owner: put every paid item on sale at the prices in the code, in one transaction. */
@@ -476,7 +499,7 @@ export function useShop(items: ShopItem[], abi: Abi | readonly unknown[], addres
     forSale,
     count,
     owns,
-    hasPass: pass,
+    hasPass: passNow,
     /** When the season ends, as a time in milliseconds, or null when no season is running. */
     seasonEnds: seasonEnds && seasonEnds > Date.now() ? seasonEnds : null,
     buy,

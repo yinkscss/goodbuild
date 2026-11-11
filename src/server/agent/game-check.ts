@@ -40,6 +40,8 @@ export interface ProbeRound {
   yMin?: number;
   yMax?: number;
   firstHazard?: number;
+  /** Each kind's first appearance in this round, in seconds since it started. */
+  kinds?: Record<string, number>;
 }
 
 export interface ProbeReport {
@@ -86,9 +88,20 @@ export async function probeReport(page: Page): Promise<ProbeReport | null> {
   return page.evaluate(() => (window as unknown as { __gbGame?: ProbeReport }).__gbGame ?? null).catch(() => null);
 }
 
+/** The game's own canvas (GameCanvas marks it), or the first canvas for a game drawn without it. */
+export async function gameCanvas(page: Page) {
+  const marked = page.locator("canvas[data-game-canvas]").first();
+  return (await marked.count().catch(() => 0)) > 0 ? marked : page.locator("canvas").first();
+}
+
+/** If the wallet list opened (published apps with WalletConnect list several), pick the browser wallet. */
+async function pickBrowserWallet(page: Page): Promise<void> {
+  await page.locator("[data-goodbuild-wallets] .gbw-row", { hasText: /Browser wallet|MetaMask/ }).first().click({ timeout: 800 }).catch(() => undefined);
+}
+
 /** One restless move: tap a side of the game, or press a key. */
 async function fidget(page: Page): Promise<void> {
-  const canvas = page.locator("canvas").first();
+  const canvas = await gameCanvas(page);
   // A short wait: after a game over the canvas may be gone, and the default wait is 30 seconds.
   const box = await canvas.boundingBox({ timeout: 300 }).catch(() => null);
   const move = Math.floor(Math.random() * 5);
@@ -151,10 +164,14 @@ const seconds = (r: ProbeRound, now: number) => (r.end ?? now) - r.start;
 const list = (names: string[]) => names.map((n) => `"${n}"`).join(", ");
 
 /** What the probe saw, as problems for the builder. Silent where the bot couldn't tell. */
-export function judgeRounds(report: ProbeReport | null): { issues: string[]; note: string } {
+export function judgeRounds(report: ProbeReport | null, options: { pressedPlay?: boolean } = {}): { issues: string[]; note: string } {
   if (!report) return { issues: [], note: "the game probe wasn't on" };
   const played = report.rounds.filter((r) => r.frames > 0);
-  if (!report.rounds.length) return { issues: [], note: "no round started" };
+  if (!report.rounds.length) {
+    // Play was pressed with the probe on and a GameCanvas that reports rounds, and nothing started: a dead button.
+    if (options.pressedPlay) return { issues: ["Pressing Play didn't start the game: no round began. Make the Play button set the screen to playing (GameCanvas paused={false}), and make sure it isn't disabled."], note: "Play started nothing" };
+    return { issues: [], note: "no round started" };
+  }
   if (report.probes === 0) {
     return {
       issues: ["The game ran but never called probe(score, player.x, player.y, speed) while playing, so GoodBuild couldn't test it. Call it once per frame in onFrame (src/game/probe.ts)."],
@@ -180,9 +197,12 @@ export function judgeRounds(report: ProbeReport | null): { issues: string[]; not
   }
 
   const declared = [...(report.declared?.obstacles ?? []), ...(report.declared?.powerups ?? []), ...(report.declared?.npcs ?? [])];
-  const unseen = declared.filter((k) => !(k in report.seen));
-  if (unseen.length && longest >= ALL_KINDS_S) {
-    issues.push(`In ${Math.round(longest)} seconds of play these never appeared: ${list(unseen)}. Bring each kind in within the first 15 seconds of a round, and call spawned(kind) with the same name when one is created.`);
+  // Judged within rounds: a kind counts when it appeared in the first 15 seconds of a round that lasted at least that long.
+  const longEnough = played.filter((r) => seconds(r, report.time) >= ALL_KINDS_S);
+  const early = new Set(longEnough.flatMap((r) => Object.entries(r.kinds ?? {}).filter(([, t]) => t <= ALL_KINDS_S).map(([k]) => k)));
+  const unseen = declared.filter((k) => !(longEnough.length ? early.has(k) : k in report.seen));
+  if (unseen.length && longEnough.length) {
+    issues.push(`In a round of ${Math.round(longest)} seconds these never appeared in the first 15: ${list(unseen)}. Bring each kind in within the first 15 seconds of a round, and call spawned(kind) with the same name when one is created.`);
   }
 
   const busy = played.filter((r) => r.frames >= 30 && r.xMin !== undefined);
@@ -196,7 +216,7 @@ export function judgeRounds(report: ProbeReport | null): { issues: string[]; not
   }
 
   const kinds = Object.keys(report.seen);
-  const note = `played ${played.length} round${played.length === 1 ? "" : "s"}, ${Math.round(total)}s of game${kinds.length ? `, saw ${kinds.join(", ")}` : ""}${unseen.length && longest < ALL_KINDS_S ? ` (not long enough to judge ${unseen.join(", ")})` : ""}`;
+  const note = `played ${played.length} round${played.length === 1 ? "" : "s"}, ${Math.round(total)}s of game${kinds.length ? `, saw ${kinds.join(", ")}` : ""}${unseen.length && !longEnough.length ? ` (not long enough to judge ${unseen.join(", ")})` : ""}`;
   return { issues, note };
 }
 
@@ -229,6 +249,7 @@ export async function walletAndBoard(page: Page, options: { board: boolean }): P
   const connect = page.getByRole("button", { name: /connect( a| your)? wallet/i }).first();
   if (await connect.isVisible().catch(() => false)) {
     await connect.click({ timeout: 1_500 }).catch(() => undefined);
+    await pickBrowserWallet(page);
     const shown = await page
       .waitForFunction((short) => document.body.innerText.includes(short), CHECK_WALLET_SHORT, { timeout: 3_000 })
       .then(() => true)
@@ -255,6 +276,7 @@ export async function walletAndBoard(page: Page, options: { board: boolean }): P
   }
   await name.fill("Check Bot");
   await page.getByRole("button", { name: /post score/i }).first().click({ timeout: 1_500 }).catch(() => undefined);
+  await pickBrowserWallet(page);
   const posted = await page
     .waitForFunction(() => /You're on the board!/.test(document.body.innerText) && Array.from(document.querySelectorAll("li")).some((li) => li.textContent?.includes("Check Bot")), undefined, { timeout: 4_000 })
     .then(() => true)

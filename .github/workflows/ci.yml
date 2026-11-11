@@ -74,8 +74,13 @@ jobs:
 
       # Real Postgres, age and MinIO in a throwaway project, with keys made up for the run (D47).
       - name: Test the off-site backup and restore drill
+        # When Ubuntu's mirrors can't be reached, take age's own release from GitHub, pinned by its sha256.
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq age >/dev/null
+          if ! { sudo apt-get update -qq && sudo apt-get install -y -qq age >/dev/null; }; then
+            echo "::warning::apt couldn't install age; using age v1.2.1 from its GitHub release"
+            curl -fsSL -o /tmp/age.tgz https://github.com/FiloSottile/age/releases/download/v1.2.1/age-v1.2.1-linux-amd64.tar.gz
+            echo "7df45a6cc87d4da11cc03a539a7470c15b1041ab2b396af088fe9990f7c79d50  /tmp/age.tgz" | sha256sum -c -
+            sudo tar -xzf /tmp/age.tgz -C /usr/local/bin --strip-components=1 age/age age/age-keygen
+          fi
           bash deploy/test-offsite-backup.sh
         timeout-minutes: 8

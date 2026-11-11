@@ -5,7 +5,7 @@ import type { Browser, BrowserContext, Page, Route } from "playwright-core";
 import { buildPublishedApp, moduleStarts, PublishBuildError, type PublishedFile } from "@/server/publish/build";
 
 import type { CheckIssue } from "./checks";
-import { GAME_CHECK_SPEED, gameCheckScript, insideMiniPay, judgeRounds, playRounds, probeReport, standInWalletScript, walletAndBoard } from "./game-check";
+import { GAME_CHECK_SPEED, gameCanvas, gameCheckScript, insideMiniPay, judgeRounds, playRounds, probeReport, standInWalletScript, walletAndBoard } from "./game-check";
 import { kitIdsOf } from "./kits/registry";
 
 /**
@@ -31,6 +31,8 @@ export interface RunCheckOptions {
   board?: boolean;
   /** The MiniPay kit is on: open the game as MiniPay too (D94). */
   miniPay?: boolean;
+  /** The project's GameCanvas reports rounds to the probe, so a Play that starts none is a fault (D95). */
+  probeReady?: boolean;
   /** The project draws a 3D scene from shapes alone: look for one that shows nothing but its background (set from its kits and files). */
   scene?: boolean;
   /** Also return screenshots at phone and desktop width. */
@@ -292,7 +294,10 @@ async function flatScene(page: Page): Promise<boolean> {
 async function flat2dCanvas(page: Page): Promise<boolean> {
   return page
     .evaluate(() => {
-      const big = Array.from(document.querySelectorAll("canvas")).filter((c) => c.width >= 50 && c.height >= 50);
+      // The game's own canvas when GameCanvas marked it, so a drawn Sprite elsewhere can't hide a blank game.
+      const marked = document.querySelectorAll<HTMLCanvasElement>("canvas[data-game-canvas]");
+      const pool = Array.from(marked.length ? marked : document.querySelectorAll<HTMLCanvasElement>("canvas"));
+      const big = pool.filter((c) => c.width >= 50 && c.height >= 50);
       if (!big.length) return false;
       return big.every((c) => {
         try {
@@ -350,7 +355,9 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
   // A 2D game is played for real (D94): the kit's probe records what happens. Not for the review's pictures.
   const deep = Boolean(options.game2d && !options.screenshots);
   // Normal speed at first, so the first moments of play look as a player sees them; faster once they're checked.
-  if (deep) await page.addInitScript(gameCheckScript(1));
+  // The probe is on for every 2D game at normal speed, so the check knows whether a round is running.
+  if (options.game2d) await page.addInitScript(gameCheckScript(1));
+  let pressedPlay = false;
   await open(page);
 
   const blank = await page.evaluate(() => {
@@ -380,9 +387,12 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
       noPlay = !hasStart;
       await phoneShot("start");
     }
-    if (hasStart) await start.click({ timeout: 1_500 }).catch(() => undefined);
+    if (hasStart) {
+      await start.click({ timeout: 1_500 }).catch(() => undefined);
+      pressedPlay = true;
+    }
     await settle(page, 250);
-    const canvas = page.locator("canvas").first();
+    const canvas = await gameCanvas(page);
     if (await canvas.isVisible().catch(() => false)) {
       for (const key of ["Space", "ArrowRight", "ArrowLeft", "Space"]) {
         await canvas.click({ timeout: 1_000 }).catch(() => undefined);
@@ -391,6 +401,11 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
       }
       await settle(page, 500);
       blankGame = await flat2dCanvas(page);
+      // A short round may already be over: the "playing" picture must show play, so start another first.
+      if (options.screenshots && options.game2d && (await probeReport(page))?.rounds.at(-1)?.end !== undefined) {
+        await page.getByRole("button", { name: /\b(play|again|retry|restart|start|race)\b/i }).first().click({ timeout: 1_000 }).catch(() => undefined);
+        await settle(page, 400);
+      }
       await phoneShot("playing");
     }
   }
@@ -405,7 +420,7 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
       if (g) g.speed = speed;
     }, GAME_CHECK_SPEED);
     gameIssues.push(...(await playRounds(page)));
-    const judged = judgeRounds(await probeReport(page));
+    const judged = judgeRounds(await probeReport(page), { pressedPlay: pressedPlay && Boolean(options.probeReady) });
     gameIssues.push(...judged.issues);
     gameNotes.push(judged.note);
     if (!seen.length && !gameIssues.length) {
@@ -540,10 +555,11 @@ export async function runCheck(files: Record<string, string>, options: RunCheckO
     const game2d = options.game2d ?? kits.includes("game-2d");
     const board = options.board ?? Object.entries(files).some(([p, c]) => p.startsWith("src/") && !p.startsWith("src/game/") && /<PostScore\b/.test(c));
     const miniPay = options.miniPay ?? kits.includes("mini-app");
+    const probeReady = options.probeReady ?? Boolean(files["src/game/GameCanvas.tsx"]?.includes("checkRound"));
     // A scene that waits for an uploaded model or picture is empty here (uploads are blank stand-ins), so only
     // scenes built from shapes are looked at.
     const scene = options.scene ?? (kits.includes("three-d") && !Object.entries(files).some(([p, c]) => p.startsWith("src/") && p !== "src/three/Scene3D.tsx" && /GLTFLoader|TextureLoader/.test(c)));
-    return done(await Promise.race([check(context, built, { ...options, game, game2d, board, miniPay, scene }), timeout]));
+    return done(await Promise.race([check(context, built, { ...options, game, game2d, board, miniPay, probeReady, scene }), timeout]));
   } catch (error) {
     return done({ ran: false, issues: [], note: `skipped: the browser wasn't available (${String((error as Error)?.message ?? error).split("\n")[0].slice(0, 120)})` });
   } finally {
