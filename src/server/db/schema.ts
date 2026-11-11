@@ -23,6 +23,8 @@ export const users = pgTable("users", {
   /** GoodID root, filled when face verification lands (CREDITS.md §5). */
   goodidRoot: text("goodid_root"),
   verifiedAt: timestamp("verified_at", { withTimezone: true }),
+  /** Show the "Built with GoodBuild" badge on this user's published apps. On unless they turn it off in Settings. */
+  showBadge: boolean("show_badge").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
 });

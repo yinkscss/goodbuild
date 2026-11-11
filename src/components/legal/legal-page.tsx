@@ -25,7 +25,7 @@ export function LegalPage({ eyebrow, title, intro, draft = true, children }: { e
           <h1 className="display mt-3 text-[28px] font-bold sm:text-[40px]">{title}</h1>
           <p className="mt-4 max-w-xl text-base text-grey-600">{intro}</p>
           {draft && (
-            <p className="mt-4 w-fit rounded-full bg-warning/10 px-3 py-1 text-xs font-semibold text-warning">Draft for the testnet beta. Not yet reviewed by a lawyer.</p>
+            <p className="mt-4 w-fit rounded-full bg-warning/10 px-3 py-1 text-xs font-semibold text-warning">Draft. Not yet reviewed by a lawyer.</p>
           )}
         </div>
         <div className="mt-4 rounded-card bg-surface p-8 shadow-card md:p-12">

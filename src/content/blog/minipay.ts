@@ -91,7 +91,7 @@ export const minipayPosts: Post[] = [
       },
     ],
     faq: [
-      { q: "How much does it cost?", a: "New GoodBuild accounts get $0.20 of AI free during the beta, which covers a few small builds. Afterwards you pay the AI cost plus 25%. Network fees for deploys go to the network." },
+      { q: "How much does it cost?", a: "New GoodBuild accounts get $0.20 of AI free, which covers a few small builds. Afterwards you pay the AI cost plus 25%. Network fees for deploys go to the network." },
       { q: "Can I build a MiniPay app for free?", a: "You can build and try one using the free starting credit. See [the free AI builder guide](/blog/free-ai-app-builder) for what that covers." },
     ],
     related: ["what-is-a-minipay-app", "test-minipay-app-developer-mode", "free-ai-app-builder"],

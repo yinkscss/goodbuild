@@ -47,7 +47,7 @@ export const PRODUCT_FACTS = [
   "Apps run on Celo mainnet or on Celo Sepolia, the test network. Publishing puts the front end at its own address, <name>.goodbuildit.xyz.",
   "Published apps are built to connect automatically inside the MiniPay wallet (not yet confirmed on a real MiniPay), and to offer a list of browser wallets elsewhere, plus WalletConnect when it is configured.",
   "Apps can collect, split and pay out G$ (GoodDollar) and Celo stablecoins. Forms and saved data work without a separate server; there is no custom backend yet.",
-  "Free to try: new accounts get $0.20 of AI free during the testnet beta. After the beta, each build costs the AI cost plus 25%, with an estimate shown first.",
+  "Free to try: new accounts get $0.20 of AI free. After that, each build costs the AI cost plus 25%, with an estimate shown first.",
   "Generated contracts are unaudited. People who deploy are responsible for what they deploy.",
   "For people aged 18 and over. Not available to US persons. Sports betting and games of chance for money are not allowed.",
 ];

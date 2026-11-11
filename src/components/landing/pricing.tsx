@@ -9,17 +9,17 @@ export function Pricing() {
       <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
         <article className="flex flex-col justify-between gap-12 rounded-card bg-surface p-8 shadow-card">
           <div>
-            <p className="eyebrow">Now</p>
+            <p className="eyebrow">Free start</p>
             <p className="display mt-3 text-[58px] font-extrabold text-violet">Free</p>
           </div>
           <p className="max-w-md text-sm text-grey-600">
-            Every new account gets $0.20 of AI free during the testnet beta on Celo Sepolia, which covers a few small builds or one
-            larger one. Test networks use test tokens, so nothing you do here spends real money.
+            Every new account gets $0.20 of AI free, which covers a few small builds or one
+            larger one. On a test network, tokens are free and nothing spends real money.
           </p>
         </article>
         <article className="flex flex-col justify-between gap-12 rounded-card bg-surface p-8 shadow-card">
           <div>
-            <p className="eyebrow">After the beta</p>
+            <p className="eyebrow">After that</p>
             <p className="display mt-3 text-[40px] font-bold">Cost + 25%</p>
           </div>
           <div className="space-y-2 text-sm text-grey-600">

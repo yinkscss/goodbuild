@@ -6,6 +6,7 @@ import { AdminPanel } from "@/components/settings/admin-panel";
 import { AppsPanel } from "@/components/settings/apps-panel";
 import { ContractsPanel } from "@/components/settings/contracts-panel";
 import { DataPanel } from "@/components/settings/data-panel";
+import { PreferencesPanel } from "@/components/settings/preferences-panel";
 import { cn } from "@/lib/utils";
 
 const TABS = [
@@ -13,6 +14,7 @@ const TABS = [
   { key: "contracts", label: "Contracts" },
   { key: "admin", label: "Admin functions" },
   { key: "data", label: "Data" },
+  { key: "preferences", label: "Preferences" },
 ] as const;
 type TabKey = (typeof TABS)[number]["key"];
 
@@ -46,6 +48,7 @@ export function SettingsTabs({ initialTab }: { initialTab?: string }) {
         {tab === "contracts" && <ContractsPanel />}
         {tab === "admin" && <AdminPanel />}
         {tab === "data" && <DataPanel />}
+        {tab === "preferences" && <PreferencesPanel />}
       </div>
     </div>
   );

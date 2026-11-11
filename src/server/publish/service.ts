@@ -12,7 +12,7 @@ import { dbAssetStore } from "@/server/agent/asset-store";
 import { loadFiles } from "@/server/agent/store";
 import type { Db } from "@/server/db/client";
 import { publicationFiles, publications, type Publication } from "@/server/db/publish-schema";
-import type { Project } from "@/server/db/schema";
+import { users, type Project } from "@/server/db/schema";
 import { withCurrentAddresses } from "@/server/deploy/addresses";
 import { contractState } from "@/server/deploy/contract-state";
 import { publicClientFor } from "@/server/deploy/service";
@@ -135,10 +135,12 @@ export async function publishApp(db: Db, project: Project, slug: string, deps: {
     if (asset) assets.push({ name: asset.name, mime: asset.mime, bytes: asset.bytes });
   }
 
+  const [owner] = await db.select({ showBadge: users.showBadge }).from(users).where(eq(users.id, project.ownerId)).limit(1);
+
   let built: PublishedFile[];
   try {
     const changeableContract = await hasChangeableContracts(db, project, saved, deps.client ?? publicClientFor(project.chainId));
-    built = await (deps.build ?? buildPublishedApp)({ files, assets, title: project.name, reportUrl: reportUrl(slug), hasUndeployedContracts: undeployed.length > 0, dataClientId: clientId, changeableContract, walletConnectProjectId: walletConnectProjectId() });
+    built = await (deps.build ?? buildPublishedApp)({ files, assets, title: project.name, reportUrl: reportUrl(slug), hasUndeployedContracts: undeployed.length > 0, dataClientId: clientId, changeableContract, showBadge: owner?.showBadge ?? true, walletConnectProjectId: walletConnectProjectId() });
   } catch (error) {
     if (error instanceof PublishBuildError) throw new PublishError("build_failed", error.message, error.details);
     throw error;
