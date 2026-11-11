@@ -47,7 +47,7 @@ export interface PlanAnswer {
 }
 
 /** The plan-first questions (D32), stored on the turn that asked them, with answers as they come. */
-/** A game's pitch from the planner (D91), shown with the plan and given to the builder as the spec. */
+/** A game's pitch from the planner (D92), shown with the plan and given to the builder as the spec. */
 export interface GameBrief {
   name: string;
   pitch: string;

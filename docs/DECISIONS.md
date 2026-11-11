@@ -979,3 +979,44 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
   - A real MiniPay post: fee-currency payment for a contract call, and how MiniPay shows it.
   - The plan card's look in the workspace (only tested in jsdom).
 - **Not in this change:** Phases C (building blocks and the game probe), D (a bot that plays, and run-check tests of the leaderboard and wallet), E (shop contract) and F (extras) of the plan. B4 (checking that the planned obstacles appear) needs the probe from Phase C.
+
+### D93. Games are played and tested: building blocks, a game probe, and a run check that plays, posts a score and connects a wallet (phases C and D of GAMES_PLAN.md)
+- Date: 11 Nov 2026 · Asked for by: the owner ("go ahead with phase C and D") · Built by: Claude.
+- **Building blocks** (new kit files in `src/game/`, source in `kits/game-blocks.ts`). No packages, and nothing is allocated while the game runs. The guide has a section on each and asks the builder to use them instead of writing its own:
+  - `world.ts`: `Pool`, `Spawner` (a short grace before the first spawn, faster with difficulty, never closer than its fastest gap), `difficulty(seconds)`, `lanes`, `pick`.
+  - `npc.ts`: one `Actor` shape for `traffic`, `oncoming`, `chaser`, `patrol`, `shooter` and `rival`. Each sets `warn` from 0 to 1 before it acts, so a player can react. Also `hitBox` (a little smaller than what is drawn) and `offscreen`.
+  - `powerups.ts`: `Effects` (activate, isActive, remaining, fraction, update with an end callback), with colours for shield, magnet, slow, double, boost and life.
+  - `hud.ts`: `drawHud` (the score panel, distance, best, lives, combo, a shrinking bar per power-up) and `drawBanner`.
+  - `haptics.ts`: `buzz`, which the mute button also turns off.
+- **The game probe** (`src/game/probe.ts`). The game calls `declareGame({ obstacles, powerups, npcs })` once, `spawned(kind)` when one is created, and `probe(score, x, y, speed)` each frame. `GameCanvas` reports rounds: one starts when the game runs, and ends when it pauses or the canvas leaves the page. All of it returns at once unless the run check turned it on (`window.__gbGame`), so real players never pay for it. A file check asks for all three calls in any project with a `GameCanvas`.
+- **Checking is faster than real time.** While the check runs, `GameCanvas` runs 4 game steps per screen frame, so about 7 seconds of play cover about 28 seconds of game. The probe keeps its own clock, so a game that mounts a fresh canvas each round is timed right. The first moments of play run at normal speed, so the blank-canvas check and the review's "playing" picture see what a player sees.
+- **The run check plays a 2D game** (new `game-check.ts`; not for the review's screenshot run):
+  - **The bot.** It presses Play with no wallet, then taps both sides and presses the keys for about 7 seconds. After each game over it presses Play again and checks a new round starts.
+  - **What it reports to the builder's fix loop:**
+    - a score that never rises;
+    - no obstacle or character within 3 seconds of Play;
+    - a declared kind that never appeared in a round of 15 seconds or more;
+    - controls that never moved the player (x or y);
+    - a game that didn't get harder (the speed passed to `probe` never rose) in a round of 10 seconds or more;
+    - no Play again button, or one that doesn't start a round;
+    - no `probe` calls at all.
+  - **It stays silent when it can't tell.** If the bot never survived long enough, it writes a note rather than an issue, because a false finding costs a fix.
+- **With a stand-in wallet** (a second page with `window.ethereum` that says yes and logs what it was asked):
+  - If the page has a Connect wallet button, pressing it must ask the wallet for an account and then show the short address.
+  - If the game shows `PostScore`, the check plays until a game over, posts a score as "Check Bot", and needs both "You're on the board!" and the name in the leaderboard list. This runs on the preview store, because the run check's build has no data server; the data rule itself is the file check from D92.
+- **As MiniPay** (a third page, only with the MiniPay kit): a visible Connect wallet button is reported, and so is any signature request. Play must still work.
+- **Time.** A game's run check may take up to 50 seconds (other apps keep 25). Measured locally, a game with a leaderboard took 12 to 15 seconds per check.
+- **Planned kinds (B4)** are tested through `declareGame`: the guide tells the builder to declare the kinds the plan named, with the same short names. Nothing yet compares the plan's wording with the declared names.
+- **Changed from the plan.** There is no forced game over (`endRound`): a game that never ends during the check simply isn't judged on Play again. The leaderboard is tested on the preview store rather than an in-memory server that applies the project's rules, which the file check already covers.
+- **Games already built** get the new kit files (they are added, never overwritten). Their next build will be asked to add `declareGame`, `spawned` and `probe`, which costs one fix round.
+- **Checked:**
+  - Unit tests for every rule, including when it stays silent (`game-check.test.ts`).
+  - In a real headless browser:
+    - a racer built only from the blocks passes the type check and the run check, meeting every kind it declared;
+    - a game with no obstacles, score, control or rising speed gets all five findings;
+    - a game over with no Play again is caught;
+    - posting a score with the stand-in wallet shows it on the board;
+    - a `PostScore` wired to a different board than the one on screen is caught;
+    - a MiniPay game is opened as MiniPay, and a Connect wallet button there is caught.
+  - The game tests passed twice in a row, and the whole suite passes.
+- **UNVERIFIED:** a real model writing games with the blocks and the probe; how often the random bot survives long enough to judge everything in real builds; the extra check time on the production checker; real wallets and real MiniPay.

@@ -14,7 +14,7 @@ import { decideDirectFunding } from "@/server/credits/cap";
 const MAX_ISSUES = 4;
 
 /**
- * A game is seen before Play (D91): obstacles, characters and a running score only exist once it runs,
+ * A game is seen before Play (D92): obstacles, characters and a running score only exist once it runs,
  * so they must not be reported missing from this picture. Each false report costs the person a build.
  */
 const GAME_NOTE = `

@@ -41,7 +41,7 @@ export function worthReviewing(firstBuild: boolean, changes: FileChange[]): bool
 
 export function reviewPrompt(args: { request: string; direction?: string; pictures?: string[] }): string {
   const direction = args.direction?.trim() ? `\nThe builder's own plan for it: "${args.direction.trim().slice(0, 400)}".` : "";
-  // A game (D91): a start screen and a moment of play, so the reviewer judges each for what belongs on it.
+  // A game (D92): a start screen and a moment of play, so the reviewer judges each for what belongs on it.
   const what = args.pictures?.length
     ? `These are ${args.pictures.length} screenshots of a game GoodBuild just built, in this order: ${args.pictures.map((p, i) => `(${i + 1}) ${p}`).join("; ")}. The person asked for: "${args.request.slice(0, 600)}".${direction}
 On the start screen, expect the game area drawn (not an empty or one-colour box), the game's name, how to play and a Play button; obstacles, characters and a moving score only appear once it runs, so judge those on the picture taken during play. An empty or one-colour game area on either is broken.

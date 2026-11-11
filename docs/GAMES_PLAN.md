@@ -1,6 +1,6 @@
 # Games plan: right first time (proposal, 11 Nov 2026)
 
-Status: **Phases A and B built (D91, 11 Nov 2026); C to G still proposals.** The owner chose a wallet-only leaderboard with the hybrid design (browser: one free signature and app data; MiniPay: a small contract), so A2 below is superseded by D91. Originally: Written by Claude after the owner's "Neon Drift" test build (an endless car racer for MiniPay with a leaderboard, season pass and G$ store) took 7 versions, about 4 retries and 4 recompiles. CLAUDE.md asks for a plan before large changes, so this waits for the owner's go-ahead. The full chat transcript of that build is still to come and may change the diagnosis in section 1.
+Status: **Phases A and B built (D92) and C and D built (D93), 11 Nov 2026; E to G still proposals.** The owner chose a wallet-only leaderboard with the hybrid design (browser: one free signature and app data; MiniPay: a small contract), so A2 below is superseded by D92. D93 lists where C and D differ from what is written here. Originally:
 
 The owner's must-haves for every game build:
 1. Obstacles, challenges and power-ups, with the person asked about each one separately.

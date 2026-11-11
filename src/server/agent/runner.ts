@@ -851,7 +851,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     // A Yes to the plan's MiniPay question (D88) turns the MiniPay kit on, whatever its words.
     const miniAppKit = kitById("mini-app");
     if (input.mode === "build" && brief.miniPay && miniAppKit && !kitsOf(files).includes(miniAppKit) && !newKits.includes(miniAppKit)) newKits.push(miniAppKit);
-    // A game with a leaderboard that works in MiniPay (D91): MiniPay allows no sign-in signature, so its
+    // A game with a leaderboard that works in MiniPay (D92): MiniPay allows no sign-in signature, so its
     // players post to the leaderboard contract. That means a deploy, so only these games get it.
     const boardKit = kitById("game-board");
     const willHave = (id: string) => kitsOf(files).some((k) => k.id === id) || newKits.some((k) => k.id === id);
@@ -1123,7 +1123,7 @@ function withContractModules(files: Record<string, string>, contracts: CheckRepo
 
 /**
  * The finished page at phone and computer width, as images for the review (D87), and what each one
- * shows. A 2D game's phone pictures are its start screen and a moment into play (D91). Empty when the
+ * shows. A 2D game's phone pictures are its start screen and a moment into play (D92). Empty when the
  * run check couldn't take them.
  */
 async function screenshots(open: typeof runCheck, files: Record<string, string>, report: CheckReport, options: { assets: string[]; chainId?: number }): Promise<{ parts: UserPart[]; pictures?: string[] }> {

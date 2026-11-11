@@ -1,5 +1,6 @@
 import type { CheckIssue } from "../checks";
 
+import { HAPTICS, HUD, NPC, POWERUPS, PROBE, WORLD } from "./game-blocks";
 import { LEADERBOARD_TS, LEADERBOARD_TSX, SPRITE } from "./game-files";
 import type { Kit } from "./registry";
 
@@ -15,6 +16,7 @@ import type { Kit } from "./registry";
  */
 
 const GAME_CANVAS = `import { useEffect, useRef, type CSSProperties } from "react";
+import { checkRound, checkTick, stepsPerFrame } from "./probe";
 
 /** What the player is pressing right now. Read it in onFrame; never store it in React state. */
 export interface GameInput {
@@ -126,6 +128,12 @@ export function GameCanvas({
     if (paused) release();
   }, [onFrame, onIdleFrame, paused]);
 
+  // GoodBuild's check counts rounds: one starts when the game runs and ends when it pauses or leaves the page.
+  useEffect(() => {
+    checkRound(!paused);
+    return () => checkRound(false);
+  }, [paused]);
+
   useEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
@@ -208,10 +216,15 @@ export function GameCanvas({
         idleRef.current({ ctx, width, height, dt, time, input: state });
         return;
       }
-      time += dt;
       ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-      frameRef.current({ ctx, width, height, dt, time, input: state });
-      state.actionPressed = false;
+      // One step per frame. While GoodBuild checks the game it runs a few, so a short check covers a long round.
+      const steps = stepsPerFrame();
+      for (let i = 0; i < steps; i++) {
+        time += dt;
+        checkTick(dt);
+        frameRef.current({ ctx, width, height, dt, time, input: state });
+        state.actionPressed = false;
+      }
     };
     raf = requestAnimationFrame(loop);
     return () => {
@@ -552,13 +565,26 @@ The screen
 
 What makes it a game
 - Obstacles, challenges, power-ups and computer-controlled characters (NPCs: traffic, rivals, enemies, chasers) are the game. Build every one the plan names, each with its own look and its own behaviour, and give each a name in the code (type: "oncoming" | "slowCar" | "oil"). If the plan named none, pick at least two kinds of obstacle and one power-up that fit the game.
-- The first obstacle arrives within 3 seconds of Play, after a short grace moment. A player must meet everything the game has within the first 30 seconds: introduce each kind early, then mix them.
+- The first obstacle arrives within 3 seconds of Play, after a short grace moment. A player must meet everything the game has within the first 15 seconds of a round: introduce each kind early, then mix them.
 - NPCs act like someone: traffic changes lane with a blink first, a chaser speeds up when far and slows when close, a rival tries to block. Signal before acting, so a player can react, and keep it fair: never spawn something the player can't avoid.
 - Power-ups: each one does something you can see (a shield ring, coins flying to you, a speed trail), lasts a few seconds with a shrinking bar in the score panel, and makes a sound when picked up and when it ends.
 - Difficulty rises with time or score (speed, spawn rate, more kinds at once), with a cap so it stays playable.
 - A clear way to lose, feedback on every action (a sound AND something seen), and a reason to play again (the best score, "New best!"). Hit boxes a little smaller than what is drawn.
 - Feel (src/game/juice.ts): this is what separates a game from a demo, so use it. new Particles() for a burst when something is collected, broken or landed on (particles.burst(x, y, { color })). new Shake() for a jolt on a hit (shake.hit()). new Popups() for "+10" floating up. Make each ONCE outside onFrame (in the game's useRef or at module level), and on every frame: shake.update(dt); ctx.save(); shake.apply(ctx); draw the game; particles.update(dt); particles.draw(ctx); popups.update(dt); popups.draw(ctx); ctx.restore(). ease.out, ease.back and lerp are there for movement that isn't linear. Collisions: hitRect(a, b), hitCircle(...), hitCircleRect(...).
 - Sound: sfx.jump(), sfx.coin(), sfx.hit(), sfx.tap(), sfx.win(), sfx.lose() from src/game/sound.ts, or tone(frequency, seconds) for your own. Offer a mute button (isMuted, setMuted).
+
+Building blocks (src/game/): use them instead of writing your own
+- world.ts: Pool (reuse cars, coins and bullets instead of making new ones each frame), Spawner (things on a timer that come faster as difficulty rises, the first after a short grace), difficulty(seconds) from 0 to 1, lanes(n, width) for lane games, pick(items, weights).
+- npc.ts: computer-controlled characters on one shape, Actor (new Pool(newActor, 24), place(a, kind, x, y)): traffic (overtaken, blinks then changes lane), oncoming (rushes at you, headlights first), chaser (follows, faster when far), patrol (back and forth), shooter (warns, then fires), rival (races beside you and blocks your lane after blinking). Each sets a.warn from 0 to 1 while it gets ready: draw a blinker, flash or "!" then. hitBox(a) is a little smaller than what is drawn; offscreen(a, width, height) says when to set active = false.
+- powerups.ts: new Effects(); effects.activate("shield", 5), isActive("magnet"), remaining("boost"), update(dt, onEnd). shield, magnet, slow, double, boost and life have colours ready.
+- hud.ts: drawHud(ctx, width, { score, best, distance, lives, combo, effects }) is the score panel, with a shrinking bar for each running power-up. Call it last in onFrame. drawBanner(ctx, width, height, "Shield!") for a moment's message.
+- haptics.ts: buzz("hit"), buzz("collect"), buzz("over") on phones that vibrate, off with mute.
+
+GoodBuild tests the game (src/game/probe.ts). Its check opens the game, presses Play with no wallet and plays it, and these three calls tell it what happened. They do nothing for real players. Write all three:
+- declareGame({ obstacles: [...], powerups: [...], npcs: [...] }) once at module level, naming every kind the game has with the same short names the code uses (the kinds the plan named: "oncoming", "oil", "nitro", "rival").
+- spawned(kind) every time one of them is created.
+- probe(score, player.x, player.y, speed) once per frame in onFrame while playing, with the current score, the player's position and the game's speed (what rises as it gets harder).
+The check then reports, for the builder to fix: a score that never rises, no obstacle in the first 3 seconds, a declared kind that never appears in the first 15 seconds of a round, controls that don't move the player, a game that doesn't get harder, and a Play again that doesn't start a new round.
 
 Drawing
 - Draw with shapes, gradients and emoji (ctx.fillRect, ctx.arc, ctx.fillText with a big font): a game needs no image files. Clear the canvas at the start of every frame. Use the theme's mood for colours but choose them for contrast inside the game. If the user uploaded images, draw them with an Image loaded from their /assets/ path.
@@ -581,9 +607,9 @@ Money in a game (only when the user asks for entry fees, prizes or things to buy
 - Things to buy (cars, skins, level ups, extra lives, a season pass): an ERC-1155 or a simple purchases mapping paid in G$, read by the game to unlock them. Keep the game fair and fun without paying: the starter items are free, and anything bought is shown with Sprite exactly as the game draws it.
 - Several people playing together (a room, taking turns, a lobby): load the multiplayer guide. There is no live connection, so it suits turn-based and lobby games, not fast action games.
 
-Before you finish, check: the canvas draws on the start screen (onIdleFrame), Play works with no wallet, the first obstacle comes within 3 seconds, every obstacle, power-up and NPC the plan named is in the game, the score shows on the canvas while playing, game over shows Play again, and the leaderboard rule is in dataRules.json if there is a board.`;
+Before you finish, check: the canvas draws on the start screen (onIdleFrame), Play works with no wallet, the first obstacle comes within 3 seconds, every obstacle, power-up and NPC the plan named is in the game and in declareGame, spawned and probe are called, the score shows on the canvas while playing (drawHud), game over shows Play again, and the leaderboard rule is in dataRules.json if there is a board.`;
 
-/** The leaderboard's data rule, as the guide writes it (D91). */
+/** The leaderboard's data rule, as the guide writes it (D92). */
 export const SCORES_RULE_JSON = '"scores": {"create": "signed-in", "read": ["anyone"], "fields": {"name": "string", "score": "number", "extra": "string"}}';
 
 /** Each opening tag of a component, props and all: a ">" inside {...} (an arrow function) doesn't end it. */
@@ -611,7 +637,7 @@ export function jsxTags(content: string, name: string): { at: number; text: stri
 const lineOf = (content: string, re: RegExp) => content.slice(0, Math.max(0, content.search(re))).split("\n").length;
 
 /**
- * What the game guide asks for that the files can show (D91): the start screen is drawn, and a
+ * What the game guide asks for that the files can show (D92): the start screen is drawn, and a
  * leaderboard has the rule it needs and, in a MiniPay game, the contract passed to it.
  */
 export function gameChecks(files: Record<string, string>): CheckIssue[] {
@@ -628,6 +654,20 @@ export function gameChecks(files: Record<string, string>): CheckIssue[] {
           message: "GameCanvas is paused on the start and game-over screens but has no onIdleFrame, so those screens show an empty box. Pass onIdleFrame={({ ctx, width, height }) => drawWorld(ctx, ...)} that draws the game world (no movement, hits or sounds).",
         });
       }
+    }
+  }
+  // The game reports to GoodBuild's check (D93): without the probe it can only be looked at, not tested.
+  const canvas = own.find(([, c]) => /<GameCanvas\b/.test(c));
+  if (canvas) {
+    const all = own.map(([, c]) => c).join("\n");
+    const missing = [/\bdeclareGame\s*\(/.test(all) ? "" : "declareGame({ obstacles, powerups, npcs }) once at module level", /\bspawned\s*\(/.test(all) ? "" : "spawned(kind) whenever an obstacle, power-up or character is created", /\bprobe\s*\(/.test(all) ? "" : "probe(score, player.x, player.y, speed) once per frame in onFrame"].filter(Boolean);
+    if (missing.length) {
+      issues.push({
+        file: canvas[0],
+        line: lineOf(canvas[1], /<GameCanvas\b/),
+        source: "paths",
+        message: `GoodBuild can't test this game yet. Add, from src/game/probe.ts: ${missing.join("; ")}. They do nothing for real players.`,
+      });
     }
   }
   const usesBoard = own.find(([, c]) => /\buseLeaderboard\s*\(/.test(c));
@@ -677,11 +717,17 @@ export const game2d: Kit = {
     "src/game/Sprite.tsx": SPRITE,
     "src/game/leaderboard.ts": LEADERBOARD_TS,
     "src/game/Leaderboard.tsx": LEADERBOARD_TSX,
+    "src/game/probe.ts": PROBE,
+    "src/game/world.ts": WORLD,
+    "src/game/npc.ts": NPC,
+    "src/game/powerups.ts": POWERUPS,
+    "src/game/hud.ts": HUD,
+    "src/game/haptics.ts": HAPTICS,
   },
   // The first GameCanvas (D72): Enter and Space couldn't press Play, and a key held through a lost focus stuck (D85).
-  // ...and the second never drew while paused, so every start screen was an empty box (D91).
+  // ...and the second never drew while paused, so every start screen was an empty box (D92).
   superseded: { "src/game/GameCanvas.tsx": ["b8d7fc83dc5ae09f096f37446f8ba12273a2b502aba2acb827f4a8c541901c08", "f5a2cd6e74f9d834f917de93c6b5ff39dc8accc07f44f2d956eddab47798563c"],
-    // Its comment pointed at useCollection for leaderboards (D91).
+    // Its comment pointed at useCollection for leaderboards (D92).
     "src/game/storage.ts": ["ad445565329f58a977216f4ed062c26609a13e2afd9e14a96e7b114e6eae65fa"],
   },
   guide: GUIDE,

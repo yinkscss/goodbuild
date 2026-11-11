@@ -46,7 +46,7 @@ export default function App() {
 }
 `;
 
-describe("the MiniPay leaderboard contract (D91)", { timeout: 180_000 }, () => {
+describe("the MiniPay leaderboard contract (D92)", { timeout: 180_000 }, () => {
   it("compiles, and its own tests pass in the local EVM", async () => {
     const files = withKit(starterFiles(), gameBoard);
     const report = await checkContracts(files);

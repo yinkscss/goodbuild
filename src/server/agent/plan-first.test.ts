@@ -462,7 +462,7 @@ describe("the MiniPay question (D88)", () => {
   const five = Array.from({ length: 5 }, (_, i) => ({ question: `Question ${i}?`, label: `L${i}`, options: ["a", "b"] }));
 
   it("is asked for a game, after the game's own cards and the leaderboard, before the colours", () => {
-    // The model's MiniPay card is dropped; obstacles, power-ups and characters it didn't ask about are added (D91).
+    // The model's MiniPay card is dropped; obstacles, power-ups and characters it didn't ask about are added (D92).
     const parsed = parseIntake(model([...five, { question: "Should it work in MiniPay?", label: "m", options: ["Yes", "No"] }]), "A jumping game where you dodge rocks")!;
     expect(parsed.questions.map((q) => q.id)).toEqual(["q1", "obstacles", "powerups", "npcs", "q2", LEADERBOARD_QUESTION_ID, MINIPAY_QUESTION_ID, "palette"]);
     const fallback = fallbackIntake("A jumping game where you dodge rocks");
@@ -493,7 +493,7 @@ it("planning leaves the project at version 0", async () => {
   expect(p.currentVersion).toBe(0);
 });
 
-describe("a game's plan (D91)", () => {
+describe("a game's plan (D92)", () => {
   const racer = "Build a car racing game for me that's playable on mini pay, I want leaderboards and season pass, make it endless with power ups and there should be an in app store";
   const card = (question: string, options: string[]) => ({ question, label: question.split(" ").slice(0, 2).join(" "), multiple: true, options });
   const args = (questions: unknown[], extra: Record<string, unknown> = {}) => JSON.stringify({ summary: "An endless racer", recommended_palette: "ocean", questions, ...extra });
