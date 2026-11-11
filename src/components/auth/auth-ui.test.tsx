@@ -134,6 +134,22 @@ describe("connect modal", () => {
     expect(auth.connectWallet).toHaveBeenCalledWith("metamask", { ageOk: true, notUsPerson: true });
   });
 
+  it("offers OKX Wallet, marks it detected, and connects it with the attestation (D92)", async () => {
+    const auth = makeAuth({ detected: { okx: true } });
+    await openModal(auth);
+    const okx = screen.getByRole("button", { name: /okx wallet/i });
+    expect(okx).toHaveTextContent("Extension or OKX app browser");
+    expect(okx).toHaveTextContent("Detected");
+    // Only OKX is detected here, so the other rows show no chip.
+    expect(screen.getAllByText("Detected")).toHaveLength(1);
+    await userEvent.click(okx);
+    expect(auth.connectWallet).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toHaveTextContent(/18 or older/);
+    await userEvent.click(screen.getByRole("checkbox"));
+    await userEvent.click(screen.getByRole("button", { name: /okx wallet/i }));
+    expect(auth.connectWallet).toHaveBeenCalledWith("okx", { ageOk: true, notUsPerson: true });
+  });
+
   it("validates the email and sends the code", async () => {
     const auth = makeAuth();
     await openModal(auth);

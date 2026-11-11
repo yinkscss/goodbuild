@@ -637,11 +637,12 @@ const HOSTED_BACKENDS = /\b(?:[a-z0-9-]+\.)*(?:firebaseio\.com|firebaseapp\.com|
 const OWN_ROUTE_FETCH = /\b(?:fetch|axios(?:\.[a-z]+)?)\(\s*[`"'](\/(?!assets\/)[^`"']*)/g;
 /** Untouched-or-edited copies of these may still read window.ethereum (projects from before D36). */
 const LEGACY_WALLET_FILES = new Set(["src/lib/chain.ts", "src/lib/useWallet.ts"]);
-const WINDOW_ETHEREUM = /\b(?:window|globalThis)\b[^;\n]{0,200}?\.ethereum\b/;
+const WINDOW_ETHEREUM = /\b(?:window|globalThis)\b[^;\n]{0,200}?\.(?:ethereum|okxwallet)\b/;
 
 /**
  * Wallets go through GoodBuild's wallet layer (D36), so visitors with several wallets get a choice,
- * phones get WalletConnect and MiniPay connects on its own. Reading window.ethereum directly skips all of it.
+ * phones get WalletConnect and MiniPay connects on its own. Reading window.ethereum (or OKX's window.okxwallet, D92)
+ * directly skips all of it.
  */
 export function walletIssues(files: Record<string, string>): CheckIssue[] {
   const issues: CheckIssue[] = [];
@@ -652,7 +653,7 @@ export function walletIssues(files: Record<string, string>): CheckIssue[] {
       issues.push({
         file,
         line: content.slice(0, m.index).split("\n").length,
-        message: "Don't use window.ethereum: it ignores the visitor's wallet choice, phone wallets and MiniPay. Use connectWallet() / writeContract() from src/lib/chain.ts, useWallet() or ConnectButton; for other wallet requests (such as wallet_watchAsset) use walletProvider() from src/lib/chain.ts.",
+        message: "Don't use window.ethereum or window.okxwallet: they ignore the visitor's wallet choice, phone wallets and MiniPay. Use connectWallet() / writeContract() from src/lib/chain.ts, useWallet() or ConnectButton; for other wallet requests (such as wallet_watchAsset) use walletProvider() from src/lib/chain.ts.",
         source: "imports",
       });
     }
