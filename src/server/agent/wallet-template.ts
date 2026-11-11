@@ -232,38 +232,70 @@ function adopt(info: WalletInfo, provider: Provider, account: Address): Address 
  * MetaMask's plain account request pre-selects every network it knows, including Tron, then
  * rejects the approval because it can't store a Tron scope. Naming the Celo chains keeps Tron
  * out. A wallet that doesn't understand that request still gets eth_requestAccounts.
+ *
+ * MetaMask also refuses the whole request when it names a network the wallet hasn't added (often
+ * Celo Sepolia: "Received scopeString value(s): eip155:11142220 ... not supported by the wallet").
+ * Then we ask again without that network, and ensureChain adds it after connecting.
  */
 function isMetaMask(info: WalletInfo): boolean {
   return info.id === "io.metamask" || info.id === "io.metamask.flask";
+}
+
+function isScopeError(error: unknown): boolean {
+  const message = (error as { message?: string })?.message ?? "";
+  return message.includes("endowment:caip25") || message.includes("authorizedScopes");
+}
+
+/** The EVM chains (as hex) a scope error says the wallet hasn't added. */
+function unsupportedEvmChains(error: unknown): string[] {
+  if (!isScopeError(error)) return [];
+  const message = (error as { message?: string })?.message ?? "";
+  return Array.from(message.matchAll(/eip155:(\d+)/g)).map((m) => "0x" + Number(m[1]).toString(16));
 }
 
 function scopedPermissionUnsupported(error: unknown): boolean {
   const code = (error as { code?: number })?.code;
   const message = (error as { message?: string })?.message ?? "";
   if (code === 4001 || /reject|denied|cancel/i.test(message)) return false;
-  if (message.includes("endowment:caip25") || message.includes("authorizedScopes")) return false;
+  if (isScopeError(error)) return false;
   return code === -32601 || code === -32602 || /method not found|does not exist|unrecognized|not supported|unsupported/i.test(message);
 }
 
+// Celo (42220) and Celo Sepolia (11142220). Written as hex so a project on one chain, whose import keeps only that chain, still names both.
+const CELO_CHAINS = ["0xa4ec", "0xaa044c"];
+// Every MetaMask has Ethereum, so it stands in when the wallet has neither Celo chain. It still keeps Tron out.
+const FALLBACK_CHAINS = ["0x1"];
+
 async function requestMetaMaskAccount(provider: Provider): Promise<Address | undefined> {
-  // Celo (42220) and Celo Sepolia (11142220). Written as hex so a project on one chain, whose import keeps only that chain, still names both.
-  const chains = ["0xa4ec", "0xaa044c"];
-  const ask = () => provider.request({
+  const ask = (chains: string[]) => provider.request({
     method: "wallet_requestPermissions",
     params: [{ eth_accounts: {}, "endowment:permitted-chains": { caveats: [{ type: "restrictNetworkSwitching", value: chains }] } }],
   });
-  try {
-    await ask();
-  } catch (error) {
-    if (scopedPermissionUnsupported(error)) {
-      const [account] = (await provider.request({ method: "eth_requestAccounts" })) as Address[];
-      return account;
+  let chains = CELO_CHAINS;
+  let revoked = false;
+  for (;;) {
+    try {
+      await ask(chains);
+      break;
+    } catch (error) {
+      if (scopedPermissionUnsupported(error)) {
+        const [account] = (await provider.request({ method: "eth_requestAccounts" })) as Address[];
+        return account;
+      }
+      if (!isScopeError(error)) throw error;
+      const missing = unsupportedEvmChains(error);
+      if (missing.length) {
+        // A network the wallet hasn't added. Ask without it; ensureChain adds it after connecting.
+        const left = chains.filter((c) => !missing.includes(c));
+        if (left.length === chains.length || chains === FALLBACK_CHAINS) throw error;
+        chains = left.length ? left : FALLBACK_CHAINS;
+        continue;
+      }
+      // A permission saved earlier can merge Tron back in. Drop it and ask once more.
+      if (revoked) throw error;
+      revoked = true;
+      await provider.request({ method: "wallet_revokePermissions", params: [{ eth_accounts: {} }] }).catch(() => {});
     }
-    // A permission saved earlier can merge Tron back in. Drop it and ask once more.
-    const message = (error as { message?: string })?.message ?? "";
-    if (!message.includes("endowment:caip25") && !message.includes("authorizedScopes")) throw error;
-    await provider.request({ method: "wallet_revokePermissions", params: [{ eth_accounts: {} }] }).catch(() => {});
-    await ask();
   }
   const [account] = (await provider.request({ method: "eth_accounts" })) as Address[];
   return account;

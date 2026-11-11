@@ -305,6 +305,29 @@ describe("the wallet list", () => {
     expect(metamask.request).not.toHaveBeenCalledWith({ method: "eth_requestAccounts" });
   });
 
+  it("asks MetaMask again without Celo Sepolia when it isn't added, then adds it", async () => {
+    const metamask = fakeProvider("0x00000000000000000000000000000000000000a1", {}, numberToHex(celo.id));
+    const plain = metamask.request.getMockImplementation() as (args: { method: string; params?: unknown }) => Promise<unknown>;
+    metamask.request.mockImplementation(async (args: { method: string; params?: unknown }) => {
+      if (args.method === "wallet_requestPermissions") {
+        const chains = (args.params as [{ "endowment:permitted-chains": { caveats: [{ value: string[] }] } }])[0]["endowment:permitted-chains"].caveats[0].value;
+        if (chains.includes(numberToHex(celoSepolia.id))) {
+          throw Object.assign(new Error('endowment:caip25 error: Received scopeString value(s): eip155:11142220 for caveat of type "authorizedScopes" that are not supported by the wallet.'), { code: -32603 });
+        }
+      }
+      return plain(args);
+    });
+    install(metamask, { rdns: "io.metamask", name: "MetaMask" });
+    const { wallet } = await load();
+    expect(await wallet.connectWallet()).toBe("0x00000000000000000000000000000000000000a1");
+    expect(metamask.request).toHaveBeenCalledWith({
+      method: "wallet_requestPermissions",
+      params: [{ eth_accounts: {}, "endowment:permitted-chains": { caveats: [{ type: "restrictNetworkSwitching", value: [numberToHex(celo.id)] }] } }],
+    });
+    expect(metamask.request).not.toHaveBeenCalledWith({ method: "wallet_revokePermissions", params: [{ eth_accounts: {} }] });
+    expect(metamask.request).toHaveBeenCalledWith({ method: "wallet_switchEthereumChain", params: [{ chainId: numberToHex(celoSepolia.id) }] });
+  });
+
   it("says what to do when there's no wallet at all", async () => {
     const { wallet } = await load();
     await expect(wallet.connectWallet()).rejects.toThrow(/No wallet found/);
