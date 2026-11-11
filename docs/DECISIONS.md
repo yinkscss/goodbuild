@@ -1070,7 +1070,7 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
   - The guide asks for fair play: bought items are cosmetic or a capped convenience, never what decides a board with prizes.
   - It also asks for `{"name": "GameShop", "args": {"gd_": "${GOODDOLLAR}"}}` in `contracts/deploy.json`, and an owner-only control to start a season. The game-board guide now names its own deploy.json line too.
 - **When the shop turns on.** The runner turns `game-shop` on for a 2D game whose request or plan answers say it sells things: store, shop, season pass, garage, level ups, skins, buying cars or items. It never turns on from those words alone, because a bookshop isn't a game. For the owner's exact Neon Drift request, the runner turns on `game-2d`, `mini-app`, `game-board` and `game-shop` together (tested).
-- **MiniPay.** `src/game/chainTx.ts` (`sendGameTx`) sends a game's contract calls. In a browser it's a normal transaction. Inside MiniPay it pays the network fee in the first dollar coin the player has, as a legacy transaction. Whether MiniPay shows G$ and approves a G$ `transferAndCall` cleanly is **UNVERIFIED** until a phone test (GAMES_PLAN E3).
+- **MiniPay.** `src/game/chainTx.ts` (`sendGameTx`) sends a game's contract calls. In a browser it's a normal transaction. Inside MiniPay it pays the network fee in the first dollar coin the player has, as a legacy transaction. The owner tested G$ inside MiniPay on a phone and confirmed it works (11 Nov 2026), which answers GAMES_PLAN E3. GoodBuild's own automated checks still use a stand-in MiniPay.
 - **Extras** (`src/game/extras.ts`):
   - near misses (`nearMiss`) and a `Combo` multiplier;
   - `coins` earned by playing, kept on the device;
@@ -1096,5 +1096,5 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
   - The full suite passes.
 - **UNVERIFIED:**
   - A real model building a game with the shop and extras.
-  - A real G$ purchase, the owner's setup on a deployed shop, and anything in the real MiniPay app.
+  - The owner's setup on a deployed `GameShop` (G$ inside MiniPay itself was tested on a phone by the owner).
   - Whether DeepSeek keeps purchases fair as the guide asks.
