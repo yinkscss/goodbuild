@@ -74,7 +74,7 @@ type Announced = { info: WalletInfo; provider: Provider };
 const STORAGE_KEY = "goodbuild-wallet";
 const MINIPAY: WalletInfo = { id: "minipay", name: "MiniPay", icon: null, kind: "injected" };
 const WALLETCONNECT: WalletInfo = { id: "walletconnect", name: "WalletConnect", icon: null, kind: "walletconnect" };
-/** OKX Wallet: the extension and the OKX app's own browser inject window.okxwallet (OKX's docs). The id is its EIP-6963 rdns, so the choice is remembered the same way whether or not it announced itself. */
+/** OKX Wallet: the extension injects window.okxwallet (OKX's docs). OKX also says that route is "compatible with OKX App's built-in DApp browser", so it is expected there too (UNVERIFIED). The id is its EIP-6963 rdns, so the choice is remembered the same way whether or not it announced itself. */
 const OKX_ID = "com.okex.wallet";
 
 let state: WalletState = { account: null, wallet: null, connecting: false };
@@ -421,6 +421,7 @@ export async function ensureChain(provider: EIP1193Provider | null = active): Pr
       ],
     });
     // Adding a chain doesn't switch to it (EIP-3085), and OKX's default chain list has no Celo, so look once more and switch.
+    // If the wallet moved by itself the read matches and nothing more is asked. A rejection of this second switch is the visitor's answer, so it is thrown.
     const after = await provider.request({ method: "eth_chainId" }).catch(() => null);
     if (typeof after === "string" && parseInt(after, 16) !== appChain.id) {
       await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: hex }] });
@@ -645,7 +646,7 @@ export function WalletChooser({
                   <Icon info={info} />
                   <span>
                     {info.name}
-                    <span className="gbw-hint">{info.kind === "walletconnect" ? (phone ? "MetaMask, Valora, OKX and other phone wallets" : "Scan a QR code with a phone wallet") : "In this browser"}</span>
+                    <span className="gbw-hint">{info.kind === "walletconnect" ? (phone ? (isIos() ? "MetaMask, Valora, OKX and other phone wallets" : "MetaMask, Valora and other phone wallets") : "Scan a QR code with a phone wallet") : "In this browser"}</span>
                   </span>
                 </button>
               </li>

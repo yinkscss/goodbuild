@@ -638,6 +638,8 @@ const OWN_ROUTE_FETCH = /\b(?:fetch|axios(?:\.[a-z]+)?)\(\s*[`"'](\/(?!assets\/)
 /** Untouched-or-edited copies of these may still read window.ethereum (projects from before D36). */
 const LEGACY_WALLET_FILES = new Set(["src/lib/chain.ts", "src/lib/useWallet.ts"]);
 const WINDOW_ETHEREUM = /\b(?:window|globalThis)\b[^;\n]{0,200}?\.(?:ethereum|okxwallet)\b/;
+/** OKX's own examples call the global bare, as `okxwallet.request(...)`, so a bare use is refused too. */
+const BARE_OKXWALLET = /(?<![\w$.])okxwallet\s*\??\./;
 
 /**
  * Wallets go through GoodBuild's wallet layer (D36), so visitors with several wallets get a choice,
@@ -648,7 +650,7 @@ export function walletIssues(files: Record<string, string>): CheckIssue[] {
   const issues: CheckIssue[] = [];
   for (const [file, content] of Object.entries(files)) {
     if (!/\.(tsx?|jsx?)$/.test(file) || file.startsWith(WALLET_DIR) || file.startsWith(PLATFORM_DIR) || LEGACY_WALLET_FILES.has(file)) continue;
-    const m = WINDOW_ETHEREUM.exec(content);
+    const m = WINDOW_ETHEREUM.exec(content) ?? BARE_OKXWALLET.exec(content);
     if (m) {
       issues.push({
         file,

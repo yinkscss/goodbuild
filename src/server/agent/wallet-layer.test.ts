@@ -618,17 +618,19 @@ describe("OKX Wallet (D92)", () => {
       const { wallet } = await load({ walletConnect: true });
       const connecting = wallet.connectWallet();
       await until(dialog);
+      const listText = button("WalletConnect")!.textContent ?? "";
       button("WalletConnect")!.click();
       const link = (text: string) => [...document.querySelectorAll("a")].find((a) => a.textContent?.includes(text));
       await until(() => link("Valora"));
-      return { link, finish: async () => ((window as unknown as { __approveWalletConnect: () => void }).__approveWalletConnect(), await connecting) };
+      return { listText, link, finish: async () => ((window as unknown as { __approveWalletConnect: () => void }).__approveWalletConnect(), await connecting) };
     }
 
     it.each([
       ["an iPhone", IPHONE],
       ["an iPad", IPAD],
     ])("%s gets an OKX Wallet row that opens the OKX app with the pairing link", async (_name, ua) => {
-      const { link, finish } = await openPhoneList(ua);
+      const { listText, link, finish } = await openPhoneList(ua);
+      expect(listText).toContain("MetaMask, Valora, OKX and other phone wallets");
       const okx = link("OKX Wallet");
       expect(okx?.getAttribute("href")).toBe("okex://main/wc?uri=" + encodeURIComponent(URI));
       expect(okx?.textContent).toContain("Needs the OKX app");
@@ -639,10 +641,78 @@ describe("OKX Wallet (D92)", () => {
     });
 
     it("an Android phone has no OKX row of its own: its link would be the plain one, which is 'Other wallet'", async () => {
-      const { link, finish } = await openPhoneList(ANDROID);
+      const { listText, link, finish } = await openPhoneList(ANDROID);
+      // No OKX row on Android, so the list doesn't promise one.
+      expect(listText).toContain("MetaMask, Valora and other phone wallets");
+      expect(listText).not.toContain("OKX");
       expect(link("OKX Wallet")).toBeUndefined();
       expect(link("Other wallet")?.getAttribute("href")).toBe(URI);
       await finish();
     });
+  });
+});
+
+describe("OKX Wallet (D92), edge cases", () => {
+  const ACCOUNT = "0x00000000000000000000000000000000000000c1";
+  const setOkx = (p: Fake) => {
+    (window as { okxwallet?: unknown }).okxwallet = p;
+  };
+
+  it("is listed once by id alone (a different object under its id) and by object alone (the same object under another id and name)", async () => {
+    const okx = fakeProvider(ACCOUNT);
+    setOkx(okx);
+    const byId = await load();
+    announce(fakeProvider(ACCOUNT), { rdns: "com.okex.wallet", name: "Something else" });
+    expect(byId.wallet.browserWallets().map((w) => w.id)).toEqual(["com.okex.wallet"]);
+
+    const byObject = await load();
+    announce(okx, { rdns: "wallet.example", name: "Plain name" });
+    expect(byObject.wallet.browserWallets().map((w) => w.id)).toEqual(["wallet.example"]);
+  });
+
+  it("gives an iPad that reports itself as a Mac (iPadOS 13 and later) the OKX row too", async () => {
+    Object.defineProperty(navigator, "maxTouchPoints", { value: 5, configurable: true });
+    try {
+      document.head.innerHTML = '<meta name="goodbuild-walletconnect" content="testproject">';
+      const { wallet } = await load({ walletConnect: true });
+      const connecting = wallet.connectWallet();
+      await until(dialog);
+      button("WalletConnect")!.click();
+      const link = (text: string) => [...document.querySelectorAll("a")].find((a) => a.textContent?.includes(text));
+      await until(() => link("Valora"));
+      expect(link("OKX Wallet")?.getAttribute("href")).toBe("okex://main/wc?uri=" + encodeURIComponent("wc:abc@2?relay-protocol=irn&symKey=xyz"));
+      (window as unknown as { __approveWalletConnect: () => void }).__approveWalletConnect();
+      await connecting;
+    } finally {
+      delete (navigator as { maxTouchPoints?: number }).maxTouchPoints;
+    }
+  });
+
+  it("throws the visitor's rejection of the switch that follows adding Celo, and carries on when the chain can't be read back", async () => {
+    const { wallet } = await load();
+    const rejecting = fakeProvider(ACCOUNT);
+    rejecting.request = vi.fn(async ({ method }: Request) => {
+      if (method === "eth_chainId") return "0x1";
+      if (method === "wallet_switchEthereumChain") {
+        const switches = rejecting.request.mock.calls.filter((c) => (c[0] as Request).method === "wallet_switchEthereumChain").length;
+        throw Object.assign(new Error(switches === 1 ? "Unrecognized chain ID" : "User rejected the request."), { code: switches === 1 ? 4902 : 4001 });
+      }
+      return null;
+    });
+    await expect(wallet.ensureChain(rejecting)).rejects.toMatchObject({ code: 4001 });
+
+    const unreadable = fakeProvider(ACCOUNT);
+    let reads = 0;
+    unreadable.request = vi.fn(async ({ method }: Request) => {
+      if (method === "eth_chainId") {
+        if (++reads > 1) throw new Error("rpc down");
+        return "0x1";
+      }
+      if (method === "wallet_switchEthereumChain") throw Object.assign(new Error("Unrecognized chain ID"), { code: 4902 });
+      return null;
+    });
+    await expect(wallet.ensureChain(unreadable)).resolves.toBeUndefined();
+    const switches = unreadable.request.mock.calls.filter((c) => (c[0] as Request).method === "wallet_switchEthereumChain");
+    expect(switches).toHaveLength(1);
   });
 });

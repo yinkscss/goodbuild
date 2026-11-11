@@ -205,6 +205,13 @@ describe("the wallet layer is GoodBuild's", () => {
     ]);
     expect(issues[0].message).toMatch(/window\.okxwallet/);
     expect(issues[0].message).toContain("walletProvider()");
+    // OKX's own examples call it bare, so a bare use is refused too, but a similar name or another object's property is not.
+    const bare = walletIssues({
+      "src/a.ts": "okxwallet.request({ method: 'eth_requestAccounts' });\n",
+      "src/b.ts": "const x = okxwallet?.on('accountsChanged', f);\n",
+      "src/c.ts": "const label = okxwalletLabel + other.okxwallet.length + 'okxwallet is a global';\n",
+    });
+    expect(bare.map((i) => i.file)).toEqual(["src/a.ts", "src/b.ts"]);
     // The layer itself reads it, so its own files are never flagged.
     expect(walletIssues(Object.fromEntries(LOCKED.map((p) => [p, WALLET_HELPERS[p]])))).toEqual([]);
   });
