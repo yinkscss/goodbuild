@@ -1,0 +1,43 @@
+{
+  "_comment": "Single source of truth for copy + timings (seconds). Used by the video (src/) AND the music synth (scripts/make_music.py), so cuts and musical hits stay locked together. Edit, then run `npm run build`.",
+  "fps": 30,
+  "width": 1080,
+  "height": 1920,
+  "duration": 43.0,
+  "beat": 0.525,
+  "hook": {
+    "start": 0.0,
+    "end": 7.0,
+    "charDur": 0.07,
+    "lines": [
+      { "text": "to: every studio", "at": 0.45, "style": "mono" },
+      { "text": "hey studios.", "at": 2.1, "style": "serif" },
+      { "text": "quick thing.", "at": 4.15, "style": "serif" }
+    ]
+  },
+  "slams": {
+    "start": 7.0,
+    "end": 11.2,
+    "words": ["YOU", "CAN", "BUILD", "GAMES"]
+  },
+  "cards": [
+    { "id": "2d", "start": 11.2, "end": 15.0, "q": "2D?", "a": "already shipping.", "label": "canvas · no engine", "visual": "arcade", "theme": "ink" },
+    { "id": "3d", "start": 15.0, "end": 18.8, "q": "3D?", "a": "already in.", "label": "three.js · in the builder", "visual": "tiles3d", "theme": "purple" },
+    { "id": "minipay", "start": 18.8, "end": 22.2, "q": "MINIPAY?", "a": "it plays there.", "label": "opens inside MiniPay", "visual": "phone", "theme": "cream" },
+    { "id": "wallets", "start": 22.2, "end": 26.2, "q": "WALLETS?", "a": "all of them.", "label": "you sign. we never hold the keys.", "visual": "wallets", "theme": "pink",
+      "chips": ["MiniPay", "MetaMask", "Valora", "Magic", "WalletConnect"] },
+    { "id": "contract", "start": 26.2, "end": 29.6, "q": "THE CONTRACT.", "a": "written with the game.", "label": "", "visual": "contract", "theme": "ink",
+      "chips": ["solidity + react", "wallet-signed deploy", "Sourcify verified"] },
+    { "id": "publish", "start": 29.6, "end": 33.2, "q": "PUBLISH.", "a": "your name, on the internet.", "label": "", "visual": "url", "theme": "lilac",
+      "url": "arcade.goodbuildit.xyz" },
+    { "id": "live", "start": 33.2, "end": 37.6, "q": "LIVE ON CELO.", "a": "mainnet.", "label": "chain id 42220", "visual": "chain", "theme": "purple" }
+  ],
+  "outro": {
+    "start": 37.6,
+    "end": 43.0,
+    "wordmark": "GoodBuildit",
+    "url": "goodbuildit.xyz",
+    "cta": "open the builder.",
+    "fadeOutFrom": 42.2
+  }
+}
