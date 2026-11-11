@@ -1,0 +1,152 @@
+{
+  "_comment": "The narration. Edit the words, then `npm run build`: the voice is re-generated and every on-screen action re-times to it. Line ids are referenced by the scenes in src/scenes/.",
+  "voice": "af_heart",
+  "speed": 1.04,
+  "lineGap": 0.26,
+  "sceneGap": 0.55,
+  "leadIn": 0.35,
+  "tail": 2.0,
+  "scenes": [
+    {
+      "id": "hook",
+      "lines": [
+        {
+          "id": "h1",
+          "text": "You just built a game."
+        },
+        {
+          "id": "h2",
+          "text": "It looks great. It runs."
+        },
+        {
+          "id": "h3",
+          "text": "So, how do you get it onto MiniPay?"
+        }
+      ]
+    },
+    {
+      "id": "what",
+      "lines": [
+        {
+          "id": "w1",
+          "text": "MiniPay is a phone wallet for dollar coins."
+        },
+        {
+          "id": "w2",
+          "text": "There's no sign-up, and no connect button. The wallet is just there."
+        },
+        {
+          "id": "w3",
+          "text": "So your game has to be built for that, and GoodBuild builds it that way."
+        },
+        {
+          "id": "w4",
+          "text": "Here's the whole thing, in three steps."
+        }
+      ]
+    },
+    {
+      "id": "deploy",
+      "lines": [
+        {
+          "id": "d1",
+          "text": "Step one. Deploy your contract."
+        },
+        {
+          "id": "d2",
+          "text": "Hit Deploy, and you see exactly what's going out: the contract, the network, and the estimated fee."
+        },
+        {
+          "id": "d3",
+          "text": "Try it on Celo Sepolia first, then go to mainnet."
+        },
+        {
+          "id": "d4",
+          "text": "Press Sign and deploy. You sign in your own wallet. We never hold your keys."
+        },
+        {
+          "id": "d5",
+          "text": "Sign. Broadcast. Verified. Your contract is live on Celo."
+        }
+      ]
+    },
+    {
+      "id": "publish",
+      "lines": [
+        {
+          "id": "p1",
+          "text": "Step two. Publish."
+        },
+        {
+          "id": "p2",
+          "text": "Pick your address, tick the box, and press Publish."
+        },
+        {
+          "id": "p3",
+          "text": "A few seconds later, your game has its own public link."
+        },
+        {
+          "id": "p4",
+          "text": "Deploy first, or it goes live as a demo."
+        }
+      ]
+    },
+    {
+      "id": "minipay",
+      "lines": [
+        {
+          "id": "m1",
+          "text": "Step three. Go to MiniPay."
+        },
+        {
+          "id": "m2",
+          "text": "Open Settings, then Developer Settings. Turn on Developer Mode. Using Sepolia? Turn on Use Testnet too."
+        },
+        {
+          "id": "m3",
+          "text": "Tap Load Test Page, paste your link, and hit Go."
+        },
+        {
+          "id": "m4",
+          "text": "And there it is, inside the wallet, already connected. No wallet list. No login."
+        }
+      ]
+    },
+    {
+      "id": "list",
+      "lines": [
+        {
+          "id": "l1",
+          "text": "Happy with it? Submit it to MiniPay's app list."
+        },
+        {
+          "id": "l2",
+          "text": "GoodBuild already wrote the About, How to use, Terms, Privacy and Support pages, and the footer the listing asks for."
+        },
+        {
+          "id": "l3",
+          "text": "Give the Terms and Privacy a read first."
+        }
+      ]
+    },
+    {
+      "id": "outro",
+      "lines": [
+        {
+          "id": "o1",
+          "text": "Deploy. Publish. MiniPay."
+        },
+        {
+          "id": "o2",
+          "text": "Build your game at goodbuildit dot x y z.",
+          "display": "Build your game at goodbuildit.xyz."
+        }
+      ]
+    }
+  ],
+  "ui": {
+    "slug": "racer",
+    "domain": "goodbuildit.xyz",
+    "contract": "Arcade.sol"
+  }
+}

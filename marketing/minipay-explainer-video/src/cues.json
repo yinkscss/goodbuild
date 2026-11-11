@@ -1,0 +1,1445 @@
+{
+ "lines": {
+  "h1": {
+   "scene": "hook",
+   "text": "You just built a game.",
+   "start": 0.363,
+   "end": 1.42,
+   "words": [
+    {
+     "w": "You",
+     "start": 0.363,
+     "end": 0.516
+    },
+    {
+     "w": "just",
+     "start": 0.516,
+     "end": 0.711
+    },
+    {
+     "w": "built",
+     "start": 0.711,
+     "end": 0.949
+    },
+    {
+     "w": "a",
+     "start": 0.949,
+     "end": 1.034
+    },
+    {
+     "w": "game.",
+     "start": 1.034,
+     "end": 1.42
+    }
+   ]
+  },
+  "h2": {
+   "scene": "hook",
+   "text": "It looks great. It runs.",
+   "start": 1.763,
+   "end": 3.149,
+   "words": [
+    {
+     "w": "It",
+     "start": 1.763,
+     "end": 1.883
+    },
+    {
+     "w": "looks",
+     "start": 1.883,
+     "end": 2.142
+    },
+    {
+     "w": "great.",
+     "start": 2.142,
+     "end": 2.609
+    },
+    {
+     "w": "It",
+     "start": 2.609,
+     "end": 2.729
+    },
+    {
+     "w": "runs.",
+     "start": 2.729,
+     "end": 3.149
+    }
+   ]
+  },
+  "h3": {
+   "scene": "hook",
+   "text": "So, how do you get it onto MiniPay?",
+   "start": 3.497,
+   "end": 5.306,
+   "words": [
+    {
+     "w": "So,",
+     "start": 3.497,
+     "end": 3.741
+    },
+    {
+     "w": "how",
+     "start": 3.741,
+     "end": 3.913
+    },
+    {
+     "w": "do",
+     "start": 3.913,
+     "end": 4.038
+    },
+    {
+     "w": "you",
+     "start": 4.038,
+     "end": 4.21
+    },
+    {
+     "w": "get",
+     "start": 4.21,
+     "end": 4.382
+    },
+    {
+     "w": "it",
+     "start": 4.382,
+     "end": 4.507
+    },
+    {
+     "w": "onto",
+     "start": 4.507,
+     "end": 4.727
+    },
+    {
+     "w": "MiniPay?",
+     "start": 4.727,
+     "end": 5.306
+    }
+   ]
+  },
+  "w1": {
+   "scene": "what",
+   "text": "MiniPay is a phone wallet for dollar coins.",
+   "start": 5.93,
+   "end": 8.291,
+   "words": [
+    {
+     "w": "MiniPay",
+     "start": 5.93,
+     "end": 6.331
+    },
+    {
+     "w": "is",
+     "start": 6.331,
+     "end": 6.469
+    },
+    {
+     "w": "a",
+     "start": 6.469,
+     "end": 6.574
+    },
+    {
+     "w": "phone",
+     "start": 6.574,
+     "end": 6.87
+    },
+    {
+     "w": "wallet",
+     "start": 6.87,
+     "end": 7.219
+    },
+    {
+     "w": "for",
+     "start": 7.219,
+     "end": 7.409
+    },
+    {
+     "w": "dollar",
+     "start": 7.409,
+     "end": 7.757
+    },
+    {
+     "w": "coins.",
+     "start": 7.757,
+     "end": 8.291
+    }
+   ]
+  },
+  "w2": {
+   "scene": "what",
+   "text": "There's no sign-up, and no connect button. The wallet is just there.",
+   "start": 8.63,
+   "end": 12.221,
+   "words": [
+    {
+     "w": "There's",
+     "start": 8.63,
+     "end": 9.011
+    },
+    {
+     "w": "no",
+     "start": 9.011,
+     "end": 9.141
+    },
+    {
+     "w": "sign-up,",
+     "start": 9.141,
+     "end": 9.597
+    },
+    {
+     "w": "and",
+     "start": 9.597,
+     "end": 9.777
+    },
+    {
+     "w": "no",
+     "start": 9.777,
+     "end": 9.907
+    },
+    {
+     "w": "connect",
+     "start": 9.907,
+     "end": 10.288
+    },
+    {
+     "w": "button.",
+     "start": 10.288,
+     "end": 10.844
+    },
+    {
+     "w": "The",
+     "start": 10.844,
+     "end": 11.024
+    },
+    {
+     "w": "wallet",
+     "start": 11.024,
+     "end": 11.355
+    },
+    {
+     "w": "is",
+     "start": 11.355,
+     "end": 11.485
+    },
+    {
+     "w": "just",
+     "start": 11.485,
+     "end": 11.715
+    },
+    {
+     "w": "there.",
+     "start": 11.715,
+     "end": 12.221
+    }
+   ]
+  },
+  "w3": {
+   "scene": "what",
+   "text": "So your game has to be built for that, and GoodBuild builds it that way.",
+   "start": 12.563,
+   "end": 16.15,
+   "words": [
+    {
+     "w": "So",
+     "start": 12.563,
+     "end": 12.693
+    },
+    {
+     "w": "your",
+     "start": 12.693,
+     "end": 12.922
+    },
+    {
+     "w": "game",
+     "start": 12.922,
+     "end": 13.151
+    },
+    {
+     "w": "has",
+     "start": 13.151,
+     "end": 13.331
+    },
+    {
+     "w": "to",
+     "start": 13.331,
+     "end": 13.46
+    },
+    {
+     "w": "be",
+     "start": 13.46,
+     "end": 13.59
+    },
+    {
+     "w": "built",
+     "start": 13.59,
+     "end": 13.869
+    },
+    {
+     "w": "for",
+     "start": 13.869,
+     "end": 14.048
+    },
+    {
+     "w": "that,",
+     "start": 14.048,
+     "end": 14.402
+    },
+    {
+     "w": "and",
+     "start": 14.402,
+     "end": 14.581
+    },
+    {
+     "w": "GoodBuild",
+     "start": 14.581,
+     "end": 15.059
+    },
+    {
+     "w": "builds",
+     "start": 15.059,
+     "end": 15.388
+    },
+    {
+     "w": "it",
+     "start": 15.388,
+     "end": 15.518
+    },
+    {
+     "w": "that",
+     "start": 15.518,
+     "end": 15.747
+    },
+    {
+     "w": "way.",
+     "start": 15.747,
+     "end": 16.15
+    }
+   ]
+  },
+  "w4": {
+   "scene": "what",
+   "text": "Here's the whole thing, in three steps.",
+   "start": 16.497,
+   "end": 18.262,
+   "words": [
+    {
+     "w": "Here's",
+     "start": 16.497,
+     "end": 16.773
+    },
+    {
+     "w": "the",
+     "start": 16.773,
+     "end": 16.923
+    },
+    {
+     "w": "whole",
+     "start": 16.923,
+     "end": 17.158
+    },
+    {
+     "w": "thing,",
+     "start": 17.158,
+     "end": 17.497
+    },
+    {
+     "w": "in",
+     "start": 17.497,
+     "end": 17.605
+    },
+    {
+     "w": "three",
+     "start": 17.605,
+     "end": 17.84
+    },
+    {
+     "w": "steps.",
+     "start": 17.84,
+     "end": 18.262
+    }
+   ]
+  },
+  "d1": {
+   "scene": "deploy",
+   "text": "Step one. Deploy your contract.",
+   "start": 18.897,
+   "end": 20.667,
+   "words": [
+    {
+     "w": "Step",
+     "start": 18.897,
+     "end": 19.117
+    },
+    {
+     "w": "one.",
+     "start": 19.117,
+     "end": 19.504
+    },
+    {
+     "w": "Deploy",
+     "start": 19.504,
+     "end": 19.82
+    },
+    {
+     "w": "your",
+     "start": 19.82,
+     "end": 20.04
+    },
+    {
+     "w": "contract.",
+     "start": 20.04,
+     "end": 20.667
+    }
+   ]
+  },
+  "d2": {
+   "scene": "deploy",
+   "text": "Hit Deploy, and you see exactly what's going out: the contract, the network, and the estimated fee.",
+   "start": 20.997,
+   "end": 26.412,
+   "words": [
+    {
+     "w": "Hit",
+     "start": 20.997,
+     "end": 21.183
+    },
+    {
+     "w": "Deploy,",
+     "start": 21.183,
+     "end": 21.654
+    },
+    {
+     "w": "and",
+     "start": 21.654,
+     "end": 21.84
+    },
+    {
+     "w": "you",
+     "start": 21.84,
+     "end": 22.026
+    },
+    {
+     "w": "see",
+     "start": 22.026,
+     "end": 22.212
+    },
+    {
+     "w": "exactly",
+     "start": 22.212,
+     "end": 22.605
+    },
+    {
+     "w": "what's",
+     "start": 22.605,
+     "end": 22.947
+    },
+    {
+     "w": "going",
+     "start": 22.947,
+     "end": 23.236
+    },
+    {
+     "w": "out:",
+     "start": 23.236,
+     "end": 23.655
+    },
+    {
+     "w": "the",
+     "start": 23.655,
+     "end": 23.842
+    },
+    {
+     "w": "contract,",
+     "start": 23.842,
+     "end": 24.416
+    },
+    {
+     "w": "the",
+     "start": 24.416,
+     "end": 24.602
+    },
+    {
+     "w": "network,",
+     "start": 24.602,
+     "end": 25.124
+    },
+    {
+     "w": "and",
+     "start": 25.124,
+     "end": 25.311
+    },
+    {
+     "w": "the",
+     "start": 25.311,
+     "end": 25.497
+    },
+    {
+     "w": "estimated",
+     "start": 25.497,
+     "end": 25.993
+    },
+    {
+     "w": "fee.",
+     "start": 25.993,
+     "end": 26.412
+    }
+   ]
+  },
+  "d3": {
+   "scene": "deploy",
+   "text": "Try it on Celo Sepolia first, then go to mainnet.",
+   "start": 26.763,
+   "end": 29.788,
+   "words": [
+    {
+     "w": "Try",
+     "start": 26.763,
+     "end": 26.977
+    },
+    {
+     "w": "it",
+     "start": 26.977,
+     "end": 27.131
+    },
+    {
+     "w": "on",
+     "start": 27.131,
+     "end": 27.285
+    },
+    {
+     "w": "Celo",
+     "start": 27.285,
+     "end": 27.558
+    },
+    {
+     "w": "Sepolia",
+     "start": 27.558,
+     "end": 28.009
+    },
+    {
+     "w": "first,",
+     "start": 28.009,
+     "end": 28.489
+    },
+    {
+     "w": "then",
+     "start": 28.489,
+     "end": 28.762
+    },
+    {
+     "w": "go",
+     "start": 28.762,
+     "end": 28.916
+    },
+    {
+     "w": "to",
+     "start": 28.916,
+     "end": 29.07
+    },
+    {
+     "w": "mainnet.",
+     "start": 29.07,
+     "end": 29.788
+    }
+   ]
+  },
+  "d4": {
+   "scene": "deploy",
+   "text": "Press Sign and deploy. You sign in your own wallet. We never hold your keys.",
+   "start": 30.13,
+   "end": 34.25,
+   "words": [
+    {
+     "w": "Press",
+     "start": 30.13,
+     "end": 30.413
+    },
+    {
+     "w": "Sign",
+     "start": 30.413,
+     "end": 30.646
+    },
+    {
+     "w": "and",
+     "start": 30.646,
+     "end": 30.828
+    },
+    {
+     "w": "deploy.",
+     "start": 30.828,
+     "end": 31.389
+    },
+    {
+     "w": "You",
+     "start": 31.389,
+     "end": 31.571
+    },
+    {
+     "w": "sign",
+     "start": 31.571,
+     "end": 31.803
+    },
+    {
+     "w": "in",
+     "start": 31.803,
+     "end": 31.935
+    },
+    {
+     "w": "your",
+     "start": 31.935,
+     "end": 32.167
+    },
+    {
+     "w": "own",
+     "start": 32.167,
+     "end": 32.349
+    },
+    {
+     "w": "wallet.",
+     "start": 32.349,
+     "end": 32.91
+    },
+    {
+     "w": "We",
+     "start": 32.91,
+     "end": 33.042
+    },
+    {
+     "w": "never",
+     "start": 33.042,
+     "end": 33.325
+    },
+    {
+     "w": "hold",
+     "start": 33.325,
+     "end": 33.557
+    },
+    {
+     "w": "your",
+     "start": 33.557,
+     "end": 33.79
+    },
+    {
+     "w": "keys.",
+     "start": 33.79,
+     "end": 34.25
+    }
+   ]
+  },
+  "d5": {
+   "scene": "deploy",
+   "text": "Sign. Broadcast. Verified. Your contract is live on Celo.",
+   "start": 34.597,
+   "end": 38.427,
+   "words": [
+    {
+     "w": "Sign.",
+     "start": 34.597,
+     "end": 35.106
+    },
+    {
+     "w": "Broadcast.",
+     "start": 35.106,
+     "end": 35.896
+    },
+    {
+     "w": "Verified.",
+     "start": 35.896,
+     "end": 36.629
+    },
+    {
+     "w": "Your",
+     "start": 36.629,
+     "end": 36.887
+    },
+    {
+     "w": "contract",
+     "start": 36.887,
+     "end": 37.368
+    },
+    {
+     "w": "is",
+     "start": 37.368,
+     "end": 37.514
+    },
+    {
+     "w": "live",
+     "start": 37.514,
+     "end": 37.771
+    },
+    {
+     "w": "on",
+     "start": 37.771,
+     "end": 37.917
+    },
+    {
+     "w": "Celo.",
+     "start": 37.917,
+     "end": 38.427
+    }
+   ]
+  },
+  "p1": {
+   "scene": "publish",
+   "text": "Step two. Publish.",
+   "start": 39.063,
+   "end": 40.261,
+   "words": [
+    {
+     "w": "Step",
+     "start": 39.063,
+     "end": 39.286
+    },
+    {
+     "w": "two.",
+     "start": 39.286,
+     "end": 39.677
+    },
+    {
+     "w": "Publish.",
+     "start": 39.677,
+     "end": 40.261
+    }
+   ]
+  },
+  "p2": {
+   "scene": "publish",
+   "text": "Pick your address, tick the box, and press Publish.",
+   "start": 40.597,
+   "end": 42.986,
+   "words": [
+    {
+     "w": "Pick",
+     "start": 40.597,
+     "end": 40.797
+    },
+    {
+     "w": "your",
+     "start": 40.797,
+     "end": 40.997
+    },
+    {
+     "w": "address,",
+     "start": 40.997,
+     "end": 41.437
+    },
+    {
+     "w": "tick",
+     "start": 41.437,
+     "end": 41.637
+    },
+    {
+     "w": "the",
+     "start": 41.637,
+     "end": 41.794
+    },
+    {
+     "w": "box,",
+     "start": 41.794,
+     "end": 42.059
+    },
+    {
+     "w": "and",
+     "start": 42.059,
+     "end": 42.216
+    },
+    {
+     "w": "press",
+     "start": 42.216,
+     "end": 42.459
+    },
+    {
+     "w": "Publish.",
+     "start": 42.459,
+     "end": 42.986
+    }
+   ]
+  },
+  "p3": {
+   "scene": "publish",
+   "text": "A few seconds later, your game has its own public link.",
+   "start": 43.33,
+   "end": 46.3,
+   "words": [
+    {
+     "w": "A",
+     "start": 43.33,
+     "end": 43.434
+    },
+    {
+     "w": "few",
+     "start": 43.434,
+     "end": 43.622
+    },
+    {
+     "w": "seconds",
+     "start": 43.622,
+     "end": 44.018
+    },
+    {
+     "w": "later,",
+     "start": 44.018,
+     "end": 44.44
+    },
+    {
+     "w": "your",
+     "start": 44.44,
+     "end": 44.68
+    },
+    {
+     "w": "game",
+     "start": 44.68,
+     "end": 44.919
+    },
+    {
+     "w": "has",
+     "start": 44.919,
+     "end": 45.107
+    },
+    {
+     "w": "its",
+     "start": 45.107,
+     "end": 45.295
+    },
+    {
+     "w": "own",
+     "start": 45.295,
+     "end": 45.482
+    },
+    {
+     "w": "public",
+     "start": 45.482,
+     "end": 45.826
+    },
+    {
+     "w": "link.",
+     "start": 45.826,
+     "end": 46.3
+    }
+   ]
+  },
+  "p4": {
+   "scene": "publish",
+   "text": "Deploy first, or it goes live as a demo.",
+   "start": 46.63,
+   "end": 48.867,
+   "words": [
+    {
+     "w": "Deploy",
+     "start": 46.63,
+     "end": 46.975
+    },
+    {
+     "w": "first,",
+     "start": 46.975,
+     "end": 47.398
+    },
+    {
+     "w": "or",
+     "start": 47.398,
+     "end": 47.534
+    },
+    {
+     "w": "it",
+     "start": 47.534,
+     "end": 47.67
+    },
+    {
+     "w": "goes",
+     "start": 47.67,
+     "end": 47.91
+    },
+    {
+     "w": "live",
+     "start": 47.91,
+     "end": 48.151
+    },
+    {
+     "w": "as",
+     "start": 48.151,
+     "end": 48.286
+    },
+    {
+     "w": "a",
+     "start": 48.286,
+     "end": 48.391
+    },
+    {
+     "w": "demo.",
+     "start": 48.391,
+     "end": 48.867
+    }
+   ]
+  },
+  "m1": {
+   "scene": "minipay",
+   "text": "Step three. Go to MiniPay.",
+   "start": 49.497,
+   "end": 50.97,
+   "words": [
+    {
+     "w": "Step",
+     "start": 49.497,
+     "end": 49.708
+    },
+    {
+     "w": "three.",
+     "start": 49.708,
+     "end": 50.173
+    },
+    {
+     "w": "Go",
+     "start": 50.173,
+     "end": 50.293
+    },
+    {
+     "w": "to",
+     "start": 50.293,
+     "end": 50.413
+    },
+    {
+     "w": "MiniPay.",
+     "start": 50.413,
+     "end": 50.97
+    }
+   ]
+  },
+  "m2": {
+   "scene": "minipay",
+   "text": "Open Settings, then Developer Settings. Turn on Developer Mode. Using Sepolia? Turn on Use Testnet too.",
+   "start": 51.297,
+   "end": 57.903,
+   "words": [
+    {
+     "w": "Open",
+     "start": 51.297,
+     "end": 51.565
+    },
+    {
+     "w": "Settings,",
+     "start": 51.565,
+     "end": 52.214
+    },
+    {
+     "w": "then",
+     "start": 52.214,
+     "end": 52.482
+    },
+    {
+     "w": "Developer",
+     "start": 52.482,
+     "end": 53.043
+    },
+    {
+     "w": "Settings.",
+     "start": 53.043,
+     "end": 53.808
+    },
+    {
+     "w": "Turn",
+     "start": 53.808,
+     "end": 54.077
+    },
+    {
+     "w": "on",
+     "start": 54.077,
+     "end": 54.229
+    },
+    {
+     "w": "Developer",
+     "start": 54.229,
+     "end": 54.79
+    },
+    {
+     "w": "Mode.",
+     "start": 54.79,
+     "end": 55.321
+    },
+    {
+     "w": "Using",
+     "start": 55.321,
+     "end": 55.648
+    },
+    {
+     "w": "Sepolia?",
+     "start": 55.648,
+     "end": 56.355
+    },
+    {
+     "w": "Turn",
+     "start": 56.355,
+     "end": 56.624
+    },
+    {
+     "w": "on",
+     "start": 56.624,
+     "end": 56.776
+    },
+    {
+     "w": "Use",
+     "start": 56.776,
+     "end": 56.986
+    },
+    {
+     "w": "Testnet",
+     "start": 56.986,
+     "end": 57.43
+    },
+    {
+     "w": "too.",
+     "start": 57.43,
+     "end": 57.903
+    }
+   ]
+  },
+  "m3": {
+   "scene": "minipay",
+   "text": "Tap Load Test Page, paste your link, and hit Go.",
+   "start": 58.23,
+   "end": 60.914,
+   "words": [
+    {
+     "w": "Tap",
+     "start": 58.23,
+     "end": 58.418
+    },
+    {
+     "w": "Load",
+     "start": 58.418,
+     "end": 58.657
+    },
+    {
+     "w": "Test",
+     "start": 58.657,
+     "end": 58.897
+    },
+    {
+     "w": "Page,",
+     "start": 58.897,
+     "end": 59.267
+    },
+    {
+     "w": "paste",
+     "start": 59.267,
+     "end": 59.559
+    },
+    {
+     "w": "your",
+     "start": 59.559,
+     "end": 59.799
+    },
+    {
+     "w": "link,",
+     "start": 59.799,
+     "end": 60.169
+    },
+    {
+     "w": "and",
+     "start": 60.169,
+     "end": 60.356
+    },
+    {
+     "w": "hit",
+     "start": 60.356,
+     "end": 60.544
+    },
+    {
+     "w": "Go.",
+     "start": 60.544,
+     "end": 60.914
+    }
+   ]
+  },
+  "m4": {
+   "scene": "minipay",
+   "text": "And there it is, inside the wallet, already connected. No wallet list. No login.",
+   "start": 61.263,
+   "end": 66.144,
+   "words": [
+    {
+     "w": "And",
+     "start": 61.263,
+     "end": 61.461
+    },
+    {
+     "w": "there",
+     "start": 61.461,
+     "end": 61.768
+    },
+    {
+     "w": "it",
+     "start": 61.768,
+     "end": 61.911
+    },
+    {
+     "w": "is,",
+     "start": 61.911,
+     "end": 62.191
+    },
+    {
+     "w": "inside",
+     "start": 62.191,
+     "end": 62.553
+    },
+    {
+     "w": "the",
+     "start": 62.553,
+     "end": 62.751
+    },
+    {
+     "w": "wallet,",
+     "start": 62.751,
+     "end": 63.251
+    },
+    {
+     "w": "already",
+     "start": 63.251,
+     "end": 63.668
+    },
+    {
+     "w": "connected.",
+     "start": 63.668,
+     "end": 64.442
+    },
+    {
+     "w": "No",
+     "start": 64.442,
+     "end": 64.585
+    },
+    {
+     "w": "wallet",
+     "start": 64.585,
+     "end": 64.947
+    },
+    {
+     "w": "list.",
+     "start": 64.947,
+     "end": 65.446
+    },
+    {
+     "w": "No",
+     "start": 65.446,
+     "end": 65.589
+    },
+    {
+     "w": "login.",
+     "start": 65.589,
+     "end": 66.144
+    }
+   ]
+  },
+  "l1": {
+   "scene": "list",
+   "text": "Happy with it? Submit it to MiniPay's app list.",
+   "start": 66.763,
+   "end": 69.264,
+   "words": [
+    {
+     "w": "Happy",
+     "start": 66.763,
+     "end": 67.036
+    },
+    {
+     "w": "with",
+     "start": 67.036,
+     "end": 67.259
+    },
+    {
+     "w": "it?",
+     "start": 67.259,
+     "end": 67.605
+    },
+    {
+     "w": "Submit",
+     "start": 67.605,
+     "end": 67.926
+    },
+    {
+     "w": "it",
+     "start": 67.926,
+     "end": 68.052
+    },
+    {
+     "w": "to",
+     "start": 68.052,
+     "end": 68.179
+    },
+    {
+     "w": "MiniPay's",
+     "start": 68.179,
+     "end": 68.646
+    },
+    {
+     "w": "app",
+     "start": 68.646,
+     "end": 68.821
+    },
+    {
+     "w": "list.",
+     "start": 68.821,
+     "end": 69.264
+    }
+   ]
+  },
+  "l2": {
+   "scene": "list",
+   "text": "GoodBuild already wrote the About, How to use, Terms, Privacy and Support pages, and the footer the listing asks for.",
+   "start": 69.597,
+   "end": 76.452,
+   "words": [
+    {
+     "w": "GoodBuild",
+     "start": 69.597,
+     "end": 70.147
+    },
+    {
+     "w": "already",
+     "start": 70.147,
+     "end": 70.583
+    },
+    {
+     "w": "wrote",
+     "start": 70.583,
+     "end": 70.905
+    },
+    {
+     "w": "the",
+     "start": 70.905,
+     "end": 71.111
+    },
+    {
+     "w": "About,",
+     "start": 71.111,
+     "end": 71.576
+    },
+    {
+     "w": "How",
+     "start": 71.576,
+     "end": 71.782
+    },
+    {
+     "w": "to",
+     "start": 71.782,
+     "end": 71.931
+    },
+    {
+     "w": "use,",
+     "start": 71.931,
+     "end": 72.281
+    },
+    {
+     "w": "Terms,",
+     "start": 72.281,
+     "end": 72.746
+    },
+    {
+     "w": "Privacy",
+     "start": 72.746,
+     "end": 73.182
+    },
+    {
+     "w": "and",
+     "start": 73.182,
+     "end": 73.388
+    },
+    {
+     "w": "Support",
+     "start": 73.388,
+     "end": 73.824
+    },
+    {
+     "w": "pages,",
+     "start": 73.824,
+     "end": 74.289
+    },
+    {
+     "w": "and",
+     "start": 74.289,
+     "end": 74.495
+    },
+    {
+     "w": "the",
+     "start": 74.495,
+     "end": 74.702
+    },
+    {
+     "w": "footer",
+     "start": 74.702,
+     "end": 75.081
+    },
+    {
+     "w": "the",
+     "start": 75.081,
+     "end": 75.287
+    },
+    {
+     "w": "listing",
+     "start": 75.287,
+     "end": 75.723
+    },
+    {
+     "w": "asks",
+     "start": 75.723,
+     "end": 75.987
+    },
+    {
+     "w": "for.",
+     "start": 75.987,
+     "end": 76.452
+    }
+   ]
+  },
+  "l3": {
+   "scene": "list",
+   "text": "Give the Terms and Privacy a read first.",
+   "start": 76.797,
+   "end": 78.912,
+   "words": [
+    {
+     "w": "Give",
+     "start": 76.797,
+     "end": 77.03
+    },
+    {
+     "w": "the",
+     "start": 77.03,
+     "end": 77.213
+    },
+    {
+     "w": "Terms",
+     "start": 77.213,
+     "end": 77.497
+    },
+    {
+     "w": "and",
+     "start": 77.497,
+     "end": 77.679
+    },
+    {
+     "w": "Privacy",
+     "start": 77.679,
+     "end": 78.065
+    },
+    {
+     "w": "a",
+     "start": 78.065,
+     "end": 78.166
+    },
+    {
+     "w": "read",
+     "start": 78.166,
+     "end": 78.4
+    },
+    {
+     "w": "first.",
+     "start": 78.4,
+     "end": 78.912
+    }
+   ]
+  },
+  "o1": {
+   "scene": "outro",
+   "text": "Deploy. Publish. MiniPay.",
+   "start": 79.53,
+   "end": 81.071,
+   "words": [
+    {
+     "w": "Deploy.",
+     "start": 79.53,
+     "end": 80.015
+    },
+    {
+     "w": "Publish.",
+     "start": 80.015,
+     "end": 80.543
+    },
+    {
+     "w": "MiniPay.",
+     "start": 80.543,
+     "end": 81.071
+    }
+   ]
+  },
+  "o2": {
+   "scene": "outro",
+   "text": "Build your game at goodbuildit dot x y z.",
+   "start": 81.397,
+   "end": 83.718,
+   "words": [
+    {
+     "w": "Build",
+     "start": 81.397,
+     "end": 81.698
+    },
+    {
+     "w": "your",
+     "start": 81.698,
+     "end": 81.946
+    },
+    {
+     "w": "game",
+     "start": 81.946,
+     "end": 82.194
+    },
+    {
+     "w": "at",
+     "start": 82.194,
+     "end": 82.334
+    },
+    {
+     "w": "goodbuildit",
+     "start": 82.334,
+     "end": 82.958
+    },
+    {
+     "w": "dot",
+     "start": 82.958,
+     "end": 83.152
+    },
+    {
+     "w": "x",
+     "start": 83.152,
+     "end": 83.26
+    },
+    {
+     "w": "y",
+     "start": 83.26,
+     "end": 83.367
+    },
+    {
+     "w": "z.",
+     "start": 83.367,
+     "end": 83.718
+    }
+   ]
+  }
+ },
+ "scenes": {
+  "hook": {
+   "start": 0.0,
+   "end": 5.633333333333334
+  },
+  "what": {
+   "start": 5.633333333333334,
+   "end": 18.6
+  },
+  "deploy": {
+   "start": 18.6,
+   "end": 38.766666666666666
+  },
+  "publish": {
+   "start": 38.766666666666666,
+   "end": 49.2
+  },
+  "minipay": {
+   "start": 49.2,
+   "end": 66.46666666666667
+  },
+  "list": {
+   "start": 66.46666666666667,
+   "end": 79.23333333333333
+  },
+  "outro": {
+   "start": 79.23333333333333,
+   "end": 85.76666666666667
+  }
+ },
+ "duration": 85.76666666666667
+}

@@ -1,0 +1,8 @@
+out/
+node_modules/
+public/music.wav
+scripts/__pycache__/
+public/voice.wav
+public/audio.wav
+public/voice-lines/
+scripts/__pycache__/
