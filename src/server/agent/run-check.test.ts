@@ -130,6 +130,26 @@ describe.skipIf(!hasBrowser)("run check in a real browser", () => {
     for (const s of r.screenshots ?? []) expect(Buffer.from(s.png.subarray(1, 4)).toString()).toBe("PNG");
   });
 
+  it("takes the screenshots of the whole page down to the limit, not just the first screen, and without GoodBuild's badge", async () => {
+    const sharp = (await import("sharp")).default;
+    // A page 3,000px tall, white, with a red band below the first screen.
+    const tall = page('  return <main style={{ background: "#ffffff" }}><div style={{ height: 1500 }} /><div id="band" style={{ height: 300, background: "#ff0000" }} /><div style={{ height: 1200 }} /></main>;');
+    const r = await runCheck(app({ "src/App.tsx": tall }), { screenshots: true });
+    expect(r.issues).toEqual([]);
+    for (const shot of r.screenshots ?? []) {
+      const image = sharp(Buffer.from(shot.png));
+      const meta = await image.metadata();
+      expect([meta.width, meta.height]).toEqual([shot.width, 2400]);
+      // The band, 1,500px down, is in the picture.
+      const { data } = await image.extract({ left: 10, top: 1600, width: 1, height: 1 }).raw().toBuffer({ resolveWithObject: true });
+      expect([data[0], data[1], data[2]]).toEqual([255, 0, 0]);
+      // Where the badge sits on the first screen (bottom left), there is only the page.
+      const corner = await sharp(Buffer.from(shot.png)).extract({ left: 20, top: 780, width: 1, height: 1 }).raw().toBuffer();
+      expect([corner[0], corner[1], corner[2]]).toEqual([255, 255, 255]);
+    }
+    expect(r.screenshots).toHaveLength(2);
+  });
+
   it("gives up on an app that never finishes loading, without failing the build", async () => {
     const r = await runCheck(app({ "src/App.tsx": page("  while (true) {}\n  return null;") }), { timeoutMs: 2_500 });
     expect(r.ran).toBe(false);

@@ -25,6 +25,7 @@ With a baseline, the run **fails** when the pass rate falls by more than 10 poin
 ## Running it
 **On GitHub** (`.github/workflows/evals.yml`), never by itself, because it spends a few dollars a run:
 - Actions tab → Evals → Run workflow. `only` takes scenario ids; `update_baseline` saves the run as the new baseline (download `baseline.json` from the run's files and commit it).
+- `visual_review` turns on the review (D87) for that run. Run the suite once with it and once without, and compare the pass rate and the cost per scenario.
 - Or add the `evals` label to a pull request.
 - It needs `ANTHROPIC_API_KEY` and `DEEPSEEK_API_KEY` as repository secrets. Without them it says so and runs nothing.
 - The server it starts caps its own spend at $15 a run (`FREE_AI_BUDGET_MICRO`).

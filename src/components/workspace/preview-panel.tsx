@@ -16,7 +16,7 @@ import { ExternalLink, Monitor, RotateCw, ShieldAlert, Smartphone } from "lucide
 import { LogoMark } from "@/components/brand/logo";
 import { BrandTiles, useElapsed } from "@/components/ui/wait";
 import { chainLabel } from "@/lib/deploy/explorer";
-import { OVERRIDE_KEY, chooseEngine, failedKey, parseOverride, type EngineOverride, type PreviewEngine } from "@/lib/preview-engine";
+import { OVERRIDE_KEY, TAILWIND_BROWSER_URL, chooseEngine, failedKey, parseOverride, type EngineOverride, type PreviewEngine } from "@/lib/preview-engine";
 import { isInfraError, type PreviewError } from "@/lib/preview-errors";
 import { OwnPreview } from "./own-preview";
 import { CAPTURE_DEPENDENCY, CAPTURE_ENTRY, CAPTURE_FILES, capturePreview } from "./preview-capture";
@@ -230,7 +230,7 @@ export function PreviewPanel({
         options={{
           activeFile: "/src/App.tsx",
           visibleFiles: visible,
-          externalResources: ["https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"],
+          externalResources: [TAILWIND_BROWSER_URL],
           recompileDelay: 400,
         }}
       >

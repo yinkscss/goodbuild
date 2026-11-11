@@ -264,7 +264,9 @@ function tokensOf(s: string): Set<string> {
 const ALWAYS = ["src/App.tsx", "public/index.html"];
 const ASSETS = "src/assets/index.ts";
 /** Platform and starter files the model knows from the prompt; sent only when the request names them. */
-const LOW = /^(src\/components\/ui\/|src\/contracts\/|src\/lib\/(utils|chain|useWallet|tokens|format|hooks)\.ts$|src\/main\.tsx$|src\/assets\/)/;
+// The motion kit's pieces (src/fx/, D84) are here too: its guide documents every prop, so they go in
+// only with budget to spare.
+const LOW = /^(src\/components\/ui\/|src\/contracts\/|src\/lib\/(utils|chain|useWallet|tokens|format|hooks)\.ts$|src\/main\.tsx$|src\/assets\/|src\/fx\/)/;
 
 export interface ContextPick {
   path: string;
@@ -287,7 +289,8 @@ export function selectContext(
   // The app-data guide documents these two, and every turn on every small project would pay for them
   // (about 11k chars). The manifest still lists them, so read_file can fetch them.
   // The same goes for GoodBuild's wallet layer (src/lib/goodbuild/), which the prompt documents.
-  files = Object.fromEntries(Object.entries(files).filter(([p]) => p !== "src/lib/db.ts" && p !== "src/lib/useDb.ts" && !p.startsWith("src/lib/goodbuild/")));
+  // And the motion kit's stylesheet: keyframes the builder never edits or needs to read.
+  files = Object.fromEntries(Object.entries(files).filter(([p]) => p !== "src/lib/db.ts" && p !== "src/lib/useDb.ts" && p !== "src/fx/fx.css" && !p.startsWith("src/lib/goodbuild/")));
   const want = requestTerms(request);
   const soft = terms(opts.history ?? "").filter((t) => !want.includes(t));
   const symbols = symbolIndex(files);

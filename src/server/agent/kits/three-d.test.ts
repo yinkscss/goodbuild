@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { chromium } from "playwright-core";
 import { afterAll, describe, expect, it } from "vitest";
 
 import { needsOwnBuild } from "@/lib/preview-engine";
@@ -11,6 +12,17 @@ import { typeCheck } from "../type-check";
 
 import { detectKits, kitIdsOf, packagesFor, withKit } from "./index";
 import { threeD, threeDChecks } from "./three-d";
+
+/** Whether the browser here can draw WebGL at all: without it Scene3D shows its plain message and there is no scene to look at. */
+const hasWebGL = await chromium
+  .launch({ headless: true })
+  .then(async (b) => {
+    const page = await b.newPage();
+    const ok = await page.evaluate(() => Boolean(document.createElement("canvas").getContext("webgl2") || document.createElement("canvas").getContext("webgl")));
+    await b.close();
+    return ok;
+  })
+  .catch(() => false);
 
 const PAGE = `import * as THREE from "three";
 import { Scene3D } from "./three/Scene3D";
@@ -84,5 +96,65 @@ describe("the 3D kit", { timeout: 180_000 }, () => {
     const r = await runCheck(project());
     if (!r.ran) return; // no browser here: CI has one
     expect(r.issues).toEqual([]);
+  });
+
+  it("catches a scene with nothing in view, and leaves alone one that waits for an uploaded model", async () => {
+    const lost = PAGE.replace("camera.position.set(0, 1, 4);", "camera.position.set(0, 1, 4);\n          camera.lookAt(0, 50, 100);").replace("orbit\n", "");
+    const r = await runCheck(project(lost));
+    if (!r.ran) return;
+    // Only a browser that can draw WebGL can tell; one that can't shows the plain message and nothing is reported.
+    if (hasWebGL) expect(r.issues.map((i) => i.message).join(" ")).toMatch(/nothing is in view/);
+    else expect(r.issues).toEqual([]);
+    expect((await runCheck(project())).issues).toEqual([]);
+    const waiting = PAGE.replace("scene.add(cube);", 'void cube;\n          void new THREE.TextureLoader();');
+    expect((await runCheck(project(waiting))).issues).toEqual([]);
+  });
+
+  it("type-checks a game that reads the scene's input, pauses and cleans up after itself", async () => {
+    const game = `import { useState } from "react";
+import * as THREE from "three";
+import { Scene3D } from "./three/Scene3D";
+
+export default function App() {
+  const [playing, setPlaying] = useState(false);
+  return (
+    <main className="mx-auto max-w-xl p-4">
+      <button type="button" onClick={() => setPlaying(true)}>Play</button>
+      <Scene3D
+        touch
+        paused={!playing}
+        controls={["left", "right", "action"]}
+        onReady={({ scene, camera, input, onCleanup }) => {
+          const ball = new THREE.Mesh(new THREE.SphereGeometry(0.5), new THREE.MeshLambertMaterial({ color: "#f59e0b" }));
+          scene.add(ball, new THREE.HemisphereLight("#ffffff", "#334155", 2));
+          const ray = new THREE.Raycaster();
+          const timer = window.setInterval(() => undefined, 1000);
+          onCleanup(() => window.clearInterval(timer));
+          return (dt) => {
+            if (input.left) ball.position.x -= 3 * dt;
+            if (input.right) ball.position.x += 3 * dt;
+            if (input.actionPressed) ball.position.y = 1;
+            ball.position.x += input.pointer.dx * 4;
+            if (input.pointer.down) ray.setFromCamera(new THREE.Vector2(input.pointer.x, input.pointer.y), camera);
+          };
+        }}
+      />
+    </main>
+  );
+}
+`;
+    expect(checkApp(project(game)).errors).toEqual([]);
+    const types = await typeCheck(project(game));
+    expect(types.ran).toBe(true);
+    expect(types.issues).toEqual([]);
+    const r = await runCheck(project(game));
+    if (r.ran) expect(r.issues).toEqual([]);
+  });
+
+  it("gives a project that still has the first Scene3D today's, and leaves a changed one alone", () => {
+    const first = "x".repeat(10);
+    const changed = { ...project(), "src/three/Scene3D.tsx": first };
+    expect(withKit(changed, threeD)["src/three/Scene3D.tsx"]).toBe(first);
+    expect(Object.keys(threeD.superseded ?? {})).toEqual(["src/three/Scene3D.tsx"]);
   });
 });

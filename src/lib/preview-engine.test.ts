@@ -1,6 +1,8 @@
+import { readFileSync } from "node:fs";
+
 import { describe, expect, it } from "vitest";
 
-import { chooseEngine, needsOwnBuild, parseOverride } from "./preview-engine";
+import { TAILWIND_BROWSER_URL, TAILWIND_VERSION, chooseEngine, needsOwnBuild, parseOverride } from "./preview-engine";
 
 const pkg = (deps: Record<string, string>) => ({ "package.json": JSON.stringify({ dependencies: deps }), "src/App.tsx": "" });
 
@@ -38,5 +40,13 @@ describe("chooseEngine", () => {
     expect(parseOverride("auto")).toBe("auto");
     expect(parseOverride("1")).toBeUndefined();
     expect(parseOverride(null)).toBeUndefined();
+  });
+});
+
+describe("the preview's Tailwind", () => {
+  it("is the exact version publishing compiles with, never a floating one", () => {
+    const installed = (JSON.parse(readFileSync("node_modules/tailwindcss/package.json", "utf8")) as { version: string }).version;
+    expect(TAILWIND_VERSION).toBe(installed);
+    expect(TAILWIND_BROWSER_URL).toBe(`https://cdn.jsdelivr.net/npm/@tailwindcss/browser@${installed}`);
   });
 });

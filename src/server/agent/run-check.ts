@@ -22,8 +22,10 @@ export interface RunCheckOptions {
   assets?: string[];
   /** The project's chain, for the wallet-less RPC stub. */
   chainId?: number;
-  /** The project is a game: start it and play for a moment (set from its kits). */
+  /** The project is a game or a 3D scene: start it and play for a moment (set from its kits). */
   game?: boolean;
+  /** The project draws a 3D scene from shapes alone: look for one that shows nothing but its background (set from its kits and files). */
+  scene?: boolean;
   /** Also return screenshots at phone and desktop width. */
   screenshots?: boolean;
   timeoutMs?: number;
@@ -226,6 +228,53 @@ async function settle(page: Page, ms: number) {
   await page.waitForTimeout(ms);
 }
 
+/**
+ * True when every WebGL canvas on the page is one flat colour. Asked inside a frame callback queued
+ * after the scene's own, because a WebGL canvas forgets its picture once the frame is shown.
+ */
+async function flatScene(page: Page): Promise<boolean> {
+  return page
+    .evaluate(
+      () =>
+        new Promise<boolean>((resolve) => {
+          // No frame arrives in a tab that isn't drawing: say nothing rather than guess.
+          const giveUp = setTimeout(() => resolve(false), 1_500);
+          requestAnimationFrame(() => {
+            clearTimeout(giveUp);
+            const scenes = Array.from(document.querySelectorAll("canvas")).filter((c) => {
+              if (c.width < 50 || c.height < 50) return false;
+              try {
+                // A canvas already drawing with WebGL gives no 2D context.
+                return !c.getContext("2d");
+              } catch {
+                return true;
+              }
+            });
+            if (!scenes.length) return resolve(false);
+            resolve(
+              scenes.every((c) => {
+                try {
+                  const probe = document.createElement("canvas");
+                  probe.width = probe.height = 48;
+                  const ctx = probe.getContext("2d");
+                  if (!ctx) return false;
+                  ctx.drawImage(c, 0, 0, 48, 48);
+                  const d = ctx.getImageData(0, 0, 48, 48).data;
+                  for (let i = 4; i < d.length; i += 4) {
+                    if (Math.abs(d[i] - d[0]) > 3 || Math.abs(d[i + 1] - d[1]) > 3 || Math.abs(d[i + 2] - d[2]) > 3) return false;
+                  }
+                  return true;
+                } catch {
+                  return false;
+                }
+              }),
+            );
+          });
+        }),
+    )
+    .catch(() => false);
+}
+
 async function check(context: BrowserContext, files: PublishedFile[], options: RunCheckOptions): Promise<Omit<RunCheckResult, "ms">> {
   const js = files.find((f) => /^app\.[0-9a-f]{12}\.js$/.test(f.path));
   const jsText = js ? new TextDecoder().decode(js.bytes) : "";
@@ -297,6 +346,14 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
     }
   }
 
+  // A 3D scene (D77): the frame can be read only in the same turn it was drawn, so this asks from inside
+  // the page, right after the scene's own frame. One flat colour across the whole canvas, twice, means
+  // the scene has nothing in view: the camera looks away, or nothing was added.
+  let emptyScene = false;
+  if (!blank && !seen.length && !blankGame && options.scene) {
+    emptyScene = (await flatScene(page)) && ((await settle(page, 400)), await flatScene(page));
+  }
+
   // Other pages of a multi-page app (HashRouter): follow the links the first page shows.
   const hashes = await page.evaluate((max) => {
     const found = new Set<string>();
@@ -322,13 +379,19 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
   if (options.screenshots) {
     await page.evaluate(() => {
       window.location.hash = "#/";
+      // The motion kit (D84) hides a section until it is scrolled to: show the page in its final state.
+      document.documentElement.setAttribute("data-fx", "off");
+      // GoodBuild's own badge isn't the app's to fix: close it, the way a visitor can.
+      const badge = document.getElementById("gb-bar-off") as HTMLInputElement | null;
+      if (badge) badge.checked = true;
     });
     screenshots = [];
     for (const size of [PHONE, DESKTOP]) {
       await page.setViewportSize(size);
       await settle(page, 250);
       const height = Math.min(await page.evaluate(() => document.documentElement.scrollHeight), MAX_SHOT_HEIGHT);
-      screenshots.push({ width: size.width, png: await page.screenshot({ type: "png", clip: { x: 0, y: 0, width: size.width, height: Math.max(height, size.height) } }) });
+      // fullPage, or the picture stops at the bottom of the window whatever the clip says.
+      screenshots.push({ width: size.width, png: await page.screenshot({ type: "png", fullPage: true, clip: { x: 0, y: 0, width: size.width, height: Math.max(height, size.height) } }) });
     }
   }
 
@@ -342,6 +405,9 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
   });
   if (blankGame && !issues.length) {
     issues.push({ file: "src/App.tsx", message: "The game was started and played for a moment, but its canvas stayed blank: nothing was drawn. Draw the game in GameCanvas's onFrame on every frame, and make sure the game isn't left paused once Play is pressed.", source: "runtime" });
+  }
+  if (emptyScene && !issues.length) {
+    issues.push({ file: "src/App.tsx", message: "The 3D scene ran, but all it shows is its background colour: nothing is in view. Make sure the meshes are added to the scene (scene.add) inside onReady, and that the camera is placed back from them and looks at them (camera.position.set, camera.lookAt).", source: "runtime" });
   }
   if (blank && !issues.length) {
     issues.push({ file: "src/App.tsx", message: "The app ran but showed nothing: the page is empty. src/App.tsx must render the app's content.", source: "runtime" });
@@ -373,8 +439,12 @@ export async function runCheck(files: Record<string, string>, options: RunCheckO
     const timeout = new Promise<Omit<RunCheckResult, "ms">>((resolve) => {
       timer = setTimeout(() => resolve({ ran: false, issues: [], note: "skipped: the app took too long to open" }), options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
     });
-    const game = options.game ?? kitIdsOf(files).includes("game-2d");
-    return done(await Promise.race([check(context, built, { ...options, game }), timeout]));
+    const kits = kitIdsOf(files);
+    const game = options.game ?? (kits.includes("game-2d") || kits.includes("three-d"));
+    // A scene that waits for an uploaded model or picture is empty here (uploads are blank stand-ins), so only
+    // scenes built from shapes are looked at.
+    const scene = options.scene ?? (kits.includes("three-d") && !Object.entries(files).some(([p, c]) => p.startsWith("src/") && p !== "src/three/Scene3D.tsx" && /GLTFLoader|TextureLoader/.test(c)));
+    return done(await Promise.race([check(context, built, { ...options, game, scene }), timeout]));
   } catch (error) {
     return done({ ran: false, issues: [], note: `skipped: the browser wasn't available (${String((error as Error)?.message ?? error).split("\n")[0].slice(0, 120)})` });
   } finally {

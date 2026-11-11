@@ -200,7 +200,8 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
       // A build this browser just watched finish may get one automatic preview fix...
       if (turn.phase === "done" && turn.record.version && !prompt.startsWith(AUTO_FIX_LEAD)) setAutoFixVersion(turn.record.version);
       // ...and one visual check of the preview (an auto-fix build is checked too).
-      if (turn.phase === "done" && turn.record.version && turn.record.status === "ready") setCheckVersion(turn.record.version);
+      // Not when the builder already looked at the page itself on the server (D87).
+      if (turn.phase === "done" && turn.record.version && turn.record.status === "ready" && !turn.record.review) setCheckVersion(turn.record.version);
       await refresh().catch(() => undefined);
       setLive(null);
       attached.current = null;

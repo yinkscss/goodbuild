@@ -218,4 +218,5 @@ export const dashboard: Kit = {
     "src/dash/live.ts": LIVE_TS,
   },
   guide: GUIDE,
+  replaces: ["recharts", "chart.js", "react-chartjs-2", "victory", "d3", "apexcharts", "react-apexcharts", "@nivo/core"],
 };

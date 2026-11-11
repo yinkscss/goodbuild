@@ -9,6 +9,7 @@ import { START_BUILDING_TEXT } from "@/lib/plan";
 import { TopUpPill } from "@/components/credits/top-up-pill";
 import { FIX_PROMPT } from "@/lib/preview-errors";
 import { isSubmitShortcut } from "@/lib/prompt";
+import { isNearBottom } from "@/lib/scroll";
 import type { TurnMode, TurnRecord } from "@/lib/turn-types";
 import { cn } from "@/lib/utils";
 import { DeployButton } from "@/components/deploy/deploy-trigger";
@@ -26,10 +27,23 @@ export function ChatPanel({ ws, assetUrls = {} }: { ws: UseWorkspace; assetUrls?
   // Behind a proxy (D33), new code arrives at the same address: no "new contract" warning belongs here.
   const sameAddress = state.outdatedContracts.length > 0 && state.outdatedContracts.every((name) => state.upgradableContracts.includes(name));
   const endRef = React.useRef<HTMLDivElement>(null);
+  const listRef = React.useRef<HTMLDivElement>(null);
+  // Follow the build only while the person is at the bottom. Someone who scrolled up to read an
+  // earlier reply stays where they are while steps keep arriving.
+  const following = React.useRef(true);
+  const onListScroll = () => {
+    const el = listRef.current;
+    if (el) following.current = isNearBottom(el);
+  };
 
+  // A message was added (theirs, or a reply starting): go to it wherever they were.
   React.useEffect(() => {
+    following.current = true;
     endRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
-  }, [state.messages.length, live?.text, live?.record.steps.length, live?.record.log.length]);
+  }, [state.messages.length]);
+  React.useEffect(() => {
+    if (following.current) endRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
+  }, [live?.text, live?.record.steps.length, live?.record.log.length]);
 
   const liveMessageId = live?.messageId;
   // Chips only on the newest assistant turn, and not while another turn runs or waits.
@@ -43,7 +57,7 @@ export function ChatPanel({ ws, assetUrls = {} }: { ws: UseWorkspace; assetUrls?
   const lastUserPrompt = [...state.messages].reverse().find((m) => m.role === "user" && m.status !== "queued" && m.status !== "cancelled")?.content;
   return (
     <section aria-label="Chat" className="flex min-h-0 flex-col rounded-card bg-surface shadow-card">
-      <div className="min-h-0 flex-1 space-y-5 overflow-x-hidden overflow-y-auto overscroll-contain p-3 sm:p-5" aria-live="polite">
+      <div ref={listRef} onScroll={onListScroll} className="min-h-0 flex-1 space-y-5 overflow-x-hidden overflow-y-auto overscroll-contain p-3 sm:p-5" aria-live="polite">
         <TemplateBanner templateId={state.project.templateId} />
         {state.messages.map((m) => {
           if (m.id === liveMessageId) return null;

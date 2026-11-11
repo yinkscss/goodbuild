@@ -4,6 +4,7 @@ import { dashboard } from "./dashboard";
 import { daoVault } from "./dao-vault";
 import { game2d } from "./game-2d";
 import { miniApp } from "./mini-app";
+import { motion } from "./motion";
 import { threeD } from "./three-d";
 
 /**
@@ -30,18 +31,30 @@ export interface Kit {
   packages: Record<string, string>;
   /** Starter files, added once and never overwritten. Paths like "src/game/useGame.ts". */
   files: Record<string, string>;
+  /**
+   * Earlier versions of a starter file that GoodBuild shipped, as the sha256 of each. A project that
+   * still has one of these, untouched, gets today's file at the start of its next build, so a fix to
+   * a kit reaches the apps already made with it. A file the builder or the person changed never matches
+   * and is left alone.
+   */
+  superseded?: Record<string, string[]>;
   /** How to build this kind of app well. Returned when the kit is turned on. */
   guide: string;
   /** Extra project paths the builder may write, beyond src/**.ts(x)|css|json and contracts. */
   paths?: RegExp[];
   /** Checks of this kind's own, run with the app checks. */
   checks?: (files: Record<string, string>) => CheckIssue[];
+  /**
+   * Packages people reach for that this kit does the job of with none. The app check names the kit
+   * when one is imported, instead of only saying the package isn't allowed.
+   */
+  replaces?: string[];
   /** "own" when the in-browser bundler can't carry this kind, so the workspace uses GoodBuild's own build (D69). */
   preview?: "own";
 }
 
 /** Every kit GoodBuild has. Each kit is a module beside this one, listed here. */
-export const KITS: Kit[] = [game2d, miniApp, dashboard, daoVault, threeD];
+export const KITS: Kit[] = [game2d, miniApp, dashboard, daoVault, threeD, motion];
 
 /** The file that says which kits a project has on. GoodBuild writes it; the builder can't. */
 export const KIT_MARKER = "src/goodbuild.json";
@@ -77,6 +90,11 @@ export function allKitPackages(kits: Kit[] = KITS): Record<string, string> {
 /** The kit that brings a package, if any. */
 export function kitForPackage(name: string, kits: Kit[] = KITS): Kit | undefined {
   return kits.find((k) => name in k.packages);
+}
+
+/** The kit that does a package's job without it, if any. */
+export function kitReplacing(name: string, kits: Kit[] = KITS): Kit | undefined {
+  return kits.find((k) => k.replaces?.includes(name));
 }
 
 /** Kits a request asks for by its words, that the project doesn't have yet. */

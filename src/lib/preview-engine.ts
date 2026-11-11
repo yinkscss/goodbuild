@@ -42,3 +42,12 @@ export function chooseEngine(args: { files: Record<string, string>; override: En
 
 export const OVERRIDE_KEY = "gb-preview-engine";
 export const failedKey = (projectId: string) => `gb-preview-fallback:${projectId}`;
+
+/**
+ * The Tailwind the in-browser preview loads. Pinned to the version publishing compiles with (the
+ * installed tailwindcss; a test fails when they differ), so the preview and the published app are
+ * styled by the same Tailwind, and a new release can't change every preview without a deploy.
+ * It was "@4": the CDN's newest 4.x, already one patch ahead of what publishing used.
+ */
+export const TAILWIND_VERSION = "4.3.4";
+export const TAILWIND_BROWSER_URL = `https://cdn.jsdelivr.net/npm/@tailwindcss/browser@${TAILWIND_VERSION}`;
