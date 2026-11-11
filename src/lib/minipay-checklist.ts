@@ -18,7 +18,8 @@ export function hasMiniPayKit(files: Record<string, string>): boolean {
 export function miniAppChecks(files: Record<string, string>): CheckIssue[] {
   const issues: CheckIssue[] = [];
   for (const [file, content] of Object.entries(files)) {
-    if (!/^src\/.*\.(tsx?|jsx?)$/.test(file) || file.startsWith("src/lib/") || file.startsWith("src/minipay/")) continue;
+    // src/game/leaderboard.ts signs in only outside MiniPay, and posts to the contract inside it (D90).
+    if (!/^src\/.*\.(tsx?|jsx?)$/.test(file) || file.startsWith("src/lib/") || file.startsWith("src/minipay/") || file === "src/game/leaderboard.ts") continue;
     const line = (re: RegExp) => content.slice(0, content.search(re)).split("\n").length;
     if (/\b(signMessage|personal_sign|signTypedData|eth_sign)\b/.test(content)) {
       issues.push({ file, line: line(/\b(signMessage|personal_sign|signTypedData|eth_sign)\b/), source: "guardrail", message: "MiniPay doesn't allow asking for a signature to log in. Use the wallet address as the person's identity and remove the signing." });

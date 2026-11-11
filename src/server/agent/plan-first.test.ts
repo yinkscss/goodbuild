@@ -18,7 +18,7 @@ import type { TurnRecord } from "@/lib/turn-types";
 
 import { demoModel } from "./demo-model";
 import { scriptedModel } from "./fake-model";
-import { INTAKE_MAX_TOKENS, INTAKE_PROMPT, INTAKE_TOOLS, MINIPAY_QUESTION_ID, fallbackIntake, parseIntake, planBrief } from "./plan-intake";
+import { GAME_RULES, INTAKE_MAX_TOKENS, INTAKE_PROMPT, INTAKE_TOOLS, INTAKE_TOOLS_GAME, LEADERBOARD_QUESTION_ID, MINIPAY_QUESTION_ID, fallbackIntake, intakeContext, intakeTools, parseIntake, planBrief } from "./plan-intake";
 import { miniApp } from "./kits/mini-app";
 import { detectKits } from "./kits";
 import { starterFiles } from "./template";
@@ -461,11 +461,12 @@ describe("the MiniPay question (D88)", () => {
   const model = (questions: unknown[]) => JSON.stringify({ summary: "A jumping game", recommended_palette: "ocean", questions });
   const five = Array.from({ length: 5 }, (_, i) => ({ question: `Question ${i}?`, label: `L${i}`, options: ["a", "b"] }));
 
-  it("is asked for a game, before the colours, and the model gets one card fewer", () => {
+  it("is asked for a game, after the game's own cards and the leaderboard, before the colours", () => {
+    // The model's MiniPay card is dropped; obstacles, power-ups and characters it didn't ask about are added (D90).
     const parsed = parseIntake(model([...five, { question: "Should it work in MiniPay?", label: "m", options: ["Yes", "No"] }]), "A jumping game where you dodge rocks")!;
-    expect(parsed.questions.map((q) => q.id)).toEqual(["q1", "q2", "q3", MINIPAY_QUESTION_ID, "palette"]);
+    expect(parsed.questions.map((q) => q.id)).toEqual(["q1", "obstacles", "powerups", "npcs", "q2", LEADERBOARD_QUESTION_ID, MINIPAY_QUESTION_ID, "palette"]);
     const fallback = fallbackIntake("A jumping game where you dodge rocks");
-    expect(fallback.questions.map((q) => q.id)).toEqual(["q1", "q2", MINIPAY_QUESTION_ID, "palette"]);
+    expect(fallback.questions.map((q) => q.id)).toEqual(["q1", "obstacles", "powerups", "npcs", LEADERBOARD_QUESTION_ID, MINIPAY_QUESTION_ID, "palette"]);
   });
 
   it("isn't asked for other apps, or when the request already says MiniPay", () => {
@@ -490,4 +491,70 @@ it("planning leaves the project at version 0", async () => {
   await plan();
   const [p] = await db.select().from(projects).where(eq(projects.id, projectId));
   expect(p.currentVersion).toBe(0);
+});
+
+describe("a game's plan (D90)", () => {
+  const racer = "Build a car racing game for me that's playable on mini pay, I want leaderboards and season pass, make it endless with power ups and there should be an in app store";
+  const card = (question: string, options: string[]) => ({ question, label: question.split(" ").slice(0, 2).join(" "), multiple: true, options });
+  const args = (questions: unknown[], extra: Record<string, unknown> = {}) => JSON.stringify({ summary: "An endless racer", recommended_palette: "ocean", questions, ...extra });
+
+  it("keeps the model's own obstacle, power-up and character cards, as multiple choice, and drops its score question", () => {
+    const parsed = parseIntake(
+      args([
+        card("How do you steer?", ["Tap left or right", "Tilt"]),
+        { ...card("What gets in your way on the road?", ["Oncoming traffic", "Oil slicks", "Road works"]), multiple: false },
+        card("Which power-ups?", ["Nitro", "Shield", "Coin magnet"]),
+        card("Who else is on the road?", ["Rival racers", "Police", "Just traffic"]),
+        card("What should happen with high scores?", ["Leaderboard", "Own best"]),
+        card("What does the store sell?", ["Cars", "Level ups", "Power packs"]),
+      ]),
+      racer,
+    )!;
+    const ids = parsed.questions.map((q) => q.id);
+    expect(ids).toEqual(["q1", "q2", "q3", "q4", "q5", "palette"]);
+    expect(parsed.questions[1].multiple).toBe(true);
+    expect(parsed.questions.map((q) => q.question).join(" ")).not.toMatch(/high scores/);
+    // They said leaderboard and MiniPay already: neither card is shown, and the plan has a board.
+    expect(ids).not.toContain(LEADERBOARD_QUESTION_ID);
+    expect(ids).not.toContain(MINIPAY_QUESTION_ID);
+    expect(parsed.leaderboard).toBe(true);
+  });
+
+  it("keeps the brief, cleaned, and only for a game", () => {
+    const brief = { name: "Neon Drift", pitch: "Weave through night traffic — chain near misses.", loop: "dodge, collect, boost", lose: "you crash", harder: "traffic speeds up", extras: ["near-miss bonus", "daily missions", "ghost run", "a fourth"] };
+    const parsed = parseIntake(args([card("How do you steer?", ["Tap", "Tilt"])], { game_brief: brief }), racer)!;
+    expect(parsed.game).toEqual({ ...brief, pitch: "Weave through night traffic, chain near misses.", extras: ["near-miss bonus", "daily missions", "ghost run"] });
+    expect(parseIntake(args([card("Who can join?", ["Anyone", "Friends"])], { game_brief: brief }), "A tip jar for my club")!.game).toBeUndefined();
+    expect(planBrief(parsed, true).text).toMatch(/"Neon Drift"[\s\S]*Loop: dodge, collect, boost[\s\S]*near-miss bonus/);
+  });
+
+  it("sends the game rules and the brief field only with a game's request", () => {
+    expect(intakeContext(racer, [])).toContain(GAME_RULES);
+    expect(intakeContext("A tip jar for my club", [])).not.toContain(GAME_RULES);
+    expect(intakeTools(racer)).toBe(INTAKE_TOOLS_GAME);
+    expect(intakeTools("A tip jar for my club")).toBe(INTAKE_TOOLS);
+    expect(JSON.stringify(INTAKE_TOOLS)).not.toMatch(/game_brief/);
+    expect(GAME_RULES).toMatch(/obstacles[\s\S]*power-ups[\s\S]*controlled by the computer/);
+  });
+
+  it("a Yes on the leaderboard card puts a board in the plan, and MiniPay with it brings the contract", () => {
+    const intake = fallbackIntake("A jumping game where you dodge rocks");
+    const brief = (answers: Record<string, string>) => planBrief({ ...intake, answers: Object.fromEntries(Object.entries(answers).map(([k, v]) => [k, { picks: [v] }])) }, true);
+    const yes = brief({ [LEADERBOARD_QUESTION_ID]: "yes" });
+    expect(yes.leaderboard).toBe(true);
+    expect(yes.text).toMatch(/posting a score asks for the wallet/);
+    expect(yes.text).not.toMatch(/leaderboard contract/);
+    expect(brief({ [LEADERBOARD_QUESTION_ID]: "yes", [MINIPAY_QUESTION_ID]: "yes" }).text).toMatch(/leaderboard contract/);
+    const no = brief({ [LEADERBOARD_QUESTION_ID]: "no" });
+    expect(no.leaderboard).toBeUndefined();
+    expect(no.text).toMatch(/Leaderboard: no/);
+    // No answer's words turn a kit on.
+    expect(detectKits(yes.answerWords, starterFiles())).toEqual([]);
+  });
+
+  it("a request that already asks for a leaderboard has one even when every card is skipped", () => {
+    const intake = fallbackIntake("A snake game with a leaderboard");
+    expect(intake.questions.some((q) => q.id === LEADERBOARD_QUESTION_ID)).toBe(false);
+    expect(planBrief(intake, true).leaderboard).toBe(true);
+  });
 });

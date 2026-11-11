@@ -7,12 +7,20 @@ import { messages } from "@/server/db/schema";
 import type { TurnRecord, VisualCheck } from "@/lib/turn-types";
 import { sniffType, visionImage } from "./assets";
 import { TIER_FOR, type ModelClient } from "./model";
+import { isGameRequest } from "./plan-intake";
 import { recordUsage } from "./store";
 import { decideDirectFunding } from "@/server/credits/cap";
 
 const MAX_ISSUES = 4;
 
-export function visualCheckPrompt(args: { width: number; request: string }): string {
+/**
+ * A game is seen before Play (D90): obstacles, characters and a running score only exist once it runs,
+ * so they must not be reported missing from this picture. Each false report costs the person a build.
+ */
+const GAME_NOTE = `
+This is a game, captured on its start screen before anyone pressed Play. Obstacles, enemies, other cars or characters, power-ups and a score that counts up only appear while it runs: do NOT report them missing. Do report a game area that is empty, one flat colour or plain background with nothing drawn in it, and a start screen with no Play or Start button.`;
+
+export function visualCheckPrompt(args: { width: number; request: string; game?: boolean }): string {
   return `This is a screenshot of a web app GoodBuild just generated, rendered ${args.width}px wide in the preview. The user asked for: "${args.request.slice(0, 400)}".
 Check it like a QA tester, not a designer. List only concrete visible defects:
 - a blank or nearly blank page, or an error message instead of the app;
@@ -21,7 +29,7 @@ Check it like a QA tester, not a designer. List only concrete visible defects:
 - broken images (empty boxes, alt text showing) or icons missing;
 - unstyled content (plain HTML look, default blue links, no spacing);
 - something the user explicitly asked for that is clearly missing from this screen.
-Ignore taste, copy style and placeholder data that is labelled as an example. A wallet "Connect" button and "Deploy the contract to go live" notices are expected.
+Ignore taste, copy style and placeholder data that is labelled as an example.${args.game ? GAME_NOTE : ""} A wallet "Connect" button and "Deploy the contract to go live" notices are expected.
 Reply with JSON only, no code fence: {"ok": true} when nothing is wrong, or {"ok": false, "issues": ["short, specific defect and where it is", ...]} with at most ${MAX_ISSUES} issues.`;
 }
 
@@ -59,6 +67,8 @@ export async function runVisualCheck(args: {
   const turn = [...rows].reverse().find((m) => m.role === "assistant" && (m.meta as TurnRecord | null)?.version === args.version);
   if (!turn) return null;
   const request = rows.slice(0, rows.indexOf(turn)).reverse().find((m) => m.role === "user")?.content ?? "";
+  // "Fix these" or "Start building" doesn't say it's a game: the project's first messages do.
+  const game = isGameRequest(rows.filter((m) => m.role === "user").map((m) => m.content).join("\n"));
   const image = await visionImage(args.png, "image/png");
   let charged = 0;
   // Outside any turn, so who funds it is decided now (D48).
@@ -71,7 +81,7 @@ export async function runVisualCheck(args: {
     for await (const ev of args.model.stream({
       tier: TIER_FOR.build,
       maxTokens: 500,
-      messages: [{ role: "user", content: [{ type: "text", text: visualCheckPrompt({ width: args.width, request }) }, { type: "image", ...image }] }],
+      messages: [{ role: "user", content: [{ type: "text", text: visualCheckPrompt({ width: args.width, request, game }) }, { type: "image", ...image }] }],
     })) {
       if (ev.type === "text") text += ev.delta;
       else if (ev.type === "done") finishReason = ev.finishReason;

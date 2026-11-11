@@ -47,10 +47,25 @@ export interface PlanAnswer {
 }
 
 /** The plan-first questions (D32), stored on the turn that asked them, with answers as they come. */
+/** A game's pitch from the planner (D90), shown with the plan and given to the builder as the spec. */
+export interface GameBrief {
+  name: string;
+  pitch: string;
+  /** What you do over and over: "dodge, collect, survive". */
+  loop: string;
+  lose: string;
+  harder: string;
+  extras: string[];
+}
+
 export interface PlanIntake {
   summary: string;
   questions: PlanQuestion[];
   answers: Record<string, PlanAnswer>;
+  /** A game: the planner's pitch for it. */
+  game?: GameBrief;
+  /** A game whose request already asked for a leaderboard, so the card wasn't shown. */
+  leaderboard?: boolean;
 }
 
 export type TurnEvent =

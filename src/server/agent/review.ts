@@ -39,10 +39,16 @@ export function worthReviewing(firstBuild: boolean, changes: FileChange[]): bool
   return lines >= REVIEW_MIN_CHANGED_LINES;
 }
 
-export function reviewPrompt(args: { request: string; direction?: string }): string {
+export function reviewPrompt(args: { request: string; direction?: string; pictures?: string[] }): string {
   const direction = args.direction?.trim() ? `\nThe builder's own plan for it: "${args.direction.trim().slice(0, 400)}".` : "";
-  return `These are two screenshots of a web app GoodBuild just built: the first is 375px wide (a phone), the second 1280px wide (a computer). Each shows the page from the top, about 1,500px down. The person asked for: "${args.request.slice(0, 600)}".${direction}
-
+  // A game (D90): a start screen and a moment of play, so the reviewer judges each for what belongs on it.
+  const what = args.pictures?.length
+    ? `These are ${args.pictures.length} screenshots of a game GoodBuild just built, in this order: ${args.pictures.map((p, i) => `(${i + 1}) ${p}`).join("; ")}. The person asked for: "${args.request.slice(0, 600)}".${direction}
+On the start screen, expect the game area drawn (not an empty or one-colour box), the game's name, how to play and a Play button; obstacles, characters and a moving score only appear once it runs, so judge those on the picture taken during play. An empty or one-colour game area on either is broken.
+`
+    : `These are two screenshots of a web app GoodBuild just built: the first is 375px wide (a phone), the second 1280px wide (a computer). Each shows the page from the top, about 1,500px down. The person asked for: "${args.request.slice(0, 600)}".${direction}
+`;
+  return `${what}
 Look at them the way a careful designer looks at a build before it ships, and list what a person would call broken or unfinished. Only things you can SEE, and only things one edit could fix:
 - broken layout: elements that overlap, are cut off, spill off the side of the phone, or leave a large empty gap that is clearly a mistake;
 - text that is hard to read: low contrast against its background, text over a busy area, text smaller than about 12px on the phone;

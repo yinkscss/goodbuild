@@ -17,7 +17,7 @@ import { dbAssetStore, type AssetStore } from "./asset-store";
 import { ASSETS_MODULE, assetManifest, assetsModule, reviewImage, visionImage } from "./assets";
 import { HISTORY_WINDOW, memoryBlock, updateMemory, type Memory, type MemoryMessage } from "./memory";
 import { MODEL_IDS, TIER_FOR, ModelUnavailableError, type ChatMessage, type ModelClient, type ModelEvent, type ModelTier, type ToolCall, type UserPart } from "./model";
-import { INTAKE_MAX_TOKENS, INTAKE_PROMPT, INTAKE_TOOLS, fallbackIntake, intakeContext, latestIntake, parseIntake, planBrief } from "./plan-intake";
+import { INTAKE_MAX_TOKENS, INTAKE_PROMPT, fallbackIntake, intakeTools, intakeContext, latestIntake, parseIntake, planBrief } from "./plan-intake";
 import { BUILD_TOOLS, PLAN_TOOLS, contextWithPicks, systemPrompt } from "./prompt";
 import { checkpoint, claimTurn, loadFiles, recordUsage, releaseTurn } from "./store";
 import { decideFunding } from "@/server/credits/cap";
@@ -210,7 +210,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
 
     const intake = setup.intake === true;
     const convo: ChatMessage[] = [{ role: "system", content: intake ? INTAKE_PROMPT : systemPrompt(input.mode) }, ...rehydrate(setup.prefix, images)];
-    const tools = intake ? INTAKE_TOOLS : input.mode === "plan" ? PLAN_TOOLS : BUILD_TOOLS;
+    const tools = intake ? intakeTools(setup.request) : input.mode === "plan" ? PLAN_TOOLS : BUILD_TOOLS;
 
     let calls = 0;
     let callIdx = 0;
@@ -612,13 +612,13 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       step({ id: "review", label: "Looking at the page", status: "running" });
       // A resumed build that already asked has the answer saved: no need for the pictures again.
       const answered = replayLog[callIdx] !== undefined;
-      const shots = answered ? [] : await screenshots(openWith, ws.files, report, { assets: assetNames, chainId });
+      const { parts: shots, pictures } = answered ? { parts: [], pictures: undefined } : await screenshots(openWith, ws.files, report, { assets: assetNames, chainId });
       if (!answered && shots.length < 2) {
         log("· review: skipped, no screenshots of the page");
         step({ id: "review", label: "Looking at the page", detail: "skipped", status: "done" });
       } else {
         const direction = record.plan?.summary;
-        await callModel(TIER_FOR.review, true, false, { messages: [{ role: "user", content: [{ type: "text", text: reviewPrompt({ request: setup.request, direction }) }, ...shots] }], maxTokens: REVIEW_MAX_TOKENS });
+        await callModel(TIER_FOR.review, true, false, { messages: [{ role: "user", content: [{ type: "text", text: reviewPrompt({ request: setup.request, direction, pictures }) }, ...shots] }], maxTokens: REVIEW_MAX_TOKENS });
         const verdict = parseReview(sideReply);
         if (!verdict) {
           log(`· review: the reply couldn't be used (${sideReply.length} chars), nothing changed`);
@@ -851,6 +851,11 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     // A Yes to the plan's MiniPay question (D88) turns the MiniPay kit on, whatever its words.
     const miniAppKit = kitById("mini-app");
     if (input.mode === "build" && brief.miniPay && miniAppKit && !kitsOf(files).includes(miniAppKit) && !newKits.includes(miniAppKit)) newKits.push(miniAppKit);
+    // A game with a leaderboard that works in MiniPay (D90): MiniPay allows no sign-in signature, so its
+    // players post to the leaderboard contract. That means a deploy, so only these games get it.
+    const boardKit = kitById("game-board");
+    const willHave = (id: string) => kitsOf(files).some((k) => k.id === id) || newKits.some((k) => k.id === id);
+    if (input.mode === "build" && brief.leaderboard && boardKit && willHave("game-2d") && willHave("mini-app") && !willHave("game-board")) newKits.push(boardKit);
     // A gallery template is a designed page (D60): it gets the motion kit (D84) whatever its words say.
     const motionKit = kitById("motion");
     if (input.mode === "build" && firstBuild && motionKit && templateBriefFor(project.templateId) && !newKits.includes(motionKit)) newKits.push(motionKit);
@@ -1116,13 +1121,21 @@ function withContractModules(files: Record<string, string>, contracts: CheckRepo
   return out;
 }
 
-/** The finished page at phone and computer width, as images for the review (D87). Empty when the run check couldn't take them. */
-async function screenshots(open: typeof runCheck, files: Record<string, string>, report: CheckReport, options: { assets: string[]; chainId?: number }): Promise<UserPart[]> {
+/**
+ * The finished page at phone and computer width, as images for the review (D87), and what each one
+ * shows. A 2D game's phone pictures are its start screen and a moment into play (D90). Empty when the
+ * run check couldn't take them.
+ */
+async function screenshots(open: typeof runCheck, files: Record<string, string>, report: CheckReport, options: { assets: string[]; chainId?: number }): Promise<{ parts: UserPart[]; pictures?: string[] }> {
   const result = await open(withContractModules(files, report.contracts), { ...options, screenshots: true });
-  if (!result.ran || result.issues.length || !result.screenshots?.length) return [];
-  const out: UserPart[] = [];
-  for (const shot of result.screenshots) out.push({ type: "image", ...(await reviewImage(shot.png, shot.width)) });
-  return out;
+  if (!result.ran || result.issues.length || !result.screenshots?.length) return { parts: [] };
+  const parts: UserPart[] = [];
+  for (const shot of result.screenshots) parts.push({ type: "image", ...(await reviewImage(shot.png, shot.width)) });
+  const game = result.screenshots.some((s) => s.shows);
+  const pictures = game
+    ? result.screenshots.map((s) => (s.shows === "start" ? "the game's start screen on a phone (375px), before Play" : s.shows === "playing" ? "the same game on a phone about two seconds after Play, while it runs" : `the page ${s.width}px wide (a computer), later on`))
+    : undefined;
+  return { parts, pictures };
 }
 
 /** A fingerprint of the project's files, to tell whether anything changed between two checks. */

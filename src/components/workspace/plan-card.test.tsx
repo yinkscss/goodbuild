@@ -85,6 +85,18 @@ describe("PlanCard", () => {
     expect(screen.getByRole("heading", { name: "Who can take the money out?" })).toBeTruthy();
   });
 
+  it("shows a game's pitch with the summary, and on the read-only plan (D90)", () => {
+    const game: PlanIntake["game"] = { name: "Neon Drift", pitch: "Weave through night traffic.", loop: "dodge, collect, boost", lose: "you crash", harder: "traffic speeds up", extras: ["near-miss bonus", "daily missions"] };
+    const done = { ...intake({ q1: { picks: ["o1"] }, q2: { picks: ["o1"] }, palette: { picks: ["ocean"] } }), game };
+    const { unmount } = render(<PlanCard intake={done} actions={actions()} />);
+    expect(screen.getByText("Neon Drift")).toBeTruthy();
+    expect(screen.getByText("Weave through night traffic.")).toBeTruthy();
+    expect(screen.getByText("near-miss bonus · daily missions")).toBeTruthy();
+    unmount();
+    render(<PlanCard intake={done} />);
+    expect(screen.getByText("you crash")).toBeTruthy();
+  });
+
   it("is read-only once the build has started", () => {
     render(<PlanCard intake={intake({ q1: { picks: ["o1"] } })} />);
     expect(screen.getByText("Send money")).toBeTruthy();

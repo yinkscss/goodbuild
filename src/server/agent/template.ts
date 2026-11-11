@@ -594,6 +594,8 @@ export function collection<T = unknown>(name: string) {
   return {
     /** Newest first: what the rules let you read, in full or only its public fields. */
     async list(options: DbListOptions = {}): Promise<DbPage<T>> {
+      // The server reads 1 to 100 records at a time: ask for more and get the most it gives, not an error.
+      if (options.limit !== undefined) options = { ...options, limit: Math.max(1, Math.min(100, Math.floor(options.limit) || 1)) };
       const since = options.since === undefined ? undefined : typeof options.since === "number" ? options.since : Date.parse(options.since);
       if (since !== undefined && !Number.isFinite(since)) throw new DbError("invalid_query", "since must be a date or a number of milliseconds.", 400);
       if (isPreview) {

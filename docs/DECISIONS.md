@@ -915,3 +915,51 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
     - **One defect, the builder's own:** the bakery page scrolls 16px sideways on a phone. This is the kind of thing the review (D87) is for; it was off in this run.
     - **Limits of this run:** five builds on one day. No Claude key could be used in the test session, so a fix would have fallen back to DeepSeek; none was needed. The live check's own playback step failed on every app because the test machine lacks the video recorder it needs, so the click-through was done separately.
 - **UNVERIFIED.** A real phone, the real MiniPay browser, and a real screen reader (VoiceOver, TalkBack), which can read a correct tree badly. More than five real builds: the eval suite is still the proper measure.
+
+### D90. Games right first time: a drawn start screen, a leaderboard that works in MiniPay, and plan cards for obstacles, power-ups and characters (amends D72, D88)
+- Date: 11 Nov 2026 · Asked for by: the owner, after a MiniPay car racer took 7 versions ("Go ahead with Phase A and B together. wallet only for leaderboard"; picked the hybrid leaderboard) · Built by: Claude · Plan and diagnosis: [GAMES_PLAN.md](GAMES_PLAN.md).
+- **The start screen was always empty (kit bug).** `GameCanvas` skipped drawing while `paused`, and the guide said to pause on the start and game-over screens, so those screens showed an empty box ("large empty pink space" in the owner's build). New `onIdleFrame` prop: called while paused, it draws the game world and never moves the game on. `onFrame` is unchanged, so games already built behave the same. The old file's hash is in `superseded`, so untouched copies get the new one. A file check asks for `onIdleFrame` whenever a `GameCanvas` is paused. It reads the whole tag, arrow functions included.
+- **Leaderboard: wallet-only to post, hybrid by the owner's choice.** Playing never needs a wallet. Posting does. MiniPay forbids the sign-in signature, so:
+  - In a browser, the kit's `useLeaderboard` signs in once (free) and keeps one best per wallet in app data. The rule is `"scores": {"create": "signed-in", "read": ["anyone"], ...}`, and a check asks for it.
+  - Inside MiniPay, it posts to `contracts/GameBoard.sol`, which keeps each wallet's best and the top 25. The network fee is paid in the first dollar coin the player has.
+  - The board reads both and shows one row per wallet.
+  - The contract is its own kit, `game-board`. The runner turns it on only for a 2D game that has a leaderboard and works in MiniPay, because a contract means a deploy.
+  - Its five tests run in the local EVM. Earlier, the two guides contradicted each other: the game guide's leaderboard needed the signature MiniPay forbids.
+- **Kit files:**
+  - `src/game/leaderboard.ts` (`useLeaderboard`, `cleanName`, `SCORES_RULE`).
+  - `src/game/Leaderboard.tsx` (`Leaderboard` and `PostScore`). These cover loading, empty, error with Retry, "(you)", what posting costs, and the wallet being cancelled.
+  - `src/game/Sprite.tsx`. One drawing function is shown outside the canvas, in garage cards, the store and leaderboard rows, instead of the same car being drawn a second way.
+  - `src/game/chainBoard.ts` (game-board kit). It needs nothing from the MiniPay kit.
+  - The MiniPay sign-in check leaves `src/game/leaderboard.ts` alone, because that file signs in only outside MiniPay.
+- **Saved data reads clamp `limit` to 100** in `collection().list` (and so `useCollection`), for every app. Before, a board asking for 200 got an error.
+- **Free play first** is now the opening rule of the game guide. The guide also asks for these, and closes with a checklist:
+  - every obstacle, power-up and character the plan names, each with its own name in the code;
+  - the first obstacle within 3 seconds;
+  - NPCs that signal before they act;
+  - power-ups with a visible timer;
+  - the score drawn on the canvas.
+- **Run check (D67):**
+  - For a 2D game it looks at the start screen before pressing Play. It reports a canvas that is one flat colour, and a start screen with no Play or Start button (also "race").
+  - The blank check after play now treats a one-colour canvas as blank, not only a see-through one.
+  - With screenshots on, a 2D game's phone pictures are its start screen and a moment of play, then the computer width.
+- **Review and visual check:** the review (D87) is told which picture is the start screen and which is play. The in-browser visual check (P17) is told it sees a game before Play, so it doesn't report obstacles, characters or a counting score missing. A request is a game by any of the project's own messages. Those false reports cost the owner a build each.
+- **Plan (D32, D88):**
+  - For a game, the planner always asks about obstacles and challenges, power-ups, and the computer's characters, each on its own multiple-choice card fitted to the game. If the model leaves one out, a generic card is added.
+  - The model gets 5 cards. The server adds Leaderboard (skipped when the request already asks for one), MiniPay and Colours, so the most is 8. The owner didn't pick between 6 and 8; Claude went with the proposal's 8.
+  - The model's score questions are dropped for games.
+  - The planner also returns a game brief (name, pitch, loop, how a round ends, how it gets harder, two or three extras). The plan card shows it and the builder gets it as the spec. It can't be edited on the card yet: a later message changes it.
+  - The game rules and the brief field go only with a game's request, so other plans cost what they did. The plan's output limit went from 1,500 to 2,000 tokens. The worst case is still inside the planning headroom (tested).
+- **Checked:**
+  - In a real headless browser, a lane racer written the new way passes the run check, with screenshots in the right order.
+  - The same game without `onIdleFrame` is caught, and so is a start screen with no Play button.
+  - The contract compiles and its tests pass.
+  - A MiniPay game passing `gameBoard(GameBoardAbi, GameBoardAddress[chain.id])` passes the app check, the MiniPay checks and the type check. Forgetting it is caught.
+  - The runner turns `game-board` on for "A snake game for MiniPay with a leaderboard", and not without MiniPay.
+  - Planner cards, brief and costs are tested.
+  - The whole test suite passes.
+- **UNVERIFIED:**
+  - Any of this with a real model: whether DeepSeek writes fitting obstacle, power-up and character cards, and a good brief.
+  - The leaderboard on a published app with a real wallet signature.
+  - A real MiniPay post: fee-currency payment for a contract call, and how MiniPay shows it.
+  - The plan card's look in the workspace (only tested in jsdom).
+- **Not in this change:** Phases C (building blocks and the game probe), D (a bot that plays, and run-check tests of the leaderboard and wallet), E (shop contract) and F (extras) of the plan. B4 (checking that the planned obstacles appear) needs the probe from Phase C.

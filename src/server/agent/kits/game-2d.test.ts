@@ -9,7 +9,7 @@ import { closeRunCheckBrowser, runCheck } from "../run-check";
 import { starterFiles } from "../template";
 import { typeCheck } from "../type-check";
 import { detectKits, kitIdsOf, withKit } from "./index";
-import { game2d } from "./game-2d";
+import { SCORES_RULE_JSON, game2d, gameChecks, jsxTags } from "./game-2d";
 
 const hasBrowser =
   Boolean(process.env.CI) ||
@@ -145,13 +145,119 @@ export default function App() {
           Play
         </button>
       )}
-      <GameCanvas onFrame={onFrame} paused={!playing} controls={["left", "right", "action"]} label="Test game" />
+      <GameCanvas
+        onFrame={onFrame}
+        onIdleFrame={({ ctx, width, height }) => {
+          ctx.fillStyle = "#0f172a";
+          ctx.fillRect(0, 0, width, height);
+          ctx.fillStyle = "#38bdf8";
+          ctx.fillRect(game.current.x - 15, 285, 30, 30);
+        }}
+        paused={!playing}
+        controls={["left", "right", "action"]}
+        label="Test game"
+      />
     </main>
   );
 }
 `;
 
 const project = (app: string) => ({ ...withKit(starterFiles(), game2d), "src/App.tsx": app });
+
+/** The board's rule in dataRules.json, as the guide writes it, or another rule to test the check. */
+const withScoresRule = (files: Record<string, string>, rule: unknown = JSON.parse("{" + SCORES_RULE_JSON + "}").scores) => {
+  const rules = JSON.parse(files["src/lib/dataRules.json"] ?? "{}") as { collections?: Record<string, unknown> };
+  return { ...files, "src/lib/dataRules.json": JSON.stringify({ ...rules, collections: { ...(rules.collections ?? {}), scores: rule } }, null, 2) };
+};
+
+/**
+ * A lane racer written the way the D90 guide asks: the canvas drawn on every screen, free play,
+ * one drawing shared with a Sprite, and the leaderboard from the kit.
+ */
+const BOARD_GAME = `import { useRef, useState } from "react";
+import { GameCanvas, type Frame } from "./game/GameCanvas";
+import { Leaderboard, PostScore } from "./game/Leaderboard";
+import { useLeaderboard } from "./game/leaderboard";
+import { Sprite } from "./game/Sprite";
+import { saveBest } from "./game/storage";
+
+function drawCar(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, colour: string) {
+  ctx.fillStyle = colour;
+  ctx.fillRect(x + w * 0.15, y, w * 0.7, h);
+  ctx.fillStyle = "#111827";
+  ctx.fillRect(x + w * 0.25, y + h * 0.2, w * 0.5, h * 0.2);
+}
+
+const LANES = [90, 180, 270];
+
+export default function App() {
+  const [screen, setScreen] = useState<"start" | "playing" | "over">("start");
+  const [score, setScore] = useState(0);
+  const board = useLeaderboard();
+  const game = useRef({ lane: 1, cars: [] as { lane: number; y: number }[], spawn: 0.8, distance: 0 });
+
+  const drawWorld = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
+    const g = game.current;
+    ctx.fillStyle = "#1f2937";
+    ctx.fillRect(0, 0, width, height);
+    ctx.fillStyle = "#f9fafb";
+    for (const x of [135, 225]) for (let y = (g.distance * 2) % 80; y < height; y += 80) ctx.fillRect(x - 2, y, 4, 40);
+    for (const c of g.cars) drawCar(ctx, LANES[c.lane] - 25, c.y, 50, 80, "#f97316");
+    drawCar(ctx, LANES[g.lane] - 25, 520, 50, 80, "#e11d48");
+  };
+
+  const onIdleFrame = ({ ctx, width, height }: Frame) => drawWorld(ctx, width, height);
+
+  const onFrame = ({ ctx, width, height, dt, input }: Frame) => {
+    const g = game.current;
+    if (input.actionPressed) g.lane = input.pointer.x < width / 2 ? Math.max(0, g.lane - 1) : Math.min(2, g.lane + 1);
+    g.distance += 300 * dt;
+    g.spawn -= dt;
+    if (g.spawn <= 0) {
+      g.cars.push({ lane: Math.floor(Math.random() * 3), y: -80 });
+      g.spawn = 1.2;
+    }
+    for (const c of g.cars) c.y += 260 * dt;
+    g.cars = g.cars.filter((c) => c.y < height);
+    if (g.cars.some((c) => c.lane === g.lane && c.y > 450 && c.y < 590)) {
+      saveBest(Math.floor(g.distance / 10), "racer");
+      setScore(Math.floor(g.distance / 10));
+      setScreen("over");
+    }
+    drawWorld(ctx, width, height);
+    ctx.fillStyle = "rgba(0,0,0,0.6)";
+    ctx.fillRect(12, 12, 120, 36);
+    ctx.fillStyle = "#fff";
+    ctx.font = "bold 18px sans-serif";
+    ctx.fillText(String(Math.floor(g.distance / 10)), 24, 37);
+  };
+
+  const start = () => {
+    game.current = { lane: 1, cars: [], spawn: 0.8, distance: 0 };
+    setScreen("playing");
+  };
+
+  return (
+    <main className="mx-auto flex min-h-screen max-w-md flex-col gap-4 p-4">
+      <header className="flex items-center gap-2">
+        <Sprite draw={(ctx, w, h) => drawCar(ctx, 0, 0, w, h, "#e11d48")} width={32} height={48} label="Your car" />
+        <h1 className="text-xl font-semibold">Lane Dash</h1>
+      </header>
+      <GameCanvas onFrame={onFrame} onIdleFrame={onIdleFrame} paused={screen !== "playing"} label="Lane Dash" />
+      {screen !== "playing" && (
+        <section className="space-y-3 rounded-lg bg-card p-4 text-center">
+          <p>{screen === "over" ? "You crashed. Score " + score : "Tap left or right of the road to change lane."}</p>
+          <button id="play" type="button" onClick={start} className="rounded-lg bg-primary px-6 py-3 text-primary-foreground">
+            Play
+          </button>
+          {screen === "over" && <PostScore board={board} score={score} extra="red" />}
+        </section>
+      )}
+      <Leaderboard board={board} title="Top racers" icon={() => <Sprite draw={(ctx, w, h) => drawCar(ctx, 0, 0, w, h, "#e11d48")} width={16} height={24} />} />
+    </main>
+  );
+}
+`;
 
 describe("the 2D games kit", { timeout: 120_000 }, () => {
   afterAll(() => closeRunCheckBrowser());
@@ -244,12 +350,58 @@ describe("the 2D games kit", { timeout: 120_000 }, () => {
   it("gives a project that still has the first GameCanvas today's, and never touches one that was changed", () => {
     const mine = "// my own canvas\n";
     expect(withKit({ ...project(GAME), "src/game/GameCanvas.tsx": mine }, game2d)["src/game/GameCanvas.tsx"]).toBe(mine);
-    expect(game2d.superseded?.["src/game/GameCanvas.tsx"]).toHaveLength(1);
+    // The first (D72) and the one that never drew while paused (D90).
+    expect(game2d.superseded?.["src/game/GameCanvas.tsx"]).toHaveLength(2);
   });
 
   it.skipIf(!hasBrowser)("catches a game that never draws", async () => {
     const blank = GAME.replace(/    ctx\.fillStyle = "#7dd3fc";[\s\S]*?ctx\.fillText\("🐤", 44, g\.y\);\n/, "    void ctx;\n    void width;\n");
     const r = await runCheck(project(blank));
     expect(r.issues.map((i) => i.message).join(" ")).toMatch(/canvas stayed blank/);
+  });
+
+  it("asks for onIdleFrame when GameCanvas is paused, even with arrow functions in its props", () => {
+    const without = PAUSED_GAME.replace(/        onIdleFrame=\{[\s\S]*?\n        \}\}\n/, "");
+    expect(without).not.toMatch(/onIdleFrame/);
+    const errors = checkApp(project(without)).errors.filter((e) => /onIdleFrame/.test(e.message));
+    expect(errors).toHaveLength(1);
+    expect(errors[0].file).toBe("src/App.tsx");
+    expect(gameChecks(project(PAUSED_GAME))).toEqual([]);
+    // A canvas shown only while playing isn't paused, so it needs nothing.
+    expect(gameChecks(project(GAME))).toEqual([]);
+    expect(jsxTags('<GameCanvas onFrame={(f) => f.dt > 1} paused />', "GameCanvas")[0].text).toBe('<GameCanvas onFrame={(f) => f.dt > 1} paused />');
+  });
+
+  it("type-checks a game with the leaderboard, the post form and a sprite, and asks for the board's data rule", async () => {
+    const files = project(BOARD_GAME);
+    const missing = checkApp(files).errors.filter((e) => e.file === "src/lib/dataRules.json");
+    expect(missing).toHaveLength(1);
+    expect(missing[0].message).toContain(SCORES_RULE_JSON);
+    const ruled = withScoresRule(files);
+    expect(checkApp(ruled).errors).toEqual([]);
+    const types = await typeCheck(ruled);
+    expect(types.ran).toBe(true);
+    expect(types.issues).toEqual([]);
+    // A board anyone can post to without a wallet isn't what the owner chose.
+    const anyone = withScoresRule(files, { create: "anyone", read: ["anyone"] });
+    expect(checkApp(anyone).errors.some((e) => e.file === "src/lib/dataRules.json")).toBe(true);
+  });
+
+  it.skipIf(!hasBrowser)("runs in a real browser with the leaderboard on the page: the start screen is drawn and Play works with no wallet", async () => {
+    const r = await runCheck(withScoresRule(project(BOARD_GAME)), { screenshots: true });
+    expect(r.ran).toBe(true);
+    expect(r.issues).toEqual([]);
+    // The start screen and a moment of play on a phone, then the computer.
+    expect(r.screenshots?.map((s) => s.shows ?? s.width)).toEqual(["start", "playing", 1280]);
+  });
+
+  it.skipIf(!hasBrowser)("catches a start screen that is an empty box, and one with no Play button", async () => {
+    const blankStart = BOARD_GAME.replace(/onIdleFrame=\{onIdleFrame\}\s*/, "");
+    const r = await runCheck(withScoresRule(project(blankStart)));
+    expect(r.issues.map((i) => i.message).join(" ")).toMatch(/start screen shows the game area as an empty box/);
+    const noButton = BOARD_GAME.replace(">\n            Play\n          </button>", ">\n            Drive\n          </button>");
+    expect(noButton).not.toEqual(BOARD_GAME);
+    const r2 = await runCheck(withScoresRule(project(noButton)));
+    expect(r2.issues.map((i) => i.message).join(" ")).toMatch(/no Play button/);
   });
 });

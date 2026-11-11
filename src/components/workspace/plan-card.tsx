@@ -201,6 +201,38 @@ function AnswerList({ intake, onChange }: { intake: PlanIntake; onChange?: (inde
   );
 }
 
+/** A game's pitch (D90): the planner's best version of their idea, built as the spec. */
+function GameIdea({ intake }: { intake: PlanIntake }) {
+  const game = intake.game;
+  if (!game) return null;
+  return (
+    <div className="mb-3 rounded-block bg-surface p-3">
+      <p className="text-sm font-semibold">{game.name}</p>
+      <p className="mt-0.5 text-sm text-grey-600">{game.pitch}</p>
+      <dl className="mt-2 grid gap-1 text-xs text-grey-600">
+        <div className="flex gap-2">
+          <dt className="w-20 shrink-0 font-medium text-ink">You</dt>
+          <dd>{game.loop}</dd>
+        </div>
+        <div className="flex gap-2">
+          <dt className="w-20 shrink-0 font-medium text-ink">Game over</dt>
+          <dd>{game.lose}</dd>
+        </div>
+        <div className="flex gap-2">
+          <dt className="w-20 shrink-0 font-medium text-ink">Harder</dt>
+          <dd>{game.harder}</dd>
+        </div>
+        {game.extras.length > 0 && (
+          <div className="flex gap-2">
+            <dt className="w-20 shrink-0 font-medium text-ink">Extras</dt>
+            <dd>{game.extras.join(" · ")}</dd>
+          </div>
+        )}
+      </dl>
+    </div>
+  );
+}
+
 /**
  * The plan's questions in the chat (D32): one screen per question, then a short summary and Start
  * building. Answers live on the turn's record, so a reload lands on the first unanswered question
@@ -233,6 +265,7 @@ export function PlanCard({ intake, actions }: { intake: PlanIntake; actions?: Pl
     return (
       <div className="mt-3 rounded-block bg-canvas p-4">
         <p className="mb-2 text-[11px] font-semibold tracking-[.18em] text-violet uppercase">Your plan</p>
+        <GameIdea intake={intake} />
         <AnswerList intake={intake} />
       </div>
     );
@@ -257,6 +290,7 @@ export function PlanCard({ intake, actions }: { intake: PlanIntake; actions?: Pl
         <h3 ref={heading} tabIndex={-1} className="mt-1 mb-3 text-sm font-medium outline-none focus-visible:shadow-none">
           {intake.summary}
         </h3>
+        <GameIdea intake={intake} />
         <AnswerList intake={intake} onChange={go} />
         <div className="mt-4 flex justify-end">
           <ActionButton disabled={leaving} onClick={() => leave(actions.start)}>

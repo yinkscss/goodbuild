@@ -21,6 +21,8 @@ Written 4 Nov 2026 at the end of the first build session (claude.ai), for whoeve
 
 **MiniPay for games (11 Nov 2026, D88):** a game's plan now asks whether it should work inside MiniPay, and Yes turns the MiniPay kit on, which now has a checklist of every MiniPay requirement. The chat then shows step cards for deploying, publishing and opening the game in MiniPay's developer mode (owner's pick, option A; see `/dev/preview?minipay=ready`). **UNVERIFIED** with a real model and in the real MiniPay app.
 
+**Games right first time (11 Nov 2026, D90):** start screens are drawn (`onIdleFrame`), the leaderboard is a kit (one free signature in a browser, a small contract inside MiniPay), saved-data reads clamp to 100, the run check looks at the start screen, and a game's plan asks about obstacles, power-ups and characters and shows a game pitch. **UNVERIFIED** with a real model, a published app and real MiniPay. Plan for the rest: [GAMES_PLAN.md](GAMES_PLAN.md).
+
 **Games (10 Nov 2026, D71 and D72):** GoodBuild can build 2D games through the first kit, `game-2d`. **UNVERIFIED** with a real model and on a real phone. **Owner to confirm:** games of chance for money are still refused (D72).
 
 **Blog and search visibility (10 Nov 2026, D83, branch `worktree-blog-seo-50`):** 50 posts at `/blog`, plus sitemap, robots (AI crawlers named), `/llms.txt`, `/llms-full.txt` and RSS. Details and owner steps: [BLOG.md](BLOG.md). **UNVERIFIED:** rankings, and whether Cloudflare's AI-bot blocking overrides `robots.txt`.
