@@ -226,7 +226,7 @@ export const hasBar = (hasUndeployedContracts: boolean, changeableContract: bool
 /**
  * Just the logo at the bottom left, with a cross to close it (D56). The words "Built with GoodBuild" are in the
  * link's label for screen readers. Notices that matter (demo, changeable, report) sit beside the logo when there are any.
- * With the badge off (the owner's choice, D85) the logo goes, but the notices stay when there is a demo or changeable-contract
+ * With the badge off (the owner's choice, D89) the logo goes, but the notices stay when there is a demo or changeable-contract
  * notice, because visitors need to know. With none of those, no bar at all (see hasBar).
  */
 export function bar(hasUndeployedContracts: boolean, reportUrl?: string, changeableContract = false, showBadge = true) {

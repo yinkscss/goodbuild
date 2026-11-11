@@ -23,6 +23,7 @@ export function plainStepLabel(label: string): string {
   if (label === "Checking types") return "Checking the code";
   const fix = /^Fixing errors \(attempt (\d+) of (\d+)\)$/.exec(label);
   if (fix) return `Fixing a problem (try ${fix[1]} of ${fix[2]})`;
+  if (label === "Fixing what it saw") return "Tidying up what it saw";
   return label;
 }
 
@@ -222,6 +223,61 @@ export function VisualCheckNote({ record, checking, failed, onFix, disabled }: {
 }
 
 /**
+ * The builder's own look at the page (D87). A quiet line when it looked right or when it fixed what
+ * it saw; a card with "Fix these" only when it saw something and left the page as it was.
+ */
+export function ReviewNote({ record, onFix, disabled }: { record: TurnRecord; onFix?: (prompt: string) => void; disabled: boolean }) {
+  const review = record.review;
+  if (!review) return null;
+  if (review.ok) {
+    return (
+      <p className="mt-3 flex items-center gap-2 text-xs text-grey-600">
+        <Eye className="size-3.5 text-success" aria-hidden /> Looked at the page on a phone and a computer: it looks right.
+      </p>
+    );
+  }
+  const count = review.issues.length === 1 ? "one thing" : `${review.issues.length} things`;
+  if (review.fixed) {
+    return (
+      <details className="mt-3 text-xs text-grey-600">
+        <summary className="flex cursor-pointer list-none items-center gap-2 outline-none focus-visible:shadow-focus">
+          <Eye className="size-3.5 text-success" aria-hidden /> Looked at the page on a phone and a computer, and fixed {count}.
+        </summary>
+        <ul className="mt-1.5 list-disc space-y-0.5 pl-9">
+          {review.issues.map((i) => (
+            <li key={i}>{i}</li>
+          ))}
+        </ul>
+      </details>
+    );
+  }
+  const prompt = `Fix these problems you saw when you looked at the page:\n${review.issues.map((i) => `- ${i}`).join("\n")}`;
+  return (
+    <div className="mt-4 rounded-block bg-canvas p-4" role="status">
+      <div className="flex items-start gap-3">
+        <span className="mt-1.5 size-2 shrink-0 rounded-full bg-warning" aria-hidden />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium">Looking at the page, the builder spotted {count} it didn&apos;t fix</p>
+          <ul className="mt-1 list-disc space-y-0.5 pl-4 text-sm text-grey-600">
+            {review.issues.map((i) => (
+              <li key={i}>{i}</li>
+            ))}
+          </ul>
+        </div>
+      </div>
+      {onFix && (
+        <div className="mt-3 flex justify-end">
+          <Button variant="chipSelected" size="sm" disabled={disabled} onClick={() => onFix(prompt)}>
+            <Wrench />
+            Fix these
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
  * An assistant turn: text, steps, then the plan's questions, the deploy card or an error card. The
  * build log and file changes stay on the record (the error card's Logs, the Code tab) but aren't
  * shown here: people found them confusing, and they say nothing someone building an app needs.
@@ -284,7 +340,8 @@ export function TurnView({
           Stopped. This build&apos;s edits were discarded; your files are as they were.
         </p>
       )}
-      {!live && <VisualCheckNote record={record} checking={checking} failed={checkFailed} onFix={onSuggest} disabled={fixDisabled} />}
+      {!live && record.review && <ReviewNote record={record} onFix={onSuggest} disabled={fixDisabled} />}
+      {!live && !record.review && <VisualCheckNote record={record} checking={checking} failed={checkFailed} onFix={onSuggest} disabled={fixDisabled} />}
       {!live && onSuggest && record.status !== "error" && record.suggestions?.length ? (
         <SuggestionChips items={record.suggestions} onPick={onSuggest} disabled={fixDisabled} />
       ) : null}

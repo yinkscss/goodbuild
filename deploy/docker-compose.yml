@@ -70,6 +70,9 @@ services:
       RUN_CHECK_CONCURRENCY: ${RUN_CHECK_CONCURRENCY:-2}
       # The type check (D68): "warn" notes type errors in the build log, "enforce" sends them to auto-fix, "off" skips it.
       TYPE_CHECK: ${TYPE_CHECK:-warn}
+      # The review (D87): after a build passes its checks, the strong model looks at screenshots of it and the
+      # build model fixes what it lists. Off until the evals have measured it: set VISUAL_REVIEW=1 in .env.production.
+      VISUAL_REVIEW: ${VISUAL_REVIEW:-off}
     depends_on:
       migrate:
         condition: service_completed_successfully

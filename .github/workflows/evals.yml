@@ -15,6 +15,10 @@ on:
         description: "Save this run as the new baseline (commit the file from the artifact)"
         type: boolean
         default: false
+      visual_review:
+        description: "Turn on the review (D87): the builder looks at screenshots of each build and fixes what it sees. Run once with and once without to compare"
+        type: boolean
+        default: false
   pull_request:
     types: [labeled]
 
@@ -80,6 +84,7 @@ jobs:
           PUBLISHED_APPS_DOMAIN: localhost
           RUN_CHECK: "1"
           TYPE_CHECK: warn
+          VISUAL_REVIEW: ${{ inputs.visual_review && '1' || 'off' }}
           UNVERIFIED_CAP_MICRO: "3000000"
           FREE_AI_BUDGET_MICRO: "15000000"
           TURN_CONCURRENCY: "3"

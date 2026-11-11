@@ -12,8 +12,9 @@ export type ModelTier = "strong" | "cheap";
  * Which tier each kind of work uses (D19). DeepSeek writes the first pass; Claude fixes what
  * the checks reject. Moving follow-up edits to Claude later is one line: build for edits.
  */
-export const TIER_FOR = { plan: "cheap", build: "cheap", fix: "strong", testFix: "cheap" } as const satisfies Record<string, ModelTier>;
+export const TIER_FOR = { plan: "cheap", build: "cheap", fix: "strong", testFix: "cheap", review: "strong" } as const satisfies Record<string, ModelTier>;
 /** `testFix`: first auto-fix attempt when every failing check is a contract test (D19 amendment). Later attempts use `fix`. */
+/** `review`: reading the screenshots of a finished build (D87). What it finds is fixed on `build`. */
 
 export const MODEL_IDS: Record<ModelTier, string> = { strong: "claude-sonnet-5-5", cheap: "deepseek-flash" };
 const KEY_NAME: Record<ModelTier, string> = { strong: "ANTHROPIC_API_KEY", cheap: "DEEPSEEK_API_KEY" };

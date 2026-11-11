@@ -11,7 +11,7 @@ import { MANIFEST_PATH, parseManifest, planManifest } from "@/lib/deploy/manifes
 
 import { assetRefs } from "./assets";
 import { exploitTestIssues } from "./kits/dao-vault";
-import { KIT_MARKER, kitForPackage, kitsOf, type Kit } from "./kits/registry";
+import { KIT_MARKER, kitForPackage, kitReplacing, kitsOf, type Kit } from "./kits/registry";
 import { ALLOWED_DEPENDENCIES, PLATFORM_DIR, WALLET_DIR, dependenciesOf, isStarterApp } from "./template";
 
 /** Compiler settings, pinned (CONTRACTS_AND_DEPLOYMENT.md §2, §4). */
@@ -557,7 +557,16 @@ export function checkApp(files: Record<string, string>, opts: { assets?: string[
         const pkg = packageName(spec);
         if (!deps.has(pkg)) {
           const kit = kitForPackage(pkg);
-          const hint = kit && !kitsOf(files).includes(kit) ? ` It comes with the ${kit.id} kit: call add_kit("${kit.id}") first.` : pkg in ALLOWED_DEPENDENCIES ? ` Call add_dependency("${pkg}") first.` : " It isn't on the allowed package list.";
+          // A package a kit stands in for (an animation or charting library): say which kit, so the fix is one step.
+          const instead = kit ? undefined : kitReplacing(pkg);
+          const hint =
+            kit && !kitsOf(files).includes(kit)
+              ? ` It comes with the ${kit.id} kit: call add_kit("${kit.id}") first.`
+              : pkg in ALLOWED_DEPENDENCIES
+                ? ` Call add_dependency("${pkg}") first.`
+                : instead
+                  ? ` It isn't on the allowed package list. The ${instead.id} kit does this with no package: ${kitsOf(files).includes(instead) ? `follow its guide (read_guide "kit-${instead.id}")` : `call add_kit("${instead.id}")`} and use its files.`
+                  : " It isn't on the allowed package list.";
           errors.push({ file, line, message: `Package "${pkg}" isn't installed.${hint}`, source: "imports" });
         }
       }

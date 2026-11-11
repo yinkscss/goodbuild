@@ -280,6 +280,19 @@ export async function visionImage(bytes: Uint8Array, mime: AssetMime, maxSide = 
   return { data: (await pipeline.png().toBuffer()).toString("base64"), mediaType: "image/png" };
 }
 
+/**
+ * A screenshot of a finished page, ready for the review (D87): the top of it, short enough to be read
+ * at full size. A phone screenshot 2,400px tall would be shrunk by a third on its way to the model and
+ * its text would be too small to judge. A phone gets its first 1,568px, a computer its first 1,400px.
+ */
+export async function reviewImage(png: Uint8Array, width: number): Promise<{ data: string; mediaType: "image/png" | "image/jpeg" }> {
+  const sharp = (await import("sharp")).default;
+  const meta = await sharp(png, { limitInputPixels: 40_000_000 }).metadata();
+  const limit = width <= 500 ? 1568 : 1400;
+  const cropped = meta.width && meta.height && meta.height > limit ? await sharp(png, { limitInputPixels: 40_000_000 }).extract({ left: 0, top: 0, width: meta.width, height: limit }).png().toBuffer() : png;
+  return visionImage(cropped, "image/png");
+}
+
 /** The vision prompt per kind. A reference becomes a layout spec the builder can follow without seeing it. */
 export function describePrompt(kind: AssetKind, name: string): string {
   if (kind === "reference") {

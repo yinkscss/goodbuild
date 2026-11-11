@@ -6,6 +6,7 @@ import { SandpackPreview, SandpackProvider } from "@codesandbox/sandpack-react";
 import { Logo, LogoMark } from "@/components/brand/logo";
 import { contractAddressKey } from "@/lib/deploy/wiring";
 import { openPreviewChannel, shouldShowSaved, type PreviewChannelMessage } from "@/lib/preview-channel";
+import { TAILWIND_BROWSER_URL } from "@/lib/preview-engine";
 import { cn } from "@/lib/utils";
 import type { WorkspaceState } from "@/server/workspace-state";
 import { dependencies, PreviewControls, PreviewCover, theme, toAppFiles } from "./preview-panel";
@@ -74,7 +75,7 @@ export function PreviewPopout({ initial }: { initial: WorkspaceState }) {
         theme={theme}
         files={sandpackFiles}
         customSetup={{ entry: "/src/main.tsx", dependencies: deps }}
-        options={{ externalResources: ["https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"], recompileDelay: 400 }}
+        options={{ externalResources: [TAILWIND_BROWSER_URL], recompileDelay: 400 }}
       >
         <header className="flex items-center justify-between gap-3 px-2 py-1">
           <div className="flex min-w-0 items-center gap-3">

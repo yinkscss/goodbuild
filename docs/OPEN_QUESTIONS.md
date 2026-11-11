@@ -68,7 +68,7 @@
 
 ## Q16. Publishing / hosting of generated apps
 - Resolved for hosting by P19: GoodBuild serves each app at `<slug>.goodbuildit.xyz` from a stored build.
-- Still open: wildcard DNS through Vercel's nameservers (D26), moderation, and a real contact address. Takedown is `scripts/takedown.mjs`, `/report` takes reports once `NEXT_PUBLIC_CONTACT_EMAIL` is set, and `/support` takes tickets once `SUPPORT_EMAIL` or the Telegram bot is set (D84). `/terms` and `/privacy` are unreviewed drafts.
+- Still open: wildcard DNS through Vercel's nameservers (D26), moderation, and a real contact address. Takedown is `scripts/takedown.mjs`, `/report` takes reports once `NEXT_PUBLIC_CONTACT_EMAIL` is set, and `/support` takes tickets once `SUPPORT_EMAIL` or the Telegram bot is set (D88). `/terms` and `/privacy` are unreviewed drafts.
 
 ## Q17. How does GoodBuild spend users' GoodDollar AI credits? (superseded by D11; kept for a future AntSeed provider)
 - Ideas so far: (A) hold user's derived AntSeed buyer key in a server-side AntSeed gateway; (B) wait for GoodDollar's `gd_live_` keys + Worker proxy (not yet implemented). See [GOODDOLLAR_AI_CREDITS.md](GOODDOLLAR_AI_CREDITS.md) §4–6.
@@ -191,3 +191,11 @@ The harness plan listed "file uploads" as an app-data upgrade: a visitor of a pu
 - **Storage.** Visitor files would live in the database now (D65) and Cloudflare R2 later. A free app with open uploads can fill the disk; it needs its own quota, below the 20 MB per-project data limit.
 - **Claude's input.** Start narrow if wanted: signed-in visitors only (never anonymous), images only up to about 300 KB, stored per wallet and counted in the wallet's 2 MB, served from the app's own host with `nosniff` and no scripting, and removed with the wallet's data. The owner's own uploads (logos, sounds, fonts, models) already work (D78); this question is only about visitors'.
 
+
+## Q42. Should the builder look at its own page, and should the strong model write first builds? (raised by the audit, 10 Nov 2026)
+- **The builder couldn't see what it built.** Answered by D87 (10 Nov 2026): the review is built and off by default. Still open: whether to turn it on, which the evals decide.
+- **D19 (DeepSeek builds, Claude fixes) was chosen on cost before quality was measured.** Design judgement is where the models differ most. Claude's input: three eval runs (today's routing, strong for the first build only, strong for every build) and decide on cost per good build.
+- **Both wait on the eval baseline**, which has never been run with real models. Details: [AUDIT_2026-11-10.md](AUDIT_2026-11-10.md) section 3.
+
+## Q43. React Bits' licence on GoodBuild's own landing page (raised by D84)
+`src/components/react-bits/BlurText.tsx` is React Bits code (MIT with the Commons Clause) on the landing page of a paid product. The Commons Clause restricts selling a product whose value derives substantially from the software; one hero animation is unlikely to be that, but it is the owner's call. The motion kit's `SplitText` does the same job and could replace it.

@@ -730,6 +730,30 @@ describe("kits in a turn (D71)", { timeout: 120_000 }, () => {
     expect(events.some((e) => e.type === "log" && e.line === "kits: turned on demo-kit for this request")).toBe(true);
   });
 
+  it("still turns the kit on when the build starts from the plan's Start building, where the request has none of the words", async () => {
+    // Plan first (D32): the person's request was the first message, answered with questions. The build turn's own message is "Start building".
+    await db.update(messages).set({ content: "Build me a demo thing for our club", status: "done" }).where(eq(messages.id, queuedId));
+    const [start] = await db.insert(messages).values({ projectId, role: "user", content: "Start building", status: "queued", meta: { mode: "build" } }).returning({ id: messages.id });
+    const { client, requests } = scriptedModel([{ tools: [{ name: "create_file", args: { path: "src/App.tsx", content: APP } }] }, { text: "Built it." }]);
+    const record = await runTurn({ db, model: client }, { projectId, userId, mode: "build", userMessageId: start.id }, () => {});
+    expect(record.status).toBe("ready");
+    expect(String(requests[0].messages.at(-1)?.content)).toContain("Kits on for this project: demo-kit (Demo things)");
+    expect((await loadFiles(db, projectId))["src/demo/useDemo.ts"]).toContain("useDemo");
+
+    // A later turn goes by its own words: an old mention doesn't turn on a kit that was never asked for again.
+    KITS.splice(KITS.indexOf(demo), 1);
+    const other: Kit = { ...demo, id: "other-kit", keywords: /\bour club\b/i, files: { "src/other/x.ts": "export const x = 1;\n" } };
+    KITS.push(other, demo);
+    try {
+      const [next] = await db.insert(messages).values({ projectId, role: "user", content: "Make the title bigger", status: "queued", meta: { mode: "build" } }).returning({ id: messages.id });
+      const later = scriptedModel([{ text: "Done." }]);
+      await runTurn({ db, model: later.client }, { projectId, userId, mode: "build", userMessageId: next.id }, () => {});
+      expect(String(later.requests[0].messages.at(-1)?.content)).not.toContain("other-kit");
+    } finally {
+      KITS.splice(KITS.indexOf(other), 1);
+    }
+  });
+
   it("leaves a project alone when the request isn't for a kit, and lets the builder turn one on itself", async () => {
     const { client, requests } = scriptedModel([
       { tools: [{ name: "add_kit", args: { name: "demo-kit" } }, { name: "create_file", args: { path: "src/App.tsx", content: APP } }] },
