@@ -1,10 +1,12 @@
 /**
  * Codebase awareness for the agent (P17): a one-line manifest per file, a symbol index, code
  * search and per-request context selection. All lexical and computed from the files
- * themselves: no model calls and no embeddings. Projects are small (≤ 80 files of ≤ 120 KB),
+ * themselves: no model calls and no embeddings. Projects are small (≤ 92 files of ≤ 120 KB),
  * so a full scan per call costs well under a millisecond per file; see docs/evals/HARNESS.md
  * for the measurement behind "no vector search".
  */
+
+import { UI_PRIMITIVES } from "./ui-primitives";
 
 export interface SymbolDef {
   name: string;
@@ -290,7 +292,11 @@ export function selectContext(
   // (about 11k chars). The manifest still lists them, so read_file can fetch them.
   // The same goes for GoodBuild's wallet layer (src/lib/goodbuild/), which the prompt documents.
   // And the motion kit's stylesheet: keyframes the builder never edits or needs to read.
-  files = Object.fromEntries(Object.entries(files).filter(([p]) => p !== "src/lib/db.ts" && p !== "src/lib/useDb.ts" && p !== "src/fx/fx.css" && !p.startsWith("src/lib/goodbuild/")));
+  // And the ten further UI pieces (D89): about 25k chars that the ui-components guide documents. Sent
+  // with every turn they would cost more than most small edits do.
+  files = Object.fromEntries(
+    Object.entries(files).filter(([p]) => p !== "src/lib/db.ts" && p !== "src/lib/useDb.ts" && p !== "src/fx/fx.css" && !p.startsWith("src/lib/goodbuild/") && !(p in UI_PRIMITIVES)),
+  );
   const want = requestTerms(request);
   const soft = terms(opts.history ?? "").filter((t) => !want.includes(t));
   const symbols = symbolIndex(files);

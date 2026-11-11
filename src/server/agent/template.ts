@@ -17,6 +17,7 @@ import { chainSourceFor, CONNECT_BUTTON, USE_WALLET, walletHelpersFor, withCurre
 export { WALLET_DIR, WALLET_HELPERS, withCurrentWalletHelpers } from "./wallet-template";
 
 import { allKitPackages } from "./kits/registry";
+import { UI_PRIMITIVES } from "./ui-primitives";
 
 export const PLATFORM_DIR = "src/contracts/";
 
@@ -969,6 +970,8 @@ export function starterFiles(chainId = NETWORKS["celo-sepolia"].chainId): Record
     "src/components/ui/skeleton.tsx": SKELETON,
     "src/components/ui/notice.tsx": NOTICE,
     "src/components/ui/textarea.tsx": TEXTAREA,
+    // Dialog, sheet, tabs, select, dropdown menu, tooltip, toast, accordion, avatar and switch (D89).
+    ...UI_PRIMITIVES,
   };
 }
 
