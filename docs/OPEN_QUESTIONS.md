@@ -199,3 +199,6 @@ The harness plan listed "file uploads" as an app-data upgrade: a visitor of a pu
 
 ## Q43. React Bits' licence on GoodBuild's own landing page (raised by D84)
 `src/components/react-bits/BlurText.tsx` is React Bits code (MIT with the Commons Clause) on the landing page of a paid product. The Commons Clause restricts selling a product whose value derives substantially from the software; one hero animation is unlikely to be that, but it is the owner's call. The motion kit's `SplitText` does the same job and could replace it.
+
+## Q44. Games: right first time (raised 11 Nov 2026 after the owner's Neon Drift test build)
+A MiniPay car racer with a leaderboard and G$ store took 7 versions. Claude traced most retries to GoodBuild itself: `GameCanvas` never draws while paused, so every start screen is blank; the game guide's leaderboard needs a wallet sign-in that the MiniPay guide forbids; the planner never asks about obstacles, power-ups or NPCs; the run check plays for one second and can't tell a flat canvas from a game. The proposed fix, in phases, with the owner's open choices (plan card count, leaderboard default, G$ inside MiniPay): [GAMES_PLAN.md](GAMES_PLAN.md). Waiting for the owner's go-ahead and the build transcript.
