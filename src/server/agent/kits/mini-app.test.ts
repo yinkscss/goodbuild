@@ -6,7 +6,7 @@ import { starterFiles } from "../template";
 import { typeCheck } from "../type-check";
 
 import { detectKits, kitIdsOf, withKit } from "./index";
-import { miniApp } from "./mini-app";
+import { MINIPAY_CHECKLIST, miniApp, miniPayChecklist } from "./mini-app";
 
 const PAGE = `import { HashRouter, Route, Routes } from "react-router-dom";
 import { InfoPage, INFO_ROUTES } from "./minipay/InfoPages";
@@ -62,6 +62,34 @@ describe("the MiniPay kit", { timeout: 120_000 }, () => {
     expect(messages("\nconst b = { maxFeePerGas: 1n };\n")).toMatch(/legacy/);
     expect(messages('\nconst c = parseEther("1"); // USDC\n')).toMatch(/6 decimals/);
     expect(checkApp(project("export default function App() { return <main>Hi</main>; }\n")).errors.map((e) => e.message).join()).toMatch(/MiniFooter/);
+  });
+
+  it("refuses links that open a new tab (D88)", () => {
+    const messages = checkApp(project(PAGE + '\nexport const L = () => <a href="https://celo.org" target="_blank">Celo</a>;\n')).errors.map((e) => e.message).join("\n");
+    expect(messages).toMatch(/new tab/);
+  });
+
+  it("gives the builder the whole checklist, and says which items a project meets (D88)", () => {
+    for (const item of MINIPAY_CHECKLIST) expect(miniApp.guide).toContain(item.label);
+    const status = (files: Record<string, string>) => Object.fromEntries(miniPayChecklist(files).map((i) => [i.id, i.status]));
+    // A game with no payments: everything checked is met, the payment items don't apply, the rest is for the phone and the listing.
+    expect(status(project())).toEqual({
+      "auto-connect": "done",
+      "no-sign-in": "done",
+      "legacy-tx": "not-needed",
+      decimals: "not-needed",
+      "add-cash": "not-needed",
+      "no-new-tabs": "done",
+      footer: "done",
+      "app-info": "done",
+      "phone-layout": "try-on-phone",
+      "opens-in-minipay": "try-on-phone",
+      verified: "for-listing",
+    });
+    const paying = project(PAGE + "\nimport { sendCoin } from \"./minipay/minipay\";\nexport const pay = () => sendCoin({ coin: \"USDC\", to: \"0x0000000000000000000000000000000000000001\", amount: \"1\" });\n");
+    expect(status(paying)).toMatchObject({ "legacy-tx": "done", decimals: "done", "add-cash": "todo" });
+    const broken = { ...project("export default function App() { return <a href=\"x\" target=\"_blank\">x</a>; }\n"), "src/minipay/app.ts": withKit(starterFiles(), miniApp)["src/minipay/app.ts"] };
+    expect(status(broken)).toMatchObject({ footer: "todo", "no-new-tabs": "todo", "app-info": "todo" });
   });
 
   it("brings the five info pages, so the builder doesn't write them", () => {

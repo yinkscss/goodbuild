@@ -21,6 +21,10 @@ const MAX_MODEL_QUESTIONS = 4;
 const MAX_OPTIONS = 4;
 /** The palette question is added by the server, so the model doesn't spend tokens describing colours. */
 const PALETTE_QUESTION_ID = "palette";
+/** Games get a MiniPay question from the server too (D88), so it is always asked and always worded the same. */
+export const MINIPAY_QUESTION_ID = "minipay";
+/** The request already says MiniPay: the kit turns on from its words, so there is nothing to ask. */
+const SAYS_MINIPAY = /\bmini ?pay\b/i;
 
 export const INTAKE_TOOLS: ToolSpec[] = [
   {
@@ -74,7 +78,7 @@ The questions:
 - Each question has 2 to 4 short, concrete options that fit this request, and exactly one is marked recommended. An "Other" box is added for you, so don't write one.
 - Set multiple to true when several options can apply together.
 - Ask only about the kind of thing it is. Money or ownership on Celo (payments, savings, tickets, votes): what people can do with the money, who, how much. A regular app with no money (bookings, lists, sign-ups, a quiz): what people do in it, what it remembers for them, who sees what (offer "Only me, the owner" for forms sent to them, never a passcode). A game: how it is played, how you win, and scores. A plain website: the main thing visitors do, its sections, its tone. Never ask an app without money about money, tokens, voting or wallets.
-- Don't ask about colours, GoodBuild adds that question itself. Set recommended_palette to the one that suits the app: ${PALETTES.map((p) => `${p.id} (${p.mood.toLowerCase()})`).join("; ")}. Use "none" only if they already named their colours.
+- Don't ask about colours, GoodBuild adds that question itself. For a game, don't ask about MiniPay either: GoodBuild adds that one too. Set recommended_palette to the one that suits the app: ${PALETTES.map((p) => `${p.id} (${p.mood.toLowerCase()})`).join("; ")}. Use "none" only if they already named their colours.
 - Never ask about the network, pricing or how the code is written.
 - Never use em dashes.
 
@@ -119,17 +123,17 @@ function parseOptions(raw: unknown): PlanOption[] {
   return options.map((o, i) => (i === Math.max(0, marked) ? { ...o, recommended: true } : o));
 }
 
-function parseQuestions(raw: unknown): PlanQuestion[] {
+function parseQuestions(raw: unknown, max = MAX_MODEL_QUESTIONS): PlanQuestion[] {
   if (!Array.isArray(raw)) return [];
   const questions: PlanQuestion[] = [];
   for (const q of raw) {
     const entry = (q ?? {}) as { question?: unknown; label?: unknown; multiple?: unknown; options?: unknown };
     const question = clean(entry.question, 160);
     const options = parseOptions(entry.options);
-    // The palette card already asks about colour.
-    if (!question || options.length < 2 || /\b(colou?rs?|palette)\b/i.test(question)) continue;
+    // The palette card already asks about colour, and the MiniPay card about MiniPay.
+    if (!question || options.length < 2 || /\b(colou?rs?|palette)\b/i.test(question) || SAYS_MINIPAY.test(question)) continue;
     questions.push({ id: `q${questions.length + 1}`, kind: "choice", question, label: clean(entry.label, 32) || question.slice(0, 32), multiple: entry.multiple === true, options });
-    if (questions.length === MAX_MODEL_QUESTIONS) break;
+    if (questions.length === max) break;
   }
   return questions;
 }
@@ -147,6 +151,34 @@ function paletteQuestion(recommended: string, website: boolean): PlanQuestion {
   };
 }
 
+/**
+ * "Should your game work inside MiniPay?" (D88). Yes turns the mini-app kit on for the build (see
+ * planBrief's miniPay), which brings MiniPay's rules, its checklist and the footer its listing needs.
+ * The No label never says MiniPay, so the kit's own keywords can't turn it on from that answer.
+ */
+export function miniPayQuestion(): PlanQuestion {
+  return {
+    id: MINIPAY_QUESTION_ID,
+    kind: "choice",
+    question: "Should your game work inside MiniPay, the wallet app on many phones?",
+    label: "MiniPay",
+    multiple: false,
+    options: [
+      { id: "yes", label: "Yes, make it MiniPay ready", detail: "It still works in any browser", recommended: true },
+      { id: "no", label: "No, just the web", detail: "Any browser, nothing extra" },
+    ],
+  };
+}
+
+/**
+ * Ask the MiniPay question: a game, unless they already said MiniPay. Wider than the game kit's
+ * words, so 3D games and "a jumping game where..." are asked too; a website about a game isn't.
+ */
+export function asksMiniPay(request: string): boolean {
+  const game = looksLikeGame(request) || (/\bgames?\b/i.test(request) && !looksLikeWebsite(request));
+  return game && !SAYS_MINIPAY.test(request);
+}
+
 /** The tool call as a question set, or null when it gives nothing usable (the caller then falls back). */
 export function parseIntake(rawArguments: string, request: string): PlanIntake | null {
   let args: { summary?: unknown; questions?: unknown; recommended_palette?: unknown };
@@ -155,12 +187,15 @@ export function parseIntake(rawArguments: string, request: string): PlanIntake |
   } catch {
     return null;
   }
-  const questions = parseQuestions(args.questions);
+  // With the MiniPay card added, the model gets one card fewer, so a game is never more than five cards.
+  const miniPay = asksMiniPay(request);
+  const questions = parseQuestions(args.questions, miniPay ? MAX_MODEL_QUESTIONS - 1 : MAX_MODEL_QUESTIONS);
   if (!questions.length) return null;
   const palette = clean(args.recommended_palette, 20).toLowerCase();
+  const all = miniPay ? [...questions, miniPayQuestion()] : questions;
   return {
     summary: clean(args.summary, 240) || clean(request, 240),
-    questions: palette === "none" ? questions : [...questions, paletteQuestion(palette, looksLikeWebsite(request))],
+    questions: palette === "none" ? all : [...all, paletteQuestion(palette, looksLikeWebsite(request))],
     answers: {},
   };
 }
@@ -203,7 +238,8 @@ export function fallbackIntake(request: string): PlanIntake {
         choice("q1", "Who it's for", "Who will use this?", false, ["A small group I know", "My school or community", "Anyone who finds it"]),
         choice("q2", "Who's in charge", "Who should be able to change things or take money out?", false, ["Only me", "A few people I choose", "Everyone decides together"]),
       ];
-  return { summary: clean(request, 240), questions: [...questions, paletteQuestion(PALETTES[0].id, website)], answers: {} };
+  const miniPay = asksMiniPay(request) ? [miniPayQuestion()] : [];
+  return { summary: clean(request, 240), questions: [...questions, ...miniPay, paletteQuestion(PALETTES[0].id, website)], answers: {} };
 }
 
 /** The newest question set in a project's chat, if any. */
@@ -224,6 +260,8 @@ export interface PlanBrief {
   paletteId?: string;
   /** Colours they described themselves. */
   customColours?: string;
+  /** They picked Yes on the MiniPay question (D88): the mini-app kit goes on. */
+  miniPay?: boolean;
 }
 
 /**
@@ -248,6 +286,9 @@ export function planBrief(intake: PlanIntake | null, firstBuild: boolean): PlanB
   } else if (customColours) {
     lines.push(`- Colours, in their words: "${customColours}". Set the --color-* tokens in public/index.html to match, with text that stays easy to read on its background.`);
   }
+  const miniPayAnswer = intake.answers[MINIPAY_QUESTION_ID];
+  const miniPay = Boolean(miniPayAnswer?.picks.includes("yes"));
+  if (miniPay) lines.push(`- MiniPay: it must work inside MiniPay. The mini-app kit is on: follow its guide and its checklist.`);
   const unanswered = intake.questions.length - answered.length;
   const tail = unanswered ? `\nThey skipped the other ${unanswered === 1 ? "question" : `${unanswered} questions`}: pick sensible defaults yourself.` : "";
   return {
@@ -255,5 +296,6 @@ export function planBrief(intake: PlanIntake | null, firstBuild: boolean): PlanB
     answerWords: answered.map((q) => answerText(q, intake.answers[q.id])).join("\n"),
     ...(palette ? { paletteId: palette.id } : {}),
     ...(customColours ? { customColours } : {}),
+    ...(miniPay ? { miniPay } : {}),
   };
 }
