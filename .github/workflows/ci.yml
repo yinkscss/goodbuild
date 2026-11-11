@@ -19,7 +19,9 @@ permissions:
 jobs:
   checks:
     name: Lint, types, tests, build
-    runs-on: ubuntu-latest
+    # Pinned (11 Nov 2026): on ubuntu-latest the runner could not reach any Ubuntu apt mirror ("Temporary failure
+    # resolving archive.ubuntu.com", packages for "resolute"), which fails the browser install and the age install below.
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
