@@ -42,20 +42,23 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
-      # The runners' Ubuntu mirrors sometimes fail to resolve for a minute or two. Make every apt call
-      # in this job (including the browser installer's) retry, and wait longer before giving up.
-      - name: Make apt retry on network errors
-        run: |
-          printf 'Acquire::Retries "8";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' | sudo tee /etc/apt/apt.conf.d/80-retries
-
-      # The run check's tests open built apps in a real headless browser (D67). Without it they skip.
+      # The browser comes from Playwright's own CDN. The runner's Ubuntu mirrors sometimes fail to
+      # resolve for an hour, so apt (the system libraries) is only used if the browser can't start
+      # without it, and then it retries.
       - name: Install the headless browser
         run: |
-          for attempt in 1 2 3; do
-            node node_modules/playwright-core/cli.js install --with-deps chromium-headless-shell && exit 0
-            echo "Attempt $attempt failed; retrying in 30s"; sleep 30
-          done
-          exit 1
+          pw="node node_modules/playwright-core/cli.js"
+          $pw install chromium-headless-shell
+          check='require("playwright-core").chromium.launch({headless:true}).then(b=>b.close()).then(()=>process.exit(0),e=>{console.error(e.message);process.exit(1)})'
+          if ! node -e "$check"; then
+            for attempt in 1 2 3; do
+              sudo apt-get -o Acquire::Retries=5 update -qq || true
+              $pw install-deps chromium-headless-shell && break
+              [ "$attempt" = 3 ] && exit 1
+              sleep 30
+            done
+            node -e "$check"
+          fi
         timeout-minutes: 10
 
       - name: Lint
@@ -80,12 +83,13 @@ jobs:
         timeout-minutes: 5
 
       # Real Postgres, age and MinIO in a throwaway project, with keys made up for the run (D47).
+      # age is a pinned release from GitHub, checked against its hash, so the run doesn't depend on
+      # the runner's Ubuntu mirrors.
       - name: Test the off-site backup and restore drill
         run: |
-          for attempt in 1 2 3; do
-            sudo apt-get update -qq && sudo apt-get install -y -qq age >/dev/null && break
-            [ "$attempt" = 3 ] && exit 1
-            echo "Attempt $attempt failed; retrying in 30s"; sleep 30
-          done
+          curl -fsSL --retry 5 --retry-all-errors -o age.tgz https://github.com/FiloSottile/age/releases/download/v1.2.1/age-v1.2.1-linux-amd64.tar.gz
+          echo "7df45a6cc87d4da11cc03a539a7470c15b1041ab2b396af088fe9990f7c79d50  age.tgz" | sha256sum -c -
+          sudo tar xzf age.tgz -C /usr/local/bin --strip-components=1 age/age age/age-keygen
+          rm age.tgz
           bash deploy/test-offsite-backup.sh
-        timeout-minutes: 12
+        timeout-minutes: 8
