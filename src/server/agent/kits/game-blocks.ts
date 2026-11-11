@@ -1,5 +1,5 @@
 /**
- * The 2D game kit's building blocks (D93): spawning, computer-controlled characters, power-ups, the
+ * The 2D game kit's building blocks (D94): spawning, computer-controlled characters, power-ups, the
  * score panel, vibration, and the probe GoodBuild's run check reads to test a game. Small files, no
  * packages, nothing allocated while the game runs. Kept beside game-2d.ts so that file stays readable.
  */

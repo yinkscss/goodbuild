@@ -14,7 +14,7 @@ const report = (rounds: ProbeRound[], over: Partial<ProbeReport> = {}): ProbeRep
 });
 const issues = (r: ProbeReport) => judgeRounds(r).issues.join("\n");
 
-describe("judging a played game (D93)", () => {
+describe("judging a played game (D94)", () => {
   it("passes a game that does everything", () => {
     const r = judgeRounds(report([round({ end: 16 }), round({ start: 16, end: 20 })]));
     expect(r.issues).toEqual([]);

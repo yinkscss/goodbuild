@@ -62,6 +62,8 @@ type Handler = (...args: never[]) => void;
 type Provider = EIP1193Provider & {
   isMiniPay?: boolean;
   isMetaMask?: boolean;
+  isOkxWallet?: boolean;
+  isOKExWallet?: boolean;
   accounts?: string[];
   on?: (event: string, handler: Handler) => void;
   removeListener?: (event: string, handler: Handler) => void;
@@ -72,6 +74,8 @@ type Announced = { info: WalletInfo; provider: Provider };
 const STORAGE_KEY = "goodbuild-wallet";
 const MINIPAY: WalletInfo = { id: "minipay", name: "MiniPay", icon: null, kind: "injected" };
 const WALLETCONNECT: WalletInfo = { id: "walletconnect", name: "WalletConnect", icon: null, kind: "walletconnect" };
+/** OKX Wallet: the extension injects window.okxwallet (OKX's docs). OKX also says that route is "compatible with OKX App's built-in DApp browser", so it is expected there too (UNVERIFIED). The id is its EIP-6963 rdns, so the choice is remembered the same way whether or not it announced itself. */
+const OKX_ID = "com.okex.wallet";
 
 let state: WalletState = { account: null, wallet: null, connecting: false };
 let active: Provider | null = null;
@@ -122,6 +126,13 @@ function legacy(): Provider | undefined {
   return eth && typeof eth.request === "function" ? eth : undefined;
 }
 
+/** OKX's own global. A value without a request method is not a wallet. */
+function okxLegacy(): Provider | undefined {
+  if (typeof window === "undefined") return undefined;
+  const okx = (window as unknown as { okxwallet?: Provider }).okxwallet;
+  return okx && typeof okx.request === "function" ? okx : undefined;
+}
+
 /** True inside the MiniPay wallet, which connects without asking. */
 export function isMiniPay(): boolean {
   return legacy()?.isMiniPay === true;
@@ -151,12 +162,21 @@ export function discoverWallets(): void {
 
 discoverWallets();
 
-/** Wallets in this browser: every EIP-6963 announcement, plus window.ethereum if it didn't announce itself. */
+/**
+ * Wallets in this browser: every EIP-6963 announcement, plus OKX's window.okxwallet and window.ethereum
+ * if they didn't announce themselves. Each wallet is listed once: OKX is matched by id, by being the same
+ * object, or by name (in case it announces under another id), and window.ethereum is skipped when it is OKX.
+ */
 export function browserWallets(): WalletInfo[] {
   const found = [...announced.values()];
   const list = found.map((w) => w.info);
+  const okx = okxLegacy();
+  if (okx && !found.some((w) => w.info.id === OKX_ID || w.provider === okx || /\bokx\b|okex/i.test(w.info.name))) {
+    list.push({ id: OKX_ID, name: "OKX Wallet", icon: null, kind: "injected" });
+  }
   const eth = legacy();
-  if (eth && !eth.isMiniPay && !found.some((w) => w.provider === eth)) {
+  const ethIsOkx = !!eth && (eth === okx || (list.some((w) => w.id === OKX_ID || /\bokx\b|okex/i.test(w.name)) && (eth.isOkxWallet === true || eth.isOKExWallet === true)));
+  if (eth && !eth.isMiniPay && !ethIsOkx && !found.some((w) => w.provider === eth)) {
     list.push({ id: "injected", name: eth.isMetaMask ? "MetaMask" : "Browser wallet", icon: null, kind: "injected" });
   }
   return list;
@@ -185,7 +205,7 @@ export function hasWallet(): boolean {
 
 function providerOf(info: WalletInfo): Provider | undefined {
   if (info.id === MINIPAY.id || info.id === "injected") return legacy();
-  return announced.get(info.id)?.provider;
+  return announced.get(info.id)?.provider ?? (info.id === OKX_ID ? okxLegacy() : undefined);
 }
 
 function remember(info: WalletInfo | null) {
@@ -401,7 +421,7 @@ export function restoreWallet(): Promise<void> {
       if (provider && account && !state.account) adopt(WALLETCONNECT, provider, account);
       return;
     }
-    if (!announced.has(saved.id)) await waitForWallets(300);
+    if (!announced.has(saved.id) && !(saved.id === OKX_ID && okxLegacy())) await waitForWallets(300);
     const info = browserWallets().find((w) => w.id === saved.id);
     const provider = info && providerOf(info);
     if (!info || !provider) return;
@@ -432,6 +452,12 @@ export async function ensureChain(provider: EIP1193Provider | null = active): Pr
         },
       ],
     });
+    // Adding a chain doesn't switch to it (EIP-3085), and OKX's default chain list has no Celo, so look once more and switch.
+    // If the wallet moved by itself the read matches and nothing more is asked. A rejection of this second switch is the visitor's answer, so it is thrown.
+    const after = await provider.request({ method: "eth_chainId" }).catch(() => null);
+    if (typeof after === "string" && parseInt(after, 16) !== appChain.id) {
+      await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: hex }] });
+    }
   }
 }
 
@@ -459,17 +485,27 @@ type Connect = (info: WalletInfo, onUri: (uri: string) => void) => Promise<Addre
  * Phone wallets that open a WalletConnect link. Formats follow each wallet's universal link plus
  * "/wc?uri=" (UNVERIFIED on real phones; see docs/HANDOFF.md). "Other wallet" opens the plain wc: link.
  */
-export const PHONE_WALLETS = [
+export const PHONE_WALLETS: Array<{ name: string; link: string; hint?: string; iosOnly?: boolean }> = [
   { name: "MetaMask", link: "https://metamask.app.link/wc?uri=" },
   { name: "Valora", link: "https://valoraapp.com/wc?uri=" },
   { name: "Trust Wallet", link: "https://link.trustwallet.com/wc?uri=" },
   { name: "Rainbow", link: "https://rnbwapp.com/wc?uri=" },
+  // OKX Wallet: RainbowKit's link for it (UNVERIFIED on real phones; OKX's docs describe only OKX Connect). It is a custom
+  // scheme, not a web link, so a phone without the app does nothing: the hint says so. Android has no row of its own because
+  // RainbowKit gives OKX the plain wc: link there, which is the "Other wallet" row.
+  { name: "OKX Wallet", link: "okex://main/wc?uri=", hint: "Needs the OKX app", iosOnly: true },
 ];
 
 export function isPhone(): boolean {
   if (typeof navigator === "undefined") return false;
   const ua = navigator.userAgent || "";
   return /Android|iPhone|iPad|iPod|Mobile/i.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+}
+
+export function isIos(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent || "";
+  return /iPhone|iPad|iPod/i.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
 }
 
 const STYLE = [
@@ -642,7 +678,7 @@ export function WalletChooser({
                   <Icon info={info} />
                   <span>
                     {info.name}
-                    <span className="gbw-hint">{info.kind === "walletconnect" ? (phone ? "MetaMask, Valora and other phone wallets" : "Scan a QR code with a phone wallet") : "In this browser"}</span>
+                    <span className="gbw-hint">{info.kind === "walletconnect" ? (phone ? (isIos() ? "MetaMask, Valora, OKX and other phone wallets" : "MetaMask, Valora and other phone wallets") : "Scan a QR code with a phone wallet") : "In this browser"}</span>
                   </span>
                 </button>
               </li>
@@ -670,18 +706,21 @@ export function WalletChooser({
             <button type="button" className="gbw-copy" onClick={() => void copy(view.uri!)}>
               {copied ? "Link copied" : "Copy link"}
             </button>
-            <p className="gbw-note">Open a WalletConnect wallet on your phone (MetaMask, Valora and others) and scan this code. Keep this page open until it connects.</p>
+            <p className="gbw-note">Open a WalletConnect wallet on your phone (MetaMask, Valora, OKX Wallet and others) and scan this code. Keep this page open until it connects.</p>
           </div>
         ) : null}
 
         {view.step === "walletconnect" && view.uri && phone ? (
           <div>
             <ul className="gbw-list">
-              {PHONE_WALLETS.map((w) => (
+              {PHONE_WALLETS.filter((w) => !w.iosOnly || isIos()).map((w) => (
                 <li key={w.name}>
                   <a className="gbw-row" href={w.link + encodeURIComponent(view.uri!)} rel="noreferrer">
                     <Icon info={w} />
-                    <span>{w.name}</span>
+                    <span>
+                      {w.name}
+                      {w.hint ? <span className="gbw-hint">{w.hint}</span> : null}
+                    </span>
                   </a>
                 </li>
               ))}

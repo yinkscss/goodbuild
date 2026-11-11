@@ -3,7 +3,7 @@ import { STABLECOINS } from "@/config/stablecoins";
 import type { Kit } from "./registry";
 
 /**
- * The leaderboard contract for MiniPay games (D92). MiniPay allows no sign-in signature, so a game
+ * The leaderboard contract for MiniPay games (D93). MiniPay allows no sign-in signature, so a game
  * there can't prove a wallet to GoodBuild's saved data. The owner chose a hybrid: browsers sign once
  * and save to app data, and MiniPay posts each best score to this small contract for a dollar fee.
  * useLeaderboard (src/game/leaderboard.ts) shows both as one board.

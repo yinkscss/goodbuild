@@ -3,7 +3,7 @@ import "server-only";
 import type { Page } from "playwright-core";
 
 /**
- * Playing a 2D game in the run check (D93). The game kit's probe (src/game/probe.ts) records what
+ * Playing a 2D game in the run check (D94). The game kit's probe (src/game/probe.ts) records what
  * happened while a restless bot plays: rounds, the score, where the player went, the speed, and each
  * kind of obstacle, power-up and character as it appears. This reads that and says what's wrong, in
  * words the builder can act on. It also posts a score to the leaderboard and connects a stand-in wallet,

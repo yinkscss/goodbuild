@@ -25,11 +25,11 @@ export interface RunCheckOptions {
   chainId?: number;
   /** The project is a game or a 3D scene: start it and play for a moment (set from its kits). */
   game?: boolean;
-  /** A 2D game (the game-2d kit): its start screen must draw the game and have a Play button (D92), and it is played with the probe on (D93). */
+  /** A 2D game (the game-2d kit): its start screen must draw the game and have a Play button (D93), and it is played with the probe on (D94). */
   game2d?: boolean;
-  /** The game shows PostScore: post a score with a stand-in wallet and look for it on the board (D93). */
+  /** The game shows PostScore: post a score with a stand-in wallet and look for it on the board (D94). */
   board?: boolean;
-  /** The MiniPay kit is on: open the game as MiniPay too (D93). */
+  /** The MiniPay kit is on: open the game as MiniPay too (D94). */
   miniPay?: boolean;
   /** The project draws a 3D scene from shapes alone: look for one that shows nothing but its background (set from its kits and files). */
   scene?: boolean;
@@ -58,7 +58,7 @@ const MAX_ISSUES = 5;
 const MAX_ROUTES = 6;
 const MAX_SHOT_HEIGHT = 2400;
 const DEFAULT_TIMEOUT_MS = 25_000;
-/** A 2D game is played for about 7 seconds, then opened with a wallet and as MiniPay (D93). */
+/** A 2D game is played for about 7 seconds, then opened with a wallet and as MiniPay (D94). */
 const GAME_TIMEOUT_MS = 50_000;
 /** Keep the shared browser this long after the last check, then free its memory. */
 const IDLE_CLOSE_MS = 60_000;
@@ -347,7 +347,7 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
     await settle(p, 600);
   };
   watch(page);
-  // A 2D game is played for real (D93): the kit's probe records what happens. Not for the review's pictures.
+  // A 2D game is played for real (D94): the kit's probe records what happens. Not for the review's pictures.
   const deep = Boolean(options.game2d && !options.screenshots);
   // Normal speed at first, so the first moments of play look as a player sees them; faster once they're checked.
   if (deep) await page.addInitScript(gameCheckScript(1));
@@ -362,7 +362,7 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
   // canvas. This finds what loading alone can't: a crash on the first frame of play, and a game that
   // draws nothing.
   let blankGame = false;
-  // A 2D game (D92): before Play, the start screen must show the game world and a Play button. A canvas
+  // A 2D game (D93): before Play, the start screen must show the game world and a Play button. A canvas
   // that is paused with nothing drawn is an empty box, the defect people saw most.
   let blankStart = false;
   let noPlay = false;
@@ -395,7 +395,7 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
     }
   }
 
-  // Play on (D93): rounds, Play again, what the probe saw. Then a stand-in wallet: Connect, posting a
+  // Play on (D94): rounds, Play again, what the probe saw. Then a stand-in wallet: Connect, posting a
   // score to the board, and MiniPay. Only when the game started cleanly, so one problem is reported once.
   const gameIssues: string[] = [];
   const gameNotes: string[] = [];

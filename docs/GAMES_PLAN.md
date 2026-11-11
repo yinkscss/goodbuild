@@ -1,6 +1,6 @@
 # Games plan: right first time (proposal, 11 Nov 2026)
 
-Status: **Phases A and B built (D92) and C and D built (D93), 11 Nov 2026; E to G still proposals.** The owner chose a wallet-only leaderboard with the hybrid design (browser: one free signature and app data; MiniPay: a small contract), so A2 below is superseded by D92. D93 lists where C and D differ from what is written here. Originally:
+Status: **Phases A and B built (D93) and C and D built (D94), 11 Nov 2026; E to G still proposals.** The owner chose a wallet-only leaderboard with the hybrid design (browser: one free signature and app data; MiniPay: a small contract), so A2 below is superseded by D93. D94 lists where C and D differ from what is written here. Originally:
 
 The owner's must-haves for every game build:
 1. Obstacles, challenges and power-ups, with the person asked about each one separately.

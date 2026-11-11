@@ -1,5 +1,5 @@
 /**
- * More of the 2D game kit's starter files (D92): one drawing shown outside the game, and a
+ * More of the 2D game kit's starter files (D93): one drawing shown outside the game, and a
  * leaderboard that works the first time, in a browser and inside MiniPay. Kept beside game-2d.ts so
  * that file stays readable.
  */

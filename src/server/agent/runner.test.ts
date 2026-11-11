@@ -778,7 +778,7 @@ describe("kits in a turn (D71)", { timeout: 120_000 }, () => {
     return loadFiles(db, projectId);
   };
 
-  it("turns the MiniPay leaderboard contract on for a MiniPay game with a leaderboard (D92)", async () => {
+  it("turns the MiniPay leaderboard contract on for a MiniPay game with a leaderboard (D93)", async () => {
     const mini = await buildFromPlan("A snake game for MiniPay with a leaderboard");
     expect(JSON.parse(mini["src/goodbuild.json"]).kits).toEqual(expect.arrayContaining(["game-2d", "mini-app", "game-board"]));
     expect(mini["contracts/GameBoard.sol"]).toContain("contract GameBoard");

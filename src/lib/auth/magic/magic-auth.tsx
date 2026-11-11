@@ -5,6 +5,7 @@ import type { EIP1193Provider } from "viem";
 import { celo, celoSepolia } from "viem/chains";
 
 import { AuthContextProvider } from "../context";
+import { detectInstalled, missingWalletMessage, pickInjected as pickInjectedFrom, walletLabel, type Announced, type Injected, type WalletWindow } from "../injected";
 import { isCaip25ScopeError, requestMetaMaskAccount, walletConnectMetadata } from "../metamask";
 import { SignInError, endSession, fetchSession, parseChainId, signInWithEthereum } from "../session-client";
 import type { Attestation, AuthApi, AuthPhase, ExternalWalletId, SessionUser, WalletState } from "../types";
@@ -45,10 +46,7 @@ interface Connected {
 
 const LAST_WALLET_KEY = "gb:wallet";
 
-type Injected = EIP1193Provider & { isMetaMask?: boolean; isMiniPay?: boolean; providers?: Injected[] } & Record<string, unknown>;
-
-/** EIP-6963: wallets announce themselves with a reverse-DNS id, so "MetaMask" can mean MetaMask and nothing else. */
-type Announced = { info: { rdns: string; name: string }; provider: Injected };
+/** What the page has heard from wallets (EIP-6963). Finding a wallet in it lives in ../injected.ts. */
 const announced = new Map<string, Announced>();
 const subscribers = new Set<() => void>();
 
@@ -64,29 +62,10 @@ function listenForWallets() {
 }
 if (typeof window !== "undefined") listenForWallets();
 
-/** Rainbow, Brave, Coinbase, Phantom, Rabby, Trust and others set isMetaMask = true to be compatible. Only the rdns tells them apart. */
-const IMPERSONATORS = ["isRainbow", "isBraveWallet", "isCoinbaseWallet", "isPhantom", "isRabby", "isTrust", "isTrustWallet", "isOkxWallet", "isOKExWallet", "isTokenPocket", "isZerion", "isFrame", "isExodus"];
-
-function legacyProviders(): Injected[] {
-  if (typeof window === "undefined") return [];
-  const eth = (window as unknown as { ethereum?: Injected }).ethereum;
-  return eth ? [eth, ...(eth.providers ?? [])] : [];
-}
-
-function findMetaMask(): Injected | undefined {
-  const real = announced.get("io.metamask") ?? announced.get("io.metamask.flask");
-  if (real) return real.provider;
-  // Wallets that do not announce (older MetaMask): accept window.ethereum only when nothing else claims to own it.
-  if (announced.size > 0) return undefined;
-  return legacyProviders().find((p) => p.isMetaMask && !p.isMiniPay && !IMPERSONATORS.some((k) => p[k]));
-}
-
-function injectedProviders(): Injected[] {
-  return [...[...announced.values()].map((a) => a.provider), ...legacyProviders()];
-}
+const pageWindow = (): WalletWindow | undefined => (typeof window === "undefined" ? undefined : (window as unknown as WalletWindow));
 
 function detectWallets(): AuthApi["detected"] {
-  return { metamask: !!findMetaMask(), minipay: injectedProviders().some((p) => p.isMiniPay) };
+  return detectInstalled(announced, pageWindow());
 }
 
 async function readAccount(provider: EIP1193Provider, method: "eth_accounts" | "eth_requestAccounts"): Promise<`0x${string}` | null> {
@@ -185,7 +164,7 @@ function MagicBridge({ publishableKey, children }: { publishableKey: string; chi
             const address = injected ? await readAccount(injected, "eth_accounts") : null; // no prompt
             if (alive && injected && address) {
               watch(injected);
-              setConn({ provider: injected, address, chainId: await readChainId(injected), kind: "external", label: last === "minipay" ? "MiniPay" : "MetaMask" });
+              setConn({ provider: injected, address, chainId: await readChainId(injected), kind: "external", label: walletLabel(last) });
             }
           }
         }
@@ -293,13 +272,8 @@ function MagicBridge({ publishableKey, children }: { publishableKey: string; chi
             provider = wc as unknown as EIP1193Provider;
           } else {
             provider = pickInjected(id);
-            label = id === "minipay" ? "MiniPay" : "MetaMask";
-            if (!provider) {
-              throw new SignInError(
-                "wallet_missing",
-                id === "minipay" ? "MiniPay isn't available in this browser. Open GoodBuild inside MiniPay, or use WalletConnect for Valora." : "MetaMask isn't installed in this browser. Try WalletConnect.",
-              );
-            }
+            label = walletLabel(id);
+            if (!provider) throw new SignInError("wallet_missing", missingWalletMessage(id));
           }
           const address = id === "metamask" ? await requestMetaMaskAccount(provider) : await readAccount(provider, "eth_requestAccounts");
           if (!address) throw new SignInError("connect_failed", "The wallet didn't connect. Try again.");
@@ -375,10 +349,7 @@ function MagicBridge({ publishableKey, children }: { publishableKey: string; chi
 }
 
 function pickInjected(id: ExternalWalletId | string): Injected | undefined {
-  const all = injectedProviders();
-  if (id === "minipay") return all.find((p) => p.isMiniPay);
-  if (id === "metamask") return findMetaMask();
-  return undefined;
+  return pickInjectedFrom(id, announced, pageWindow());
 }
 
 async function initWalletConnect(showQrModal: boolean) {

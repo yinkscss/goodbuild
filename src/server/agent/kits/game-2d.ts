@@ -609,7 +609,7 @@ Money in a game (only when the user asks for entry fees, prizes or things to buy
 
 Before you finish, check: the canvas draws on the start screen (onIdleFrame), Play works with no wallet, the first obstacle comes within 3 seconds, every obstacle, power-up and NPC the plan named is in the game and in declareGame, spawned and probe are called, the score shows on the canvas while playing (drawHud), game over shows Play again, and the leaderboard rule is in dataRules.json if there is a board.`;
 
-/** The leaderboard's data rule, as the guide writes it (D92). */
+/** The leaderboard's data rule, as the guide writes it (D93). */
 export const SCORES_RULE_JSON = '"scores": {"create": "signed-in", "read": ["anyone"], "fields": {"name": "string", "score": "number", "extra": "string"}}';
 
 /** Each opening tag of a component, props and all: a ">" inside {...} (an arrow function) doesn't end it. */
@@ -637,7 +637,7 @@ export function jsxTags(content: string, name: string): { at: number; text: stri
 const lineOf = (content: string, re: RegExp) => content.slice(0, Math.max(0, content.search(re))).split("\n").length;
 
 /**
- * What the game guide asks for that the files can show (D92): the start screen is drawn, and a
+ * What the game guide asks for that the files can show (D93): the start screen is drawn, and a
  * leaderboard has the rule it needs and, in a MiniPay game, the contract passed to it.
  */
 export function gameChecks(files: Record<string, string>): CheckIssue[] {
@@ -656,7 +656,7 @@ export function gameChecks(files: Record<string, string>): CheckIssue[] {
       }
     }
   }
-  // The game reports to GoodBuild's check (D93): without the probe it can only be looked at, not tested.
+  // The game reports to GoodBuild's check (D94): without the probe it can only be looked at, not tested.
   const canvas = own.find(([, c]) => /<GameCanvas\b/.test(c));
   if (canvas) {
     const all = own.map(([, c]) => c).join("\n");
@@ -725,9 +725,9 @@ export const game2d: Kit = {
     "src/game/haptics.ts": HAPTICS,
   },
   // The first GameCanvas (D72): Enter and Space couldn't press Play, and a key held through a lost focus stuck (D85).
-  // ...and the second never drew while paused, so every start screen was an empty box (D92).
+  // ...and the second never drew while paused, so every start screen was an empty box (D93).
   superseded: { "src/game/GameCanvas.tsx": ["b8d7fc83dc5ae09f096f37446f8ba12273a2b502aba2acb827f4a8c541901c08", "f5a2cd6e74f9d834f917de93c6b5ff39dc8accc07f44f2d956eddab47798563c"],
-    // Its comment pointed at useCollection for leaderboards (D92).
+    // Its comment pointed at useCollection for leaderboards (D93).
     "src/game/storage.ts": ["ad445565329f58a977216f4ed062c26609a13e2afd9e14a96e7b114e6eae65fa"],
   },
   guide: GUIDE,

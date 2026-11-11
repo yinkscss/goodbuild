@@ -175,7 +175,7 @@ export default function App() {
 }
 `;
 
-/** A racer built from the kit's blocks (D93): pools, a spawner, traffic, oncoming cars, a rival, power-ups, the HUD. */
+/** A racer built from the kit's blocks (D94): pools, a spawner, traffic, oncoming cars, a rival, power-ups, the HUD. */
 const BLOCKS_GAME = `import { useRef, useState } from "react";
 import { GameCanvas, type Frame } from "./game/GameCanvas";
 import { buzz } from "./game/haptics";
@@ -296,7 +296,7 @@ export default function App() {
 }
 `;
 
-/** A game that runs but does nothing a game should (D93): no obstacles, no score, no control, never harder. */
+/** A game that runs but does nothing a game should (D94): no obstacles, no score, no control, never harder. */
 const STUCK_GAME = `import { useState } from "react";
 import { GameCanvas, type Frame } from "./game/GameCanvas";
 import { declareGame, probe } from "./game/probe";
@@ -337,7 +337,7 @@ const withScoresRule = (files: Record<string, string>, rule: unknown = JSON.pars
 };
 
 /**
- * A lane racer written the way the D92 guide asks: the canvas drawn on every screen, free play,
+ * A lane racer written the way the D93 guide asks: the canvas drawn on every screen, free play,
  * one drawing shared with a Sprite, and the leaderboard from the kit.
  */
 const BOARD_GAME = `import { useRef, useState } from "react";
@@ -522,7 +522,7 @@ describe("the 2D games kit", { timeout: 120_000 }, () => {
   it("gives a project that still has the first GameCanvas today's, and never touches one that was changed", () => {
     const mine = "// my own canvas\n";
     expect(withKit({ ...project(GAME), "src/game/GameCanvas.tsx": mine }, game2d)["src/game/GameCanvas.tsx"]).toBe(mine);
-    // The first (D72) and the one that never drew while paused (D92).
+    // The first (D72) and the one that never drew while paused (D93).
     expect(game2d.superseded?.["src/game/GameCanvas.tsx"]).toHaveLength(2);
   });
 

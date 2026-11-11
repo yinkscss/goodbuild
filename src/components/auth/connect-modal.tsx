@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 
 const WALLETS: Array<{ id: ExternalWalletId; name: string; hint: string; tile: string; letter: string }> = [
   { id: "metamask", name: "MetaMask", hint: "Browser extension", tile: "#F6851B", letter: "M" },
+  { id: "okx", name: "OKX Wallet", hint: "Extension or OKX app browser", tile: "#000000", letter: "O" },
   { id: "minipay", name: "MiniPay / Valora", hint: "Celo mobile wallets", tile: "#35D07F", letter: "V" },
   { id: "walletconnect", name: "WalletConnect", hint: "Scan with any wallet", tile: "#3B99FC", letter: "W" },
 ];

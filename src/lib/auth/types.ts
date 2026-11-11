@@ -7,8 +7,8 @@ import type { WalletClient } from "viem";
 
 export type WalletKind = "embedded" | "external";
 
-/** The external wallets offered in the connect modal (mockup a). */
-export type ExternalWalletId = "metamask" | "minipay" | "walletconnect";
+/** The external wallets offered in the connect modal (mockup a, plus OKX Wallet, D92). */
+export type ExternalWalletId = "metamask" | "minipay" | "okx" | "walletconnect";
 
 export interface Attestation {
   ageOk: boolean;
