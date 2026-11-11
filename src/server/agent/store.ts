@@ -6,6 +6,7 @@ import type { Db } from "@/server/db/client";
 import { messages, projectFiles, projects, usageEvents, versions, type FundingSource, type Version } from "@/server/db/schema";
 import { withCurrentAddresses } from "@/server/deploy/addresses";
 import { withCurrentWalletHelpers } from "@/server/agent/wallet-template";
+import { requestGithubSync } from "@/server/github/sync";
 import { recordPaidUsage } from "@/server/credits/holds";
 import { MARKUP_BPS } from "@/config/model-pricing";
 import { chargedMicro, costMicro } from "@/lib/pricing";
@@ -69,6 +70,7 @@ export async function revertTo(db: Db, projectId: string, number: number): Promi
   // Contracts stay deployed after a revert, so addresses that fit the restored ABIs go back in (M5).
   const files = await withCurrentAddresses(db, projectId, v.files);
   const next = await checkpoint(db, { projectId, files, summary: `Reverted to v${number}`, revertedFrom: number });
+  requestGithubSync(db, projectId);
   await db.insert(messages).values({
     projectId,
     role: "system",
@@ -91,6 +93,7 @@ export async function switchProjectChain(db: Db, projectId: string, chainId: num
   await db.update(projects).set({ chainId }).where(eq(projects.id, projectId));
   const files = await withCurrentAddresses(db, projectId, withCurrentWalletHelpers(await loadFiles(db, projectId), chainId));
   const next = await checkpoint(db, { projectId, files, summary: `Switched to ${label}` });
+  requestGithubSync(db, projectId);
   await db.insert(messages).values({
     projectId,
     role: "system",

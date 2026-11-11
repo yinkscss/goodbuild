@@ -16,6 +16,7 @@ export default function PrivacyPage() {
         <li>AI providers (Anthropic and DeepSeek) receive your prompts, files and code to build your app.</li>
         <li>Magic handles email sign-in and your email wallet, so it receives your email address.</li>
         <li>WalletConnect, if you connect through it.</li>
+        <li>GitHub, if you connect it: we keep your GitHub username and an encrypted access token, and send an app&apos;s files to a public repository in your account. That repository is public, so anyone can read it. You can disconnect in Settings.</li>
         <li>Sourcify receives your contract&apos;s source code when it is verified.</li>
         <li>Resend sends sign-in codes for apps that offer email sign-in, so it receives the email address and the code. It also sends the support tickets you submit, so it receives your email, your message and your country.</li>
         <li>Telegram receives the same support ticket, because we read tickets there.</li>
