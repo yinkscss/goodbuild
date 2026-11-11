@@ -11,6 +11,7 @@ import { LOGO_32_DATA_URI } from "./logo-data";
 import { publishRuntimeDir } from "./runtime";
 
 import { CAN_BE_CHANGED_LABEL } from "@/lib/deploy/upgradeable";
+import { hasMiniPayKit } from "@/lib/minipay-checklist";
 import { ALLOWED_DEPENDENCIES, PLATFORM_DEPENDENCIES, WALLET_DIR } from "@/server/agent/template";
 
 import { WALLETCONNECT_MODULE } from "./walletconnect-module";
@@ -244,16 +245,6 @@ function barSpace(hasNotices: boolean) {
   return `<div data-goodbuild-bar-space aria-hidden="true" style="height:calc(${hasNotices ? 96 : 60}px + env(safe-area-inset-bottom,0px));pointer-events:none"></div>`;
 }
 
-/** The project has the MiniPay kit on (its marker file, src/goodbuild.json, lists "mini-app"). */
-function isMiniApp(files: Record<string, string>): boolean {
-  try {
-    const kits = (JSON.parse(files["src/goodbuild.json"] ?? "{}") as { kits?: unknown }).kits;
-    return Array.isArray(kits) && kits.includes("mini-app");
-  } catch {
-    return false;
-  }
-}
-
 function hashed(name: string, ext: string, content: string) {
   return `${name}.${createHash("sha256").update(content).digest("hex").slice(0, 12)}.${ext}`;
 }
@@ -277,7 +268,7 @@ export async function buildPublishedApp(input: BuildInput): Promise<PublishedFil
   const walletMeta = input.walletConnectProjectId ? `<meta name="goodbuild-walletconnect" content="${escapeHtml(input.walletConnectProjectId)}" />\n` : "";
   page = page.replace("</head>", () => `${dataMeta}${walletMeta}<link rel="stylesheet" href="/${cssName}" />\n</head>`);
   const bridge = input.preview?.bridge(js, jsName);
-  if (!input.preview) page = page.replace(/<body[^>]*>/, (open) => `${open}\n${bar(input.hasUndeployedContracts, input.reportUrl, input.changeableContract, isMiniApp(files))}`);
+  if (!input.preview) page = page.replace(/<body[^>]*>/, (open) => `${open}\n${bar(input.hasUndeployedContracts, input.reportUrl, input.changeableContract, hasMiniPayKit(files))}`);
   // The bridge is a classic script, so it is listening before the app's module runs.
   const space = input.preview ? "" : `${barSpace(input.hasUndeployedContracts || !!input.reportUrl || !!input.changeableContract)}\n`;
   page = page.replace("</body>", () => `${space}${bridge ? `<script src="/${PREVIEW_BRIDGE_PATH}"></script>\n` : ""}<script type="module" src="/${jsName}"></script>\n</body>`);

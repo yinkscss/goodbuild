@@ -14,15 +14,29 @@ import type { TurnMode, TurnRecord } from "@/lib/turn-types";
 import { cn } from "@/lib/utils";
 import { DeployButton } from "@/components/deploy/deploy-trigger";
 import { AssetBar, AttachMenu, imageFiles } from "./asset-bar";
+import { hasMiniPayKit } from "@/lib/minipay-checklist";
 import { FirstWait } from "./first-wait";
+import { MiniPayGuide } from "./minipay-guide";
 import { OldFundsCard } from "./old-funds-card";
 import { TurnView } from "./turn-view";
+import type { PublishInfo } from "./use-publish";
 import type { UseWorkspace } from "./use-workspace";
 import { VerifyCard } from "./verify-card";
 import { TemplateBanner } from "@/components/landing/template-slides";
 
 /** Left pane of the workspace (mockup c): the conversation and the composer. */
-export function ChatPanel({ ws, assetUrls = {} }: { ws: UseWorkspace; assetUrls?: Record<string, string> }) {
+export function ChatPanel({
+  ws,
+  assetUrls = {},
+  publish = null,
+  onPublish,
+}: {
+  ws: UseWorkspace;
+  assetUrls?: Record<string, string>;
+  /** Publish status, for the MiniPay guide (D88). */
+  publish?: PublishInfo | null;
+  onPublish?: () => void;
+}) {
   const { state, live, running, send } = ws;
   // Behind a proxy (D33), new code arrives at the same address: no "new contract" warning belongs here.
   const sameAddress = state.outdatedContracts.length > 0 && state.outdatedContracts.every((name) => state.upgradableContracts.includes(name));
@@ -158,6 +172,20 @@ export function ChatPanel({ ws, assetUrls = {} }: { ws: UseWorkspace; assetUrls?
         )}
         <OldFundsCard projectId={state.project.id} chainId={state.project.chainId} refreshKey={state.project.currentVersion} busy={running} onAsk={suggest} />
         {state.offerVerification && !running && <VerifyCard onVerified={ws.refresh} />}
+        {/* A MiniPay app (D88): deploy, publish, then the steps to open it in MiniPay. */}
+        {hasMiniPayKit(state.files) && state.project.currentVersion > 0 && !running && onPublish && (
+          <MiniPayGuide
+            projectId={state.project.id}
+            chainId={state.project.chainId}
+            files={state.files}
+            hasContracts={Object.keys(state.files).some((p) => p.startsWith("contracts/") && p.endsWith(".sol") && !p.startsWith("contracts/test/"))}
+            outdatedContracts={state.outdatedContracts}
+            publish={publish}
+            onPublish={onPublish}
+            onAsk={suggest}
+            busy={running}
+          />
+        )}
         <div ref={endRef} />
       </div>
       <Composer
