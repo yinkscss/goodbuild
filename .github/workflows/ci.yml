@@ -42,9 +42,21 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
+      # The runners' Ubuntu mirrors sometimes fail to resolve for a minute or two. Make every apt call
+      # in this job (including the browser installer's) retry, and wait longer before giving up.
+      - name: Make apt retry on network errors
+        run: |
+          printf 'Acquire::Retries "8";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' | sudo tee /etc/apt/apt.conf.d/80-retries
+
       # The run check's tests open built apps in a real headless browser (D67). Without it they skip.
       - name: Install the headless browser
-        run: node node_modules/playwright-core/cli.js install --with-deps chromium-headless-shell
+        run: |
+          for attempt in 1 2 3; do
+            node node_modules/playwright-core/cli.js install --with-deps chromium-headless-shell && exit 0
+            echo "Attempt $attempt failed; retrying in 30s"; sleep 30
+          done
+          exit 1
+        timeout-minutes: 10
 
       - name: Lint
         run: pnpm lint
@@ -70,7 +82,10 @@ jobs:
       # Real Postgres, age and MinIO in a throwaway project, with keys made up for the run (D47).
       - name: Test the off-site backup and restore drill
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq age >/dev/null
+          for attempt in 1 2 3; do
+            sudo apt-get update -qq && sudo apt-get install -y -qq age >/dev/null && break
+            [ "$attempt" = 3 ] && exit 1
+            echo "Attempt $attempt failed; retrying in 30s"; sleep 30
+          done
           bash deploy/test-offsite-backup.sh
-        timeout-minutes: 8
+        timeout-minutes: 12
