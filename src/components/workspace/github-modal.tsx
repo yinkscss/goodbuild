@@ -62,7 +62,7 @@ export function GithubModal({ projectId, github, open, onOpenChange }: { project
         ) : !account?.connected ? (
           <>
             <DialogDescription className="mt-5 text-sm text-grey-600">
-              Connect your GitHub account, then put any app you build in a public repository with one tap. GoodBuild keeps the <b>main</b> branch up to date as you keep building.
+              Connect your GitHub account, then put any app you build in a public repository with one tap. GoodBuild keeps the <b>main</b> branch up to date as you keep building (or the repository&rsquo;s default branch, if GitHub won&rsquo;t let it make <b>main</b>).
             </DialogDescription>
             <p className="mt-3 text-[13px] text-grey-600">GoodBuild asks GitHub for permission to create public repositories and push to them. It only ever touches the repositories it creates for you.</p>
             <Button asChild className="mt-6 w-full">
@@ -112,7 +112,7 @@ export function GithubModal({ projectId, github, open, onOpenChange }: { project
                 {confirmOverwrite ? (
                   <div className="mt-3 flex gap-2">
                     <Button size="sm" onClick={() => void github.overwrite().then(() => setConfirmOverwrite(false))} disabled={busy}>
-                      Yes, replace main with GoodBuild&rsquo;s version
+                      Yes, replace {link.branch} with GoodBuild&rsquo;s version
                     </Button>
                     <Button size="sm" variant="quiet" onClick={() => setConfirmOverwrite(false)}>
                       Cancel
@@ -120,7 +120,7 @@ export function GithubModal({ projectId, github, open, onOpenChange }: { project
                   </div>
                 ) : (
                   <Button size="sm" variant="secondary" className="mt-3" onClick={() => setConfirmOverwrite(true)} disabled={busy}>
-                    Replace main with GoodBuild&rsquo;s version
+                    Replace {link.branch} with GoodBuild&rsquo;s version
                   </Button>
                 )}
               </div>
@@ -141,7 +141,7 @@ export function GithubModal({ projectId, github, open, onOpenChange }: { project
 
             <label className="mt-5 flex cursor-pointer items-center justify-between gap-4 text-sm">
               <span>
-                <span className="font-medium">Keep main up to date automatically</span>
+                <span className="font-medium">Keep {link.branch} up to date automatically</span>
                 <span className="block text-[13px] text-grey-600">Pushes each new version as it&rsquo;s saved.</span>
               </span>
               <input type="checkbox" checked={link.autoSync} onChange={(e) => void github.setAuto(e.target.checked)} disabled={busy} className="size-5 accent-violet" />
