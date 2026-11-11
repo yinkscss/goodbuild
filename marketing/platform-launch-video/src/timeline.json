@@ -1,0 +1,74 @@
+{
+  "_comment": "Copy + timings (seconds) for the infinite-zoom launch video. Each scene ends by zooming into its `portal` (a circle {cx,cy,r} or a rect {x,y,w,h,radius} in 1080x1920 scene coordinates), and the next scene is waiting inside it. The music synth reads this file too. Edit, then `npm run build`.",
+  "fps": 30,
+  "width": 1080,
+  "height": 1920,
+  "duration": 44.0,
+  "beat": 0.5,
+  "zoom": 0.6,
+  "scenes": [
+    {
+      "id": "prompt", "start": 0.0, "end": 6.0,
+      "eyebrow": "goodbuildit.xyz",
+      "h": "ONE SENTENCE.",
+      "a": "that's the whole brief.",
+      "prompt": "a racing game my friends can play in MiniPay, with a weekly leaderboard",
+      "typeFrom": 1.3, "charDur": 0.042,
+      "pressAt": 4.7,
+      "portal": { "shape": "circle", "cx": 912, "cy": 1468, "r": 34 }
+    },
+    {
+      "id": "build", "start": 6.0, "end": 12.0,
+      "h1": "BUILD APPS.", "h2": "BUILD GAMES.",
+      "a": "from the same box.",
+      "app": "Weekly G$ savings circle",
+      "chip": "play in MiniPay",
+      "portal": { "shape": "circle", "cx": 175, "cy": 1612, "r": 16 }
+    },
+    {
+      "id": "minipay", "start": 12.0, "end": 18.0,
+      "h": "PLAYS IN MINIPAY.",
+      "a": "tap. play. done.",
+      "label": "a MiniPay mini app, on Celo",
+      "portal": { "shape": "circle", "cx": 666, "cy": 834, "r": 20 }
+    },
+    {
+      "id": "gd", "start": 18.0, "end": 24.0,
+      "h": "AI CREDITS IN G$.",
+      "a": "pay for the AI with GoodDollar.",
+      "chips": ["top up with G$", "from your wallet", "spent as you build"],
+      "portal": { "shape": "circle", "cx": 540, "cy": 1060, "r": 70 }
+    },
+    {
+      "id": "backend", "start": 24.0, "end": 31.0,
+      "h": "ADD A BACKEND.",
+      "a": "just ask for it in the chat.",
+      "h2": "WATCH IT LIVE.",
+      "a2": "every entry, as it lands.",
+      "swapAt": 3.0,
+      "collections": [
+        { "name": "scores", "rule": "anyone reads · you write yours" },
+        { "name": "players", "rule": "only you read" }
+      ],
+      "entries": ["0x3a…91f  ·  lap 0:41.2", "0xc7…02b  ·  lap 0:43.9", "you@mail  ·  lap 0:44.0", "0x5e…d18  ·  lap 0:46.7", "0x91…aa3  ·  lap 0:47.1"],
+      "actions": ["export CSV", "delete", "rules"],
+      "portal": { "shape": "circle", "cx": 836, "cy": 1083, "r": 14 }
+    },
+    {
+      "id": "wallet", "start": 31.0, "end": 37.0,
+      "h": "ALL OF IT,",
+      "a": "attached to your wallet.",
+      "address": "0x8f3…c21a",
+      "nodes": ["apps", "games", "backend", "G$ credits", "contracts", "deploys"],
+      "label": "you sign. we never hold the keys.",
+      "portal": { "shape": "circle", "cx": 540, "cy": 1180, "r": 46 }
+    },
+    {
+      "id": "outro", "start": 37.0, "end": 44.0,
+      "wordmark": "GoodBuildit",
+      "url": "goodbuildit.xyz",
+      "cta": "start with one sentence.",
+      "fadeOutFrom": 43.0
+    }
+  ]
+}
