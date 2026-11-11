@@ -8,8 +8,8 @@ import { checkApp } from "../checks";
 import { closeRunCheckBrowser, runCheck } from "../run-check";
 import { starterFiles } from "../template";
 import { typeCheck } from "../type-check";
-import { detectKits, kitIdsOf, withKit } from "./index";
-import { game2d } from "./game-2d";
+import { detectKits, kitById, kitIdsOf, withKit } from "./index";
+import { SCORES_RULE_JSON, game2d, gameChecks, jsxTags } from "./game-2d";
 
 const hasBrowser =
   Boolean(process.env.CI) ||
@@ -21,18 +21,21 @@ const hasBrowser =
 /** A small game written the way the guide asks: state in a ref, three screens, dt, one-tap play. */
 const GAME = `import { useRef, useState } from "react";
 import { GameCanvas, type Frame } from "./game/GameCanvas";
+import { declareGame, probe, spawned } from "./game/probe";
 import { sfx } from "./game/sound";
 import { bestScore, saveBest } from "./game/storage";
 
 type Screen = "start" | "playing" | "over";
 
+declareGame({ obstacles: ["pipe"] });
+
 export default function App() {
   const [screen, setScreen] = useState<Screen>("start");
   const [score, setScore] = useState(0);
-  const game = useRef({ y: 320, vy: 0, pipes: [] as { x: number; gap: number; passed: boolean }[], spawn: 0, score: 0 });
+  const game = useRef({ y: 320, vy: 0, pipes: [] as { x: number; gap: number; passed: boolean }[], spawn: 0, score: 0, t: 0 });
 
   const start = () => {
-    game.current = { y: 320, vy: 0, pipes: [], spawn: 0, score: 0 };
+    game.current = { y: 320, vy: 0, pipes: [], spawn: 0, score: 0, t: 0 };
     setScore(0);
     setScreen("playing");
   };
@@ -43,15 +46,18 @@ export default function App() {
       g.vy = -320;
       sfx.jump();
     }
+    g.t += dt;
+    const speed = 140 + g.t * 4;
     g.vy += 900 * dt;
     g.y += g.vy * dt;
     g.spawn -= dt;
     if (g.spawn <= 0) {
       g.pipes.push({ x: width + 40, gap: 180 + Math.random() * 280, passed: false });
+      spawned("pipe");
       g.spawn = 1.5;
     }
     for (const p of g.pipes) {
-      p.x -= 140 * dt;
+      p.x -= speed * dt;
       if (!p.passed && p.x < 60) {
         p.passed = true;
         g.score += 1;
@@ -60,6 +66,8 @@ export default function App() {
       }
     }
     g.pipes = g.pipes.filter((p) => p.x > -60);
+    // A point a second for staying up, plus one for each pipe passed.
+    probe(g.score + Math.floor(g.t), 44, g.y, speed);
     if (g.y > height + 400 || g.y < -400) {
       saveBest(g.score, "flappy");
       sfx.lose();
@@ -101,6 +109,9 @@ export default function App() {
 const PAUSED_GAME = `import { useRef, useState } from "react";
 import { GameCanvas, type Frame } from "./game/GameCanvas";
 import { Particles, Popups, Shake, clamp, ease, hitRect } from "./game/juice";
+import { declareGame, probe, spawned } from "./game/probe";
+
+declareGame({ obstacles: ["block"] });
 
 const particles = new Particles();
 const shake = new Shake();
@@ -115,6 +126,8 @@ export default function App() {
     const g = game.current;
     g.frames += 1;
     if (input.right) g.x = clamp(g.x + 120 * dt, 0, width);
+    if (g.frames === 1) spawned("block");
+    probe(g.jumps, g.x, 300, 120);
     if (input.actionPressed) {
       g.jumps += 1;
       particles.burst(g.x, 300, { color: "#facc15" });
@@ -145,13 +158,413 @@ export default function App() {
           Play
         </button>
       )}
-      <GameCanvas onFrame={onFrame} paused={!playing} controls={["left", "right", "action"]} label="Test game" />
+      <GameCanvas
+        onFrame={onFrame}
+        onIdleFrame={({ ctx, width, height }) => {
+          ctx.fillStyle = "#0f172a";
+          ctx.fillRect(0, 0, width, height);
+          ctx.fillStyle = "#38bdf8";
+          ctx.fillRect(game.current.x - 15, 285, 30, 30);
+        }}
+        paused={!playing}
+        controls={["left", "right", "action"]}
+        label="Test game"
+      />
+    </main>
+  );
+}
+`;
+
+/** A racer built from the kit's blocks (D94): pools, a spawner, traffic, oncoming cars, a rival, power-ups, the HUD. */
+const BLOCKS_GAME = `import { useRef, useState } from "react";
+import { GameCanvas, type Frame } from "./game/GameCanvas";
+import { buzz } from "./game/haptics";
+import { drawHud } from "./game/hud";
+import { Pool, Spawner, difficulty, lanes, pick } from "./game/world";
+import { hitBox, newActor, offscreen, oncoming, place, rival, traffic } from "./game/npc";
+import { Effects } from "./game/powerups";
+import { hitRect } from "./game/juice";
+import { GameOver } from "./game/GameOver";
+import { declareGame, probe, spawned } from "./game/probe";
+
+declareGame({ obstacles: ["slowCar", "oncoming"], powerups: ["shield"], npcs: ["rival"] });
+
+const LANES = lanes(3, 360, 40);
+const cars = new Pool(newActor, 24);
+const pickups = new Pool(newActor, 8);
+const spawner = new Spawner({ every: 1.2, fastest: 0.5, grace: 0.8 });
+const powerSpawner = new Spawner({ every: 3, fastest: 2, grace: 2 });
+const effects = new Effects();
+const KINDS = ["slowCar", "oncoming", "rival"];
+
+export default function App() {
+  const [screen, setScreen] = useState<"start" | "playing" | "over">("start");
+  const game = useRef({ lane: 1, t: 0, score: 0, spawns: 0 });
+
+  const drawWorld = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
+    ctx.fillStyle = "#111827";
+    ctx.fillRect(0, 0, width, height);
+    cars.each((c) => {
+      ctx.fillStyle = c.kind === "rival" ? "#a855f7" : c.kind === "oncoming" ? "#f43f5e" : "#f97316";
+      ctx.fillRect(c.x - c.w / 2, c.y - c.h / 2, c.w, c.h);
+      if (c.warn > 0) ctx.fillRect(c.x + c.w / 2, c.y, 6, 6);
+    });
+    pickups.each((p) => {
+      ctx.fillStyle = "#38bdf8";
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 14, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    ctx.fillStyle = effects.isActive("shield") ? "#38bdf8" : "#e11d48";
+    ctx.fillRect(LANES[game.current.lane] - 22, 520, 44, 76);
+  };
+
+  const onFrame = ({ ctx, width, height, dt, input }: Frame) => {
+    const g = game.current;
+    g.t += dt;
+    const level = difficulty(g.t, 60);
+    const speed = 240 + level * 260;
+    if (input.actionPressed) g.lane = input.pointer.x < width / 2 ? Math.max(0, g.lane - 1) : Math.min(2, g.lane + 1);
+    if (spawner.tick(dt, level)) {
+      const car = cars.get();
+      if (car) {
+        // Every kind in turn, so a short round meets them all.
+        const kind = KINDS[g.spawns++ % KINDS.length];
+        place(car, kind, LANES[Math.floor(Math.random() * 3)], -60, 40, 70);
+        car.lane = LANES.indexOf(car.x);
+        spawned(kind);
+      }
+    }
+    if (powerSpawner.tick(dt, level)) {
+      const p = pickups.get();
+      if (p) {
+        place(p, "shield", pick(LANES), -30, 28, 28);
+        spawned("shield");
+      }
+    }
+    const me = { x: LANES[g.lane] - 18, y: 524, w: 36, h: 68 };
+    cars.each((c) => {
+      if (c.kind === "oncoming") oncoming(c, dt, { speed: speed * 1.6 });
+      else if (c.kind === "rival") rival(c, dt, { lane: g.lane }, { laneXs: LANES, drift: speed * 0.4 });
+      else traffic(c, dt, { speed: speed * 0.7, laneXs: LANES });
+      if (offscreen(c, width, height)) c.active = false;
+      else if (hitRect(hitBox(c), me)) {
+        if (effects.isActive("shield")) {
+          effects.end("shield");
+          c.active = false;
+        } else {
+          buzz("over");
+          setScreen("over");
+        }
+      }
+    });
+    pickups.each((p) => {
+      p.y += speed * dt;
+      if (offscreen(p, width, height)) p.active = false;
+      else if (hitRect(hitBox(p), me)) {
+        p.active = false;
+        effects.activate("shield", 4);
+        buzz("collect");
+      }
+    });
+    effects.update(dt);
+    g.score += speed * dt * 0.05;
+    probe(Math.floor(g.score), LANES[g.lane], 520, speed);
+    drawWorld(ctx, width, height);
+    drawHud(ctx, width, { score: g.score, distance: g.t * 10, effects });
+  };
+
+  const start = () => {
+    game.current = { lane: 1, t: 0, score: 0, spawns: 0 };
+    cars.clear();
+    pickups.clear();
+    effects.clear();
+    spawner.reset();
+    powerSpawner.reset();
+    setScreen("playing");
+  };
+
+  return (
+    <main className="mx-auto max-w-md space-y-3 p-4">
+      <div className="relative">
+        <GameCanvas onFrame={onFrame} onIdleFrame={({ ctx, width, height }) => drawWorld(ctx, width, height)} paused={screen !== "playing"} label="Block Racer" />
+        {screen === "over" && <GameOver score={game.current.score} best={0} stats={[{ label: "Time", value: Math.round(game.current.t) + "s" }]} onAgain={start} />}
+      </div>
+      {screen === "start" && (
+        <button type="button" onClick={start} className="rounded-lg bg-primary px-6 py-3 text-primary-foreground">
+          Play
+        </button>
+      )}
+    </main>
+  );
+}
+`;
+
+/** A game that runs but does nothing a game should (D94): no obstacles, no score, no control, never harder. */
+const STUCK_GAME = `import { useState } from "react";
+import { GameCanvas, type Frame } from "./game/GameCanvas";
+import { declareGame, probe } from "./game/probe";
+
+declareGame({ obstacles: ["rock"], powerups: ["star"] });
+
+export default function App() {
+  const [playing, setPlaying] = useState(false);
+  const draw = ({ ctx, width, height }: Frame) => {
+    ctx.fillStyle = "#0f172a";
+    ctx.fillRect(0, 0, width, height);
+    ctx.fillStyle = "#facc15";
+    ctx.fillRect(160, 300, 40, 40);
+  };
+  const onFrame = (frame: Frame) => {
+    probe(0, 180, 320, 100);
+    draw(frame);
+  };
+  return (
+    <main className="p-4">
+      <GameCanvas onFrame={onFrame} onIdleFrame={draw} paused={!playing} label="Stuck" />
+      {!playing && (
+        <button type="button" onClick={() => setPlaying(true)}>
+          Play
+        </button>
+      )}
+    </main>
+  );
+}
+`;
+
+/** A dodging game with every extra (D95): near misses and combos, coins, missions and season tiers, a daily course, a ghost, a first-run tip, settings and a pause screen. */
+const EXTRAS_GAME = `import { useRef, useState } from "react";
+import { GameCanvas, type Frame } from "./game/GameCanvas";
+import { GameOver } from "./game/GameOver";
+import { GameSettings } from "./game/GameSettings";
+import { Combo, Ghost, Missions, coins, dailySeed, firstTime, nearMiss, prefersReducedMotion, seasonTier, seasonXp, seededRandom } from "./game/extras";
+import { drawHud } from "./game/hud";
+import { declareGame, probe, spawned } from "./game/probe";
+import { Particles } from "./game/juice";
+
+declareGame({ obstacles: ["rock"], powerups: ["coin"] });
+
+const missions = new Missions([
+  { id: "coins", text: "Collect 5 coins", stat: "coins", goal: 5 },
+  { id: "close", text: "Pass 3 rocks closely", stat: "close", goal: 3 },
+  { id: "live", text: "Survive 30 seconds", stat: "seconds", goal: 30, oneRun: true },
+]);
+const TIERS = [{ xp: 0, reward: "Blue trail" }, { xp: 200, reward: "Gold trail", pass: true }];
+const combo = new Combo();
+const ghost = new Ghost();
+const particles = new Particles(prefersReducedMotion() ? 40 : 160);
+
+export default function App() {
+  const [screen, setScreen] = useState<"start" | "playing" | "paused" | "over">("start");
+  const [tip] = useState(() => firstTime("controls"));
+  const g = useRef({ x: 180, t: 0, score: 0, coins: 0, rocks: [] as { x: number; y: number }[], next: 0.6, rand: seededRandom(dailySeed()) });
+
+  const draw = ({ ctx, width, height }: Frame) => {
+    ctx.fillStyle = "#0b1020";
+    ctx.fillRect(0, 0, width, height);
+    const shadow = ghost.at(g.current.t);
+    if (shadow) {
+      ctx.globalAlpha = 0.3;
+      ctx.fillRect(shadow.x - 15, 560, 30, 30);
+      ctx.globalAlpha = 1;
+    }
+    ctx.fillStyle = "#9ca3af";
+    for (const r of g.current.rocks) ctx.fillRect(r.x - 20, r.y - 20, 40, 40);
+    ctx.fillStyle = "#22d3ee";
+    ctx.fillRect(g.current.x - 15, 560, 30, 30);
+    particles.draw(ctx);
+  };
+
+  const onFrame = (frame: Frame) => {
+    const s = g.current;
+    const { dt, input, width } = frame;
+    s.t += dt;
+    const speed = 200 + s.t * 6;
+    if (input.left) s.x -= 220 * dt;
+    if (input.right) s.x += 220 * dt;
+    if (input.actionPressed) s.x = input.pointer.x;
+    s.x = Math.max(15, Math.min(width - 15, s.x));
+    s.next -= dt;
+    if (s.next <= 0) {
+      s.rocks.push({ x: 30 + s.rand() * (width - 60), y: -20 });
+      spawned("rock");
+      s.next = 0.8;
+      if (s.rand() < 0.4) spawned("coin");
+    }
+    const me = { x: s.x - 15, y: 560, w: 30, h: 30 };
+    for (const r of s.rocks) {
+      r.y += speed * dt;
+      const box = { x: r.x - 20, y: r.y - 20, w: 40, h: 40 };
+      if (me.x < box.x + box.w && me.x + me.w > box.x && me.y < box.y + box.h && me.y + me.h > box.y) {
+        coins.add(s.coins);
+        missions.endRun();
+        ghost.finish(s.score);
+        setScreen("over");
+        return;
+      }
+      if (nearMiss(me, box) && r.y > 600) {
+        s.score += 5 * combo.hit();
+        missions.track("close");
+      }
+    }
+    s.rocks = s.rocks.filter((r) => r.y < 700);
+    combo.update(dt);
+    particles.update(dt);
+    ghost.record(s.t, s.x, 560);
+    s.score += dt * 10;
+    missions.track("seconds", dt);
+    probe(Math.floor(s.score), s.x, 560, speed);
+    draw(frame);
+    drawHud(frame.ctx, width, { score: s.score, combo: combo.multiplier, best: 0 });
+  };
+
+  const start = () => {
+    const rand = seededRandom(dailySeed());
+    g.current = { x: 180, t: 0, score: 0, coins: 0, rocks: [], next: 0.6, rand };
+    combo.break();
+    ghost.start();
+    setScreen("playing");
+  };
+  const season = seasonTier(seasonXp.get(), TIERS, false);
+
+  return (
+    <main className="mx-auto max-w-md space-y-3 p-4">
+      <div className="relative">
+        <GameCanvas onFrame={onFrame} onIdleFrame={draw} paused={screen !== "playing"} onHidden={() => setScreen("paused")} label="Rock Dodge" />
+        {screen === "over" && <GameOver score={g.current.score} best={0} stats={[{ label: "Coins", value: g.current.coins }]} onAgain={start} shareText="I dodged rocks" />}
+        {screen === "paused" && (
+          <button type="button" className="absolute inset-x-6 bottom-6 rounded-lg bg-primary py-3 text-primary-foreground" onClick={() => setScreen("playing")}>
+            Resume
+          </button>
+        )}
+      </div>
+      {screen === "start" && (
+        <section className="space-y-2">
+          {tip && <p>Tap where you want to go.</p>}
+          <button type="button" onClick={start} className="rounded-lg bg-primary px-6 py-3 text-primary-foreground">
+            Play
+          </button>
+          <ul>{missions.list.map((m) => <li key={m.id}>{m.text} {Math.floor(m.progress)}/{m.goal}</li>)}</ul>
+          <p>Season tier {season.tier + 1}, {Math.round(season.progress * 100)}% to {season.next?.reward ?? "the top"}. You have {coins.get()} coins.</p>
+          <GameSettings />
+        </section>
+      )}
     </main>
   );
 }
 `;
 
 const project = (app: string) => ({ ...withKit(starterFiles(), game2d), "src/App.tsx": app });
+
+/** The board's rule in dataRules.json, as the guide writes it, or another rule to test the check. */
+const withScoresRule = (files: Record<string, string>, rule: unknown = JSON.parse("{" + SCORES_RULE_JSON + "}").scores) => {
+  const rules = JSON.parse(files["src/lib/dataRules.json"] ?? "{}") as { collections?: Record<string, unknown> };
+  return { ...files, "src/lib/dataRules.json": JSON.stringify({ ...rules, collections: { ...(rules.collections ?? {}), scores: rule } }, null, 2) };
+};
+
+/**
+ * A lane racer written the way the D93 guide asks: the canvas drawn on every screen, free play,
+ * one drawing shared with a Sprite, and the leaderboard from the kit.
+ */
+const BOARD_GAME = `import { useRef, useState } from "react";
+import { GameCanvas, type Frame } from "./game/GameCanvas";
+import { GameOver } from "./game/GameOver";
+import { Leaderboard, PostScore } from "./game/Leaderboard";
+import { TopThree } from "./game/TopThree";
+import { useLeaderboard } from "./game/leaderboard";
+import { declareGame, probe, spawned } from "./game/probe";
+import { Sprite } from "./game/Sprite";
+import { saveBest } from "./game/storage";
+
+declareGame({ obstacles: ["slowCar"] });
+
+function drawCar(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, colour: string) {
+  ctx.fillStyle = colour;
+  ctx.fillRect(x + w * 0.15, y, w * 0.7, h);
+  ctx.fillStyle = "#111827";
+  ctx.fillRect(x + w * 0.25, y + h * 0.2, w * 0.5, h * 0.2);
+}
+
+const LANES = [90, 180, 270];
+
+export default function App() {
+  const [screen, setScreen] = useState<"start" | "playing" | "over">("start");
+  const [score, setScore] = useState(0);
+  const board = useLeaderboard();
+  const game = useRef({ lane: 1, cars: [] as { lane: number; y: number }[], spawn: 0.8, distance: 0 });
+
+  const drawWorld = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
+    const g = game.current;
+    ctx.fillStyle = "#1f2937";
+    ctx.fillRect(0, 0, width, height);
+    ctx.fillStyle = "#f9fafb";
+    for (const x of [135, 225]) for (let y = (g.distance * 2) % 80; y < height; y += 80) ctx.fillRect(x - 2, y, 4, 40);
+    for (const c of g.cars) drawCar(ctx, LANES[c.lane] - 25, c.y, 50, 80, "#f97316");
+    drawCar(ctx, LANES[g.lane] - 25, 520, 50, 80, "#e11d48");
+  };
+
+  const onIdleFrame = ({ ctx, width, height }: Frame) => drawWorld(ctx, width, height);
+
+  const onFrame = ({ ctx, width, height, dt, input }: Frame) => {
+    const g = game.current;
+    if (input.actionPressed) g.lane = input.pointer.x < width / 2 ? Math.max(0, g.lane - 1) : Math.min(2, g.lane + 1);
+    g.distance += 300 * dt;
+    g.spawn -= dt;
+    if (g.spawn <= 0) {
+      g.cars.push({ lane: Math.floor(Math.random() * 3), y: -80 });
+      spawned("slowCar");
+      g.spawn = 1.2;
+    }
+    const speed = 260 + g.distance / 40;
+    for (const c of g.cars) c.y += speed * dt;
+    probe(Math.floor(g.distance / 10), LANES[g.lane], 520, speed);
+    g.cars = g.cars.filter((c) => c.y < height);
+    if (g.cars.some((c) => c.lane === g.lane && c.y > 450 && c.y < 590)) {
+      saveBest(Math.floor(g.distance / 10), "racer");
+      setScore(Math.floor(g.distance / 10));
+      setScreen("over");
+    }
+    drawWorld(ctx, width, height);
+    ctx.fillStyle = "rgba(0,0,0,0.6)";
+    ctx.fillRect(12, 12, 120, 36);
+    ctx.fillStyle = "#fff";
+    ctx.font = "bold 18px sans-serif";
+    ctx.fillText(String(Math.floor(g.distance / 10)), 24, 37);
+  };
+
+  const start = () => {
+    game.current = { lane: 1, cars: [], spawn: 0.8, distance: 0 };
+    setScreen("playing");
+  };
+
+  return (
+    <main className="mx-auto flex min-h-screen max-w-md flex-col gap-4 p-4">
+      <header className="flex items-center gap-2">
+        <Sprite draw={(ctx, w, h) => drawCar(ctx, 0, 0, w, h, "#e11d48")} width={32} height={48} label="Your car" />
+        <h1 className="text-xl font-semibold">Lane Dash</h1>
+      </header>
+      <div className="relative">
+        <GameCanvas onFrame={onFrame} onIdleFrame={onIdleFrame} paused={screen !== "playing"} label="Lane Dash" />
+        <TopThree board={board} className="absolute right-2 top-2" />
+        {screen === "over" && (
+          <GameOver score={score} best={score} stats={[{ label: "Distance", value: score * 10 + " m" }]} onAgain={start} shareText={"I scored " + score + " in Lane Dash"}>
+            <PostScore board={board} score={score} extra="red" />
+          </GameOver>
+        )}
+      </div>
+      {screen === "start" && (
+        <section className="space-y-3 rounded-lg bg-card p-4 text-center">
+          <p>Tap left or right of the road to change lane.</p>
+          <button id="play" type="button" onClick={start} className="rounded-lg bg-primary px-6 py-3 text-primary-foreground">
+            Play
+          </button>
+        </section>
+      )}
+      <Leaderboard board={board} title="Top racers" icon={() => <Sprite draw={(ctx, w, h) => drawCar(ctx, 0, 0, w, h, "#e11d48")} width={16} height={24} />} />
+    </main>
+  );
+}
+`;
 
 describe("the 2D games kit", { timeout: 120_000 }, () => {
   afterAll(() => closeRunCheckBrowser());
@@ -244,12 +657,161 @@ describe("the 2D games kit", { timeout: 120_000 }, () => {
   it("gives a project that still has the first GameCanvas today's, and never touches one that was changed", () => {
     const mine = "// my own canvas\n";
     expect(withKit({ ...project(GAME), "src/game/GameCanvas.tsx": mine }, game2d)["src/game/GameCanvas.tsx"]).toBe(mine);
-    expect(game2d.superseded?.["src/game/GameCanvas.tsx"]).toHaveLength(1);
+    // The first (D72) and the one that never drew while paused (D93).
+    expect(game2d.superseded?.["src/game/GameCanvas.tsx"]).toHaveLength(2);
   });
 
   it.skipIf(!hasBrowser)("catches a game that never draws", async () => {
     const blank = GAME.replace(/    ctx\.fillStyle = "#7dd3fc";[\s\S]*?ctx\.fillText\("🐤", 44, g\.y\);\n/, "    void ctx;\n    void width;\n");
     const r = await runCheck(project(blank));
     expect(r.issues.map((i) => i.message).join(" ")).toMatch(/canvas stayed blank/);
+  });
+
+  it("asks for onIdleFrame when GameCanvas is paused, even with arrow functions in its props", () => {
+    const without = PAUSED_GAME.replace(/        onIdleFrame=\{[\s\S]*?\n        \}\}\n/, "");
+    expect(without).not.toMatch(/onIdleFrame/);
+    const errors = checkApp(project(without)).errors.filter((e) => /onIdleFrame/.test(e.message));
+    expect(errors).toHaveLength(1);
+    expect(errors[0].file).toBe("src/App.tsx");
+    expect(gameChecks(project(PAUSED_GAME))).toEqual([]);
+    // A canvas shown only while playing isn't paused, so it needs nothing.
+    expect(gameChecks(project(GAME))).toEqual([]);
+    expect(jsxTags('<GameCanvas onFrame={(f) => f.dt > 1} paused />', "GameCanvas")[0].text).toBe('<GameCanvas onFrame={(f) => f.dt > 1} paused />');
+  });
+
+  it("type-checks a game with the leaderboard, the post form and a sprite, and asks for the board's data rule", async () => {
+    const files = project(BOARD_GAME);
+    const missing = checkApp(files).errors.filter((e) => e.file === "src/lib/dataRules.json");
+    expect(missing).toHaveLength(1);
+    expect(missing[0].message).toContain(SCORES_RULE_JSON);
+    const ruled = withScoresRule(files);
+    expect(checkApp(ruled).errors).toEqual([]);
+    const types = await typeCheck(ruled);
+    expect(types.ran).toBe(true);
+    expect(types.issues).toEqual([]);
+    // A board anyone can post to without a wallet isn't what the owner chose.
+    const anyone = withScoresRule(files, { create: "anyone", read: ["anyone"] });
+    expect(checkApp(anyone).errors.some((e) => e.file === "src/lib/dataRules.json")).toBe(true);
+  });
+
+  it.skipIf(!hasBrowser)("runs in a real browser with the leaderboard on the page: the start screen is drawn and Play works with no wallet", async () => {
+    const r = await runCheck(withScoresRule(project(BOARD_GAME)), { screenshots: true });
+    expect(r.ran).toBe(true);
+    expect(r.issues).toEqual([]);
+    // The start screen and a moment of play on a phone, then the computer.
+    expect(r.screenshots?.map((s) => s.shows ?? s.width)).toEqual(["start", "playing", 1280]);
+  });
+
+  it.skipIf(!hasBrowser)("catches a start screen that is an empty box, and one with no Play button", async () => {
+    const blankStart = BOARD_GAME.replace(/onIdleFrame=\{onIdleFrame\}\s*/, "");
+    const r = await runCheck(withScoresRule(project(blankStart)));
+    expect(r.issues.map((i) => i.message).join(" ")).toMatch(/start screen shows the game area as an empty box/);
+    const noButton = BOARD_GAME.replace(">\n            Play\n          </button>", ">\n            Drive\n          </button>");
+    expect(noButton).not.toEqual(BOARD_GAME);
+    const r2 = await runCheck(withScoresRule(project(noButton)));
+    expect(r2.issues.map((i) => i.message).join(" ")).toMatch(/no Play button/);
+  });
+
+  it("type-checks a game built from the blocks: pools, a spawner, traffic, oncoming cars, a rival, power-ups and the HUD", async () => {
+    const files = project(BLOCKS_GAME);
+    expect(checkApp(files).errors).toEqual([]);
+    const types = await typeCheck(files);
+    expect(types.ran).toBe(true);
+    expect(types.issues).toEqual([]);
+  });
+
+  it("asks for declareGame, spawned and probe in a game that has none", () => {
+    const bare = GAME.replace(/import \{ declareGame, probe, spawned \} from "\.\/game\/probe";\n/, "").replace(/declareGame\(\{[^}]*\}\);\n/, "").replace(/\s*spawned\("pipe"\);/, "").replace(/\s*\/\/ A point a second[^\n]*\n\s*probe\([^\n]*/, "");
+    expect(bare).not.toMatch(/declareGame|spawned|probe\(/);
+    const message = checkApp(project(bare)).errors.map((e) => e.message).join(" ");
+    expect(message).toMatch(/GoodBuild can't test this game yet/);
+    expect(message).toMatch(/declareGame[\s\S]*spawned[\s\S]*probe/);
+  });
+
+  it.skipIf(!hasBrowser)("plays a game built from the blocks for real: rounds, Play again, and every kind it declared", async () => {
+    const r = await runCheck(project(BLOCKS_GAME));
+    expect(r.issues).toEqual([]);
+    expect(r.note).toMatch(/played \d+ rounds?/);
+    expect(r.note).toMatch(/saw .*slowCar/);
+  });
+
+  it.skipIf(!hasBrowser)("catches a game that runs but has no obstacles, no score, no control and never gets harder", async () => {
+    const r = await runCheck(project(STUCK_GAME));
+    const all = r.issues.map((i) => i.message).join("\n");
+    expect(all).toMatch(/score never went up/);
+    expect(all).toMatch(/Nothing got in the player's way/);
+    expect(all).toMatch(/never appeared in the first 15: "rock", "star"/);
+    expect(all).toMatch(/never moved the player/);
+    expect(all).toMatch(/didn't get harder/);
+  });
+
+  it.skipIf(!hasBrowser)("catches a game over with no Play again", async () => {
+    const noAgain = GAME.replace('<button type="button" onClick={start}', '{screen === "start" && <button type="button" onClick={start}').replace("</button>\n        </section>", "</button>}\n        </section>");
+    expect(noAgain).not.toEqual(GAME);
+    const r = await runCheck(project(noAgain));
+    expect(r.issues.map((i) => i.message).join(" ")).toMatch(/no Play again button/);
+  });
+
+  it.skipIf(!hasBrowser)("posts a score with a stand-in wallet, and catches a board that never shows it", async () => {
+    const ok = await runCheck(withScoresRule(project(BOARD_GAME)));
+    expect(ok.issues).toEqual([]);
+    expect(ok.note).toMatch(/a score was posted and shown on the board/);
+    // PostScore and Leaderboard on two different boards: the post works, but the board on screen never hears of it.
+    const split = BOARD_GAME.replace("  const board = useLeaderboard();", "  const board = useLeaderboard();\n  const other = useLeaderboard();").replace("<PostScore board={board}", "<PostScore board={other}");
+    const r = await runCheck(withScoresRule(project(split)));
+    expect(r.issues.map((i) => i.message).join(" ")).toMatch(/didn't put it on the leaderboard/);
+  });
+
+  it.skipIf(!hasBrowser)("opens a MiniPay game as MiniPay, and catches a Connect wallet button there", async () => {
+    const mini = (app: string) => ({ ...withKit(project(app), kitById("mini-app")!), "src/App.tsx": app });
+    const clean = await runCheck(mini(GAME));
+    expect(clean.issues).toEqual([]);
+    expect(clean.note).toMatch(/MiniPay connected by itself|MiniPay wasn't asked/);
+    const withButton = GAME.replace('<h1 className="text-xl font-semibold">Campus Flap</h1>', '<h1 className="text-xl font-semibold">Campus Flap</h1>\n        <button type="button">Connect wallet</button>');
+    const r = await runCheck(mini(withButton));
+    expect(r.issues.map((i) => i.message).join(" ")).toMatch(/Inside MiniPay the page shows a Connect wallet button/);
+  });
+
+  it.skipIf(!hasBrowser)("catches Play again below the screen after a game over, the owner's Neon Drift feedback (D95)", async () => {
+    // The layout the owner's build had: a card about scoring between the road and the buttons.
+    const below = BOARD_GAME.replace("      <div className=\"relative\">\n        <GameCanvas onFrame={onFrame} onIdleFrame={onIdleFrame} paused={screen !== \"playing\"} label=\"Lane Dash\" />\n        <TopThree board={board} className=\"absolute right-2 top-2\" />\n        {screen === \"over\" && (\n          <GameOver score={score} best={score} stats={[{ label: \"Distance\", value: score * 10 + \" m\" }]} onAgain={start} shareText={\"I scored \" + score + \" in Lane Dash\"}>\n            <PostScore board={board} score={score} extra=\"red\" />\n          </GameOver>\n        )}\n      </div>\n      {screen === \"start\" && (\n        <section className=\"space-y-3 rounded-lg bg-card p-4 text-center\">\n          <p>Tap left or right of the road to change lane.</p>\n          <button id=\"play\" type=\"button\" onClick={start} className=\"rounded-lg bg-primary px-6 py-3 text-primary-foreground\">\n            Play\n          </button>\n        </section>\n      )}", "      <GameCanvas onFrame={onFrame} onIdleFrame={onIdleFrame} paused={screen !== \"playing\"} label=\"Lane Dash\" />\n      <p className=\"h-48 rounded-lg bg-muted p-4\">Score 1 point every 10 metres. Near misses score 5.</p>\n      {screen !== \"playing\" && (\n        <section className=\"space-y-3 rounded-lg bg-card p-4 text-center\">\n          <p>{screen === \"over\" ? \"You crashed. Score \" + score : \"Tap left or right of the road to change lane.\"}</p>\n          <button id=\"play\" type=\"button\" onClick={start} className=\"rounded-lg bg-primary px-6 py-3 text-primary-foreground\">\n            Play again\n          </button>\n          {screen === \"over\" && <PostScore board={board} score={score} extra=\"red\" />}\n        </section>\n      )}");
+    expect(below).not.toEqual(BOARD_GAME);
+    const r = await runCheck(withScoresRule(project(below)));
+    expect(r.issues.map((i) => i.message).join(" ")).toMatch(/Play again is below the screen/);
+  });
+
+  it("type-checks a game with every extra, and the run check plays it cleanly (D95)", async () => {
+    const files = project(EXTRAS_GAME);
+    expect(checkApp(files).errors).toEqual([]);
+    const types = await typeCheck(files);
+    expect(types.issues).toEqual([]);
+    if (!hasBrowser) return;
+    const r = await runCheck(files);
+    expect(r.issues).toEqual([]);
+    expect(r.note).toMatch(/saw rock/);
+  });
+
+  it("finds declareGame, spawned and probe in a .ts module of the game's own (D95)", () => {
+    const moved = GAME.replace(/import \{ declareGame, probe, spawned \} from "\.\/game\/probe";\n/, 'import { declareGame, probe, spawned } from "./logic";\n');
+    const files = { ...project(moved), "src/logic.ts": 'export { declareGame, probe, spawned } from "./game/probe";\n' };
+    // The App still calls them, through the module; a module that only calls them is found too.
+    expect(gameChecks(files)).toEqual([]);
+    const only = { ...project(GAME.replace(/declareGame\(\{[^}]*\}\);\n/, "")), "src/rules.ts": 'import { declareGame } from "./game/probe";\ndeclareGame({ obstacles: ["pipe"] });\n' };
+    expect(gameChecks(only).map((i) => i.message).join()).not.toMatch(/can't test this game/);
+  });
+
+  it.skipIf(!hasBrowser)("catches a Play button that starts nothing (D95)", async () => {
+    const dead = BOARD_GAME.replace('<button id="play" type="button" onClick={start}', '<button id="play" type="button" onClick={() => undefined}');
+    expect(dead).not.toEqual(BOARD_GAME);
+    const r = await runCheck(withScoresRule(project(dead)));
+    expect(r.issues.map((i) => i.message).join(" ")).toMatch(/Pressing Play didn't start the game/);
+  });
+
+  it.skipIf(!hasBrowser)("a drawn Sprite elsewhere on the page doesn't hide a blank game canvas (D95)", async () => {
+    // BOARD_GAME draws a car Sprite in its header; with nothing drawn on the game itself, the blank start screen must still be caught.
+    const blank = BOARD_GAME.replace("const onIdleFrame = ({ ctx, width, height }: Frame) => drawWorld(ctx, width, height);", "const onIdleFrame = ({ ctx }: Frame) => void ctx;");
+    expect(blank).not.toEqual(BOARD_GAME);
+    const r = await runCheck(withScoresRule(project(blank)));
+    expect(r.issues.map((i) => i.message).join(" ")).toMatch(/start screen shows the game area as an empty box/);
   });
 });

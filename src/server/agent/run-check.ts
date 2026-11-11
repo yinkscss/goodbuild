@@ -5,6 +5,7 @@ import type { Browser, BrowserContext, Page, Route } from "playwright-core";
 import { buildPublishedApp, moduleStarts, PublishBuildError, type PublishedFile } from "@/server/publish/build";
 
 import type { CheckIssue } from "./checks";
+import { GAME_CHECK_SPEED, gameCanvas, gameCheckScript, insideMiniPay, judgeRounds, playRounds, probeReport, standInWalletScript, walletAndBoard } from "./game-check";
 import { kitIdsOf } from "./kits/registry";
 
 /**
@@ -24,6 +25,14 @@ export interface RunCheckOptions {
   chainId?: number;
   /** The project is a game or a 3D scene: start it and play for a moment (set from its kits). */
   game?: boolean;
+  /** A 2D game (the game-2d kit): its start screen must draw the game and have a Play button (D93), and it is played with the probe on (D94). */
+  game2d?: boolean;
+  /** The game shows PostScore: post a score with a stand-in wallet and look for it on the board (D94). */
+  board?: boolean;
+  /** The MiniPay kit is on: open the game as MiniPay too (D94). */
+  miniPay?: boolean;
+  /** The project's GameCanvas reports rounds to the probe, so a Play that starts none is a fault (D95). */
+  probeReady?: boolean;
   /** The project draws a 3D scene from shapes alone: look for one that shows nothing but its background (set from its kits and files). */
   scene?: boolean;
   /** Also return screenshots at phone and desktop width. */
@@ -40,7 +49,8 @@ export interface RunCheckResult {
   /** Why it didn't run, or what it covered, for the build log. */
   note: string;
   ms: number;
-  screenshots?: Array<{ width: number; png: Uint8Array }>;
+  /** For a 2D game, the first is the start screen and the second is a moment into play (phone width). */
+  screenshots?: Array<{ width: number; png: Uint8Array; shows?: "start" | "playing" }>;
 }
 
 export const PHONE = { width: 375, height: 812 };
@@ -50,6 +60,8 @@ const MAX_ISSUES = 5;
 const MAX_ROUTES = 6;
 const MAX_SHOT_HEIGHT = 2400;
 const DEFAULT_TIMEOUT_MS = 25_000;
+/** A 2D game is played for about 7 seconds, then opened with a wallet and as MiniPay (D94). */
+const GAME_TIMEOUT_MS = 50_000;
 /** Keep the shared browser this long after the last check, then free its memory. */
 const IDLE_CLOSE_MS = 60_000;
 
@@ -275,6 +287,36 @@ async function flatScene(page: Page): Promise<boolean> {
     .catch(() => false);
 }
 
+/**
+ * True when every big 2D canvas on the page is one flat colour (all see-through counts): a game
+ * that drew nothing, or only filled its background. WebGL canvases are left alone.
+ */
+async function flat2dCanvas(page: Page): Promise<boolean> {
+  return page
+    .evaluate(() => {
+      // The game's own canvas when GameCanvas marked it, so a drawn Sprite elsewhere can't hide a blank game.
+      const marked = document.querySelectorAll<HTMLCanvasElement>("canvas[data-game-canvas]");
+      const pool = Array.from(marked.length ? marked : document.querySelectorAll<HTMLCanvasElement>("canvas"));
+      const big = pool.filter((c) => c.width >= 50 && c.height >= 50);
+      if (!big.length) return false;
+      return big.every((c) => {
+        try {
+          // A canvas drawn with WebGL gives no 2D context here: leave those alone.
+          const ctx = c.getContext("2d");
+          if (!ctx) return false;
+          const data = ctx.getImageData(0, 0, c.width, c.height).data;
+          for (let i = 4 * 53; i < data.length; i += 4 * 53) {
+            if (Math.abs(data[i] - data[0]) > 3 || Math.abs(data[i + 1] - data[1]) > 3 || Math.abs(data[i + 2] - data[2]) > 3 || Math.abs(data[i + 3] - data[3]) > 3) return false;
+          }
+          return true;
+        } catch {
+          return false;
+        }
+      });
+    })
+    .catch(() => false);
+}
+
 async function check(context: BrowserContext, files: PublishedFile[], options: RunCheckOptions): Promise<Omit<RunCheckResult, "ms">> {
   const js = files.find((f) => /^app\.[0-9a-f]{12}\.js$/.test(f.path));
   const jsText = js ? new TextDecoder().decode(js.bytes) : "";
@@ -289,22 +331,34 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
   const named: Array<{ at: number; component: string }> = [];
   let events = 0;
   let route = "/";
-  page.on("console", (msg) => {
-    if (msg.type() !== "error") return;
-    const m = /error occurred in (?:the )?<([A-Za-z0-9_.]+)>/.exec(msg.text());
-    if (m) named.push({ at: events++, component: m[1] });
-  });
-  page.on("pageerror", (error) => {
-    const full = error.message || String(error);
-    const message = full.split("\n")[0].slice(0, 400);
-    if (NOT_THE_APP.test(full) || seen.some((s) => s.message === message)) return;
-    seen.push({ message, stack: error.stack ?? "", route, at: events++ });
-  });
-
-  await page.goto(`${ORIGIN}/`, { waitUntil: "load" });
-  // First render plus the effects that follow it.
-  await page.waitForFunction(() => (document.getElementById("root")?.childElementCount ?? 0) > 0, undefined, { timeout: 4_000 }).catch(() => undefined);
-  await settle(page, 600);
+  /** Errors and component names from a page. Extra pages (a wallet, MiniPay) say where in place of the route. */
+  const watch = (p: Page, where?: string) => {
+    p.on("console", (msg) => {
+      if (msg.type() !== "error") return;
+      const m = /error occurred in (?:the )?<([A-Za-z0-9_.]+)>/.exec(msg.text());
+      if (m) named.push({ at: events++, component: m[1] });
+    });
+    p.on("pageerror", (error) => {
+      const full = error.message || String(error);
+      const message = full.split("\n")[0].slice(0, 400);
+      if (NOT_THE_APP.test(full) || seen.some((s) => s.message === message)) return;
+      seen.push({ message, stack: error.stack ?? "", route: where ?? route, at: events++ });
+    });
+  };
+  const open = async (p: Page) => {
+    await p.goto(`${ORIGIN}/`, { waitUntil: "load" });
+    // First render plus the effects that follow it.
+    await p.waitForFunction(() => (document.getElementById("root")?.childElementCount ?? 0) > 0, undefined, { timeout: 4_000 }).catch(() => undefined);
+    await settle(p, 600);
+  };
+  watch(page);
+  // A 2D game is played for real (D94): the kit's probe records what happens. Not for the review's pictures.
+  const deep = Boolean(options.game2d && !options.screenshots);
+  // Normal speed at first, so the first moments of play look as a player sees them; faster once they're checked.
+  // The probe is on for every 2D game at normal speed, so the check knows whether a round is running.
+  if (options.game2d) await page.addInitScript(gameCheckScript(1));
+  let pressedPlay = false;
+  await open(page);
 
   const blank = await page.evaluate(() => {
     const root = document.getElementById("root");
@@ -315,11 +369,30 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
   // canvas. This finds what loading alone can't: a crash on the first frame of play, and a game that
   // draws nothing.
   let blankGame = false;
+  // A 2D game (D93): before Play, the start screen must show the game world and a Play button. A canvas
+  // that is paused with nothing drawn is an empty box, the defect people saw most.
+  let blankStart = false;
+  let noPlay = false;
+  const gameShots: NonNullable<RunCheckResult["screenshots"]> = [];
+  const phoneShot = async (shows: "start" | "playing") => {
+    if (options.screenshots && options.game2d) gameShots.push({ width: PHONE.width, png: await page.screenshot({ type: "png" }), shows });
+  };
   if (!blank && !seen.length && options.game) {
-    const start = page.getByRole("button", { name: /\b(play|start|begin|go|tap to)\b/i }).first();
-    if (await start.isVisible().catch(() => false)) await start.click({ timeout: 1_500 }).catch(() => undefined);
+    const start = page.getByRole("button", { name: /\b(play|start|begin|go|race|tap to)\b/i }).first();
+    const hasStart = await start.isVisible().catch(() => false);
+    if (options.game2d) {
+      // Two frames of the idle loop, so a start screen that draws is seen drawing.
+      await settle(page, 200);
+      blankStart = await flat2dCanvas(page);
+      noPlay = !hasStart;
+      await phoneShot("start");
+    }
+    if (hasStart) {
+      await start.click({ timeout: 1_500 }).catch(() => undefined);
+      pressedPlay = true;
+    }
     await settle(page, 250);
-    const canvas = page.locator("canvas").first();
+    const canvas = await gameCanvas(page);
     if (await canvas.isVisible().catch(() => false)) {
       for (const key of ["Space", "ArrowRight", "ArrowLeft", "Space"]) {
         await canvas.click({ timeout: 1_000 }).catch(() => undefined);
@@ -327,22 +400,56 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
         await settle(page, 180);
       }
       await settle(page, 500);
-      blankGame = await page.evaluate(() => {
-        const big = Array.from(document.querySelectorAll("canvas")).filter((c) => c.width >= 50 && c.height >= 50);
-        if (!big.length) return false;
-        return big.every((c) => {
-          try {
-            // A canvas drawn with WebGL gives no 2D context here: leave those alone.
-            const ctx = c.getContext("2d");
-            if (!ctx) return false;
-            const data = ctx.getImageData(0, 0, c.width, c.height).data;
-            for (let i = 3; i < data.length; i += 4 * 53) if (data[i] !== 0) return false;
-            return true;
-          } catch {
-            return false;
-          }
-        });
-      });
+      blankGame = await flat2dCanvas(page);
+      // A short round may already be over: the "playing" picture must show play, so start another first,
+      // and take it only once a round is confirmed running. Otherwise the review gets no "playing" picture.
+      const running = async () => {
+        const last = (await probeReport(page))?.rounds.at(-1);
+        return Boolean(last && last.end === undefined);
+      };
+      if (options.screenshots && options.game2d && !(await running())) {
+        await page.getByRole("button", { name: /\b(play|again|retry|restart|start|race)\b/i }).first().click({ timeout: 1_000 }).catch(() => undefined);
+        await settle(page, 300);
+      }
+      if (!options.screenshots || !options.game2d || (await running())) await phoneShot("playing");
+    }
+  }
+
+  // Play on (D94): rounds, Play again, what the probe saw. Then a stand-in wallet: Connect, posting a
+  // score to the board, and MiniPay. Only when the game started cleanly, so one problem is reported once.
+  const gameIssues: string[] = [];
+  const gameNotes: string[] = [];
+  if (deep && !blank && !blankStart && !noPlay && !blankGame && !seen.length) {
+    await page.evaluate((speed) => {
+      const g = (window as unknown as { __gbGame?: { speed: number } }).__gbGame;
+      if (g) g.speed = speed;
+    }, GAME_CHECK_SPEED);
+    gameIssues.push(...(await playRounds(page)));
+    const judged = judgeRounds(await probeReport(page), { pressedPlay: pressedPlay && Boolean(options.probeReady) });
+    gameIssues.push(...judged.issues);
+    gameNotes.push(judged.note);
+    if (!seen.length && !gameIssues.length) {
+      const chainId = options.chainId ?? 11142220;
+      const withWallet = await context.newPage();
+      watch(withWallet, "with a browser wallet connected");
+      await withWallet.addInitScript(gameCheckScript());
+      await withWallet.addInitScript(standInWalletScript({ miniPay: false, chainId }));
+      await open(withWallet);
+      const w = await walletAndBoard(withWallet, { board: Boolean(options.board) });
+      gameIssues.push(...w.issues);
+      if (w.note) gameNotes.push(w.note);
+      await withWallet.close().catch(() => undefined);
+      if (options.miniPay && !seen.length) {
+        const mini = await context.newPage();
+        watch(mini, "inside MiniPay");
+        await mini.addInitScript(gameCheckScript());
+        await mini.addInitScript(standInWalletScript({ miniPay: true, chainId }));
+        await open(mini);
+        const m = await insideMiniPay(mini);
+        gameIssues.push(...m.issues);
+        gameNotes.push(m.note);
+        await mini.close().catch(() => undefined);
+      }
     }
   }
 
@@ -385,8 +492,9 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
       const badge = document.getElementById("gb-bar-off") as HTMLInputElement | null;
       if (badge) badge.checked = true;
     });
-    screenshots = [];
-    for (const size of [PHONE, DESKTOP]) {
+    screenshots = [...gameShots];
+    // A game's phone pictures were taken while it ran: only the computer one is left to take.
+    for (const size of gameShots.length ? [DESKTOP] : [PHONE, DESKTOP]) {
       await page.setViewportSize(size);
       await settle(page, 250);
       const height = Math.min(await page.evaluate(() => document.documentElement.scrollHeight), MAX_SHOT_HEIGHT);
@@ -399,12 +507,19 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
     const next = seen[i + 1]?.at ?? Infinity;
     const component = named.find((n) => n.at > s.at && n.at < next)?.component;
     const file = (js && sourceOfStack(s.stack, jsText, js.path)) || "src/App.tsx";
-    const where = s.route === "/" ? "" : ` on the ${s.route} page`;
+    const where = s.route === "/" ? "" : s.route.startsWith("/") ? ` on the ${s.route} page` : ` ${s.route}`;
     const inside = component ? ` (in <${component}>)` : "";
     return { file, message: `The app crashed when it ran${where}: ${s.message}${inside}`, source: "runtime" };
   });
+  if (blankStart && !issues.length) {
+    issues.push({ file: "src/App.tsx", message: "The start screen shows the game area as an empty box: nothing is drawn on the canvas before Play. Pass onIdleFrame to GameCanvas and draw the game world there (the track, the player standing still), the same drawing onFrame uses.", source: "runtime" });
+  }
+  if (noPlay && !issues.length) {
+    issues.push({ file: "src/App.tsx", message: "The start screen has no Play button. Add a big <button> with the word Play or Start that begins the game, with no wallet needed.", source: "runtime" });
+  }
+  if (!issues.length) for (const message of gameIssues.slice(0, MAX_ISSUES)) issues.push({ file: "src/App.tsx", message, source: "runtime" });
   if (blankGame && !issues.length) {
-    issues.push({ file: "src/App.tsx", message: "The game was started and played for a moment, but its canvas stayed blank: nothing was drawn. Draw the game in GameCanvas's onFrame on every frame, and make sure the game isn't left paused once Play is pressed.", source: "runtime" });
+    issues.push({ file: "src/App.tsx", message: "The game was started and played for a moment, but its canvas stayed blank or one flat colour: nothing was drawn but the background. Draw the game in GameCanvas's onFrame on every frame, and make sure the game isn't left paused once Play is pressed.", source: "runtime" });
   }
   if (emptyScene && !issues.length) {
     issues.push({ file: "src/App.tsx", message: "The 3D scene ran, but all it shows is its background colour: nothing is in view. Make sure the meshes are added to the scene (scene.add) inside onReady, and that the camera is placed back from them and looks at them (camera.position.set, camera.lookAt).", source: "runtime" });
@@ -412,7 +527,8 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
   if (blank && !issues.length) {
     issues.push({ file: "src/App.tsx", message: "The app ran but showed nothing: the page is empty. src/App.tsx must render the app's content.", source: "runtime" });
   }
-  const note = issues.length ? `${issues.length} problem${issues.length === 1 ? "" : "s"} when the app ran` : `opened ${routes.length === 1 ? "the app" : `${routes.length} pages`} with no errors`;
+  const opened = issues.length ? `${issues.length} problem${issues.length === 1 ? "" : "s"} when the app ran` : `opened ${routes.length === 1 ? "the app" : `${routes.length} pages`} with no errors`;
+  const note = gameNotes.length ? `${opened}; ${gameNotes.filter(Boolean).join("; ")}` : opened;
   return { ran: true, issues, note, ...(screenshots ? { screenshots } : {}) };
 }
 
@@ -435,16 +551,20 @@ export async function runCheck(files: Record<string, string>, options: RunCheckO
   let timer: NodeJS.Timeout | undefined;
   try {
     const browser = options.browser ?? (await sharedBrowser());
+    const kits = kitIdsOf(files);
     context = await browser.newContext({ viewport: PHONE, serviceWorkers: "block", acceptDownloads: false, permissions: [] });
     const timeout = new Promise<Omit<RunCheckResult, "ms">>((resolve) => {
-      timer = setTimeout(() => resolve({ ran: false, issues: [], note: "skipped: the app took too long to open" }), options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+      timer = setTimeout(() => resolve({ ran: false, issues: [], note: "skipped: the app took too long to open" }), options.timeoutMs ?? (kits.includes("game-2d") ? GAME_TIMEOUT_MS : DEFAULT_TIMEOUT_MS));
     });
-    const kits = kitIdsOf(files);
     const game = options.game ?? (kits.includes("game-2d") || kits.includes("three-d"));
+    const game2d = options.game2d ?? kits.includes("game-2d");
+    const board = options.board ?? Object.entries(files).some(([p, c]) => p.startsWith("src/") && !p.startsWith("src/game/") && /<PostScore\b/.test(c));
+    const miniPay = options.miniPay ?? kits.includes("mini-app");
+    const probeReady = options.probeReady ?? Boolean(files["src/game/GameCanvas.tsx"]?.includes("checkRound"));
     // A scene that waits for an uploaded model or picture is empty here (uploads are blank stand-ins), so only
     // scenes built from shapes are looked at.
     const scene = options.scene ?? (kits.includes("three-d") && !Object.entries(files).some(([p, c]) => p.startsWith("src/") && p !== "src/three/Scene3D.tsx" && /GLTFLoader|TextureLoader/.test(c)));
-    return done(await Promise.race([check(context, built, { ...options, game, scene }), timeout]));
+    return done(await Promise.race([check(context, built, { ...options, game, game2d, board, miniPay, probeReady, scene }), timeout]));
   } catch (error) {
     return done({ ran: false, issues: [], note: `skipped: the browser wasn't available (${String((error as Error)?.message ?? error).split("\n")[0].slice(0, 120)})` });
   } finally {

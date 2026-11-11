@@ -990,3 +990,139 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - **Untick "Expire user access tokens" when registering the OAuth App** (ticked by default on GitHub's form as of 11 Nov 2026). Expiring tokens last 8 hours and need a refresh token; refresh is not built, so sync would fail after 8 hours. The redirect field is labelled "Redirect URI" there; use the callback below.
 - **Setup.** `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`, callback `<site>/api/github/callback`. Without them the dialog says GitHub isn't switched on. Migration `0017_github_sync`.
 - **Checked.** Unit tests with a mocked GitHub: encryption and tampering, path filtering, OAuth state, repo creation and naming, divergence and replace, rejected branch move, revoked token, no-op when current. **UNVERIFIED:** a real GitHub OAuth App, a real push, the connect redirect on the live site, and the dialog in a browser.
+### D93. Games right first time: a drawn start screen, a leaderboard that works in MiniPay, and plan cards for obstacles, power-ups and characters (amends D72, D88; numbered D90 to D92 at first, renumbered because main took D90 for MetaMask, D91 for the stats page and D92 for OKX Wallet while this was open)
+- Date: 11 Nov 2026 · Asked for by: the owner, after a MiniPay car racer took 7 versions ("Go ahead with Phase A and B together. wallet only for leaderboard"; picked the hybrid leaderboard) · Built by: Claude · Plan and diagnosis: [GAMES_PLAN.md](GAMES_PLAN.md).
+- **The start screen was always empty (kit bug).** `GameCanvas` skipped drawing while `paused`, and the guide said to pause on the start and game-over screens, so those screens showed an empty box ("large empty pink space" in the owner's build). New `onIdleFrame` prop: called while paused, it draws the game world and never moves the game on. `onFrame` is unchanged, so games already built behave the same. The old file's hash is in `superseded`, so untouched copies get the new one. A file check asks for `onIdleFrame` whenever a `GameCanvas` is paused. It reads the whole tag, arrow functions included.
+- **Leaderboard: wallet-only to post, hybrid by the owner's choice.** Playing never needs a wallet. Posting does. MiniPay forbids the sign-in signature, so:
+  - In a browser, the kit's `useLeaderboard` signs in once (free) and keeps one best per wallet in app data. The rule is `"scores": {"create": "signed-in", "read": ["anyone"], ...}`, and a check asks for it.
+  - Inside MiniPay, it posts to `contracts/GameBoard.sol`, which keeps each wallet's best and the top 25. The network fee is paid in the first dollar coin the player has.
+  - The board reads both and shows one row per wallet.
+  - The contract is its own kit, `game-board`. The runner turns it on only for a 2D game that has a leaderboard and works in MiniPay, because a contract means a deploy.
+  - Its five tests run in the local EVM. Earlier, the two guides contradicted each other: the game guide's leaderboard needed the signature MiniPay forbids.
+- **Kit files:**
+  - `src/game/leaderboard.ts` (`useLeaderboard`, `cleanName`, `SCORES_RULE`).
+  - `src/game/Leaderboard.tsx` (`Leaderboard` and `PostScore`). These cover loading, empty, error with Retry, "(you)", what posting costs, and the wallet being cancelled.
+  - `src/game/Sprite.tsx`. One drawing function is shown outside the canvas, in garage cards, the store and leaderboard rows, instead of the same car being drawn a second way.
+  - `src/game/chainBoard.ts` (game-board kit). It needs nothing from the MiniPay kit.
+  - The MiniPay sign-in check leaves `src/game/leaderboard.ts` alone, because that file signs in only outside MiniPay.
+- **Saved data reads clamp `limit` to 100** in `collection().list` (and so `useCollection`), for every app. Before, a board asking for 200 got an error.
+- **Free play first** is now the opening rule of the game guide. The guide also asks for these, and closes with a checklist:
+  - every obstacle, power-up and character the plan names, each with its own name in the code;
+  - the first obstacle within 3 seconds;
+  - NPCs that signal before they act;
+  - power-ups with a visible timer;
+  - the score drawn on the canvas.
+- **Run check (D67):**
+  - For a 2D game it looks at the start screen before pressing Play. It reports a canvas that is one flat colour, and a start screen with no Play or Start button (also "race").
+  - The blank check after play now treats a one-colour canvas as blank, not only a see-through one.
+  - With screenshots on, a 2D game's phone pictures are its start screen and a moment of play, then the computer width.
+- **Review and visual check:** the review (D87) is told which picture is the start screen and which is play. The in-browser visual check (P17) is told it sees a game before Play, so it doesn't report obstacles, characters or a counting score missing. A request is a game by any of the project's own messages. Those false reports cost the owner a build each.
+- **Plan (D32, D88):**
+  - For a game, the planner always asks about obstacles and challenges, power-ups, and the computer's characters, each on its own multiple-choice card fitted to the game. If the model leaves one out, a generic card is added.
+  - The model gets 5 cards. The server adds Leaderboard (skipped when the request already asks for one), MiniPay and Colours, so the most is 8. The owner didn't pick between 6 and 8; Claude went with the proposal's 8.
+  - The model's score questions are dropped for games.
+  - The planner also returns a game brief (name, pitch, loop, how a round ends, how it gets harder, two or three extras). The plan card shows it and the builder gets it as the spec. It can't be edited on the card yet: a later message changes it.
+  - The game rules and the brief field go only with a game's request, so other plans cost what they did. The plan's output limit went from 1,500 to 2,000 tokens. The worst case is still inside the planning headroom (tested).
+- **Checked:**
+  - In a real headless browser, a lane racer written the new way passes the run check, with screenshots in the right order.
+  - The same game without `onIdleFrame` is caught, and so is a start screen with no Play button.
+  - The contract compiles and its tests pass.
+  - A MiniPay game passing `gameBoard(GameBoardAbi, GameBoardAddress[chain.id])` passes the app check, the MiniPay checks and the type check. Forgetting it is caught.
+  - The runner turns `game-board` on for "A snake game for MiniPay with a leaderboard", and not without MiniPay.
+  - Planner cards, brief and costs are tested.
+  - The whole test suite passes.
+- **UNVERIFIED:**
+  - Any of this with a real model: whether DeepSeek writes fitting obstacle, power-up and character cards, and a good brief.
+  - The leaderboard on a published app with a real wallet signature.
+  - A real MiniPay post: fee-currency payment for a contract call, and how MiniPay shows it.
+  - The plan card's look in the workspace (only tested in jsdom).
+- **Not in this change:** Phases C (building blocks and the game probe), D (a bot that plays, and run-check tests of the leaderboard and wallet), E (shop contract) and F (extras) of the plan. B4 (checking that the planned obstacles appear) needs the probe from Phase C.
+
+### D94. Games are played and tested: building blocks, a game probe, and a run check that plays, posts a score and connects a wallet (phases C and D of GAMES_PLAN.md; numbered D93 at first, renumbered because main took D92 for OKX Wallet)
+- Date: 11 Nov 2026 · Asked for by: the owner ("go ahead with phase C and D") · Built by: Claude.
+- **Building blocks** (new kit files in `src/game/`, source in `kits/game-blocks.ts`). No packages, and nothing is allocated while the game runs. The guide has a section on each and asks the builder to use them instead of writing its own:
+  - `world.ts`: `Pool`, `Spawner` (a short grace before the first spawn, faster with difficulty, never closer than its fastest gap), `difficulty(seconds)`, `lanes`, `pick`.
+  - `npc.ts`: one `Actor` shape for `traffic`, `oncoming`, `chaser`, `patrol`, `shooter` and `rival`. Each sets `warn` from 0 to 1 before it acts, so a player can react. Also `hitBox` (a little smaller than what is drawn) and `offscreen`.
+  - `powerups.ts`: `Effects` (activate, isActive, remaining, fraction, update with an end callback), with colours for shield, magnet, slow, double, boost and life.
+  - `hud.ts`: `drawHud` (the score panel, distance, best, lives, combo, a shrinking bar per power-up) and `drawBanner`.
+  - `haptics.ts`: `buzz`, which the mute button also turns off.
+- **The game probe** (`src/game/probe.ts`). The game calls `declareGame({ obstacles, powerups, npcs })` once, `spawned(kind)` when one is created, and `probe(score, x, y, speed)` each frame. `GameCanvas` reports rounds: one starts when the game runs, and ends when it pauses or the canvas leaves the page. All of it returns at once unless the run check turned it on (`window.__gbGame`), so real players never pay for it. A file check asks for all three calls in any project with a `GameCanvas`.
+- **Checking is faster than real time.** While the check runs, `GameCanvas` runs 4 game steps per screen frame, so about 7 seconds of play cover about 28 seconds of game. The probe keeps its own clock, so a game that mounts a fresh canvas each round is timed right. The first moments of play run at normal speed, so the blank-canvas check and the review's "playing" picture see what a player sees.
+- **The run check plays a 2D game** (new `game-check.ts`; not for the review's screenshot run):
+  - **The bot.** It presses Play with no wallet, then taps both sides and presses the keys for about 7 seconds. After each game over it presses Play again and checks a new round starts.
+  - **What it reports to the builder's fix loop:**
+    - a score that never rises;
+    - no obstacle or character within 3 seconds of Play;
+    - a declared kind that never appeared in a round of 15 seconds or more;
+    - controls that never moved the player (x or y);
+    - a game that didn't get harder (the speed passed to `probe` never rose) in a round of 10 seconds or more;
+    - no Play again button, or one that doesn't start a round;
+    - no `probe` calls at all.
+  - **It stays silent when it can't tell.** If the bot never survived long enough, it writes a note rather than an issue, because a false finding costs a fix.
+- **With a stand-in wallet** (a second page with `window.ethereum` that says yes and logs what it was asked):
+  - If the page has a Connect wallet button, pressing it must ask the wallet for an account and then show the short address.
+  - If the game shows `PostScore`, the check plays until a game over, posts a score as "Check Bot", and needs both "You're on the board!" and the name in the leaderboard list. This runs on the preview store, because the run check's build has no data server; the data rule itself is the file check from D93.
+- **As MiniPay** (a third page, only with the MiniPay kit): a visible Connect wallet button is reported, and so is any signature request. Play must still work.
+- **Time.** A game's run check may take up to 50 seconds (other apps keep 25). Measured locally, a game with a leaderboard took 12 to 15 seconds per check.
+- **Planned kinds (B4)** are tested through `declareGame`: the guide tells the builder to declare the kinds the plan named, with the same short names. Nothing yet compares the plan's wording with the declared names.
+- **Changed from the plan.** There is no forced game over (`endRound`): a game that never ends during the check simply isn't judged on Play again. The leaderboard is tested on the preview store rather than an in-memory server that applies the project's rules, which the file check already covers.
+- **Games already built** get the new kit files (they are added, never overwritten). Their next build will be asked to add `declareGame`, `spawned` and `probe`, which costs one fix round.
+- **Checked:**
+  - Unit tests for every rule, including when it stays silent (`game-check.test.ts`).
+  - In a real headless browser:
+    - a racer built only from the blocks passes the type check and the run check, meeting every kind it declared;
+    - a game with no obstacles, score, control or rising speed gets all five findings;
+    - a game over with no Play again is caught;
+    - posting a score with the stand-in wallet shows it on the board;
+    - a `PostScore` wired to a different board than the one on screen is caught;
+    - a MiniPay game is opened as MiniPay, and a Connect wallet button there is caught.
+  - The game tests passed twice in a row, and the whole suite passes.
+- **UNVERIFIED:** a real model writing games with the blocks and the probe; how often the random bot survives long enough to judge everything in real builds; the extra check time on the production checker; real wallets and real MiniPay.
+
+### D95. Games sell things safely and give people a reason to come back: a tested G$ shop, and the extras (phases E and F of GAMES_PLAN.md)
+- Date: 11 Nov 2026 · Asked for by: the owner ("go ahead with phase E and F", with the Neon Drift transcript, whose last requests were to put Play again and Post score on the game screen, show the top three racers on the race screen, and show distance and coins on the game-over panel) · Built by: Claude.
+- **The shop is a kit, `game-shop`, with a tested contract.** Before, the builder wrote a shop contract for each game. Neon Drift's "RaceShop" was one, and it cost a deploy.
+  - `contracts/GameShop.sol` sells three kinds of item, each paid in G$ with one `transferAndCall` (no separate approve step):
+    - unique items (a car, a skin), owned once;
+    - counted items (level ups, power packs with `perPurchase`);
+    - the season pass, which belongs to the current season and ends with it. `startSeason(endsAt)` starts the next one, and earlier passes stop counting.
+  - The price must be exact, so nobody overpays and a refused purchase costs nothing.
+  - The owner sets the price list in one `setItems` transaction, can pause, and withdraws the takings. `Ownable2Step` and `ReentrancyGuard` protect it. Only the G$ token can report a payment.
+  - `contracts/test/GameShop.t.sol` has 10 tests, including attacks: a stranger changing prices, withdrawing, starting a season or pausing; calling the payment hook directly to get an item free; and moving G$ out.
+  - The shop is not mistaken for a vault (`rolesOf`), because players buy rather than deposit and withdraw.
+- **The game owns its item list.** `export const SHOP: ShopItem[]` in the game's code: ids, names, kinds, prices in G$, and details.
+  - `useShop(SHOP, GameShopAbi, GameShopAddress[chain.id])` reads the on-chain prices, what the player owns and holds, the pass and the season end. It buys, and gives the owner a setup action.
+  - `<Store>` shows each item with the game's own drawing (Sprite), its price, Buy, Owned or Use, how many the player has, the season end and the G$ balance.
+  - After deploying, the owner sees "Put these items on sale": one transaction with every price from the code.
+  - Free starter items ("0") are owned by everyone with no wallet, so the game stays fully playable for free.
+  - The guide asks for fair play: bought items are cosmetic or a capped convenience, never what decides a board with prizes.
+  - It also asks for `{"name": "GameShop", "args": {"gd_": "${GOODDOLLAR}"}}` in `contracts/deploy.json`, and an owner-only control to start a season. The game-board guide now names its own deploy.json line too.
+- **When the shop turns on.** The runner turns `game-shop` on for a 2D game whose request or plan answers say it sells things: store, shop, season pass, garage, level ups, skins, buying cars or items. It never turns on from those words alone, because a bookshop isn't a game. For the owner's exact Neon Drift request, the runner turns on `game-2d`, `mini-app`, `game-board` and `game-shop` together (tested).
+- **MiniPay.** `src/game/chainTx.ts` (`sendGameTx`) sends a game's contract calls. In a browser it's a normal transaction. Inside MiniPay it pays the network fee in the first dollar coin the player has, as a legacy transaction. The owner tested G$ inside MiniPay on a phone and confirmed it works (11 Nov 2026), which answers GAMES_PLAN E3. GoodBuild's own automated checks still use a stand-in MiniPay.
+- **Extras** (`src/game/extras.ts`):
+  - near misses (`nearMiss`) and a `Combo` multiplier;
+  - `coins` earned by playing, kept on the device;
+  - `Missions`: three a day, the same for everyone, tracked by stat, some within one run. Finished missions add season XP, and `seasonTier(xp, tiers, hasPass)` gives the tier, its progress, and which rewards are unlocked, with pass-only tiers;
+  - a daily course (`dailySeed`, `seededRandom`);
+  - a `Ghost` of the best run;
+  - `firstTime` for a one-run tip;
+  - `shareScore` (the phone's share sheet, or a copy);
+  - `prefersReducedMotion`.
+  - The planner's brief picks the extras for a game, and the guide asks for every one the brief names.
+- **On-screen pieces:**
+  - `GameOver` is a panel over the bottom of the game: the score, "New best!", the best, the run's numbers (distance, coins), a big Play again, Share, and `PostScore` inside it. This is what the owner asked for after scrolling to find Play again.
+  - `TopThree` shows the board's top three on the race screen.
+  - `GameSettings` has sound and vibration switches. Vibration now has its own setting as well as following mute.
+  - `GameCanvas` gets `onHidden`, so a phone call or tab switch pauses the run behind a Resume button instead of carrying on.
+- **The run check** (D94) now reports a Play again that sits below the screen after a game over, which the player has to scroll to find.
+- **Checked:**
+  - The shop contract compiles and all 10 of its tests pass in the local EVM.
+  - A game with the store passes the app check and the type check, with and without MiniPay.
+  - A game with every extra passes the type check and the run check in a real browser.
+  - The game tests now use the on-game panel and the top three, and a game with Play again below a scoring card is caught.
+  - The runner turns the shop on for the Neon Drift request and not for a game that sells nothing.
+  - The full suite passes.
+- **UNVERIFIED:**
+  - A real model building a game with the shop and extras.
+  - The owner's setup on a deployed `GameShop` (G$ inside MiniPay itself was tested on a phone by the owner).
+  - Whether DeepSeek keeps purchases fair as the guide asks.

@@ -1,3 +1,8 @@
+import type { CheckIssue } from "../checks";
+
+import { CHAIN_TX, HAPTICS, HUD, NPC, POWERUPS, PROBE, WORLD } from "./game-blocks";
+import { EXTRAS, GAME_OVER_TSX, SETTINGS_TSX, TOP_THREE_TSX } from "./game-extras";
+import { LEADERBOARD_TS, LEADERBOARD_TSX, SPRITE } from "./game-files";
 import type { Kit } from "./registry";
 
 /**
@@ -12,6 +17,7 @@ import type { Kit } from "./registry";
  */
 
 const GAME_CANVAS = `import { useEffect, useRef, type CSSProperties } from "react";
+import { checkRound, checkTick, stepsPerFrame } from "./probe";
 
 /** What the player is pressing right now. Read it in onFrame; never store it in React state. */
 export interface GameInput {
@@ -62,13 +68,17 @@ const NAMES: Record<ControlButton, string> = { left: "Left", right: "Right", up:
  * The game's screen. It keeps the game at a fixed size in its own coordinates (360 x 640 by
  * default, a phone held upright) and scales it to fit, sharp on any screen. onFrame is called about
  * 60 times a second with the time step and the input; update the game there, then draw it.
- * The loop stops while paused is true or the tab is hidden, and starts again by itself.
+ * While paused is true (the start and game-over screens), onFrame isn't called: onIdleFrame is,
+ * so those screens show the game world (the road, the parked car) instead of an empty box. Draw
+ * there only; don't move the game on or check for hits. Nothing runs while the tab is hidden.
  */
 export function GameCanvas({
   width = 360,
   height = 640,
   paused = false,
   onFrame,
+  onIdleFrame,
+  onHidden,
   controls = [],
   label = "Game",
   maxHeight,
@@ -79,6 +89,16 @@ export function GameCanvas({
   height?: number;
   paused?: boolean;
   onFrame: (frame: Frame) => void;
+  /**
+   * Draws the start and game-over screens while paused: the game world standing still or drifting
+   * slowly behind the menu. Draw only; never end the round, play a sound or score here.
+   */
+  onIdleFrame?: (frame: Frame) => void;
+  /**
+   * The tab was hidden or the phone locked while the game was running. Show a pause screen here
+   * (set paused) so the game waits for "Tap to resume" instead of starting again under a thumb.
+   */
+  onHidden?: () => void;
   /** On-screen buttons for phones. Leave empty when a tap anywhere is the only control. */
   controls?: ControlButton[];
   /** What a screen reader calls the game. */
@@ -93,6 +113,9 @@ export function GameCanvas({
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const frameRef = useRef(onFrame);
+  const idleRef = useRef(onIdleFrame);
+  const hiddenRef = useRef(onHidden);
+  hiddenRef.current = onHidden;
   const pausedRef = useRef(paused);
   const input = useRef<GameInput>({ left: false, right: false, up: false, down: false, action: false, actionPressed: false, pointer: { x: 0, y: 0, down: false } });
   const held = useRef({ key: false, pointer: false, button: false });
@@ -108,10 +131,17 @@ export function GameCanvas({
 
   useEffect(() => {
     frameRef.current = onFrame;
+    idleRef.current = onIdleFrame;
     pausedRef.current = paused;
     // A tap on Play, or a key held when the game ended, must not carry into the next round as a jump.
     if (paused) release();
-  }, [onFrame, paused]);
+  }, [onFrame, onIdleFrame, paused]);
+
+  // GoodBuild's check counts rounds: one starts when the game runs and ends when it pauses or leaves the page.
+  useEffect(() => {
+    checkRound(!paused);
+    return () => checkRound(false);
+  }, [paused]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -178,6 +208,10 @@ export function GameCanvas({
     };
     window.addEventListener("blur", letGo);
     document.addEventListener("visibilitychange", letGo);
+    const hide = () => {
+      if (document.hidden && !pausedRef.current) hiddenRef.current?.();
+    };
+    document.addEventListener("visibilitychange", hide);
 
     let raf = 0;
     let last = 0;
@@ -187,11 +221,23 @@ export function GameCanvas({
       // A long gap (a hidden tab, a slow frame) must not make everything jump.
       const dt = Math.min((now - (last || now)) / 1000, 1 / 30);
       last = now;
-      if (pausedRef.current || document.hidden) return;
-      time += dt;
+      if (document.hidden) return;
+      if (pausedRef.current) {
+        // The start and game-over screens: the world is drawn, the game doesn't move on.
+        if (!idleRef.current) return;
+        ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+        idleRef.current({ ctx, width, height, dt, time, input: state });
+        return;
+      }
       ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-      frameRef.current({ ctx, width, height, dt, time, input: state });
-      state.actionPressed = false;
+      // One step per frame. While GoodBuild checks the game it runs a few, so a short check covers a long round.
+      const steps = stepsPerFrame();
+      for (let i = 0; i < steps; i++) {
+        time += dt;
+        checkTick(dt);
+        frameRef.current({ ctx, width, height, dt, time, input: state });
+        state.actionPressed = false;
+      }
     };
     raf = requestAnimationFrame(loop);
     return () => {
@@ -204,6 +250,7 @@ export function GameCanvas({
       window.removeEventListener("pointercancel", pointerUp);
       window.removeEventListener("blur", letGo);
       document.removeEventListener("visibilitychange", letGo);
+      document.removeEventListener("visibilitychange", hide);
     };
   }, [width, height]);
 
@@ -224,6 +271,8 @@ export function GameCanvas({
     <div className={className} style={{ width: "100%", maxWidth: fit, minWidth: Math.min(width, 200), marginInline: "auto", ...style }}>
       <canvas
         ref={canvasRef}
+        // GoodBuild's check looks at this canvas, not at Sprite drawings elsewhere on the page.
+        data-game-canvas=""
         role="img"
         aria-label={label}
         // touch-action stops the page scrolling or zooming under a thumb that is playing.
@@ -332,8 +381,8 @@ export function setMuted(value: boolean) {
 }
 `;
 
-const STORAGE = `// The player's best score, kept in their browser. For a leaderboard other people can see, save
-// scores with useCollection (src/lib/useDb.ts) as the game guide describes.
+const STORAGE = `// The player's best score, kept in their browser. For a leaderboard other people can see, use
+// useLeaderboard from src/game/leaderboard.ts as the game guide describes.
 
 export function bestScore(game = "game"): number {
   try {
@@ -518,27 +567,177 @@ export class Popups {
 `;
 
 const GUIDE = `2D games. The kit's files are in src/game/: use them, don't rewrite them.
-- GameCanvas (src/game/GameCanvas.tsx) is the screen. Give it onFrame({ ctx, width, height, dt, time, input }) and do everything there: update the game, then draw it. It scales a fixed game size (360 x 640 by default: a phone held upright; pass width and height for another shape) to fit any screen, so always draw in game coordinates, never in pixels of the window.
-- Keep the game's state in a useRef object (player, enemies, score), NOT in useState: state that changes 60 times a second must not re-render React. Use useState only for which screen is showing ("start" | "playing" | "over") and for a number the page shows outside the canvas, updated when it changes, not every frame.
-- Multiply every speed by dt (seconds), so the game runs the same on a slow phone: x += speed * dt. Never count frames.
-- Input: input.left/right/up/down are held directions (arrow keys, WASD or the on-screen buttons). input.action is held, input.actionPressed is true for one frame when it starts (jump, shoot, flap, start). input.pointer is the finger or mouse in game coordinates. Every game must be playable with a thumb alone: either one-tap play (the whole canvas is the button) or pass controls={["left","right","action"]} to GameCanvas for on-screen buttons. Keyboard works by itself.
-- Three screens: a start screen that says how to play in one line and has a Play button, the game, and a game-over screen with the score, the best score and Play again. Pause is automatic when the tab is hidden; pass paused while a screen other than the game is up. While paused the keyboard belongs to the page (so Enter presses Play) and anything held is let go, so a round never starts with a jump nobody pressed.
-- Draw with shapes, gradients and emoji (ctx.fillRect, ctx.arc, ctx.fillText with a big font): a game needs no image files. Clear the canvas at the start of every frame. Use the theme's mood for colours but choose them for contrast inside the game. If the user uploaded images, draw them with an Image loaded from their /assets/ path.
-- Sound: sfx.jump(), sfx.coin(), sfx.hit(), sfx.tap(), sfx.win(), sfx.lose() from src/game/sound.ts, or tone(frequency, seconds) for your own. Offer a mute button (isMuted, setMuted).
-- Score: bestScore() and saveBest(score) from src/game/storage.ts keep the best in the browser.
-- Feel (src/game/juice.ts): this is what separates a game from a demo, so use it. new Particles() for a burst when something is collected, broken or landed on (particles.burst(x, y, { color })). new Shake() for a jolt on a hit or a crash (shake.hit()). new Popups() for "+10" floating up from where it was earned. Make each ONCE outside onFrame (in the same useRef as the game state, or at module level), and on every frame: shake.update(dt); ctx.save(); shake.apply(ctx); draw the game; particles.update(dt); particles.draw(ctx); popups.update(dt); popups.draw(ctx); ctx.restore(). ease.out, ease.back and lerp are there for movement that isn't linear (a score that pops, a camera that follows). Collisions: hitRect(a, b), hitCircle(...), hitCircleRect(...).
-- Make it a game, not a demo: difficulty that rises (speed, spawn rate) with the score, a clear way to lose, feedback on every action (a sound AND something seen: a burst, a shake, a popup), and a reason to play again (best score, shown on the game-over screen with "New best!" when it is one). Give the player a moment of grace: a short pause before the first obstacle, and hit boxes a little smaller than what is drawn.
-- Performance on a cheap phone: no new objects or arrays inside onFrame where you can reuse them, at most a few hundred things on screen, remove what leaves the screen, no shadows or filters on many shapes.
-- Page layout: the game is the page. A compact top row (name, score, mute, ConnectButton only if the game uses a wallet), the canvas centred, controls under it. The game must be playable WITHOUT a wallet; ask for one only when the player saves a score on a leaderboard, pays an entry or claims a prize.
 
-A leaderboard other people can see (no contract needed): save each finished game with useCollection("scores") from src/lib/useDb.ts (load the app-data guide) and show the top 10. Say on the page that scores are reported by players' own devices.
+Free play first. Anyone can open the game and play straight away: no wallet, no sign-in, no account. The best score is kept on the device (saveBest). A wallet is asked for only when the player chooses to post a score on the leaderboard, buy something, or pay an entry, and the page says so at that moment. Never put Play behind a wallet, and never block the game while a wallet or the leaderboard loads.
+
+The screen
+- GameCanvas (src/game/GameCanvas.tsx) is the screen. Give it onFrame({ ctx, width, height, dt, time, input }) and do everything there: update the game, then draw it. It scales a fixed game size (360 x 640 by default: a phone held upright; pass width and height for another shape) to fit any screen, so always draw in game coordinates, never in pixels of the window.
+- Three screens: start, playing, game over. Pass paused={screen !== "playing"} AND onIdleFrame. While paused, onFrame isn't called; onIdleFrame is, so the start and game-over screens show the game world (the road and the parked car, the level behind the menu) instead of an empty box. onIdleFrame only draws: it may drift the background slowly with dt, but it never moves the game on, checks hits, scores or plays sounds. Write one drawWorld(ctx, g) used by both, so they can't drift apart.
+- The start screen: the game's name, one line on how to play, the best score, and a big Play button (a <button> with the word Play or Start). Over the canvas or under it, but the canvas is always drawn.
+- The game-over screen is ON the game, never below it: wrap GameCanvas in <div className="relative"> and show <GameOver score best stats={[{ label: "Distance", value: ... }, { label: "Coins", value: ... }]} onAgain={start} shareText="..." > <PostScore ... /> </GameOver> from src/game/GameOver.tsx inside it. Play again and posting a score are then where the thumb already is, with nothing to scroll. Show the numbers the run counted (distance, coins, near misses).
+- A pause screen: pass onHidden={() => setScreen("paused")} to GameCanvas, so a phone call or a tab switch pauses the run and it waits for a Resume button.
+- Keep the game's state in a useRef object (player, enemies, score), NOT in useState: state that changes 60 times a second must not re-render React. Use useState only for which screen is showing and for a number the page shows outside the canvas, updated when it changes, not every frame.
+- Multiply every speed by dt (seconds), so the game runs the same on a slow phone: x += speed * dt. Never count frames.
+- Input: input.left/right/up/down are held directions (arrow keys, WASD or the on-screen buttons). input.action is held, input.actionPressed is true for one frame when it starts (jump, shoot, flap). input.pointer is the finger or mouse in game coordinates. Every game must be playable with a thumb alone: either one-tap play (the whole canvas is the button) or pass controls={["left","right","action"]} for on-screen buttons. For lanes, a tap on the left or right half of the canvas (input.pointer.x < width / 2) changes lane. Keyboard works by itself.
+- The score is drawn on the canvas during play, in a panel at the top that is easy to read on any background (a dark rounded box with white text), with whatever else the game counts (distance, coins, lives). The page around the canvas may show it too.
+
+What makes it a game
+- Obstacles, challenges, power-ups and computer-controlled characters (NPCs: traffic, rivals, enemies, chasers) are the game. Build every one the plan names, each with its own look and its own behaviour, and give each a name in the code (type: "oncoming" | "slowCar" | "oil"). If the plan named none, pick at least two kinds of obstacle and one power-up that fit the game.
+- The first obstacle arrives within 3 seconds of Play, after a short grace moment. A player must meet everything the game has within the first 15 seconds of a round: introduce each kind early, then mix them.
+- NPCs act like someone: traffic changes lane with a blink first, a chaser speeds up when far and slows when close, a rival tries to block. Signal before acting, so a player can react, and keep it fair: never spawn something the player can't avoid.
+- Power-ups: each one does something you can see (a shield ring, coins flying to you, a speed trail), lasts a few seconds with a shrinking bar in the score panel, and makes a sound when picked up and when it ends.
+- Difficulty rises with time or score (speed, spawn rate, more kinds at once), with a cap so it stays playable.
+- A clear way to lose, feedback on every action (a sound AND something seen), and a reason to play again (the best score, "New best!"). Hit boxes a little smaller than what is drawn.
+- Feel (src/game/juice.ts): this is what separates a game from a demo, so use it. new Particles() for a burst when something is collected, broken or landed on (particles.burst(x, y, { color })). new Shake() for a jolt on a hit (shake.hit()). new Popups() for "+10" floating up. Make each ONCE outside onFrame (in the game's useRef or at module level), and on every frame: shake.update(dt); ctx.save(); shake.apply(ctx); draw the game; particles.update(dt); particles.draw(ctx); popups.update(dt); popups.draw(ctx); ctx.restore(). ease.out, ease.back and lerp are there for movement that isn't linear. Collisions: hitRect(a, b), hitCircle(...), hitCircleRect(...).
+- Sound: sfx.jump(), sfx.coin(), sfx.hit(), sfx.tap(), sfx.win(), sfx.lose() from src/game/sound.ts, or tone(frequency, seconds) for your own. Offer a mute button (isMuted, setMuted).
+
+Building blocks (src/game/): use them instead of writing your own
+- world.ts: Pool (reuse cars, coins and bullets instead of making new ones each frame), Spawner (things on a timer that come faster as difficulty rises, the first after a short grace), difficulty(seconds) from 0 to 1, lanes(n, width) for lane games, pick(items, weights).
+- npc.ts: computer-controlled characters on one shape, Actor (new Pool(newActor, 24), place(a, kind, x, y)): traffic (overtaken, blinks then changes lane), oncoming (rushes at you, headlights first), chaser (follows, faster when far), patrol (back and forth), shooter (warns, then fires), rival (races beside you and blocks your lane after blinking). Each sets a.warn from 0 to 1 while it gets ready: draw a blinker, flash or "!" then. hitBox(a) is a little smaller than what is drawn; offscreen(a, width, height) says when to set active = false.
+- powerups.ts: new Effects(); effects.activate("shield", 5), isActive("magnet"), remaining("boost"), update(dt, onEnd). shield, magnet, slow, double, boost and life have colours ready.
+- hud.ts: drawHud(ctx, width, { score, best, distance, lives, combo, effects }) is the score panel, with a shrinking bar for each running power-up. Call it last in onFrame. drawBanner(ctx, width, height, "Shield!") for a moment's message.
+- haptics.ts: buzz("hit"), buzz("collect"), buzz("over") on phones that vibrate, off with mute.
+
+GoodBuild tests the game (src/game/probe.ts). Its check opens the game, presses Play with no wallet and plays it, and these three calls tell it what happened. They do nothing for real players. Write all three:
+- declareGame({ obstacles: [...], powerups: [...], npcs: [...] }) once at module level, naming every kind the game has with the same short names the code uses (the kinds the plan named: "oncoming", "oil", "nitro", "rival").
+- spawned(kind) every time one of them is created.
+- probe(score, player.x, player.y, speed) once per frame in onFrame while playing, with the current score, the player's position and the game's speed (what rises as it gets harder).
+The check then reports, for the builder to fix: a score that never rises, no obstacle in the first 3 seconds, a declared kind that never appears in the first 15 seconds of a round, controls that don't move the player, a game that doesn't get harder, and a Play again that doesn't start a new round.
+
+Make people play again (src/game/extras.ts): pick the two or three that fit, and every one the plan's brief names
+- Near misses and combos: nearMiss(playerBox, carBox) passing close scores a bonus ("Close!" popup); new Combo() raises a multiplier for quick successes, shown with drawHud's combo.
+- Coins: collected in runs (coins.add at game over), kept on the device, spent on things that unlock by playing, so free players progress too.
+- Missions: new Missions([...]) gives three a day ("Collect 20 coins", "Survive 60 seconds" with oneRun), track(stat) as things happen, endRun() at game over, list them on the start screen. Finished missions add season XP; seasonTier(seasonXp.get(), tiers, shop.hasPass) shows the season's tiers, with pass-only tiers marked.
+- Daily challenge: seededRandom(dailySeed()) instead of Math.random, so everyone races the same course today.
+- Ghost: new Ghost(); start() at Play, record(time, x, y) each frame, finish(score) at game over, and draw ghost.at(time) faintly during the run.
+- firstTime("controls") shows a one-line tip on the first run only. shareScore("I drove 1,240 m in Neon Drift") opens the phone's share sheet (GameOver's shareText does this). prefersReducedMotion(): less shake and fewer particles.
+- GameSettings (src/game/GameSettings.tsx): sound and vibration switches for the start screen.
+- The leaderboard's top three on the race screen itself: <TopThree board={board} /> from src/game/TopThree.tsx over a top corner of the canvas (absolute, inside the relative box) or just above it.
+
+Drawing
+- Draw with shapes, gradients and emoji (ctx.fillRect, ctx.arc, ctx.fillText with a big font): a game needs no image files. Clear the canvas at the start of every frame. Use the theme's mood for colours but choose them for contrast inside the game. If the user uploaded images, draw them with an Image loaded from their /assets/ path.
+- Draw each thing once, as a function: drawCar(ctx, x, y, w, h, colour). Use it in the game, and outside the game with <Sprite draw={(ctx, w, h) => drawCar(ctx, 0, 0, w, h, colour)} width={96} height={128} /> from src/game/Sprite.tsx: garage cards, the store, the start screen, leaderboard rows. Never redraw the same thing a second way in SVG or CSS. A thing shown in a card is at least 64px, big enough to recognise.
+- Performance on a cheap phone: no new objects or arrays inside onFrame where you can reuse them, at most a few hundred things on screen, remove what leaves the screen, no shadows or filters on many shapes.
+
+Page layout
+- The game is the page. A compact top row (name, best score, mute; a wallet button only if the game sells something), the canvas centred, controls under it.
+
+Leaderboard (when the plan asks for one; the owner decided that posting a score needs a wallet)
+- Use the kit, never your own: const board = useLeaderboard() from src/game/leaderboard.ts, <Leaderboard board={board} icon={(e) => ...} /> and, on the game-over screen, <PostScore board={board} score={score} extra={carId} /> from src/game/Leaderboard.tsx. The board loads for everyone without a wallet; PostScore asks for the wallet only when they tap Post, and explains it first.
+- Add this rule to src/lib/dataRules.json under "collections", exactly: "scores": {"create": "signed-in", "read": ["anyone"], "fields": {"name": "string", "score": "number", "extra": "string"}}. Each wallet keeps one best score; the board shows the top 10 with "(you)" on the player's row.
+- In a game that works in MiniPay, MiniPay allows no sign-in signature, so the MiniPay leaderboard contract kit is on as well: follow its guide (pass chain: to useLeaderboard). Don't remove the leaderboard for MiniPay players.
+- Show the top 3 on the start screen as well when there's room. Scores come from players' own devices: Leaderboard says so already.
 
 Money in a game (only when the user asks for entry fees, prizes or things to buy):
 - A paid tournament is allowed: players pay a G$ entry, the pot goes to the winner or the top few. Write a contract in contracts/ following the contract rules: entries with transferAndCall, a deadline, a refund to every player if nothing is settled within a set time after the deadline, and custom errors.
 - A score comes from the player's own device, so a contract can't trust it. Don't write a contract that pays whoever submits the biggest number. Use an organiser who settles: the contract's owner calls a function naming the winners after the deadline, and the page says plainly that the organiser confirms the results. For a turn-based game with simple rules (noughts and crosses, a guessing duel between two players who both commit), the contract can run the rules itself instead.
 - The winner must be decided by play. Never build a game for money where chance alone picks the winner (a lottery, a dice roll, a slot machine, a random draw among payers): refuse that and offer a skill game or a free draw instead.
-- Things to buy (skins, extra lives, a pass): an ERC-1155 or a simple purchases mapping paid in G$, read by the game to unlock them. Keep the game fair to play without paying.
-- Several people playing together (a room, taking turns, a shared leaderboard that updates): load the multiplayer guide. There is no live connection, so it suits turn-based and lobby games, not fast action games.`;
+- Things to buy (cars, skins, level ups, power packs, a season pass): the game shop kit is on for games that sell things: follow its guide (useShop and Store, with the tested GameShop contract). Never write your own shop contract. Keep the game fair and fun without paying: the starter items are free, and anything bought is shown with Sprite exactly as the game draws it.
+- Several people playing together (a room, taking turns, a lobby): load the multiplayer guide. There is no live connection, so it suits turn-based and lobby games, not fast action games.
+
+Before you finish, check: the canvas draws on the start screen (onIdleFrame), Play works with no wallet, the first obstacle comes within 3 seconds, every obstacle, power-up and NPC the plan named is in the game and in declareGame, spawned and probe are called, the score shows on the canvas while playing (drawHud), game over shows Play again, and the leaderboard rule is in dataRules.json if there is a board.`;
+
+/** The leaderboard's data rule, as the guide writes it (D93). */
+export const SCORES_RULE_JSON = '"scores": {"create": "signed-in", "read": ["anyone"], "fields": {"name": "string", "score": "number", "extra": "string"}}';
+
+/** Each opening tag of a component, props and all: a ">" inside {...} (an arrow function) doesn't end it. */
+export function jsxTags(content: string, name: string): { at: number; text: string }[] {
+  const tags: { at: number; text: string }[] = [];
+  const re = new RegExp("<" + name + "\\b", "g");
+  for (const m of content.matchAll(re)) {
+    let depth = 0;
+    let quote = "";
+    let i = m.index + m[0].length;
+    for (; i < content.length; i++) {
+      const ch = content[i];
+      if (quote) {
+        if (ch === quote && content[i - 1] !== "\\") quote = "";
+      } else if (ch === '"' || ch === "'" || ch === "`") quote = ch;
+      else if (ch === "{") depth++;
+      else if (ch === "}") depth--;
+      else if (ch === ">" && depth === 0) break;
+    }
+    tags.push({ at: m.index, text: content.slice(m.index, i + 1) });
+  }
+  return tags;
+}
+
+/** Kit files in src/game/ that GoodBuild wrote: every 2D game kit file, and the board and shop kits' own. */
+const KIT_GAME_FILES = new Set(["src/game/chainBoard.ts", "src/game/shop.ts", "src/game/Store.tsx"]);
+
+/** The game's own source files: what the builder wrote, not the kits' files or the starter's library. */
+function authoredFiles(files: Record<string, string>): Array<[string, string]> {
+  return Object.entries(files).filter(([f]) => /^src\/.*\.(tsx?|jsx?)$/.test(f) && !f.startsWith("src/lib/") && !KIT_GAME_FILES.has(f) && !(f in game2d.files));
+}
+
+const lineOf = (content: string, re: RegExp) => content.slice(0, Math.max(0, content.search(re))).split("\n").length;
+
+/**
+ * What the game guide asks for that the files can show (D93): the start screen is drawn, and a
+ * leaderboard has the rule it needs and, in a MiniPay game, the contract passed to it.
+ */
+export function gameChecks(files: Record<string, string>): CheckIssue[] {
+  const issues: CheckIssue[] = [];
+  const own = Object.entries(files).filter(([f]) => /^src\/.*\.(tsx|jsx)$/.test(f) && !f.startsWith("src/game/") && !f.startsWith("src/lib/"));
+  for (const [file, content] of own) {
+    // Each <GameCanvas ...> tag that is paused but has nothing to draw while paused.
+    for (const tag of jsxTags(content, "GameCanvas")) {
+      if (/\bpaused\s*=/.test(tag.text) && !/\bonIdleFrame\s*=/.test(tag.text)) {
+        issues.push({
+          file,
+          line: content.slice(0, tag.at).split("\n").length,
+          source: "guardrail",
+          message: "GameCanvas is paused on the start and game-over screens but has no onIdleFrame, so those screens show an empty box. Pass onIdleFrame={({ ctx, width, height }) => drawWorld(ctx, ...)} that draws the game world (no movement, hits or sounds).",
+        });
+      }
+    }
+  }
+  // The game reports to GoodBuild's check (D94): without the probe it can only be looked at, not tested.
+  // The calls may live in a .ts module of the game's own, so look at every file the builder wrote.
+  const canvas = own.find(([, c]) => /<GameCanvas\b/.test(c));
+  if (canvas) {
+    const all = authoredFiles(files).map(([, c]) => c).join("\n");
+    const missing = [/\bdeclareGame\s*\(/.test(all) ? "" : "declareGame({ obstacles, powerups, npcs }) once at module level", /\bspawned\s*\(/.test(all) ? "" : "spawned(kind) whenever an obstacle, power-up or character is created", /\bprobe\s*\(/.test(all) ? "" : "probe(score, player.x, player.y, speed) once per frame in onFrame"].filter(Boolean);
+    if (missing.length) {
+      issues.push({
+        file: canvas[0],
+        line: lineOf(canvas[1], /<GameCanvas\b/),
+        source: "paths",
+        message: `GoodBuild can't test this game yet. Add, from src/game/probe.ts: ${missing.join("; ")}. They do nothing for real players.`,
+      });
+    }
+  }
+  const usesBoard = own.find(([, c]) => /\buseLeaderboard\s*\(/.test(c));
+  if (usesBoard) {
+    const [file, content] = usesBoard;
+    const name = /useLeaderboard\(\s*\{[^}]*\bcollection\s*:\s*["']([a-z][a-z0-9_-]*)["']/.exec(content)?.[1] ?? "scores";
+    let rule: unknown;
+    try {
+      rule = (JSON.parse(files["src/lib/dataRules.json"] ?? "{}") as { collections?: Record<string, unknown> }).collections?.[name];
+    } catch {
+      rule = undefined;
+    }
+    const r = (typeof rule === "object" && rule ? rule : {}) as { create?: unknown; read?: unknown };
+    const readsAnyone = rule === "public-read" || (Array.isArray(r.read) && r.read.includes("anyone"));
+    const signedIn = rule === "public-read" || r.create === undefined || r.create === "signed-in";
+    if (!rule || !readsAnyone || !signedIn) {
+      issues.push({
+        file: "src/lib/dataRules.json",
+        source: "paths",
+        message: `The leaderboard in ${file} needs its rule in src/lib/dataRules.json under "collections": ${name === "scores" ? SCORES_RULE_JSON : SCORES_RULE_JSON.replace('"scores"', `"${name}"`)}. Everyone reads the board; posting needs a wallet.`,
+      });
+    }
+    if (files["contracts/GameBoard.sol"] !== undefined && !own.some(([, c]) => /\bgameBoard\s*\(/.test(c) && /\bchain\s*:/.test(c))) {
+      issues.push({
+        file,
+        line: lineOf(content, /\buseLeaderboard\s*\(/),
+        source: "paths",
+        message: 'MiniPay players can\'t post to the leaderboard: make const miniPayBoard = gameBoard(GameBoardAbi, GameBoardAddress[chain.id]) once at module level (gameBoard from src/game/chainBoard.ts, GameBoardAbi and GameBoardAddress from the contracts folder, chain from src/lib/chain.ts) and pass useLeaderboard({ chain: miniPayBoard }).',
+      });
+    }
+  }
+  return issues;
+}
 
 export const game2d: Kit = {
   id: "game-2d",
@@ -552,9 +751,28 @@ export const game2d: Kit = {
     "src/game/sound.ts": SOUND,
     "src/game/storage.ts": STORAGE,
     "src/game/juice.ts": JUICE,
+    "src/game/Sprite.tsx": SPRITE,
+    "src/game/leaderboard.ts": LEADERBOARD_TS,
+    "src/game/Leaderboard.tsx": LEADERBOARD_TSX,
+    "src/game/probe.ts": PROBE,
+    "src/game/world.ts": WORLD,
+    "src/game/npc.ts": NPC,
+    "src/game/powerups.ts": POWERUPS,
+    "src/game/hud.ts": HUD,
+    "src/game/haptics.ts": HAPTICS,
+    "src/game/chainTx.ts": CHAIN_TX,
+    "src/game/extras.ts": EXTRAS,
+    "src/game/GameOver.tsx": GAME_OVER_TSX,
+    "src/game/TopThree.tsx": TOP_THREE_TSX,
+    "src/game/GameSettings.tsx": SETTINGS_TSX,
   },
   // The first GameCanvas (D72): Enter and Space couldn't press Play, and a key held through a lost focus stuck (D85).
-  superseded: { "src/game/GameCanvas.tsx": ["b8d7fc83dc5ae09f096f37446f8ba12273a2b502aba2acb827f4a8c541901c08"] },
+  // ...and the second never drew while paused, so every start screen was an empty box (D93).
+  superseded: { "src/game/GameCanvas.tsx": ["b8d7fc83dc5ae09f096f37446f8ba12273a2b502aba2acb827f4a8c541901c08", "f5a2cd6e74f9d834f917de93c6b5ff39dc8accc07f44f2d956eddab47798563c"],
+    // Its comment pointed at useCollection for leaderboards (D93).
+    "src/game/storage.ts": ["ad445565329f58a977216f4ed062c26609a13e2afd9e14a96e7b114e6eae65fa"],
+  },
   guide: GUIDE,
   replaces: ["phaser", "kaplay", "kaboom", "pixi.js", "matter-js", "howler"],
+  checks: gameChecks,
 };
