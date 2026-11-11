@@ -9,7 +9,7 @@ import { contextMessage, systemPrompt } from "./prompt";
 import { loadGuides } from "./guides";
 import { starterFiles, WALLET_HELPERS, withStarterHelpers } from "./template";
 import { Workspace } from "./workspace";
-import { WALLET_PATHS } from "./wallet-template";
+import { WALLET_PATHS, walletHelpersFor } from "./wallet-template";
 import { buildPublishedApp, WALLETCONNECT_PATH } from "@/server/publish/build";
 import { publishedHeaders } from "@/server/publish/service";
 
@@ -41,6 +41,30 @@ describe("the wallet layer is GoodBuild's", () => {
     expect(files[WALLET_PATHS.wallet]).toContain(`export const appChain = ${selected};`);
     expect(files["src/lib/chain.ts"]).toContain("[celoSepolia.id]: celoSepolia");
     expect(files["src/lib/chain.ts"]).toContain("[celo.id]: celo");
+  });
+
+  it("the OKX additions name no chain, so each network's wallet file still imports and uses only its own (D92)", () => {
+    for (const [chainId, own, other] of [
+      [11142220, "celoSepolia", /\bcelo\b/],
+      [42220, "celo", /\bceloSepolia\b/],
+    ] as const) {
+      const wallet = walletHelpersFor(chainId)[WALLET_PATHS.wallet];
+      expect(wallet).toContain(`import { ${own} } from "viem/chains";`);
+      expect(wallet).toContain(`export const appChain = ${own};`);
+      expect(wallet).toContain('const OKX_ID = "com.okex.wallet";');
+      expect(wallet).toContain("window as unknown as { okxwallet?: Provider }");
+      // A build of the other chain's name would fail: its import was removed.
+      expect(wallet).not.toMatch(other);
+    }
+  });
+
+  it("keeps the wallet sources free of backticks and template placeholders, which their String.raw wrappers can't hold (D92)", () => {
+    for (const chainId of [11142220, 42220]) {
+      for (const [path, source] of Object.entries(walletHelpersFor(chainId))) {
+        expect(source, path).not.toContain("`");
+        expect(source, path).not.toContain("${");
+      }
+    }
   });
 
   it("refreshes a known saved chain helper when a project's network changes, but keeps custom edits", () => {
@@ -173,6 +197,25 @@ describe("the wallet layer is GoodBuild's", () => {
     expect(checkApp({ ...starterFiles(), "src/App.tsx": "export default function App() { return <p>{String(!!window.ethereum)}</p>; }\n" }).ok).toBe(false);
   });
 
+  it("tells the builder not to read OKX's window.okxwallet either (D92)", () => {
+    const issues = walletIssues({ "src/App.tsx": "const okx = (window as any).okxwallet;\nexport default function App() { return null; }\n", "src/pages/Home.tsx": "await globalThis.okxwallet.request({ method: 'eth_requestAccounts' })", "src/lib/okx-notes.ts": "export const note = 'okxwallet is documented by OKX';\n" });
+    expect(issues.map((i) => [i.file, i.line])).toEqual([
+      ["src/App.tsx", 1],
+      ["src/pages/Home.tsx", 1],
+    ]);
+    expect(issues[0].message).toMatch(/window\.okxwallet/);
+    expect(issues[0].message).toContain("walletProvider()");
+    // OKX's own examples call it bare, so a bare use is refused too, but a similar name or another object's property is not.
+    const bare = walletIssues({
+      "src/a.ts": "okxwallet.request({ method: 'eth_requestAccounts' });\n",
+      "src/b.ts": "const x = okxwallet?.on('accountsChanged', f);\n",
+      "src/c.ts": "const label = okxwalletLabel + other.okxwallet.length + 'okxwallet is a global';\n",
+    });
+    expect(bare.map((i) => i.file)).toEqual(["src/a.ts", "src/b.ts"]);
+    // The layer itself reads it, so its own files are never flagged.
+    expect(walletIssues(Object.fromEntries(LOCKED.map((p) => [p, WALLET_HELPERS[p]])))).toEqual([]);
+  });
+
   it("isn't sent as context: the prompt documents it instead", () => {
     const picks = selectContext(starterFiles(), "Make the wallet connect button bigger").map((p) => p.path);
     for (const p of LOCKED) expect(picks).not.toContain(p);
@@ -184,6 +227,7 @@ describe("the wallet layer is GoodBuild's", () => {
     expect(prompt).toContain("src/lib/goodbuild/");
     expect(prompt).toContain("ConnectButton");
     expect(prompt).toMatch(/MiniPay/);
+    expect(prompt).toMatch(/OKX Wallet/);
     const guides = loadGuides(["tokens", "ui-states"]).text;
     expect(guides).toContain("walletProvider()");
     expect(prompt + guides).not.toMatch(/window\.ethereum\.request/);

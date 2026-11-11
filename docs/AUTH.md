@@ -4,7 +4,7 @@
 
 ## Decision (D22)
 - **Email login:** Magic's embedded wallet (email OTP, our own UI via `showUI: false`) on Celo. The EVM extension (`@magic-ext/evm`) registers two networks: Celo Sepolia (default, `11142220`) and Celo (`42220`). Both RPC hosts (`forno.celo.org`, `forno.celo-sepolia.celo-testnet.org`) must be allowed in the Magic dashboard's content security policy.
-- **External wallets:** MetaMask and MiniPay (injected provider, `window.ethereum`), and WalletConnect (Valora and others) via `@walletconnect/ethereum-provider`. Coinbase Wallet is no longer a named option (it isn't in the user's list; it can still connect through WalletConnect).
+- **External wallets:** MetaMask, OKX Wallet and MiniPay (injected providers: `window.ethereum`, or `window.okxwallet` for OKX, D92), and WalletConnect (Valora and others) via `@walletconnect/ethereum-provider`. Coinbase Wallet is no longer a named option (it isn't in the user's list; it can still connect through WalletConnect).
 - **One viem wallet client:** every wallet is reduced to an EIP-1193 provider (Magic's `rpcProvider`, the injected provider, or the WalletConnect provider). `useAuth().getWalletClient()` returns a viem `WalletClient` built from it in `src/lib/auth/wallet-client.ts`, so deploy signing is identical for the Magic wallet and external wallets.
 - **Session (unchanged, P9):** GoodBuild owns it. SIWE (EIP-4361) verified server-side, httpOnly cookie. For **email** sign-ins the server additionally validates a Magic **DID token** (`@magic-sdk/admin`, `token.validate`, offline) whose attachment is the keccak hash of the SIWE message, and requires the token's address to equal the SIWE address (`src/server/auth/magic.ts`). That stops a replayed token or an address mismatch.
 - **Keys:** `NEXT_PUBLIC_MAGIC_PUBLISHABLE_KEY` (client), `MAGIC_SECRET_KEY` (server only). `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` is needed for WalletConnect. Privy packages and `NEXT_PUBLIC_PRIVY_APP_ID` are removed.
@@ -12,7 +12,7 @@
 
 ## Requirement (user)
 - No prompt can be sent without a connected wallet and a signed-in session.
-- Users can sign in with **email**, which creates an embedded wallet for them, or with an **external wallet** (MetaMask, MiniPay/Valora, WalletConnect).
+- Users can sign in with **email**, which creates an embedded wallet for them, or with an **external wallet** (MetaMask, OKX Wallet, MiniPay/Valora, WalletConnect).
 
 ## Options compared
 | | Privy | thirdweb in-app wallets | MetaMask Embedded (ex-Web3Auth) | Reown AppKit | Dynamic |
@@ -39,7 +39,7 @@
 2. **Prompt gating.** Pressing **Send** (or Cmd/Ctrl+Enter) while logged out:
    - saves the prompt to `sessionStorage` (`gb:pendingPrompt`);
    - opens the **Connect modal** over the page, with the typed prompt still visible behind it;
-   - offers "Continue with email" (OTP) or a wallet list: MetaMask, MiniPay/Valora, WalletConnect.
+   - offers "Continue with email" (OTP) or a wallet list: MetaMask, OKX Wallet, MiniPay/Valora, WalletConnect.
 3. **Connect.**
    - Email: enter the OTP, then Magic creates (or reopens) the embedded wallet.
    - Wallet: connect it.

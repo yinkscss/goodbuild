@@ -19,7 +19,7 @@ import { WALLETCONNECT_MODULE } from "@/server/publish/walletconnect-module";
 import { WALLET_HELPERS, WALLET_PATHS } from "./wallet-template";
 
 type Request = { method: string; params?: unknown };
-type Fake = { request: ReturnType<typeof vi.fn>; on: ReturnType<typeof vi.fn>; removeListener: ReturnType<typeof vi.fn>; isMiniPay?: boolean; isMetaMask?: boolean };
+type Fake = { request: ReturnType<typeof vi.fn>; on: ReturnType<typeof vi.fn>; removeListener: ReturnType<typeof vi.fn>; isMiniPay?: boolean; isMetaMask?: boolean; isOkxWallet?: boolean };
 type WalletModule = {
   browserWallets: () => Array<{ id: string; name: string; icon: string | null; kind: string }>;
   walletOptions: () => Array<{ id: string; name: string; kind: string }>;
@@ -33,7 +33,7 @@ type WalletModule = {
   safeIcon: (icon: unknown) => string | null;
   discoverWallets: () => void;
 };
-type ChooserModule = { PHONE_WALLETS: Array<{ name: string; link: string }>; openWalletChooser: (args: unknown) => Promise<string> };
+type ChooserModule = { PHONE_WALLETS: Array<{ name: string; link: string; hint?: string; iosOnly?: boolean }>; openWalletChooser: (args: unknown) => Promise<string> };
 
 const SEPOLIA_HEX = "0xaa044c"; // 11142220
 // Inside node_modules, so Vitest hands the bundles to Node as they are instead of transforming them.
@@ -178,6 +178,7 @@ const button = (text: string) => [...document.querySelectorAll<HTMLElement>("but
 beforeEach(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
   delete (window as { ethereum?: unknown }).ethereum;
+  delete (window as { okxwallet?: unknown }).okxwallet;
   localStorage.clear();
   document.head.innerHTML = "";
   document.body.innerHTML = "";
@@ -362,7 +363,9 @@ describe("the wallet list", () => {
     expect(link("MetaMask")?.getAttribute("href")).toBe("https://metamask.app.link/wc?uri=" + encoded);
     expect(link("Valora")?.getAttribute("href")).toBe("https://valoraapp.com/wc?uri=" + encoded);
     expect(link("Other wallet")?.getAttribute("href")).toBe("wc:abc@2?relay-protocol=irn&symKey=xyz");
-    expect(chooser.PHONE_WALLETS.map((w) => w.name)).toEqual(["MetaMask", "Valora", "Trust Wallet", "Rainbow"]);
+    expect(chooser.PHONE_WALLETS.map((w) => w.name)).toEqual(["MetaMask", "Valora", "Trust Wallet", "Rainbow", "OKX Wallet"]);
+    // OKX's row is for iOS only: on Android its link would be the same plain wc: link as "Other wallet".
+    expect(link("OKX Wallet")).toBeUndefined();
     expect(document.querySelector("[data-fake-qr]")).toBeNull();
     (window as unknown as { __approveWalletConnect: () => void }).__approveWalletConnect();
     await connecting;
@@ -481,5 +484,258 @@ describe("staying connected", () => {
     const other = fakeProvider("0x1", {}, "0xa4ec");
     await wallet.ensureChain(other);
     expect(other.request).toHaveBeenCalledWith({ method: "wallet_switchEthereumChain", params: [{ chainId: SEPOLIA_HEX }] });
+  });
+});
+
+describe("OKX Wallet (D92)", () => {
+  const OKX_ACCOUNT = "0x00000000000000000000000000000000000000c1";
+  const META_ACCOUNT = "0x00000000000000000000000000000000000000a1";
+  const setOkx = (p: Fake) => {
+    (window as { okxwallet?: unknown }).okxwallet = p;
+  };
+  const setEthereum = (p: Fake) => {
+    (window as { ethereum?: unknown }).ethereum = p;
+  };
+
+  it("is listed from window.okxwallet alone and connects at once, with a plain account request", async () => {
+    const okx = fakeProvider(OKX_ACCOUNT);
+    setOkx(okx);
+    const { wallet } = await load();
+    expect(wallet.browserWallets()).toEqual([{ id: "com.okex.wallet", name: "OKX Wallet", icon: null, kind: "injected" }]);
+    expect(await wallet.connectWallet()).toBe(OKX_ACCOUNT);
+    expect(dialog()).toBeNull();
+    expect(okx.request).toHaveBeenCalledWith({ method: "eth_requestAccounts" });
+    // MetaMask's Celo-only permission request is for MetaMask. OKX documents a plain eth_requestAccounts.
+    expect(okx.request).not.toHaveBeenCalledWith(expect.objectContaining({ method: "wallet_requestPermissions" }));
+    expect(wallet.walletState().wallet?.name).toBe("OKX Wallet");
+    expect(wallet.walletProvider()).toBe(okx);
+  });
+
+  it("is listed once when it also announces: under its own id, or under another id with the same name", async () => {
+    const okx = fakeProvider(OKX_ACCOUNT);
+    setOkx(okx);
+    const own = await load();
+    announce(okx, { rdns: "com.okex.wallet", name: "OKX Wallet" });
+    expect(own.wallet.browserWallets().map((w) => w.id)).toEqual(["com.okex.wallet"]);
+
+    // A different object under a different id, in case the real rdns differs from the one we expect.
+    const other = await load();
+    announce(fakeProvider(OKX_ACCOUNT), { rdns: "com.okx.wallet", name: "OKX Wallet" });
+    expect(other.wallet.browserWallets().map((w) => w.id)).toEqual(["com.okx.wallet"]);
+  });
+
+  it("doesn't list window.ethereum again as a 'Browser wallet' when that is OKX", async () => {
+    const okx = fakeProvider(OKX_ACCOUNT);
+    setOkx(okx);
+    setEthereum(okx);
+    const same = await load();
+    expect(same.wallet.browserWallets().map((w) => w.name)).toEqual(["OKX Wallet"]);
+
+    // OKX flagging a separate window.ethereum object as itself.
+    setEthereum(fakeProvider("0x1", { isMetaMask: true, isOkxWallet: true }));
+    const flagged = await load();
+    expect(flagged.wallet.browserWallets().map((w) => w.name)).toEqual(["OKX Wallet"]);
+  });
+
+  it("still lists a different window.ethereum wallet beside OKX", async () => {
+    setOkx(fakeProvider(OKX_ACCOUNT));
+    setEthereum(fakeProvider(META_ACCOUNT, { isMetaMask: true }));
+    const { wallet } = await load();
+    expect(wallet.browserWallets().map((w) => w.name)).toEqual(["OKX Wallet", "MetaMask"]);
+  });
+
+  it("with MetaMask also installed, the visitor's pick decides which provider is asked", async () => {
+    const okx = fakeProvider(OKX_ACCOUNT);
+    const metamask = fakeProvider(META_ACCOUNT);
+    setOkx(okx);
+    install(metamask, { rdns: "io.metamask", name: "MetaMask" });
+    const { wallet } = await load();
+    expect(wallet.browserWallets().map((w) => w.name)).toEqual(["MetaMask", "OKX Wallet"]);
+    const connecting = wallet.connectWallet();
+    await until(dialog);
+    button("OKX Wallet")!.click();
+    expect(await connecting).toBe(OKX_ACCOUNT);
+    expect(okx.request).toHaveBeenCalledWith({ method: "eth_requestAccounts" });
+    expect(metamask.request).not.toHaveBeenCalledWith(expect.objectContaining({ method: "eth_requestAccounts" }));
+    expect(metamask.request).not.toHaveBeenCalledWith(expect.objectContaining({ method: "wallet_requestPermissions" }));
+  });
+
+  it("reconnects silently on reload, without the wait a late-loading wallet gets, and forgets it on disconnect", async () => {
+    localStorage.setItem("goodbuild-wallet", JSON.stringify({ id: "com.okex.wallet", kind: "injected" }));
+    const okx = fakeProvider(OKX_ACCOUNT);
+    setOkx(okx);
+    const { wallet } = await load();
+    const started = Date.now();
+    await wallet.restoreWallet();
+    expect(Date.now() - started).toBeLessThan(250); // waitForWallets(300) would take at least 300
+    expect(wallet.walletState().account).toBe(OKX_ACCOUNT);
+    expect(wallet.walletState().wallet?.name).toBe("OKX Wallet");
+    expect(okx.request).toHaveBeenCalledWith({ method: "eth_accounts" });
+    expect(okx.request).not.toHaveBeenCalledWith({ method: "eth_requestAccounts" });
+    await wallet.disconnectWallet();
+    expect(localStorage.getItem("goodbuild-wallet")).toBeNull();
+  });
+
+  it("doesn't carry an old 'Browser wallet' choice over to OKX: the visitor connects once more", async () => {
+    localStorage.setItem("goodbuild-wallet", JSON.stringify({ id: "injected", kind: "injected" }));
+    const okx = fakeProvider(OKX_ACCOUNT);
+    setOkx(okx);
+    setEthereum(okx);
+    const { wallet } = await load();
+    await wallet.restoreWallet();
+    expect(wallet.walletState().account).toBeNull();
+    expect(okx.request).not.toHaveBeenCalledWith({ method: "eth_accounts" });
+  });
+
+  /** OKX's own chain list has no Celo: the switch fails with 4902, the chain is added, and adding doesn't switch (EIP-3085). */
+  function okxWithoutCelo(switchesOnAdd: boolean) {
+    const calls: Array<{ method: string; params?: unknown }> = [];
+    let chain = "0x1";
+    let added = false;
+    const okx = fakeProvider(OKX_ACCOUNT);
+    okx.request = vi.fn(async (args: Request) => {
+      calls.push(args);
+      const wanted = (args.params as Array<{ chainId?: string }> | undefined)?.[0]?.chainId;
+      if (args.method === "eth_chainId") return chain;
+      if (args.method === "wallet_switchEthereumChain") {
+        if (!added) throw Object.assign(new Error("Unrecognized chain ID"), { code: 4902 });
+        chain = wanted!;
+        return null;
+      }
+      if (args.method === "wallet_addEthereumChain") {
+        added = true;
+        if (switchesOnAdd) chain = wanted!;
+        return null;
+      }
+      return null;
+    });
+    return { okx, calls, chainNow: () => chain };
+  }
+
+  it("adds Celo to OKX, then switches to it when adding didn't", async () => {
+    const { okx, calls, chainNow } = okxWithoutCelo(false);
+    const { wallet } = await load();
+    await wallet.ensureChain(okx);
+    expect(calls.map((c) => c.method)).toEqual(["eth_chainId", "wallet_switchEthereumChain", "wallet_addEthereumChain", "eth_chainId", "wallet_switchEthereumChain"]);
+    expect(calls[2].params).toEqual([expect.objectContaining({ chainId: SEPOLIA_HEX })]);
+    expect(chainNow()).toBe(SEPOLIA_HEX);
+  });
+
+  it("doesn't switch a second time when the wallet moved to the chain it just added", async () => {
+    const { okx, calls, chainNow } = okxWithoutCelo(true);
+    const { wallet } = await load();
+    await wallet.ensureChain(okx);
+    expect(calls.map((c) => c.method)).toEqual(["eth_chainId", "wallet_switchEthereumChain", "wallet_addEthereumChain", "eth_chainId"]);
+    expect(chainNow()).toBe(SEPOLIA_HEX);
+  });
+
+  describe("on a phone, in the WalletConnect list", () => {
+    const IPHONE = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1";
+    const IPAD = "Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1";
+    const ANDROID = "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36";
+    const URI = "wc:abc@2?relay-protocol=irn&symKey=xyz";
+
+    async function openPhoneList(userAgent: string) {
+      Object.defineProperty(navigator, "userAgent", { value: userAgent, configurable: true });
+      document.head.innerHTML = '<meta name="goodbuild-walletconnect" content="testproject">';
+      const { wallet } = await load({ walletConnect: true });
+      const connecting = wallet.connectWallet();
+      await until(dialog);
+      const listText = button("WalletConnect")!.textContent ?? "";
+      button("WalletConnect")!.click();
+      const link = (text: string) => [...document.querySelectorAll("a")].find((a) => a.textContent?.includes(text));
+      await until(() => link("Valora"));
+      return { listText, link, finish: async () => ((window as unknown as { __approveWalletConnect: () => void }).__approveWalletConnect(), await connecting) };
+    }
+
+    it.each([
+      ["an iPhone", IPHONE],
+      ["an iPad", IPAD],
+    ])("%s gets an OKX Wallet row that opens the OKX app with the pairing link", async (_name, ua) => {
+      const { listText, link, finish } = await openPhoneList(ua);
+      expect(listText).toContain("MetaMask, Valora, OKX and other phone wallets");
+      const okx = link("OKX Wallet");
+      expect(okx?.getAttribute("href")).toBe("okex://main/wc?uri=" + encodeURIComponent(URI));
+      expect(okx?.textContent).toContain("Needs the OKX app");
+      // The plain link and the other wallets are still there.
+      expect(link("Other wallet")?.getAttribute("href")).toBe(URI);
+      expect(link("MetaMask")?.getAttribute("href")).toBe("https://metamask.app.link/wc?uri=" + encodeURIComponent(URI));
+      await finish();
+    });
+
+    it("an Android phone has no OKX row of its own: its link would be the plain one, which is 'Other wallet'", async () => {
+      const { listText, link, finish } = await openPhoneList(ANDROID);
+      // No OKX row on Android, so the list doesn't promise one.
+      expect(listText).toContain("MetaMask, Valora and other phone wallets");
+      expect(listText).not.toContain("OKX");
+      expect(link("OKX Wallet")).toBeUndefined();
+      expect(link("Other wallet")?.getAttribute("href")).toBe(URI);
+      await finish();
+    });
+  });
+});
+
+describe("OKX Wallet (D92), edge cases", () => {
+  const ACCOUNT = "0x00000000000000000000000000000000000000c1";
+  const setOkx = (p: Fake) => {
+    (window as { okxwallet?: unknown }).okxwallet = p;
+  };
+
+  it("is listed once by id alone (a different object under its id) and by object alone (the same object under another id and name)", async () => {
+    const okx = fakeProvider(ACCOUNT);
+    setOkx(okx);
+    const byId = await load();
+    announce(fakeProvider(ACCOUNT), { rdns: "com.okex.wallet", name: "Something else" });
+    expect(byId.wallet.browserWallets().map((w) => w.id)).toEqual(["com.okex.wallet"]);
+
+    const byObject = await load();
+    announce(okx, { rdns: "wallet.example", name: "Plain name" });
+    expect(byObject.wallet.browserWallets().map((w) => w.id)).toEqual(["wallet.example"]);
+  });
+
+  it("gives an iPad that reports itself as a Mac (iPadOS 13 and later) the OKX row too", async () => {
+    Object.defineProperty(navigator, "maxTouchPoints", { value: 5, configurable: true });
+    try {
+      document.head.innerHTML = '<meta name="goodbuild-walletconnect" content="testproject">';
+      const { wallet } = await load({ walletConnect: true });
+      const connecting = wallet.connectWallet();
+      await until(dialog);
+      button("WalletConnect")!.click();
+      const link = (text: string) => [...document.querySelectorAll("a")].find((a) => a.textContent?.includes(text));
+      await until(() => link("Valora"));
+      expect(link("OKX Wallet")?.getAttribute("href")).toBe("okex://main/wc?uri=" + encodeURIComponent("wc:abc@2?relay-protocol=irn&symKey=xyz"));
+      (window as unknown as { __approveWalletConnect: () => void }).__approveWalletConnect();
+      await connecting;
+    } finally {
+      delete (navigator as { maxTouchPoints?: number }).maxTouchPoints;
+    }
+  });
+
+  it("throws the visitor's rejection of the switch that follows adding Celo, and carries on when the chain can't be read back", async () => {
+    const { wallet } = await load();
+    const rejecting = fakeProvider(ACCOUNT);
+    rejecting.request = vi.fn(async ({ method }: Request) => {
+      if (method === "eth_chainId") return "0x1";
+      if (method === "wallet_switchEthereumChain") {
+        const switches = rejecting.request.mock.calls.filter((c) => (c[0] as Request).method === "wallet_switchEthereumChain").length;
+        throw Object.assign(new Error(switches === 1 ? "Unrecognized chain ID" : "User rejected the request."), { code: switches === 1 ? 4902 : 4001 });
+      }
+      return null;
+    });
+    await expect(wallet.ensureChain(rejecting)).rejects.toMatchObject({ code: 4001 });
+
+    const unreadable = fakeProvider(ACCOUNT);
+    let reads = 0;
+    unreadable.request = vi.fn(async ({ method }: Request) => {
+      if (method === "eth_chainId") {
+        if (++reads > 1) throw new Error("rpc down");
+        return "0x1";
+      }
+      if (method === "wallet_switchEthereumChain") throw Object.assign(new Error("Unrecognized chain ID"), { code: 4902 });
+      return null;
+    });
+    await expect(wallet.ensureChain(unreadable)).resolves.toBeUndefined();
+    const switches = unreadable.request.mock.calls.filter((c) => (c[0] as Request).method === "wallet_switchEthereumChain");
+    expect(switches).toHaveLength(1);
   });
 });
