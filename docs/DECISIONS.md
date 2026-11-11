@@ -1050,3 +1050,51 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
     - a MiniPay game is opened as MiniPay, and a Connect wallet button there is caught.
   - The game tests passed twice in a row, and the whole suite passes.
 - **UNVERIFIED:** a real model writing games with the blocks and the probe; how often the random bot survives long enough to judge everything in real builds; the extra check time on the production checker; real wallets and real MiniPay.
+
+### D95. Games sell things safely and give people a reason to come back: a tested G$ shop, and the extras (phases E and F of GAMES_PLAN.md)
+- Date: 11 Nov 2026 · Asked for by: the owner ("go ahead with phase E and F", with the Neon Drift transcript, whose last requests were to put Play again and Post score on the game screen, show the top three racers on the race screen, and show distance and coins on the game-over panel) · Built by: Claude.
+- **The shop is a kit, `game-shop`, with a tested contract.** Before, the builder wrote a shop contract for each game. Neon Drift's "RaceShop" was one, and it cost a deploy.
+  - `contracts/GameShop.sol` sells three kinds of item, each paid in G$ with one `transferAndCall` (no separate approve step):
+    - unique items (a car, a skin), owned once;
+    - counted items (level ups, power packs with `perPurchase`);
+    - the season pass, which belongs to the current season and ends with it. `startSeason(endsAt)` starts the next one, and earlier passes stop counting.
+  - The price must be exact, so nobody overpays and a refused purchase costs nothing.
+  - The owner sets the price list in one `setItems` transaction, can pause, and withdraws the takings. `Ownable2Step` and `ReentrancyGuard` protect it. Only the G$ token can report a payment.
+  - `contracts/test/GameShop.t.sol` has 10 tests, including attacks: a stranger changing prices, withdrawing, starting a season or pausing; calling the payment hook directly to get an item free; and moving G$ out.
+  - The shop is not mistaken for a vault (`rolesOf`), because players buy rather than deposit and withdraw.
+- **The game owns its item list.** `export const SHOP: ShopItem[]` in the game's code: ids, names, kinds, prices in G$, and details.
+  - `useShop(SHOP, GameShopAbi, GameShopAddress[chain.id])` reads the on-chain prices, what the player owns and holds, the pass and the season end. It buys, and gives the owner a setup action.
+  - `<Store>` shows each item with the game's own drawing (Sprite), its price, Buy, Owned or Use, how many the player has, the season end and the G$ balance.
+  - After deploying, the owner sees "Put these items on sale": one transaction with every price from the code.
+  - Free starter items ("0") are owned by everyone with no wallet, so the game stays fully playable for free.
+  - The guide asks for fair play: bought items are cosmetic or a capped convenience, never what decides a board with prizes.
+  - It also asks for `{"name": "GameShop", "args": {"gd_": "${GOODDOLLAR}"}}` in `contracts/deploy.json`, and an owner-only control to start a season. The game-board guide now names its own deploy.json line too.
+- **When the shop turns on.** The runner turns `game-shop` on for a 2D game whose request or plan answers say it sells things: store, shop, season pass, garage, level ups, skins, buying cars or items. It never turns on from those words alone, because a bookshop isn't a game. For the owner's exact Neon Drift request, the runner turns on `game-2d`, `mini-app`, `game-board` and `game-shop` together (tested).
+- **MiniPay.** `src/game/chainTx.ts` (`sendGameTx`) sends a game's contract calls. In a browser it's a normal transaction. Inside MiniPay it pays the network fee in the first dollar coin the player has, as a legacy transaction. Whether MiniPay shows G$ and approves a G$ `transferAndCall` cleanly is **UNVERIFIED** until a phone test (GAMES_PLAN E3).
+- **Extras** (`src/game/extras.ts`):
+  - near misses (`nearMiss`) and a `Combo` multiplier;
+  - `coins` earned by playing, kept on the device;
+  - `Missions`: three a day, the same for everyone, tracked by stat, some within one run. Finished missions add season XP, and `seasonTier(xp, tiers, hasPass)` gives the tier, its progress, and which rewards are unlocked, with pass-only tiers;
+  - a daily course (`dailySeed`, `seededRandom`);
+  - a `Ghost` of the best run;
+  - `firstTime` for a one-run tip;
+  - `shareScore` (the phone's share sheet, or a copy);
+  - `prefersReducedMotion`.
+  - The planner's brief picks the extras for a game, and the guide asks for every one the brief names.
+- **On-screen pieces:**
+  - `GameOver` is a panel over the bottom of the game: the score, "New best!", the best, the run's numbers (distance, coins), a big Play again, Share, and `PostScore` inside it. This is what the owner asked for after scrolling to find Play again.
+  - `TopThree` shows the board's top three on the race screen.
+  - `GameSettings` has sound and vibration switches. Vibration now has its own setting as well as following mute.
+  - `GameCanvas` gets `onHidden`, so a phone call or tab switch pauses the run behind a Resume button instead of carrying on.
+- **The run check** (D94) now reports a Play again that sits below the screen after a game over, which the player has to scroll to find.
+- **Checked:**
+  - The shop contract compiles and all 10 of its tests pass in the local EVM.
+  - A game with the store passes the app check and the type check, with and without MiniPay.
+  - A game with every extra passes the type check and the run check in a real browser.
+  - The game tests now use the on-game panel and the top three, and a game with Play again below a scoring card is caught.
+  - The runner turns the shop on for the Neon Drift request and not for a game that sells nothing.
+  - The full suite passes.
+- **UNVERIFIED:**
+  - A real model building a game with the shop and extras.
+  - A real G$ purchase, the owner's setup on a deployed shop, and anything in the real MiniPay app.
+  - Whether DeepSeek keeps purchases fair as the guide asks.

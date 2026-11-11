@@ -10,6 +10,7 @@ import { runContractTests } from "./contract-tests";
 import { createHash } from "node:crypto";
 
 import { detectKits, kitById, kitGuideName, kitsOf, withKit, withKitHelpers } from "./kits";
+import { SHOP_WORDS } from "./kits/game-shop";
 import { parseReview, reviewEnabled, reviewFixMessage, reviewPrompt, REVIEW_MAX_TOKENS, worthReviewing } from "./review";
 import { runCheck, runCheckEnabled } from "./run-check";
 import { typeCheck, typeCheckMode, type TypeCheckMode } from "./type-check";
@@ -856,6 +857,9 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     const boardKit = kitById("game-board");
     const willHave = (id: string) => kitsOf(files).some((k) => k.id === id) || newKits.some((k) => k.id === id);
     if (input.mode === "build" && brief.leaderboard && boardKit && willHave("game-2d") && willHave("mini-app") && !willHave("game-board")) newKits.push(boardKit);
+    // A game that sells things (D95): the tested G$ shop, by the words of the request or the plan's answers.
+    const shopKit = kitById("game-shop");
+    if (input.mode === "build" && shopKit && willHave("game-2d") && !willHave("game-shop") && SHOP_WORDS.test(kitWords)) newKits.push(shopKit);
     // A gallery template is a designed page (D60): it gets the motion kit (D84) whatever its words say.
     const motionKit = kitById("motion");
     if (input.mode === "build" && firstBuild && motionKit && templateBriefFor(project.templateId) && !newKits.includes(motionKit)) newKits.push(motionKit);

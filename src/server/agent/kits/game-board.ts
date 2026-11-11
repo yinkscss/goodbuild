@@ -236,6 +236,7 @@ async function feeCoin(owner: Address): Promise<Address> {
 const GUIDE = `The MiniPay leaderboard contract. This game has a leaderboard and works in MiniPay, and MiniPay allows no sign-in signature, so scores from MiniPay go to a small contract.
 - contracts/GameBoard.sol and contracts/test/GameBoard.t.sol are written and tested. Don't change them, and don't write another leaderboard contract.
 - In the game: import { GameBoardAbi, GameBoardAddress } from "./contracts" and { chain } from "./lib/chain" (the paths from the file you're in), make const miniPayBoard = gameBoard(GameBoardAbi, GameBoardAddress[chain.id]) ONCE at module level (gameBoard is in src/game/chainBoard.ts), and pass it: useLeaderboard({ chain: miniPayBoard }). Browser players still post through saved data; MiniPay players post here; the board shows both.
+- List it in contracts/deploy.json with the game's other contracts: {"name": "GameBoard", "args": {}}.
 - Until the owner deploys the contract, gameBoard returns undefined and MiniPay players see "The leaderboard isn't open in MiniPay yet". Tell the owner in your reply that the leaderboard needs one deploy for MiniPay.`;
 
 export const gameBoard: Kit = {

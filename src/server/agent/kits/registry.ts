@@ -4,6 +4,7 @@ import { dashboard } from "./dashboard";
 import { daoVault } from "./dao-vault";
 import { game2d } from "./game-2d";
 import { gameBoard } from "./game-board";
+import { gameShop } from "./game-shop";
 import { miniApp } from "./mini-app";
 import { motion } from "./motion";
 import { threeD } from "./three-d";
@@ -55,7 +56,7 @@ export interface Kit {
 }
 
 /** Every kit GoodBuild has. Each kit is a module beside this one, listed here. */
-export const KITS: Kit[] = [game2d, gameBoard, miniApp, dashboard, daoVault, threeD, motion];
+export const KITS: Kit[] = [game2d, gameBoard, gameShop, miniApp, dashboard, daoVault, threeD, motion];
 
 /** The file that says which kits a project has on. GoodBuild writes it; the builder can't. */
 export const KIT_MARKER = "src/goodbuild.json";

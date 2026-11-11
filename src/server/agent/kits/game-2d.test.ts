@@ -184,6 +184,7 @@ import { Pool, Spawner, difficulty, lanes, pick } from "./game/world";
 import { hitBox, newActor, offscreen, oncoming, place, rival, traffic } from "./game/npc";
 import { Effects } from "./game/powerups";
 import { hitRect } from "./game/juice";
+import { GameOver } from "./game/GameOver";
 import { declareGame, probe, spawned } from "./game/probe";
 
 declareGame({ obstacles: ["slowCar", "oncoming"], powerups: ["shield"], npcs: ["rival"] });
@@ -285,10 +286,13 @@ export default function App() {
 
   return (
     <main className="mx-auto max-w-md space-y-3 p-4">
-      <GameCanvas onFrame={onFrame} onIdleFrame={({ ctx, width, height }) => drawWorld(ctx, width, height)} paused={screen !== "playing"} label="Block Racer" />
-      {screen !== "playing" && (
+      <div className="relative">
+        <GameCanvas onFrame={onFrame} onIdleFrame={({ ctx, width, height }) => drawWorld(ctx, width, height)} paused={screen !== "playing"} label="Block Racer" />
+        {screen === "over" && <GameOver score={game.current.score} best={0} stats={[{ label: "Time", value: Math.round(game.current.t) + "s" }]} onAgain={start} />}
+      </div>
+      {screen === "start" && (
         <button type="button" onClick={start} className="rounded-lg bg-primary px-6 py-3 text-primary-foreground">
-          {screen === "over" ? "Play again" : "Play"}
+          Play
         </button>
       )}
     </main>
@@ -328,6 +332,128 @@ export default function App() {
 }
 `;
 
+/** A dodging game with every extra (D95): near misses and combos, coins, missions and season tiers, a daily course, a ghost, a first-run tip, settings and a pause screen. */
+const EXTRAS_GAME = `import { useRef, useState } from "react";
+import { GameCanvas, type Frame } from "./game/GameCanvas";
+import { GameOver } from "./game/GameOver";
+import { GameSettings } from "./game/GameSettings";
+import { Combo, Ghost, Missions, coins, dailySeed, firstTime, nearMiss, prefersReducedMotion, seasonTier, seasonXp, seededRandom } from "./game/extras";
+import { drawHud } from "./game/hud";
+import { declareGame, probe, spawned } from "./game/probe";
+import { Particles } from "./game/juice";
+
+declareGame({ obstacles: ["rock"], powerups: ["coin"] });
+
+const missions = new Missions([
+  { id: "coins", text: "Collect 5 coins", stat: "coins", goal: 5 },
+  { id: "close", text: "Pass 3 rocks closely", stat: "close", goal: 3 },
+  { id: "live", text: "Survive 30 seconds", stat: "seconds", goal: 30, oneRun: true },
+]);
+const TIERS = [{ xp: 0, reward: "Blue trail" }, { xp: 200, reward: "Gold trail", pass: true }];
+const combo = new Combo();
+const ghost = new Ghost();
+const particles = new Particles(prefersReducedMotion() ? 40 : 160);
+
+export default function App() {
+  const [screen, setScreen] = useState<"start" | "playing" | "paused" | "over">("start");
+  const [tip] = useState(() => firstTime("controls"));
+  const g = useRef({ x: 180, t: 0, score: 0, coins: 0, rocks: [] as { x: number; y: number }[], next: 0.6, rand: seededRandom(dailySeed()) });
+
+  const draw = ({ ctx, width, height }: Frame) => {
+    ctx.fillStyle = "#0b1020";
+    ctx.fillRect(0, 0, width, height);
+    const shadow = ghost.at(g.current.t);
+    if (shadow) {
+      ctx.globalAlpha = 0.3;
+      ctx.fillRect(shadow.x - 15, 560, 30, 30);
+      ctx.globalAlpha = 1;
+    }
+    ctx.fillStyle = "#9ca3af";
+    for (const r of g.current.rocks) ctx.fillRect(r.x - 20, r.y - 20, 40, 40);
+    ctx.fillStyle = "#22d3ee";
+    ctx.fillRect(g.current.x - 15, 560, 30, 30);
+    particles.draw(ctx);
+  };
+
+  const onFrame = (frame: Frame) => {
+    const s = g.current;
+    const { dt, input, width } = frame;
+    s.t += dt;
+    const speed = 200 + s.t * 6;
+    if (input.left) s.x -= 220 * dt;
+    if (input.right) s.x += 220 * dt;
+    if (input.actionPressed) s.x = input.pointer.x;
+    s.x = Math.max(15, Math.min(width - 15, s.x));
+    s.next -= dt;
+    if (s.next <= 0) {
+      s.rocks.push({ x: 30 + s.rand() * (width - 60), y: -20 });
+      spawned("rock");
+      s.next = 0.8;
+      if (s.rand() < 0.4) spawned("coin");
+    }
+    const me = { x: s.x - 15, y: 560, w: 30, h: 30 };
+    for (const r of s.rocks) {
+      r.y += speed * dt;
+      const box = { x: r.x - 20, y: r.y - 20, w: 40, h: 40 };
+      if (me.x < box.x + box.w && me.x + me.w > box.x && me.y < box.y + box.h && me.y + me.h > box.y) {
+        coins.add(s.coins);
+        missions.endRun();
+        ghost.finish(s.score);
+        setScreen("over");
+        return;
+      }
+      if (nearMiss(me, box) && r.y > 600) {
+        s.score += 5 * combo.hit();
+        missions.track("close");
+      }
+    }
+    s.rocks = s.rocks.filter((r) => r.y < 700);
+    combo.update(dt);
+    particles.update(dt);
+    ghost.record(s.t, s.x, 560);
+    s.score += dt * 10;
+    missions.track("seconds", dt);
+    probe(Math.floor(s.score), s.x, 560, speed);
+    draw(frame);
+    drawHud(frame.ctx, width, { score: s.score, combo: combo.multiplier, best: 0 });
+  };
+
+  const start = () => {
+    const rand = seededRandom(dailySeed());
+    g.current = { x: 180, t: 0, score: 0, coins: 0, rocks: [], next: 0.6, rand };
+    combo.break();
+    ghost.start();
+    setScreen("playing");
+  };
+  const season = seasonTier(seasonXp.get(), TIERS, false);
+
+  return (
+    <main className="mx-auto max-w-md space-y-3 p-4">
+      <div className="relative">
+        <GameCanvas onFrame={onFrame} onIdleFrame={draw} paused={screen !== "playing"} onHidden={() => setScreen("paused")} label="Rock Dodge" />
+        {screen === "over" && <GameOver score={g.current.score} best={0} stats={[{ label: "Coins", value: g.current.coins }]} onAgain={start} shareText="I dodged rocks" />}
+        {screen === "paused" && (
+          <button type="button" className="absolute inset-x-6 bottom-6 rounded-lg bg-primary py-3 text-primary-foreground" onClick={() => setScreen("playing")}>
+            Resume
+          </button>
+        )}
+      </div>
+      {screen === "start" && (
+        <section className="space-y-2">
+          {tip && <p>Tap where you want to go.</p>}
+          <button type="button" onClick={start} className="rounded-lg bg-primary px-6 py-3 text-primary-foreground">
+            Play
+          </button>
+          <ul>{missions.list.map((m) => <li key={m.id}>{m.text} {Math.floor(m.progress)}/{m.goal}</li>)}</ul>
+          <p>Season tier {season.tier + 1}, {Math.round(season.progress * 100)}% to {season.next?.reward ?? "the top"}. You have {coins.get()} coins.</p>
+          <GameSettings />
+        </section>
+      )}
+    </main>
+  );
+}
+`;
+
 const project = (app: string) => ({ ...withKit(starterFiles(), game2d), "src/App.tsx": app });
 
 /** The board's rule in dataRules.json, as the guide writes it, or another rule to test the check. */
@@ -342,7 +468,9 @@ const withScoresRule = (files: Record<string, string>, rule: unknown = JSON.pars
  */
 const BOARD_GAME = `import { useRef, useState } from "react";
 import { GameCanvas, type Frame } from "./game/GameCanvas";
+import { GameOver } from "./game/GameOver";
 import { Leaderboard, PostScore } from "./game/Leaderboard";
+import { TopThree } from "./game/TopThree";
 import { useLeaderboard } from "./game/leaderboard";
 import { declareGame, probe, spawned } from "./game/probe";
 import { Sprite } from "./game/Sprite";
@@ -415,14 +543,21 @@ export default function App() {
         <Sprite draw={(ctx, w, h) => drawCar(ctx, 0, 0, w, h, "#e11d48")} width={32} height={48} label="Your car" />
         <h1 className="text-xl font-semibold">Lane Dash</h1>
       </header>
-      <GameCanvas onFrame={onFrame} onIdleFrame={onIdleFrame} paused={screen !== "playing"} label="Lane Dash" />
-      {screen !== "playing" && (
+      <div className="relative">
+        <GameCanvas onFrame={onFrame} onIdleFrame={onIdleFrame} paused={screen !== "playing"} label="Lane Dash" />
+        <TopThree board={board} className="absolute right-2 top-2" />
+        {screen === "over" && (
+          <GameOver score={score} best={score} stats={[{ label: "Distance", value: score * 10 + " m" }]} onAgain={start} shareText={"I scored " + score + " in Lane Dash"}>
+            <PostScore board={board} score={score} extra="red" />
+          </GameOver>
+        )}
+      </div>
+      {screen === "start" && (
         <section className="space-y-3 rounded-lg bg-card p-4 text-center">
-          <p>{screen === "over" ? "You crashed. Score " + score : "Tap left or right of the road to change lane."}</p>
+          <p>Tap left or right of the road to change lane.</p>
           <button id="play" type="button" onClick={start} className="rounded-lg bg-primary px-6 py-3 text-primary-foreground">
             Play
           </button>
-          {screen === "over" && <PostScore board={board} score={score} extra="red" />}
         </section>
       )}
       <Leaderboard board={board} title="Top racers" icon={() => <Sprite draw={(ctx, w, h) => drawCar(ctx, 0, 0, w, h, "#e11d48")} width={16} height={24} />} />
@@ -635,5 +770,24 @@ describe("the 2D games kit", { timeout: 120_000 }, () => {
     const withButton = GAME.replace('<h1 className="text-xl font-semibold">Campus Flap</h1>', '<h1 className="text-xl font-semibold">Campus Flap</h1>\n        <button type="button">Connect wallet</button>');
     const r = await runCheck(mini(withButton));
     expect(r.issues.map((i) => i.message).join(" ")).toMatch(/Inside MiniPay the page shows a Connect wallet button/);
+  });
+
+  it.skipIf(!hasBrowser)("catches Play again below the screen after a game over, the owner's Neon Drift feedback (D95)", async () => {
+    // The layout the owner's build had: a card about scoring between the road and the buttons.
+    const below = BOARD_GAME.replace("      <div className=\"relative\">\n        <GameCanvas onFrame={onFrame} onIdleFrame={onIdleFrame} paused={screen !== \"playing\"} label=\"Lane Dash\" />\n        <TopThree board={board} className=\"absolute right-2 top-2\" />\n        {screen === \"over\" && (\n          <GameOver score={score} best={score} stats={[{ label: \"Distance\", value: score * 10 + \" m\" }]} onAgain={start} shareText={\"I scored \" + score + \" in Lane Dash\"}>\n            <PostScore board={board} score={score} extra=\"red\" />\n          </GameOver>\n        )}\n      </div>\n      {screen === \"start\" && (\n        <section className=\"space-y-3 rounded-lg bg-card p-4 text-center\">\n          <p>Tap left or right of the road to change lane.</p>\n          <button id=\"play\" type=\"button\" onClick={start} className=\"rounded-lg bg-primary px-6 py-3 text-primary-foreground\">\n            Play\n          </button>\n        </section>\n      )}", "      <GameCanvas onFrame={onFrame} onIdleFrame={onIdleFrame} paused={screen !== \"playing\"} label=\"Lane Dash\" />\n      <p className=\"h-48 rounded-lg bg-muted p-4\">Score 1 point every 10 metres. Near misses score 5.</p>\n      {screen !== \"playing\" && (\n        <section className=\"space-y-3 rounded-lg bg-card p-4 text-center\">\n          <p>{screen === \"over\" ? \"You crashed. Score \" + score : \"Tap left or right of the road to change lane.\"}</p>\n          <button id=\"play\" type=\"button\" onClick={start} className=\"rounded-lg bg-primary px-6 py-3 text-primary-foreground\">\n            Play again\n          </button>\n          {screen === \"over\" && <PostScore board={board} score={score} extra=\"red\" />}\n        </section>\n      )}");
+    expect(below).not.toEqual(BOARD_GAME);
+    const r = await runCheck(withScoresRule(project(below)));
+    expect(r.issues.map((i) => i.message).join(" ")).toMatch(/Play again is below the screen/);
+  });
+
+  it("type-checks a game with every extra, and the run check plays it cleanly (D95)", async () => {
+    const files = project(EXTRAS_GAME);
+    expect(checkApp(files).errors).toEqual([]);
+    const types = await typeCheck(files);
+    expect(types.issues).toEqual([]);
+    if (!hasBrowser) return;
+    const r = await runCheck(files);
+    expect(r.issues).toEqual([]);
+    expect(r.note).toMatch(/saw rock/);
   });
 });

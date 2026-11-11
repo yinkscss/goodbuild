@@ -121,6 +121,14 @@ export async function playRounds(page: Page, ms = PLAY_MS): Promise<string[]> {
       if (!(await again.isVisible().catch(() => false))) {
         return ["After a game over there's no Play again button. Show the score, the best, and a big Play again <button> that starts a new round."];
       }
+      // The player's thumb is on the game: Play again must be there, not below it (the owner's Neon Drift feedback, D95).
+      const inView = await again.evaluate((el) => {
+        const box = el.getBoundingClientRect();
+        return box.top >= 0 && box.bottom <= window.innerHeight;
+      }).catch(() => true);
+      if (!inView) {
+        return ["After a game over, Play again is below the screen: the player has to scroll to find it. Show the game-over panel on the game itself (GameOver from src/game/GameOver.tsx inside the relative box around GameCanvas)."];
+      }
       const before = report!.rounds.length;
       await again.click({ timeout: 1_000 }).catch(() => undefined);
       const restarted = await page

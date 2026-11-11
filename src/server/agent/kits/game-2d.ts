@@ -1,6 +1,7 @@
 import type { CheckIssue } from "../checks";
 
-import { HAPTICS, HUD, NPC, POWERUPS, PROBE, WORLD } from "./game-blocks";
+import { CHAIN_TX, HAPTICS, HUD, NPC, POWERUPS, PROBE, WORLD } from "./game-blocks";
+import { EXTRAS, GAME_OVER_TSX, SETTINGS_TSX, TOP_THREE_TSX } from "./game-extras";
 import { LEADERBOARD_TS, LEADERBOARD_TSX, SPRITE } from "./game-files";
 import type { Kit } from "./registry";
 
@@ -77,6 +78,7 @@ export function GameCanvas({
   paused = false,
   onFrame,
   onIdleFrame,
+  onHidden,
   controls = [],
   label = "Game",
   maxHeight,
@@ -92,6 +94,11 @@ export function GameCanvas({
    * slowly behind the menu. Draw only; never end the round, play a sound or score here.
    */
   onIdleFrame?: (frame: Frame) => void;
+  /**
+   * The tab was hidden or the phone locked while the game was running. Show a pause screen here
+   * (set paused) so the game waits for "Tap to resume" instead of starting again under a thumb.
+   */
+  onHidden?: () => void;
   /** On-screen buttons for phones. Leave empty when a tap anywhere is the only control. */
   controls?: ControlButton[];
   /** What a screen reader calls the game. */
@@ -107,6 +114,8 @@ export function GameCanvas({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const frameRef = useRef(onFrame);
   const idleRef = useRef(onIdleFrame);
+  const hiddenRef = useRef(onHidden);
+  hiddenRef.current = onHidden;
   const pausedRef = useRef(paused);
   const input = useRef<GameInput>({ left: false, right: false, up: false, down: false, action: false, actionPressed: false, pointer: { x: 0, y: 0, down: false } });
   const held = useRef({ key: false, pointer: false, button: false });
@@ -199,6 +208,10 @@ export function GameCanvas({
     };
     window.addEventListener("blur", letGo);
     document.addEventListener("visibilitychange", letGo);
+    const hide = () => {
+      if (document.hidden && !pausedRef.current) hiddenRef.current?.();
+    };
+    document.addEventListener("visibilitychange", hide);
 
     let raf = 0;
     let last = 0;
@@ -237,6 +250,7 @@ export function GameCanvas({
       window.removeEventListener("pointercancel", pointerUp);
       window.removeEventListener("blur", letGo);
       document.removeEventListener("visibilitychange", letGo);
+      document.removeEventListener("visibilitychange", hide);
     };
   }, [width, height]);
 
@@ -557,7 +571,9 @@ Free play first. Anyone can open the game and play straight away: no wallet, no 
 The screen
 - GameCanvas (src/game/GameCanvas.tsx) is the screen. Give it onFrame({ ctx, width, height, dt, time, input }) and do everything there: update the game, then draw it. It scales a fixed game size (360 x 640 by default: a phone held upright; pass width and height for another shape) to fit any screen, so always draw in game coordinates, never in pixels of the window.
 - Three screens: start, playing, game over. Pass paused={screen !== "playing"} AND onIdleFrame. While paused, onFrame isn't called; onIdleFrame is, so the start and game-over screens show the game world (the road and the parked car, the level behind the menu) instead of an empty box. onIdleFrame only draws: it may drift the background slowly with dt, but it never moves the game on, checks hits, scores or plays sounds. Write one drawWorld(ctx, g) used by both, so they can't drift apart.
-- The start screen: the game's name, one line on how to play, the best score, and a big Play button (a <button> with the word Play or Start). Over the canvas or under it, but the canvas is always drawn. The game-over screen: the score, the best ("New best!" when it is), Play again, and the leaderboard if the game has one.
+- The start screen: the game's name, one line on how to play, the best score, and a big Play button (a <button> with the word Play or Start). Over the canvas or under it, but the canvas is always drawn.
+- The game-over screen is ON the game, never below it: wrap GameCanvas in <div className="relative"> and show <GameOver score best stats={[{ label: "Distance", value: ... }, { label: "Coins", value: ... }]} onAgain={start} shareText="..." > <PostScore ... /> </GameOver> from src/game/GameOver.tsx inside it. Play again and posting a score are then where the thumb already is, with nothing to scroll. Show the numbers the run counted (distance, coins, near misses).
+- A pause screen: pass onHidden={() => setScreen("paused")} to GameCanvas, so a phone call or a tab switch pauses the run and it waits for a Resume button.
 - Keep the game's state in a useRef object (player, enemies, score), NOT in useState: state that changes 60 times a second must not re-render React. Use useState only for which screen is showing and for a number the page shows outside the canvas, updated when it changes, not every frame.
 - Multiply every speed by dt (seconds), so the game runs the same on a slow phone: x += speed * dt. Never count frames.
 - Input: input.left/right/up/down are held directions (arrow keys, WASD or the on-screen buttons). input.action is held, input.actionPressed is true for one frame when it starts (jump, shoot, flap). input.pointer is the finger or mouse in game coordinates. Every game must be playable with a thumb alone: either one-tap play (the whole canvas is the button) or pass controls={["left","right","action"]} for on-screen buttons. For lanes, a tap on the left or right half of the canvas (input.pointer.x < width / 2) changes lane. Keyboard works by itself.
@@ -586,6 +602,16 @@ GoodBuild tests the game (src/game/probe.ts). Its check opens the game, presses 
 - probe(score, player.x, player.y, speed) once per frame in onFrame while playing, with the current score, the player's position and the game's speed (what rises as it gets harder).
 The check then reports, for the builder to fix: a score that never rises, no obstacle in the first 3 seconds, a declared kind that never appears in the first 15 seconds of a round, controls that don't move the player, a game that doesn't get harder, and a Play again that doesn't start a new round.
 
+Make people play again (src/game/extras.ts): pick the two or three that fit, and every one the plan's brief names
+- Near misses and combos: nearMiss(playerBox, carBox) passing close scores a bonus ("Close!" popup); new Combo() raises a multiplier for quick successes, shown with drawHud's combo.
+- Coins: collected in runs (coins.add at game over), kept on the device, spent on things that unlock by playing, so free players progress too.
+- Missions: new Missions([...]) gives three a day ("Collect 20 coins", "Survive 60 seconds" with oneRun), track(stat) as things happen, endRun() at game over, list them on the start screen. Finished missions add season XP; seasonTier(seasonXp.get(), tiers, shop.hasPass) shows the season's tiers, with pass-only tiers marked.
+- Daily challenge: seededRandom(dailySeed()) instead of Math.random, so everyone races the same course today.
+- Ghost: new Ghost(); start() at Play, record(time, x, y) each frame, finish(score) at game over, and draw ghost.at(time) faintly during the run.
+- firstTime("controls") shows a one-line tip on the first run only. shareScore("I drove 1,240 m in Neon Drift") opens the phone's share sheet (GameOver's shareText does this). prefersReducedMotion(): less shake and fewer particles.
+- GameSettings (src/game/GameSettings.tsx): sound and vibration switches for the start screen.
+- The leaderboard's top three on the race screen itself: <TopThree board={board} /> from src/game/TopThree.tsx over a top corner of the canvas (absolute, inside the relative box) or just above it.
+
 Drawing
 - Draw with shapes, gradients and emoji (ctx.fillRect, ctx.arc, ctx.fillText with a big font): a game needs no image files. Clear the canvas at the start of every frame. Use the theme's mood for colours but choose them for contrast inside the game. If the user uploaded images, draw them with an Image loaded from their /assets/ path.
 - Draw each thing once, as a function: drawCar(ctx, x, y, w, h, colour). Use it in the game, and outside the game with <Sprite draw={(ctx, w, h) => drawCar(ctx, 0, 0, w, h, colour)} width={96} height={128} /> from src/game/Sprite.tsx: garage cards, the store, the start screen, leaderboard rows. Never redraw the same thing a second way in SVG or CSS. A thing shown in a card is at least 64px, big enough to recognise.
@@ -604,7 +630,7 @@ Money in a game (only when the user asks for entry fees, prizes or things to buy
 - A paid tournament is allowed: players pay a G$ entry, the pot goes to the winner or the top few. Write a contract in contracts/ following the contract rules: entries with transferAndCall, a deadline, a refund to every player if nothing is settled within a set time after the deadline, and custom errors.
 - A score comes from the player's own device, so a contract can't trust it. Don't write a contract that pays whoever submits the biggest number. Use an organiser who settles: the contract's owner calls a function naming the winners after the deadline, and the page says plainly that the organiser confirms the results. For a turn-based game with simple rules (noughts and crosses, a guessing duel between two players who both commit), the contract can run the rules itself instead.
 - The winner must be decided by play. Never build a game for money where chance alone picks the winner (a lottery, a dice roll, a slot machine, a random draw among payers): refuse that and offer a skill game or a free draw instead.
-- Things to buy (cars, skins, level ups, extra lives, a season pass): an ERC-1155 or a simple purchases mapping paid in G$, read by the game to unlock them. Keep the game fair and fun without paying: the starter items are free, and anything bought is shown with Sprite exactly as the game draws it.
+- Things to buy (cars, skins, level ups, power packs, a season pass): the game shop kit is on for games that sell things: follow its guide (useShop and Store, with the tested GameShop contract). Never write your own shop contract. Keep the game fair and fun without paying: the starter items are free, and anything bought is shown with Sprite exactly as the game draws it.
 - Several people playing together (a room, taking turns, a lobby): load the multiplayer guide. There is no live connection, so it suits turn-based and lobby games, not fast action games.
 
 Before you finish, check: the canvas draws on the start screen (onIdleFrame), Play works with no wallet, the first obstacle comes within 3 seconds, every obstacle, power-up and NPC the plan named is in the game and in declareGame, spawned and probe are called, the score shows on the canvas while playing (drawHud), game over shows Play again, and the leaderboard rule is in dataRules.json if there is a board.`;
@@ -723,6 +749,11 @@ export const game2d: Kit = {
     "src/game/powerups.ts": POWERUPS,
     "src/game/hud.ts": HUD,
     "src/game/haptics.ts": HAPTICS,
+    "src/game/chainTx.ts": CHAIN_TX,
+    "src/game/extras.ts": EXTRAS,
+    "src/game/GameOver.tsx": GAME_OVER_TSX,
+    "src/game/TopThree.tsx": TOP_THREE_TSX,
+    "src/game/GameSettings.tsx": SETTINGS_TSX,
   },
   // The first GameCanvas (D72): Enter and Space couldn't press Play, and a key held through a lost focus stuck (D85).
   // ...and the second never drew while paused, so every start screen was an empty box (D93).

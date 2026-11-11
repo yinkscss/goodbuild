@@ -1,3 +1,5 @@
+import { STABLECOINS } from "@/config/stablecoins";
+
 /**
  * The 2D game kit's building blocks (D94): spawning, computer-controlled characters, power-ups, the
  * score panel, vibration, and the probe GoodBuild's run check reads to test a game. Small files, no
@@ -515,11 +517,32 @@ export function drawBanner(ctx: CanvasRenderingContext2D, width: number, height:
 
 export const HAPTICS = `import { isMuted } from "./sound";
 
-// A small buzz on phones that can (most Android phones; iPhones ignore it). Off with the mute button.
+// A small buzz on phones that can (most Android phones; iPhones ignore it). Off with the mute button,
+// or on its own with the Vibration switch (GameSettings).
 const PATTERNS = { tap: 10, collect: [12, 30, 12], hit: 60, over: [80, 60, 120] } as const;
 
+let on = true;
+try {
+  on = window.localStorage.getItem("game-haptics") !== "0";
+} catch {
+  /* storage is blocked: vibration stays on */
+}
+
+export function hapticsOn(): boolean {
+  return on;
+}
+
+export function setHaptics(value: boolean): void {
+  on = value;
+  try {
+    window.localStorage.setItem("game-haptics", value ? "1" : "0");
+  } catch {
+    /* fine */
+  }
+}
+
 export function buzz(kind: keyof typeof PATTERNS = "tap"): void {
-  if (isMuted()) return;
+  if (!on || isMuted()) return;
   try {
     navigator.vibrate?.(PATTERNS[kind] as number | number[]);
   } catch {
@@ -527,3 +550,47 @@ export function buzz(kind: keyof typeof PATTERNS = "tap"): void {
   }
 }
 `;
+
+export const CHAIN_TX = `import { createWalletClient, custom, erc20Abi, type Abi, type Address } from "viem";
+
+import { chain, publicClient, writeContract } from "../lib/chain";
+import { connectWallet, isMiniPay, walletProvider } from "../lib/goodbuild/wallet";
+
+/** Dollar coins that can pay Celo's network fee, per network (MiniPay players hold these, not CELO). */
+const FEE_COINS: Record<string, { address: string; decimals: number; feeCurrency: string }[]> = __FEE_COINS__;
+
+/**
+ * Send a contract call from a game and wait for it. In a browser it is a normal wallet transaction.
+ * Inside MiniPay the network fee is paid in the first dollar coin the player has a few cents of, as
+ * a plain (legacy) transaction, which is what MiniPay accepts.
+ */
+export async function sendGameTx(args: { address: Address; abi: Abi; functionName: string; args?: readonly unknown[] }) {
+  if (!isMiniPay()) return writeContract(args);
+  const account = await connectWallet();
+  const feeCurrency = await feeCoin(account);
+  const wallet = createWalletClient({ account, chain, transport: custom(walletProvider()!) });
+  const hash = await wallet.writeContract({ ...args, feeCurrency, type: "legacy" } as never);
+  const receipt = await publicClient.waitForTransactionReceipt({ hash });
+  if (receipt.status !== "success") throw new Error("That didn't go through. Nothing was taken except the network fee. Please try again.");
+  return receipt;
+}
+
+async function feeCoin(owner: Address): Promise<Address> {
+  for (const coin of FEE_COINS[String(chain.id)] ?? []) {
+    try {
+      const balance = (await publicClient.readContract({ address: coin.address as Address, abi: erc20Abi, functionName: "balanceOf", args: [owner] } as never)) as bigint;
+      if (balance >= 10n ** BigInt(coin.decimals) / 100n) return coin.feeCurrency as Address;
+    } catch {
+      /* this coin can't be read here: try the next */
+    }
+  }
+  throw new Error("This needs a few cents in USDm, USDT or USDC for the network fee. Add cash and try again.");
+}
+`.replace(
+  "__FEE_COINS__",
+  JSON.stringify(
+    Object.fromEntries(Object.entries(STABLECOINS).map(([chainId, coins]) => [chainId, Object.values(coins).map((c) => ({ address: c.address, decimals: c.decimals, feeCurrency: c.feeCurrency }))])),
+    null,
+    2,
+  ),
+);

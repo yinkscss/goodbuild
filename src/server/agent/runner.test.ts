@@ -785,10 +785,20 @@ describe("kits in a turn (D71)", { timeout: 120_000 }, () => {
     expect(mini["src/game/chainBoard.ts"]).toContain("export function gameBoard");
   });
 
+  it("turns everything on for the owner's Neon Drift request: game, MiniPay, the board contract and the G$ shop (D95)", async () => {
+    const files = await buildFromPlan("Build a car racing game for me that's playable on mini pay, I want leaderboards and season pass for people to be able to connect and try to be the high score, make it endless with power ups and there should be an in app store where you can purchase level ups and other cars with $g");
+    expect(JSON.parse(files["src/goodbuild.json"]).kits).toEqual(expect.arrayContaining(["game-2d", "mini-app", "game-board", "game-shop"]));
+    expect(files["contracts/GameShop.sol"]).toContain("contract GameShop");
+    expect(files["src/game/Store.tsx"]).toContain("export function Store");
+    expect(files["src/game/GameOver.tsx"]).toContain("export function GameOver");
+  });
+
   it("leaves the contract off for a web-only game with a leaderboard: no deploy needed", async () => {
     const web = await buildFromPlan("A snake game with a leaderboard");
     expect(web["src/goodbuild.json"]).toContain("game-2d");
     expect(web["src/goodbuild.json"]).not.toContain("game-board");
     expect(web["src/game/leaderboard.ts"]).toContain("export function useLeaderboard");
+    // Nothing for sale, so no shop and no shop contract to deploy.
+    expect(web["src/goodbuild.json"]).not.toContain("game-shop");
   });
 });
