@@ -10,7 +10,7 @@ import { githubAccounts, githubRepos } from "@/server/db/github-schema";
 import { createProjectFromPrompt } from "@/server/projects";
 import { saveFiles } from "@/server/agent/store";
 import { decryptToken, encryptToken } from "./crypto";
-import { GITHUB_STATE_COOKIE, checkState, newState, safeReturnTo } from "./oauth";
+import { GITHUB_STATE_COOKIE, callbackDestination, checkState, newState, safeReturnTo } from "./oauth";
 import { createAndLink, linksOwnedByOthers, syncProject, toLink, unlinkProject } from "./sync";
 import { buildTree, repoName, safePath } from "./tree";
 
@@ -53,6 +53,11 @@ describe("oauth state", () => {
   it("only accepts paths on this site", () => {
     expect(safeReturnTo("/p/123?x=1")).toBe("/p/123?x=1");
     for (const bad of ["//evil.com", "https://evil.com", "\\evil", "/a\nb", "/\t/evil.example", "/\u0000x", null, ""]) expect(safeReturnTo(bad as string | null)).toBe("/settings?tab=github");
+  });
+  it("sends the person to Settings when a revocation wasn't confirmed, wherever they started", () => {
+    expect(callbackDestination("/p/abc", true)).toBe("/settings?tab=github");
+    expect(callbackDestination("/p/abc", false)).toBe("/p/abc");
+    expect(callbackDestination("//evil.com", false)).toBe("/settings?tab=github");
   });
   it("needs the same state and the same person", async () => {
     const { state, cookie } = await newState("user-1", "/p/abc");

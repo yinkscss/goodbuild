@@ -23,6 +23,14 @@ export function safeReturnTo(value: string | null | undefined): string {
 }
 
 /**
+ * Where the person lands after the callback. When GitHub didn't confirm a revocation, the warning about it lives
+ * in Settings, so that is where they go, whatever page they started from.
+ */
+export function callbackDestination(returnTo: string, manualRevoke: boolean): string {
+  return manualRevoke ? "/settings?tab=github" : safeReturnTo(returnTo);
+}
+
+/**
  * The OAuth `state`: a random value in the URL, and the same value in a signed cookie that also names who
  * started it and where to go back to. The callback needs both to match, and the same signed-in person.
  */

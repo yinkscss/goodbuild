@@ -22,7 +22,10 @@ export interface GithubLink {
   stale: boolean;
 }
 
-/** Longer than any push should take. */
+/**
+ * Longer than any live push can take: every GitHub request times out after 30 s (api.ts) and a push makes at most five,
+ * so a push still "syncing" after this has lost its process, and trying again is safe.
+ */
 const STALE_AFTER_MS = 5 * 60_000;
 
 export type GithubRepoRow = typeof githubRepos.$inferSelect;

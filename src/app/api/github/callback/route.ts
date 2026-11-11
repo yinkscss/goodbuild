@@ -7,12 +7,12 @@ import { getDb } from "@/server/db/client";
 import { githubAccounts } from "@/server/db/github-schema";
 import { exchangeCode, getViewer, revokeToken } from "@/server/github/api";
 import { decryptToken, encryptToken } from "@/server/github/crypto";
-import { GITHUB_STATE_COOKIE, checkState } from "@/server/github/oauth";
+import { GITHUB_STATE_COOKIE, callbackDestination, checkState } from "@/server/github/oauth";
 import { linksOwnedByOthers } from "@/server/github/sync";
 import { eq } from "drizzle-orm";
 
 function back(request: Request, returnTo: string, result: "connected" | "failed" | "different_account", manualRevoke = false) {
-  const target = new URL(returnTo, request.url);
+  const target = new URL(callbackDestination(returnTo, manualRevoke), request.url);
   target.searchParams.set("github", result);
   // GitHub didn't confirm the new token was revoked and we kept no copy: the person has to remove it there.
   if (manualRevoke) target.searchParams.set("revoke", "manual");
