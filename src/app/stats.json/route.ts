@@ -3,7 +3,7 @@ import { connection } from "next/server";
 import { explorerAddressUrl, explorerTxUrl } from "@/lib/deploy/explorer";
 import { getPublicStats } from "@/server/stats/cached";
 
-/** The same numbers as /stats, as JSON, with every mainnet contract and its Celoscan links so anyone can check them (D90). */
+/** The same numbers as /stats, as JSON, with every mainnet contract and its Celoscan links so anyone can check them (D91). */
 export async function GET() {
   await connection();
   try {

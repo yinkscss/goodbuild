@@ -28,7 +28,7 @@ const APPS_SHOWN = 12;
 const fmt = (v: number) => v.toLocaleString("en-US");
 const day = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 
-/** Public, signed-out stats page (D90): our own numbers from the database, and Celo mainnet facts anyone can check on Celoscan. */
+/** Public, signed-out stats page (D91): our own numbers from the database, and Celo mainnet facts anyone can check on Celoscan. */
 export default function StatsPage() {
   return (
     <>

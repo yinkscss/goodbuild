@@ -10,7 +10,7 @@ import { publications } from "@/server/db/publish-schema";
 import { projects, turnJobs, users } from "@/server/db/schema";
 
 /**
- * The public numbers behind /stats and /stats.json (D90). Counts only: no wallets, emails, user ids or
+ * The public numbers behind /stats and /stats.json (D91). Counts only: no wallets, emails, user ids or
  * money amounts (owner's call, 11 Nov 2026). On-chain figures are Celo mainnet only, so every one of
  * them can be checked on Celoscan from the addresses and transaction hashes listed here.
  */
