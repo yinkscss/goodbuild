@@ -56,7 +56,7 @@ async function dropRefusedAccount(db: Db, userId: string, enc: string) {
   await db.delete(githubAccounts).where(and(eq(githubAccounts.userId, userId), eq(githubAccounts.tokenEnc, enc)));
 }
 
-/** One GitHub operation at a time per project, so an automatic push, a manual one and an unlink never interleave (D93). */
+/** One GitHub operation at a time per project, so an automatic push, a manual one and an unlink never interleave (D96). */
 const locks = new Map<string, Promise<unknown>>();
 function exclusive<T>(projectId: string, fn: () => Promise<T>): Promise<T> {
   const next = (locks.get(projectId) ?? Promise.resolve()).catch(() => undefined).then(fn);
@@ -90,7 +90,7 @@ function explain(error: unknown): { message: string; lostAccess: boolean } {
 }
 
 /**
- * Push the project's current files to the linked repository as one new commit on top of the branch (D93).
+ * Push the project's current files to the linked repository as one new commit on top of the branch (D96).
  * One way, and never a force push: if the branch has commits GoodBuild didn't write, nothing is pushed and
  * the link is marked `diverged` until the person chooses `overwrite`, which still adds a commit on top, so
  * their history stays on GitHub.

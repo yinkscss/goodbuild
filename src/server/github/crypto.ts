@@ -5,7 +5,7 @@ import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from "node:cr
 import { sessionSecret } from "@/server/auth/config";
 
 /**
- * GitHub access tokens are encrypted at rest (D93). The key is derived from SESSION_SECRET, so no
+ * GitHub access tokens are encrypted at rest (D96). The key is derived from SESSION_SECRET, so no
  * new secret is needed; rotating SESSION_SECRET makes stored tokens unreadable and people reconnect.
  */
 function key(): Buffer {
