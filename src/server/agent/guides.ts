@@ -8,6 +8,7 @@
  */
 
 import { KITS, kitGuideName } from "./kits/registry";
+import { UI_GUIDE } from "./ui-primitives";
 
 export interface Guide {
   name: string;
@@ -25,7 +26,7 @@ export const GUIDES: Guide[] = [
     <HashRouter><Routes><Route element={<Layout />}><Route index element={<Home />} /><Route path="about" element={<About />} /><Route path="*" element={<NotFound />} /></Route></Routes></HashRouter>
 - One file per page in src/pages/ (Home.tsx, About.tsx, Signup.tsx, ...), default export, named after the page. Shared pieces go in src/components/.
 - src/components/Layout.tsx: the top bar (app mark + name linking to "/", nav links, ConnectButton when the app uses a wallet), <Outlet />, and a small footer. Every page renders inside it, so the header is written once.
-- Nav: NavLink with an active style (text-foreground font-medium vs text-muted-foreground). The link to "/" needs the end prop (<NavLink to="/" end>), or Home looks active on every page. Responsive: links inline from md: up (hidden md:flex); below md, a menu button (lucide Menu / X, aria-expanded, aria-controls, aria-label="Menu") toggles a full-width stacked panel under the bar (each link py-3, ConnectButton at the bottom); close it on navigation (useEffect on location.pathname) and on Escape. Sticky top bar: sticky top-0 z-40 bg-background/80 backdrop-blur border-b border-border. Logo (uploaded or icon) + app name on the left.
+- Nav: NavLink with an active style (text-foreground font-medium vs text-muted-foreground). The link to "/" needs the end prop (<NavLink to="/" end>), or Home looks active on every page. Responsive: links inline from md: up (hidden md:flex); below md, a menu button (lucide Menu, aria-label="Menu") opens a Sheet from src/components/ui/sheet.tsx (load the ui-components guide) holding the links stacked (each py-3) and the ConnectButton at the bottom; keep its open state in the Layout and close it on navigation (useEffect on location.pathname). The sheet handles Escape, focus and the tap outside itself. Sticky top bar: sticky top-0 z-40 bg-background/80 backdrop-blur border-b border-border. Logo (uploaded or icon) + app name on the left.
 - dApps with several pages: Home (what it is, live stats, button into the app), the app page(s) where the contract actions live (e.g. /app or /jar), plus About or FAQ. The ConnectButton sits in the Layout's top bar; a page that needs the account calls useWallet() itself; contract pages each own their reads with useRead.
 - When you add a page, do all three in one turn: create the page, add its Route, add its nav link. Keep the existing pages working.
 - Links between pages: <Link to="/signup"> (never <a href="/signup">, which reloads and breaks HashRouter). Scroll to top on route change with a tiny effect in Layout (useLocation + window.scrollTo(0, 0)).
@@ -43,7 +44,7 @@ export const GUIDES: Guide[] = [
   4. Bento showcase: hero plus a grid of mixed-size cards (md:grid-cols-3, one card md:col-span-2) each holding one idea: a stat, a feature, an image.
   5. Shop or menu: hero with offer, category tabs or chips, item card grid with price, "how to pay in G$" steps, contact/location.
   6. dApp front door: hero that says what the app does in plain words, a live stat row from the contract (or labelled placeholders before deploy), 3 steps, button into the app page.
-- Section library (compose; each is a <section id="..."> with an h2): hero, logo-strip, features (cards), how-it-works (numbered steps), stats (big numbers), showcase (image + text, alternate sides with md:flex-row-reverse), pricing/offer, schedule/timeline, team (placeholders), testimonials ONLY if the user gave quotes, FAQ (<details> cards), cta-band (bg-primary text-primary-foreground rounded-2xl p-8 sm:p-12), footer (links, small print).
+- Section library (compose; each is a <section id="..."> with an h2): hero, logo-strip, features (cards), how-it-works (numbered steps), stats (big numbers), showcase (image + text, alternate sides with md:flex-row-reverse), pricing/offer, schedule/timeline, team (placeholders), testimonials ONLY if the user gave quotes, FAQ (the Accordion from src/components/ui/accordion.tsx), cta-band (bg-primary text-primary-foreground rounded-2xl p-8 sm:p-12), footer (links, small print).
 - Hero: a specific headline about the visitor's outcome (not the product name alone), one supporting sentence, one primary button with a verb ("Start saving", "Book a table", "Connect wallet") and at most one secondary link. Headline in font-display, text-4xl sm:text-5xl lg:text-6xl, tracking-tight, max ~12 words. On mobile everything stacks, button full width.
 - How it works: 3 numbered steps with a lucide icon each. Features: 3 to 6 cards in a grid (sm:grid-cols-2 lg:grid-cols-3), each a short title and one sentence.
 - Rhythm: sections py-16 sm:py-24, content max-w-5xl or max-w-6xl mx-auto px-4 sm:px-6. Alternate section backgrounds with tokens (bg-background then bg-muted) instead of borders everywhere. One eyebrow label per section at most (text-xs uppercase tracking-wider text-accent).
@@ -153,7 +154,7 @@ export const GUIDES: Guide[] = [
     body: `Content pages (about, FAQ, help, terms).
 - Start from what the app actually does (read the contract and the main page). An About page says who it's for, what problem it solves, how it works on Celo with G$ if relevant, and what's next. Plain words for Web3 newcomers; explain "wallet", "G$" and "transaction" in one line each where they first appear.
 - Never invent people, team members, partners, addresses or legal terms. If the user wants a team or contact section, leave clearly marked placeholders and say so in your reply.
-- Layout: max-w-3xl prose column, h1 + one-line intro, then h2 sections with short paragraphs (text-muted-foreground leading-relaxed) and lists. FAQ as a list of <details><summary> items styled as cards, 4 to 8 real questions about using this app.
+- Layout: max-w-3xl prose column, h1 + one-line intro, then h2 sections with short paragraphs (text-muted-foreground leading-relaxed) and lists. FAQ as an Accordion (src/components/ui/accordion.tsx, ui-components guide), 4 to 8 real questions about using this app.
 - End with a call to action back to the main page (Link).`,
   },
   {
@@ -272,6 +273,11 @@ export const GUIDES: Guide[] = [
 - Not connected: actions that need a wallet show the ConnectButton in place of the action button, with one line explaining why. ConnectButton opens GoodBuild's wallet list (browser wallets, phone wallets by WalletConnect once published, MiniPay on its own); closing the list is not an error.
 - Success: Notice tone="success" after a write with what happened ("Tipped 50 G$"), then refresh reads. Clear the form.
 - 404 page and a fallback for unknown routes (pages-and-routing).`,
+  },
+  {
+    name: "ui-components",
+    when: "a pop-up or confirmation (dialog), a slide-in panel or phone menu (sheet), tabs, a dropdown of choices (select) or of actions (dropdown menu), a tooltip, a toast, an FAQ or collapsible section (accordion), an avatar for a person or wallet, or an on/off switch",
+    body: UI_GUIDE,
   },
   {
     name: "file-structure",

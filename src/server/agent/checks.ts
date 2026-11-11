@@ -63,7 +63,11 @@ export interface CheckReport {
 export const MAX_FILE_BYTES = 120_000;
 /** EIP-170 runtime code size limit. */
 export const MAX_CONTRACT_BYTES = 24_576;
-export const MAX_FILES = 80;
+/**
+ * Files in one project, starter and kits included. It was 80 while the starter had 27 files; the ten
+ * further UI pieces (D88) added 11, so this went up by as much (rounded) and an app has the room it had.
+ */
+export const MAX_FILES = 92;
 
 const DATA_HELPER_STEMS = ["src/lib/db", "src/lib/useDb"];
 

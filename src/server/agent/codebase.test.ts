@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { findSymbol, manifest, readRange, searchCode, selectContext, summarizeFile, symbolsIn, terms } from "./codebase";
 import { FIND_CASES, thirtyFileProject } from "./fixtures/thirty-files";
 import { contextWithPicks } from "./prompt";
+import { UI_PRIMITIVES } from "./ui-primitives";
 
 const files = thirtyFileProject();
 
@@ -59,8 +60,8 @@ describe("context selection on a 30-file project (HARNESS.md eval 3, offline par
     expect(Object.keys(files).length).toBeGreaterThanOrEqual(30);
     const picks = selectContext(files, "Add a Twitter link to the footer").map((p) => p.path);
     expect(picks).toEqual(expect.arrayContaining(["src/pages/About.tsx", "src/components/sections/Faq.tsx", "src/lib/useTipJar.ts", "src/components/ui/button.tsx"]));
-    // Everything except the data helpers and the wallet layer, which the guides and prompt document.
-    expect(picks).toHaveLength(Object.keys(files).filter((p) => p !== "src/lib/db.ts" && p !== "src/lib/useDb.ts" && !p.startsWith("src/lib/goodbuild/")).length);
+    // Everything except the data helpers, the wallet layer and the ten further UI pieces (D88), which the guides and prompt document.
+    expect(picks).toHaveLength(Object.keys(files).filter((p) => p !== "src/lib/db.ts" && p !== "src/lib/useDb.ts" && !p.startsWith("src/lib/goodbuild/") && !(p in UI_PRIMITIVES)).length);
   });
   it("over budget: puts the file that needs the change in context for most requests, and one search finds the rest", () => {
     let inContext = 0;
