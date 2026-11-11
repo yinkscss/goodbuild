@@ -95,7 +95,7 @@ export const MiniPayScene: React.FC<{ t: number }> = ({ t }) => {
       <Tap x={SC.x + 400} y={tapY(64 + 78 + 96 * 0 + 48)} t={t} t0={tDevMode + 0.05} />
       <Tap x={SC.x + 400} y={tapY(64 + 78 + 96 * 1 + 48)} t={t} t0={tTest + 0.0} />
       <Tap x={SC.x + 260} y={tapY(64 + 78 + 96 * 2 + 48)} t={t} t0={tLoad + 0.1} />
-      <Tap x={SC.x + 260} y={tapY(64 + 78 + 150 + 38 + 30 + 46 + 60)} t={t} t0={tGo + 0.05} />
+      <Tap x={SC.x + 260} y={tapY(64 + 82 + 10 + 110 + 30 + 46)} t={t} t0={tGo + 0.05} />
       {/* stickers when it opens */}
       {[["No wallet list", tList, 560, 700, 4], ["No login", tLogin, 120, 940, -5]].map(([label, at, x, y, r]) => {
         const p = easeBack(prog(t, (at as number) - 0.1, 0.4), 2.2);

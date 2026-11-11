@@ -21,6 +21,13 @@ const serveUrl = await bundle({ entryPoint: path.join(root, "src/index.ts") });
 const composition = await selectComposition({ serveUrl, id: "MiniPayExplainer", browserExecutable, chromiumOptions });
 
 let last = -1;
+const r = process.argv.indexOf("--range"); // --range 1800,1870 : re-render only these frames (no audio) to out/patch.mp4
+if (r > -1) {
+  const [a, b] = process.argv[r + 1].split(",").map(Number);
+  await renderMedia({ serveUrl, composition, codec: "h264", crf: 16, pixelFormat: "yuv420p", muted: true, frameRange: [a, b], outputLocation: path.join(out, "patch.mp4"), browserExecutable, chromiumOptions, imageFormat: "jpeg", jpegQuality: 95, concurrency: Number(process.env.CONCURRENCY ?? 4) });
+  console.log("wrote out/patch.mp4", a, b);
+  process.exit(0);
+}
 const i = process.argv.indexOf("--stills");
 if (i > -1) {
   for (const s of process.argv[i + 1].split(",")) {
