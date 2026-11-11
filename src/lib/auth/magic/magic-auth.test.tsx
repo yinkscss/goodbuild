@@ -22,8 +22,12 @@ const SEPOLIA_HEX = "0xaa044c";
 const user = { id: "u1", wallet: ACCOUNT, walletKind: "external" as const, verified: false };
 
 let auth: AuthApi;
+/** Hands the latest auth API to the test. It is copied in an effect, not during render. */
 function Probe() {
-  auth = useAuth();
+  const api = useAuth();
+  React.useEffect(() => {
+    auth = api;
+  });
   return null;
 }
 
