@@ -20,7 +20,9 @@ export function GithubPanel() {
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [note, setNote] = React.useState<string | null>(null);
-  const result = useSearchParams().get("github");
+  const params = useSearchParams();
+  const result = params.get("github");
+  const manualRevoke = params.get("revoke") === "manual";
 
   async function disconnect() {
     setBusy(true);
@@ -59,7 +61,7 @@ export function GithubPanel() {
                     : "Connect GitHub to put your apps in public repositories with one tap and keep them in sync as you build."}
               </p>
               <div className="mt-4 flex flex-wrap gap-2">
-                {loaded.data.connected && (
+                {(loaded.data.connected || loaded.data.reconnect) && (
                   <Button variant="secondary" size="sm" onClick={() => void disconnect()} disabled={busy}>
                     Disconnect GitHub
                   </Button>
@@ -80,6 +82,11 @@ export function GithubPanel() {
               {result === "failed" && (
                 <p role="alert" className="mt-3 text-sm text-danger">
                   GitHub didn&rsquo;t connect. Try again.
+                </p>
+              )}
+              {manualRevoke && (
+                <p role="alert" className="mt-3 text-sm text-danger">
+                  GitHub didn&rsquo;t confirm that the access it just gave GoodBuild was removed. To be sure, remove GoodBuild at github.com/settings/applications.
                 </p>
               )}
               {note && <p className="mt-3 text-sm text-grey-600">{note}</p>}

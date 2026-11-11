@@ -11,6 +11,7 @@ export interface GithubLinkInfo {
   lastVersion: number | null;
   syncedAt: string | null;
   autoSync: boolean;
+  stale: boolean;
 }
 
 export interface GithubAccount {

@@ -101,7 +101,8 @@ export function GithubModal({ projectId, github, open, onOpenChange }: { project
               )}
               <span>
                 {link.status === "synced" && `Up to date with version ${link.lastVersion}${link.syncedAt ? ` · ${ago(link.syncedAt)}` : ""}.`}
-                {link.status === "syncing" && "Pushing to GitHub…"}
+                {link.status === "syncing" && !link.stale && "Pushing to GitHub…"}
+                {link.status === "syncing" && link.stale && "This push seems to have stopped, probably because the server restarted."}
                 {(link.status === "diverged" || link.status === "error") && (link.error ?? "Something went wrong.")}
               </span>
             </div>
@@ -123,6 +124,13 @@ export function GithubModal({ projectId, github, open, onOpenChange }: { project
                     Replace {link.branch} with GoodBuild&rsquo;s version
                   </Button>
                 )}
+              </div>
+            )}
+            {link.status === "syncing" && link.stale && (
+              <div className="mt-3">
+                <Button size="sm" variant="secondary" onClick={() => void github.sync()} disabled={busy}>
+                  Try again
+                </Button>
               </div>
             )}
             {link.status === "error" && (

@@ -1,5 +1,5 @@
 {
-  "id": "2b7290ab-90c9-4bed-9318-2404f9d39afb",
+  "id": "39d15857-e11c-424a-b589-73b728213d1f",
   "prevId": "cb410b3f-a759-42f3-8162-1c53936e885c",
   "version": "7",
   "dialect": "postgresql",
@@ -3139,6 +3139,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "branch": {
           "name": "branch",
           "type": "text",
@@ -3155,6 +3161,18 @@
         "last_version": {
           "name": "last_version",
           "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pending_sha": {
+          "name": "pending_sha",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "syncing_since": {
+          "name": "syncing_since",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
         },

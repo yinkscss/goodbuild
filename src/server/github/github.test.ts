@@ -11,7 +11,7 @@ import { createProjectFromPrompt } from "@/server/projects";
 import { saveFiles } from "@/server/agent/store";
 import { decryptToken, encryptToken } from "./crypto";
 import { GITHUB_STATE_COOKIE, checkState, newState, safeReturnTo } from "./oauth";
-import { createAndLink, linksOwnedByOthers, syncProject, unlinkProject } from "./sync";
+import { createAndLink, linksOwnedByOthers, syncProject, toLink, unlinkProject } from "./sync";
 import { buildTree, repoName, safePath } from "./tree";
 
 describe("token encryption", () => {
@@ -308,11 +308,57 @@ describe("syncing to GitHub", () => {
     expect(row.error).toBeNull();
   });
 
-  it("finds apps synced to a different GitHub account", async () => {
+  it("finds apps synced to a different GitHub account, by account id so a rename doesn't count", async () => {
     await createAndLink(db, userId, projectId);
-    expect(await linksOwnedByOthers(db, userId, "ada")).toEqual([]);
-    expect(await linksOwnedByOthers(db, userId, "ADA")).toEqual([]);
-    expect(await linksOwnedByOthers(db, userId, "grace")).toHaveLength(1);
+    expect(await linksOwnedByOthers(db, userId, { id: 1, login: "ada" })).toEqual([]);
+    expect(await linksOwnedByOthers(db, userId, { id: 1, login: "ada-renamed" })).toEqual([]);
+    expect(await linksOwnedByOthers(db, userId, { id: 2, login: "grace" })).toHaveLength(1);
+    expect(await linksOwnedByOthers(db, userId, { id: 2, login: "ada" })).toHaveLength(1);
+  });
+
+  it("treats a branch move that landed but wasn't recorded as GoodBuild's own, and still pauses for anyone else's", async () => {
+    await createAndLink(db, userId, projectId);
+    await bumpVersion(11);
+    // The push moved the branch to "ours", then writing the result failed.
+    await db.update(githubRepos).set({ pendingSha: "ours" }).where(eq(githubRepos.projectId, projectId));
+    head = "ours";
+    expect((await syncProject(db, projectId))?.status).toBe("synced");
+    const [row] = await db.select().from(githubRepos).where(eq(githubRepos.projectId, projectId));
+    expect(row.pendingSha).toBeNull();
+
+    await bumpVersion(12);
+    await db.update(githubRepos).set({ pendingSha: "ours-2" }).where(eq(githubRepos.projectId, projectId));
+    head = "someone-else";
+    expect((await syncProject(db, projectId))?.status).toBe("diverged");
+  });
+
+  it("a 401 for an old token doesn't remove the account connected since", async () => {
+    await createAndLink(db, userId, projectId);
+    await bumpVersion(13);
+    const fresh = encryptToken("gho_newer");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        // While this request is in flight the person connects again.
+        await db.update(githubAccounts).set({ tokenEnc: fresh }).where(eq(githubAccounts.userId, userId));
+        return new Response(JSON.stringify({ message: "Bad credentials" }), { status: 401 });
+      }),
+    );
+    expect((await syncProject(db, projectId))?.status).toBe("error");
+    const [account] = await db.select().from(githubAccounts).where(eq(githubAccounts.userId, userId));
+    expect(account?.tokenEnc).toBe(fresh);
+  });
+
+  it("marks a push that began long ago and never finished as stale, and a recent one as running", async () => {
+    await createAndLink(db, userId, projectId);
+    const set = (ago: number) => db.update(githubRepos).set({ status: "syncing", syncingSince: new Date(Date.now() - ago) }).where(eq(githubRepos.projectId, projectId));
+    const read = async () => toLink((await db.select().from(githubRepos).where(eq(githubRepos.projectId, projectId)))[0]);
+    await set(60_000);
+    expect((await read()).stale).toBe(false);
+    await set(10 * 60_000);
+    expect((await read()).stale).toBe(true);
+    // And it can simply be tried again.
+    expect((await syncProject(db, projectId))?.status).toBe("synced");
   });
 
   it("forgets the account when GitHub says the token is revoked", async () => {

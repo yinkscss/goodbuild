@@ -977,7 +977,14 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
   - **Reconnecting as a different GitHub account is refused** while apps are synced to repositories under another account (Settings says why). The token just replaced is revoked.
   - **Disconnect** always removes the local token; the answer says whether GitHub confirmed the revocation, and if not, Settings tells the person to remove GoodBuild at github.com/settings/applications. Disconnect is available even when GitHub isn't configured. A token that can't be decrypted shows as "connect again".
   - Return paths reject control characters and anything that resolves off-site; `.envrc*` files are never pushed.
-  - **A push already sent can still land on GitHub after an unlink** (a request in flight can't be recalled). It lands on the repository the person stopped syncing, and it can't write onto a new link.
+  - **Second CodeRabbit pass (11 Nov 2026).**
+  - **Ownership is compared by GitHub account id** (`github_repos.owner_id`), so renaming your GitHub account doesn't block reconnecting.
+  - **A 401 removes the saved account only if its token is still the one that failed**, so connecting again while an old request is in flight keeps the new connection.
+  - **A token GitHub issued but we didn't keep** (connection failed after the code exchange, or a different account) is revoked at once; if GitHub doesn't confirm, Settings says to remove GoodBuild there.
+  - **A branch move that landed but wasn't recorded** is recognised: the new commit is written to `pending_sha` before the move, so the next sync adopts it instead of calling it someone else's.
+  - **A push that never finished** (the worker restarted; `syncing_since` older than 5 minutes) shows as stopped, with Try again.
+  - Disconnect also shows when the saved token is unreadable.
+- **A push already sent can still land on GitHub after an unlink** (a request in flight can't be recalled). It lands on the repository the person stopped syncing, and it can't write onto a new link.
 - **Not done:** a durable retry queue for failed revocations (the manual-removal message covers it).
 - **Not built / known gaps.** The lock is in one process: pushes from the worker and the web server at the same moment aren't coordinated, so that rare race shows as a paused sync that "Replace" fixes. Repositories are never deleted or renamed by GoodBuild; deleting a project doesn't delete its repository. Existing repos can't be picked: it always creates a new one (`name`, then `name-2`, …).
 - **Untick "Expire user access tokens" when registering the OAuth App** (ticked by default on GitHub's form as of 11 Nov 2026). Expiring tokens last 8 hours and need a refresh token; refresh is not built, so sync would fail after 8 hours. The redirect field is labelled "Redirect URI" there; use the callback below.

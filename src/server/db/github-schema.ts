@@ -34,11 +34,17 @@ export const githubRepos = pgTable("github_repos", {
   linkId: uuid("link_id").notNull().defaultRandom(),
   /** "owner/name". */
   fullName: text("full_name").notNull(),
+  /** The GitHub account id (not the name, which people can change) that owns the repository. */
+  ownerId: text("owner_id"),
   branch: text("branch").notNull().default("main"),
   /** Head commit GoodBuild last wrote. If the branch is anywhere else, someone else committed (D93). */
   lastCommitSha: text("last_commit_sha"),
   /** The project version that commit holds. */
   lastVersion: integer("last_version"),
+  /** A commit GoodBuild made on the branch but may not have recorded yet; if the branch head is this, it is ours, not someone else's. */
+  pendingSha: text("pending_sha"),
+  /** When the current push began, so a push that never finished (a restart) can be told from one still running. */
+  syncingSince: timestamp("syncing_since", { withTimezone: true }),
   status: text("status", { enum: GITHUB_SYNC_STATUSES }).notNull().default("syncing"),
   error: text("error"),
   autoSync: boolean("auto_sync").notNull().default(true),

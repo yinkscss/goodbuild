@@ -18,7 +18,12 @@ export interface GithubLink {
   lastVersion: number | null;
   syncedAt: string | null;
   autoSync: boolean;
+  /** A push that began a long time ago and never finished: the process was probably restarted. Safe to try again. */
+  stale: boolean;
 }
+
+/** Longer than any push should take. */
+const STALE_AFTER_MS = 5 * 60_000;
 
 export type GithubRepoRow = typeof githubRepos.$inferSelect;
 
@@ -32,12 +37,20 @@ export function toLink(row: GithubRepoRow): GithubLink {
     lastVersion: row.lastVersion,
     syncedAt: row.syncedAt ? row.syncedAt.toISOString() : null,
     autoSync: row.autoSync,
+    stale: row.status === "syncing" && !!row.syncingSince && Date.now() - row.syncingSince.getTime() > STALE_AFTER_MS,
   };
 }
 
-async function tokenFor(db: Db, userId: string): Promise<string | null> {
+/** The person's token, and the sealed value it came from, so a 401 can drop exactly that account row and no newer one. */
+async function tokenFor(db: Db, userId: string): Promise<{ token: string; enc: string } | null> {
   const [account] = await db.select().from(githubAccounts).where(eq(githubAccounts.userId, userId)).limit(1);
-  return account ? decryptToken(account.tokenEnc) : null;
+  const token = account ? decryptToken(account.tokenEnc) : null;
+  return account && token ? { token, enc: account.tokenEnc } : null;
+}
+
+/** GitHub refused a token: forget it, unless the person has connected again since (a newer token must survive an old request's 401). */
+async function dropRefusedAccount(db: Db, userId: string, enc: string) {
+  await db.delete(githubAccounts).where(and(eq(githubAccounts.userId, userId), eq(githubAccounts.tokenEnc, enc)));
 }
 
 /** One GitHub operation at a time per project, so an automatic push, a manual one and an unlink never interleave (D93). */
@@ -93,27 +106,30 @@ export function unlinkProject(db: Db, projectId: string): Promise<void> {
 async function syncLocked(db: Db, projectId: string, opts: { overwrite?: boolean }): Promise<GithubLink | null> {
   const [link] = await db.select().from(githubRepos).where(eq(githubRepos.projectId, projectId)).limit(1);
   if (!link) return null;
-  const token = await tokenFor(db, link.userId);
-  if (!token) {
+  const credentials = await tokenFor(db, link.userId);
+  if (!credentials) {
     await setState(db, link, { status: "error", error: "GitHub isn't connected. Connect GitHub again." });
     return toLink({ ...link, status: "error", error: "GitHub isn't connected. Connect GitHub again." });
   }
   const [project] = await db.select().from(projects).where(eq(projects.id, projectId)).limit(1);
   if (!project) return null;
+  const { token, enc } = credentials;
   let stage: "read" | "write" | "move" = "read";
   let parent: string | null = null;
   try {
     const head = await getBranchHead(token, link.fullName, link.branch);
     if (!head) throw new GithubApiError(404, "branch not found");
     parent = head.commitSha;
-    if (link.lastCommitSha && head.commitSha !== link.lastCommitSha && !opts.overwrite) {
+    // A commit we made and moved the branch to, whose result we then failed to record, is ours.
+    const known = link.pendingSha && head.commitSha === link.pendingSha ? link.pendingSha : link.lastCommitSha;
+    if (known && head.commitSha !== known && !opts.overwrite) {
       const error = `${link.branch} on GitHub has changes GoodBuild didn't make. Sync is paused so nothing of yours is overwritten.`;
       await setState(db, link, { status: "diverged", error });
       return toLink({ ...link, status: "diverged", error });
     }
-    if (link.status === "synced" && link.lastCommitSha === head.commitSha && link.lastVersion === project.currentVersion && !opts.overwrite) return toLink(link);
+    if (link.status === "synced" && known === head.commitSha && link.lastVersion === project.currentVersion && !opts.overwrite) return toLink(link);
 
-    await setState(db, link, { status: "syncing", error: null });
+    await setState(db, link, { status: "syncing", error: null, syncingSince: new Date() });
     const rows = await db.select().from(projectFiles).where(eq(projectFiles.projectId, projectId));
     const files = Object.fromEntries(rows.map((r) => [r.path, r.content]));
     const { tree } = buildTree(files, project.name);
@@ -121,9 +137,11 @@ async function syncLocked(db: Db, projectId: string, opts: { overwrite?: boolean
     const created = await createTree(token, link.fullName, tree);
     const message = `GoodBuild v${project.currentVersion}${opts.overwrite ? " (replaces changes made on GitHub)" : ""}`;
     const commit = await createCommit(token, link.fullName, { message, tree: created.sha, parent: head.commitSha });
+    // Written before the branch moves, so if the move lands but recording it fails, the next sync still knows the commit is ours.
+    await setState(db, link, { pendingSha: commit.sha });
     stage = "move";
     await moveBranch(token, link.fullName, link.branch, commit.sha);
-    const done = { status: "synced" as const, error: null, lastCommitSha: commit.sha, lastVersion: project.currentVersion, syncedAt: new Date() };
+    const done = { status: "synced" as const, error: null, lastCommitSha: commit.sha, pendingSha: null, syncingSince: null, lastVersion: project.currentVersion, syncedAt: new Date() };
     await setState(db, link, done);
     return toLink({ ...link, ...done });
   } catch (error) {
@@ -139,7 +157,7 @@ async function syncLocked(db: Db, projectId: string, opts: { overwrite?: boolean
       }
     }
     const { message, lostAccess } = explain(error);
-    if (lostAccess) await db.delete(githubAccounts).where(eq(githubAccounts.userId, link.userId));
+    if (lostAccess) await dropRefusedAccount(db, link.userId, enc);
     await setState(db, link, { status: "error", error: message });
     return toLink({ ...link, status: "error", error: message });
   }
@@ -162,16 +180,18 @@ export function createAndLink(db: Db, userId: string, projectId: string): Promis
 async function createLocked(db: Db, userId: string, projectId: string): Promise<GithubLink> {
   const [existing] = await db.select().from(githubRepos).where(eq(githubRepos.projectId, projectId)).limit(1);
   if (existing) throw new LinkError("already_linked", "This app already has a GitHub repository.");
-  const token = await tokenFor(db, userId);
-  if (!token) throw new LinkError("not_connected", "Connect GitHub first.");
+  const credentials = await tokenFor(db, userId);
+  if (!credentials) throw new LinkError("not_connected", "Connect GitHub first.");
+  const { token, enc } = credentials;
   const [project] = await db.select().from(projects).where(eq(projects.id, projectId)).limit(1);
   if (!project) throw new LinkError("github_failed", "Project not found.");
   // The token may have been revoked on GitHub since it was saved.
+  let viewer: Awaited<ReturnType<typeof getViewer>>;
   try {
-    await getViewer(token);
+    viewer = await getViewer(token);
   } catch (error) {
     if (error instanceof GithubApiError && error.status === 401) {
-      await db.delete(githubAccounts).where(eq(githubAccounts.userId, userId));
+      await dropRefusedAccount(db, userId, enc);
       throw new LinkError("not_connected", "GitHub no longer accepts GoodBuild's access. Connect GitHub again.");
     }
     throw new LinkError("github_failed", explain(error).message);
@@ -208,9 +228,11 @@ async function createLocked(db: Db, userId: string, projectId: string): Promise<
     projectId,
     userId,
     fullName: repo.full_name,
+    ownerId: String(viewer.id),
     branch,
     lastCommitSha: head?.commitSha ?? null,
     status: "syncing",
+    syncingSince: new Date(),
   });
   const link = await syncLocked(db, projectId, {});
   const [row] = await db.select().from(githubRepos).where(eq(githubRepos.projectId, projectId)).limit(1);
@@ -245,8 +267,14 @@ export function requestGithubSync(db: Db, projectId: string): void {
   running.set(projectId, run);
 }
 
-/** Repositories of this person's apps that belong to a GitHub account other than `login`. Reconnecting as someone else would leave them unable to sync. */
-export async function linksOwnedByOthers(db: Db, userId: string, login: string): Promise<string[]> {
-  const rows = await db.select({ fullName: githubRepos.fullName }).from(githubRepos).where(eq(githubRepos.userId, userId));
-  return rows.map((r) => r.fullName).filter((name) => name.split("/")[0]?.toLowerCase() !== login.toLowerCase());
+/**
+ * Repositories of this person's apps that belong to a GitHub account other than `viewer`. Reconnecting as someone
+ * else would leave them unable to sync. Compared by account id, which survives a rename; a link without one
+ * (none are made now) falls back to the owner name.
+ */
+export async function linksOwnedByOthers(db: Db, userId: string, viewer: { id: number | string; login: string }): Promise<string[]> {
+  const rows = await db.select({ fullName: githubRepos.fullName, ownerId: githubRepos.ownerId }).from(githubRepos).where(eq(githubRepos.userId, userId));
+  return rows
+    .filter((r) => (r.ownerId ? r.ownerId !== String(viewer.id) : r.fullName.split("/")[0]?.toLowerCase() !== viewer.login.toLowerCase()))
+    .map((r) => r.fullName);
 }
