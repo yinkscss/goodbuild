@@ -38,6 +38,7 @@ import {
   type TurnSetup,
 } from "./turn-progress";
 import { Workspace, type FileChange } from "./workspace";
+import { requestGithubSync } from "@/server/github/sync";
 
 import { applyPalette, ensureReadable, paletteById } from "@/lib/palettes";
 import type { Step, TurnEvent, TurnMode, TurnRecord } from "@/lib/turn-types";
@@ -703,6 +704,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     });
     finalStatus = endStatus;
     if (save) {
+      requestGithubSync(deps.db, input.projectId);
       emit({ type: "files", files: ws.files });
       emit({ type: "version", number: record.version! });
     }

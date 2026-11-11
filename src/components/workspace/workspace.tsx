@@ -25,7 +25,9 @@ import { cn } from "@/lib/utils";
 import type { WorkspaceState } from "@/server/workspace-state";
 import { ChatPanel } from "./chat-panel";
 import { BackendButton, BackendModal, backendState } from "./backend-modal";
+import { GithubButton, GithubModal } from "./github-modal";
 import { PublishButton, PublishModal } from "./publish-modal";
+import { useGithub } from "./use-github";
 import { usePublish } from "./use-publish";
 import { useAssetDataUrls, useWorkspace } from "./use-workspace";
 
@@ -50,6 +52,19 @@ export function Workspace({ initial }: { initial: WorkspaceState }) {
   useBroadcastPreview(state.project.id, files, previewVersion);
   const [publishOpen, setPublishOpen] = React.useState(false);
   const [backendOpen, setBackendOpen] = React.useState(false);
+  const [githubOpen, setGithubOpen] = React.useState(false);
+  const github = useGithub(state.project.id, state.project.currentVersion);
+  // Coming back from GitHub's sign-in: show the dialog so the next tap (create the repository) is right there.
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("github")) {
+      const t = window.setTimeout(() => setGithubOpen(true), 0);
+      params.delete("github");
+      const q = params.toString();
+      window.history.replaceState(null, "", `${window.location.pathname}${q ? `?${q}` : ""}`);
+      return () => window.clearTimeout(t);
+    }
+  }, []);
   const backendOn = backendState(files).on;
   const publish = usePublish(state.project.id, state.project.currentVersion, publishOpen);
 
@@ -94,6 +109,7 @@ export function Workspace({ initial }: { initial: WorkspaceState }) {
         <div className="flex shrink-0 items-center gap-2 sm:gap-3">
           <CreditsPill balanceGd={null} usdPerGd={null} balanceMicro={state.availableMicro} className="hidden xl:flex" />
           <NetworkBadge chainId={state.project.chainId} />
+          <GithubButton github={github} onOpen={() => setGithubOpen(true)} />
           <BackendButton on={backendOn} disabled={false} onOpen={() => setBackendOpen(true)} compact className="hidden px-3.5 py-2.5 md:inline-flex 2xl:px-5" />
           <PublishButton publish={publish} onOpen={() => setPublishOpen(true)} disabled={running} className="hidden px-5 py-2.5 md:inline-flex" />
           <DeployButton className="hidden px-5 py-2.5 md:inline-flex" />
@@ -154,6 +170,7 @@ export function Workspace({ initial }: { initial: WorkspaceState }) {
         busy={running}
         onSend={(prompt) => ws.send(prompt, "build")}
       />
+      <GithubModal projectId={state.project.id} github={github} open={githubOpen} onOpenChange={setGithubOpen} />
       <PublishModal open={publishOpen} onOpenChange={setPublishOpen} publish={publish} projectBusy={running} files={files} onFix={(prompt) => ws.send(prompt, "build")} />
     </div>
     </DeployProvider>
