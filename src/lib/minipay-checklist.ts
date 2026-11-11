@@ -18,7 +18,7 @@ export function hasMiniPayKit(files: Record<string, string>): boolean {
 export function miniAppChecks(files: Record<string, string>): CheckIssue[] {
   const issues: CheckIssue[] = [];
   for (const [file, content] of Object.entries(files)) {
-    // src/game/leaderboard.ts signs in only outside MiniPay, and posts to the contract inside it (D90).
+    // src/game/leaderboard.ts signs in only outside MiniPay, and posts to the contract inside it (D91).
     if (!/^src\/.*\.(tsx?|jsx?)$/.test(file) || file.startsWith("src/lib/") || file.startsWith("src/minipay/") || file === "src/game/leaderboard.ts") continue;
     const line = (re: RegExp) => content.slice(0, content.search(re)).split("\n").length;
     if (/\b(signMessage|personal_sign|signTypedData|eth_sign)\b/.test(content)) {

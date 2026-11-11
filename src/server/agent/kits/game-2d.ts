@@ -583,7 +583,7 @@ Money in a game (only when the user asks for entry fees, prizes or things to buy
 
 Before you finish, check: the canvas draws on the start screen (onIdleFrame), Play works with no wallet, the first obstacle comes within 3 seconds, every obstacle, power-up and NPC the plan named is in the game, the score shows on the canvas while playing, game over shows Play again, and the leaderboard rule is in dataRules.json if there is a board.`;
 
-/** The leaderboard's data rule, as the guide writes it (D90). */
+/** The leaderboard's data rule, as the guide writes it (D91). */
 export const SCORES_RULE_JSON = '"scores": {"create": "signed-in", "read": ["anyone"], "fields": {"name": "string", "score": "number", "extra": "string"}}';
 
 /** Each opening tag of a component, props and all: a ">" inside {...} (an arrow function) doesn't end it. */
@@ -611,7 +611,7 @@ export function jsxTags(content: string, name: string): { at: number; text: stri
 const lineOf = (content: string, re: RegExp) => content.slice(0, Math.max(0, content.search(re))).split("\n").length;
 
 /**
- * What the game guide asks for that the files can show (D90): the start screen is drawn, and a
+ * What the game guide asks for that the files can show (D91): the start screen is drawn, and a
  * leaderboard has the rule it needs and, in a MiniPay game, the contract passed to it.
  */
 export function gameChecks(files: Record<string, string>): CheckIssue[] {
@@ -679,9 +679,9 @@ export const game2d: Kit = {
     "src/game/Leaderboard.tsx": LEADERBOARD_TSX,
   },
   // The first GameCanvas (D72): Enter and Space couldn't press Play, and a key held through a lost focus stuck (D85).
-  // ...and the second never drew while paused, so every start screen was an empty box (D90).
+  // ...and the second never drew while paused, so every start screen was an empty box (D91).
   superseded: { "src/game/GameCanvas.tsx": ["b8d7fc83dc5ae09f096f37446f8ba12273a2b502aba2acb827f4a8c541901c08", "f5a2cd6e74f9d834f917de93c6b5ff39dc8accc07f44f2d956eddab47798563c"],
-    // Its comment pointed at useCollection for leaderboards (D90).
+    // Its comment pointed at useCollection for leaderboards (D91).
     "src/game/storage.ts": ["ad445565329f58a977216f4ed062c26609a13e2afd9e14a96e7b114e6eae65fa"],
   },
   guide: GUIDE,

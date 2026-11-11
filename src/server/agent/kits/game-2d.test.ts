@@ -171,7 +171,7 @@ const withScoresRule = (files: Record<string, string>, rule: unknown = JSON.pars
 };
 
 /**
- * A lane racer written the way the D90 guide asks: the canvas drawn on every screen, free play,
+ * A lane racer written the way the D91 guide asks: the canvas drawn on every screen, free play,
  * one drawing shared with a Sprite, and the leaderboard from the kit.
  */
 const BOARD_GAME = `import { useRef, useState } from "react";
@@ -350,7 +350,7 @@ describe("the 2D games kit", { timeout: 120_000 }, () => {
   it("gives a project that still has the first GameCanvas today's, and never touches one that was changed", () => {
     const mine = "// my own canvas\n";
     expect(withKit({ ...project(GAME), "src/game/GameCanvas.tsx": mine }, game2d)["src/game/GameCanvas.tsx"]).toBe(mine);
-    // The first (D72) and the one that never drew while paused (D90).
+    // The first (D72) and the one that never drew while paused (D91).
     expect(game2d.superseded?.["src/game/GameCanvas.tsx"]).toHaveLength(2);
   });
 

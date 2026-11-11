@@ -20,7 +20,7 @@ export const INTAKE_MAX_TOKENS = 2_000;
 
 const MAX_MODEL_QUESTIONS = 4;
 /**
- * A game gets more (D90): how it's played, then obstacles, power-ups and the computer's characters,
+ * A game gets more (D91): how it's played, then obstacles, power-ups and the computer's characters,
  * each on its own card as the owner asked, and one more. The server adds the leaderboard, MiniPay
  * and colours cards, so a game's plan is at most eight one-tap cards.
  */
@@ -32,14 +32,14 @@ const PALETTE_QUESTION_ID = "palette";
 export const MINIPAY_QUESTION_ID = "minipay";
 /** The request already says MiniPay: the kit turns on from its words, so there is nothing to ask. */
 const SAYS_MINIPAY = /\bmini ?pay\b/i;
-/** Games get a leaderboard card from the server (D90): posting needs a wallet, the owner's decision. */
+/** Games get a leaderboard card from the server (D91): posting needs a wallet, the owner's decision. */
 export const LEADERBOARD_QUESTION_ID = "leaderboard";
 /** The request already asks for one: nothing to ask, the plan has one. */
 const SAYS_LEADERBOARD = /\b(leader ?boards?|high ?score (?:board|table|list)s?|top scores?|ranking)\b/i;
 /** A question about scores or a leaderboard, which the server's card asks instead for a game. */
 const ASKS_SCORES = /\b(leader ?boards?|high ?scores?|scores?|rankings?)\b/i;
 
-/** The three parts of a game the owner wants asked one by one (D90), and how to recognise each card. */
+/** The three parts of a game the owner wants asked one by one (D91), and how to recognise each card. */
 export const GAME_PARTS = [
   { id: "obstacles", test: /\b(obstacles?|in (?:the|your|their) way|hazards?|dodge|avoid|traps?|challenges?|blocks? (?:you|the))\b/i },
   { id: "powerups", test: /\b(power[- ]?ups?|boosts?|pick[- ]?ups?|bonus(?:es)?|special items?)\b/i },
@@ -97,7 +97,7 @@ export const INTAKE_TOOLS: ToolSpec[] = [
   },
 ];
 
-/** A game's planner also pitches the game (D90). Only games get the field, so other plans don't pay for it. */
+/** A game's planner also pitches the game (D91). Only games get the field, so other plans don't pay for it. */
 const GAME_BRIEF_FIELD = {
   type: "object",
   description: "Only for a game: your pitch for the best version of it, shown to them before building.",
@@ -147,7 +147,7 @@ Example for "a booking page for my salon": "What should customers be able to do?
 If the message is only a question and not something to build, answer it in a sentence or two and don't call the tool. A skill game with an entry fee is fine. If it asks for sports betting, a game of chance for money (lottery, dice, slots), taking people's money without consent or anything illegal, say briefly that you can't build that, suggest a legitimate alternative, and don't call the tool.`;
 
 /**
- * The game rules (D90), sent only with a game's request so other plans don't pay for them: obstacles,
+ * The game rules (D91), sent only with a game's request so other plans don't pay for them: obstacles,
  * power-ups and the computer's characters each get their own card, and the planner pitches the game.
  */
 export const GAME_RULES = `Game rules: up to 5 questions. Unless they already said, ask how it's played (the controls). Then ALWAYS ask these three, each as its own question with multiple set to true and 3 or 4 options that fit THIS game: what gets in the player's way (obstacles and challenges), which power-ups there are, and who else is in the game, controlled by the computer (rivals, enemies, traffic, a boss). For a car racer that could be: oncoming traffic, slower cars to overtake, oil slicks, road works closing a lane / nitro boost, shield, coin magnet, slow motion / rival racers who block you, police who chase you, just traffic. Use a fifth question only for something they asked for that needs a choice (what the store sells, how a season pass rewards players). Don't ask about scores or a leaderboard: GoodBuild adds that question. Also fill game_brief: name it, pitch the best version of their idea, and pick extras that make it more fun than what they asked for.
@@ -257,7 +257,7 @@ const GAME_PART_CARDS: Record<GamePart, () => PlanQuestion> = {
 };
 
 /**
- * Obstacles, power-ups and the computer's characters each get a card (D90): the model's when it asked,
+ * Obstacles, power-ups and the computer's characters each get a card (D91): the model's when it asked,
  * a generic one when it didn't. Its other cards come after them and are dropped first to keep five.
  */
 function withGameParts(questions: PlanQuestion[]): PlanQuestion[] {
@@ -275,7 +275,7 @@ function withGameParts(questions: PlanQuestion[]): PlanQuestion[] {
   return ordered.slice(0, MAX_GAME_MODEL_QUESTIONS);
 }
 
-/** "Should there be a leaderboard?" (D90). Yes means posting a score needs a wallet; playing never does. */
+/** "Should there be a leaderboard?" (D91). Yes means posting a score needs a wallet; playing never does. */
 export function leaderboardQuestion(): PlanQuestion {
   return {
     id: LEADERBOARD_QUESTION_ID,
@@ -319,7 +319,7 @@ export function parseIntake(rawArguments: string, request: string): PlanIntake |
   }
   const game = isGameRequest(request);
   // With the MiniPay card added, an app gets one card fewer from the model, so it's never more than five.
-  // A game's cards are counted on their own (D90): five from the model, then leaderboard, MiniPay, colours.
+  // A game's cards are counted on their own (D91): five from the model, then leaderboard, MiniPay, colours.
   const miniPay = asksMiniPay(request);
   let questions = parseQuestions(args.questions, game ? MAX_GAME_MODEL_QUESTIONS : miniPay ? MAX_MODEL_QUESTIONS - 1 : MAX_MODEL_QUESTIONS, game);
   if (!questions.length) return null;
@@ -394,7 +394,7 @@ export interface PlanBrief {
   customColours?: string;
   /** They picked Yes on the MiniPay question (D88): the mini-app kit goes on. */
   miniPay?: boolean;
-  /** A game with a leaderboard (D90): with MiniPay, the leaderboard contract kit goes on too. */
+  /** A game with a leaderboard (D91): with MiniPay, the leaderboard contract kit goes on too. */
   leaderboard?: boolean;
 }
 

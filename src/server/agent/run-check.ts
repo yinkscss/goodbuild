@@ -24,7 +24,7 @@ export interface RunCheckOptions {
   chainId?: number;
   /** The project is a game or a 3D scene: start it and play for a moment (set from its kits). */
   game?: boolean;
-  /** A 2D game (the game-2d kit): its start screen must draw the game and have a Play button (D90). */
+  /** A 2D game (the game-2d kit): its start screen must draw the game and have a Play button (D91). */
   game2d?: boolean;
   /** The project draws a 3D scene from shapes alone: look for one that shows nothing but its background (set from its kits and files). */
   scene?: boolean;
@@ -345,7 +345,7 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
   // canvas. This finds what loading alone can't: a crash on the first frame of play, and a game that
   // draws nothing.
   let blankGame = false;
-  // A 2D game (D90): before Play, the start screen must show the game world and a Play button. A canvas
+  // A 2D game (D91): before Play, the start screen must show the game world and a Play button. A canvas
   // that is paused with nothing drawn is an empty box, the defect people saw most.
   let blankStart = false;
   let noPlay = false;

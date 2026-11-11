@@ -201,7 +201,7 @@ function AnswerList({ intake, onChange }: { intake: PlanIntake; onChange?: (inde
   );
 }
 
-/** A game's pitch (D90): the planner's best version of their idea, built as the spec. */
+/** A game's pitch (D91): the planner's best version of their idea, built as the spec. */
 function GameIdea({ intake }: { intake: PlanIntake }) {
   const game = intake.game;
   if (!game) return null;
