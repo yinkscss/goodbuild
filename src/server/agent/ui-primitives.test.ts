@@ -452,6 +452,55 @@ describe("the ten further UI pieces (D88)", { timeout: 180_000 }, () => {
     await page.context().close();
   });
 
+  it.skipIf(!hasBrowser)("give a screen reader the right picture: roles, names and states, and only the dialog while one is open", async () => {
+    const page = await open(browser!, built);
+    const closed = await page.locator("main").ariaSnapshot();
+    if (process.env.GB_SHOT_DIR) writeFileSync(path.join(process.env.GB_SHOT_DIR, "aria-page.txt"), closed);
+    for (const line of [
+      '- button "Menu"',
+      '- img "0x80fB…07AD"',
+      '- img "Ada Obi"',
+      '- button "More"',
+      '- tablist "Trade":',
+      '- tab "Buy" [selected]',
+      '- tab "Sell"',
+      '- tabpanel "Buy": Buy panel',
+      '- combobox "Token":',
+      '- option "G$" [selected]',
+      '- switch "Show closed votes"',
+      '- button "Copy address"',
+      '- button "How do I join?" [expanded]',
+      '- region "How do I join?":',
+      '- button "What does it cost?"',
+    ]) expect(closed, line).toContain(line);
+    // The closed section's content isn't read out.
+    expect(closed).not.toContain("Fees");
+
+    await page.click("#tip");
+    await page.locator("dialog[open]").waitFor();
+    const whole = await page.locator("body").ariaSnapshot();
+    if (process.env.GB_SHOT_DIR) writeFileSync(path.join(process.env.GB_SHOT_DIR, "aria-dialog.txt"), whole);
+    for (const line of ['- dialog "Send a tip":', '- heading "Send a tip" [level=2]', "- paragraph: Goes straight to the club.", '- textbox "Amount"', '- button "Cancel"', '- button "Send"', '- button "Close"']) expect(whole, line).toContain(line);
+    // The page behind is out of reach while the dialog is open. Asked of the browser's own accessibility
+    // tree (what a screen reader is handed): the snapshot above is worked out from the page's elements and
+    // doesn't know a modal dialog makes the rest inert.
+    const cdp = await page.context().newCDPSession(page);
+    const { nodes } = (await cdp.send("Accessibility.getFullAXTree")) as { nodes: Array<{ ignored: boolean; role?: { value: string }; name?: { value: string } }> };
+    const exposed = nodes.filter((n) => !n.ignored).map((n) => `${n.role?.value ?? ""} ${n.name?.value ?? ""}`.trim());
+    if (process.env.GB_SHOT_DIR) writeFileSync(path.join(process.env.GB_SHOT_DIR, "ax-dialog.txt"), exposed.join("\n"));
+    expect(exposed).toEqual(expect.arrayContaining(["dialog Send a tip", "heading Send a tip", "textbox Amount", "button Cancel", "button Send", "button Close"]));
+    for (const behind of ["tablist Trade", "tab Buy", "switch Show closed votes", "combobox Token", "button Menu", "button Copy address"]) expect(exposed, behind).not.toContain(behind);
+
+    await page.keyboard.press("Escape");
+    await page.click("#more");
+    const menu = await page.getByRole("menu").ariaSnapshot();
+    expect(menu).toContain('- menuitem "Share"');
+    expect(menu).toContain('- menuitem "Leave"');
+    expect(menu).toContain("- separator");
+    expect(await page.locator("#more").getAttribute("aria-expanded")).toBe("true");
+    await page.context().close();
+  });
+
   it.skipIf(!hasBrowser)("fit a phone: nothing scrolls sideways with every piece on the page", async () => {
     const page = await open(browser!, built);
     expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
