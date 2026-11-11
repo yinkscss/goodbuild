@@ -1,11 +1,11 @@
 import "server-only";
 
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import type { Db } from "@/server/db/client";
 import { githubAccounts, githubRepos } from "@/server/db/github-schema";
 import { projectFiles, projects } from "@/server/db/schema";
-import { createCommit, createRepo, createTree, getBranchHead, getViewer, GithubApiError, moveBranch } from "./api";
+import { createCommit, createRef, createRepo, createTree, getBranchHead, getViewer, GithubApiError, moveBranch, setDefaultBranch } from "./api";
 import { decryptToken } from "./crypto";
 import { buildTree, repoName } from "./tree";
 
@@ -40,8 +40,22 @@ async function tokenFor(db: Db, userId: string): Promise<string | null> {
   return account ? decryptToken(account.tokenEnc) : null;
 }
 
-async function setState(db: Db, projectId: string, patch: Partial<typeof githubRepos.$inferInsert>) {
-  await db.update(githubRepos).set(patch).where(eq(githubRepos.projectId, projectId));
+/** One GitHub operation at a time per project, so an automatic push, a manual one and an unlink never interleave (D93). */
+const locks = new Map<string, Promise<unknown>>();
+function exclusive<T>(projectId: string, fn: () => Promise<T>): Promise<T> {
+  const next = (locks.get(projectId) ?? Promise.resolve()).catch(() => undefined).then(fn);
+  locks.set(projectId, next);
+  void next
+    .finally(() => {
+      if (locks.get(projectId) === next) locks.delete(projectId);
+    })
+    .catch(() => undefined);
+  return next;
+}
+
+/** Write sync state, but only onto the repository this run started with: an unlink and relink in between must not receive an old run's result. */
+async function setState(db: Db, link: GithubRepoRow, patch: Partial<typeof githubRepos.$inferInsert>) {
+  await db.update(githubRepos).set(patch).where(and(eq(githubRepos.projectId, link.projectId), eq(githubRepos.fullName, link.fullName)));
 }
 
 /** What a person should read when GitHub refuses. */
@@ -61,47 +75,68 @@ function explain(error: unknown): { message: string; lostAccess: boolean } {
  * the link is marked `diverged` until the person chooses `overwrite`, which still adds a commit on top, so
  * their history stays on GitHub.
  */
-export async function syncProject(db: Db, projectId: string, opts: { overwrite?: boolean } = {}): Promise<GithubLink | null> {
+export function syncProject(db: Db, projectId: string, opts: { overwrite?: boolean } = {}): Promise<GithubLink | null> {
+  return exclusive(projectId, () => syncLocked(db, projectId, opts));
+}
+
+/** Stop syncing a project. Waits for a push in flight, so its result can't land after the unlink. The repository stays on GitHub. */
+export function unlinkProject(db: Db, projectId: string): Promise<void> {
+  return exclusive(projectId, async () => {
+    await db.delete(githubRepos).where(eq(githubRepos.projectId, projectId));
+  });
+}
+
+async function syncLocked(db: Db, projectId: string, opts: { overwrite?: boolean }): Promise<GithubLink | null> {
   const [link] = await db.select().from(githubRepos).where(eq(githubRepos.projectId, projectId)).limit(1);
   if (!link) return null;
   const token = await tokenFor(db, link.userId);
   if (!token) {
-    await setState(db, projectId, { status: "error", error: "GitHub isn't connected. Connect GitHub again." });
+    await setState(db, link, { status: "error", error: "GitHub isn't connected. Connect GitHub again." });
     return toLink({ ...link, status: "error", error: "GitHub isn't connected. Connect GitHub again." });
   }
   const [project] = await db.select().from(projects).where(eq(projects.id, projectId)).limit(1);
   if (!project) return null;
+  let stage: "read" | "write" | "move" = "read";
+  let parent: string | null = null;
   try {
     const head = await getBranchHead(token, link.fullName, link.branch);
     if (!head) throw new GithubApiError(404, "branch not found");
+    parent = head.commitSha;
     if (link.lastCommitSha && head.commitSha !== link.lastCommitSha && !opts.overwrite) {
       const error = `${link.branch} on GitHub has changes GoodBuild didn't make. Sync is paused so nothing of yours is overwritten.`;
-      await setState(db, projectId, { status: "diverged", error });
+      await setState(db, link, { status: "diverged", error });
       return toLink({ ...link, status: "diverged", error });
     }
     if (link.status === "synced" && link.lastCommitSha === head.commitSha && link.lastVersion === project.currentVersion && !opts.overwrite) return toLink(link);
 
-    await setState(db, projectId, { status: "syncing", error: null });
+    await setState(db, link, { status: "syncing", error: null });
     const rows = await db.select().from(projectFiles).where(eq(projectFiles.projectId, projectId));
     const files = Object.fromEntries(rows.map((r) => [r.path, r.content]));
     const { tree } = buildTree(files, project.name);
+    stage = "write";
     const created = await createTree(token, link.fullName, tree);
     const message = `GoodBuild v${project.currentVersion}${opts.overwrite ? " (replaces changes made on GitHub)" : ""}`;
     const commit = await createCommit(token, link.fullName, { message, tree: created.sha, parent: head.commitSha });
+    stage = "move";
     await moveBranch(token, link.fullName, link.branch, commit.sha);
     const done = { status: "synced" as const, error: null, lastCommitSha: commit.sha, lastVersion: project.currentVersion, syncedAt: new Date() };
-    await setState(db, projectId, done);
+    await setState(db, link, done);
     return toLink({ ...link, ...done });
   } catch (error) {
-    // A 422 from the branch move means it changed between our read and our write: someone else pushed.
-    if (error instanceof GithubApiError && error.status === 422) {
-      const message = `${link.branch} on GitHub changed while GoodBuild was syncing. Sync is paused so nothing of yours is overwritten.`;
-      await setState(db, projectId, { status: "diverged", error: message });
-      return toLink({ ...link, status: "diverged", error: message });
+    // GitHub answers 409 or 422 when the branch can't be fast-forwarded. Only call it someone else's push
+    // when the move was what failed and the branch has really moved on since we read it: a 422 from the
+    // tree or commit (validation, abuse limits) is not a divergence, and "Replace" couldn't fix it.
+    if (stage === "move" && error instanceof GithubApiError && (error.status === 409 || error.status === 422)) {
+      const now = await getBranchHead(token, link.fullName, link.branch).catch(() => null);
+      if (now && now.commitSha !== parent) {
+        const message = `${link.branch} on GitHub changed while GoodBuild was syncing. Sync is paused so nothing of yours is overwritten.`;
+        await setState(db, link, { status: "diverged", error: message });
+        return toLink({ ...link, status: "diverged", error: message });
+      }
     }
     const { message, lostAccess } = explain(error);
     if (lostAccess) await db.delete(githubAccounts).where(eq(githubAccounts.userId, link.userId));
-    await setState(db, projectId, { status: "error", error: message });
+    await setState(db, link, { status: "error", error: message });
     return toLink({ ...link, status: "error", error: message });
   }
 }
@@ -116,7 +151,11 @@ export class LinkError extends Error {
 }
 
 /** Create a public repository for the project in the person's GitHub, link it and push the first version. */
-export async function createAndLink(db: Db, userId: string, projectId: string): Promise<GithubLink> {
+export function createAndLink(db: Db, userId: string, projectId: string): Promise<GithubLink> {
+  return exclusive(projectId, () => createLocked(db, userId, projectId));
+}
+
+async function createLocked(db: Db, userId: string, projectId: string): Promise<GithubLink> {
   const [existing] = await db.select().from(githubRepos).where(eq(githubRepos.projectId, projectId)).limit(1);
   if (existing) throw new LinkError("already_linked", "This app already has a GitHub repository.");
   const token = await tokenFor(db, userId);
@@ -148,15 +187,28 @@ export async function createAndLink(db: Db, userId: string, projectId: string): 
   if (!repo) throw new LinkError("github_failed", "GitHub wouldn't take any repository name for this app.");
 
   const head = await getBranchHead(token, repo.full_name, repo.default_branch).catch(() => null);
+  // People can choose another default branch name for new repositories ("master"). The promise to them is
+  // `main`, so make it, and make it the default, in this repository GoodBuild just created. If that fails,
+  // keep syncing the default branch the repository has; the dialog shows the branch name it uses.
+  let branch = repo.default_branch;
+  if (head && branch !== "main") {
+    try {
+      await createRef(token, repo.full_name, "main", head.commitSha);
+      await setDefaultBranch(token, repo.full_name, "main");
+      branch = "main";
+    } catch (error) {
+      console.error("github: couldn't switch the new repository to main", error instanceof Error ? error.message : error);
+    }
+  }
   await db.insert(githubRepos).values({
     projectId,
     userId,
     fullName: repo.full_name,
-    branch: repo.default_branch,
+    branch,
     lastCommitSha: head?.commitSha ?? null,
     status: "syncing",
   });
-  const link = await syncProject(db, projectId);
+  const link = await syncLocked(db, projectId, {});
   const [row] = await db.select().from(githubRepos).where(eq(githubRepos.projectId, projectId)).limit(1);
   return link ?? toLink(row!);
 }
@@ -187,4 +239,10 @@ export function requestGithubSync(db: Db, projectId: string): void {
     }
   })();
   running.set(projectId, run);
+}
+
+/** Repositories of this person's apps that belong to a GitHub account other than `login`. Reconnecting as someone else would leave them unable to sync. */
+export async function linksOwnedByOthers(db: Db, userId: string, login: string): Promise<string[]> {
+  const rows = await db.select({ fullName: githubRepos.fullName }).from(githubRepos).where(eq(githubRepos.userId, userId));
+  return rows.map((r) => r.fullName).filter((name) => name.split("/")[0]?.toLowerCase() !== login.toLowerCase());
 }

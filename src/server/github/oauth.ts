@@ -11,8 +11,15 @@ const TTL_SECONDS = 10 * 60;
 
 /** Only a path on this site, so the redirect after connecting can't be pointed elsewhere. */
 export function safeReturnTo(value: string | null | undefined): string {
-  if (!value || !value.startsWith("/") || value.startsWith("//") || value.includes("\\") || /[\r\n]/.test(value)) return "/settings?tab=github";
-  return value;
+  const fallback = "/settings?tab=github";
+  // Any control character (a tab or newline is dropped by URL parsing, which can turn "/<tab>/host" into "//host").
+  if (!value || !value.startsWith("/") || value.startsWith("//") || value.includes("\\") || /[\u0000-\u001f\u007f]/.test(value)) return fallback;
+  try {
+    const base = "https://return-to.invalid";
+    return new URL(value, base).origin === base ? value : fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 /**

@@ -16,6 +16,7 @@ export interface GithubLinkInfo {
 export interface GithubAccount {
   configured: boolean;
   connected: boolean;
+  reconnect?: boolean;
   login: string | null;
 }
 
@@ -69,6 +70,8 @@ export function useGithub(projectId: string, version: number, enabled = true) {
         return;
       }
       setLink(data.link ?? null);
+      // A sync that lost GitHub access also removed the connection: show the reconnect action, not "Try again".
+      if (data.link?.status === "error") refresh();
     } catch {
       setError("Couldn't reach GoodBuild. Try again.");
     } finally {

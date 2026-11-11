@@ -13,25 +13,31 @@ const headers = { "Cache-Control": "no-store, private" };
 export async function GET() {
   try {
     const session = await requireSession();
-    const [account] = await (await getDb()).select({ login: githubAccounts.login }).from(githubAccounts).where(eq(githubAccounts.userId, session.user.id)).limit(1);
-    return NextResponse.json({ configured: githubConfig() !== null, connected: !!account, login: account?.login ?? null }, { headers });
+    const [account] = await (await getDb()).select().from(githubAccounts).where(eq(githubAccounts.userId, session.user.id)).limit(1);
+    // A saved token that can't be read (SESSION_SECRET changed) is no connection: the person has to connect again.
+    const readable = !!account && decryptToken(account.tokenEnc) !== null;
+    return NextResponse.json({ configured: githubConfig() !== null, connected: readable, reconnect: !!account && !readable, login: readable ? account.login : null }, { headers });
   } catch (error) {
     return errorResponse(error);
   }
 }
 
-/** Disconnect: forget the token and tell GitHub. Repositories already created stay on GitHub; syncing stops. */
+/**
+ * Disconnect: forget the token and ask GitHub to revoke it. Repositories already created stay on GitHub; syncing
+ * stops. `revoked` is false when GitHub didn't confirm, so the person can remove GoodBuild there themselves.
+ */
 export async function DELETE() {
   try {
     const session = await requireSession();
     const db = await getDb();
     const [account] = await db.select().from(githubAccounts).where(eq(githubAccounts.userId, session.user.id)).limit(1);
+    let revoked = true;
     if (account) {
       const token = decryptToken(account.tokenEnc);
       await db.delete(githubAccounts).where(eq(githubAccounts.userId, session.user.id));
-      if (token) await revokeToken(token);
+      revoked = token ? await revokeToken(token) : false;
     }
-    return NextResponse.json({ connected: false }, { headers });
+    return NextResponse.json({ connected: false, revoked }, { headers });
   } catch (error) {
     return errorResponse(error);
   }

@@ -11,7 +11,7 @@ import { createProjectFromPrompt } from "@/server/projects";
 import { saveFiles } from "@/server/agent/store";
 import { decryptToken, encryptToken } from "./crypto";
 import { GITHUB_STATE_COOKIE, checkState, newState, safeReturnTo } from "./oauth";
-import { createAndLink, syncProject } from "./sync";
+import { createAndLink, linksOwnedByOthers, syncProject, unlinkProject } from "./sync";
 import { buildTree, repoName, safePath } from "./tree";
 
 describe("token encryption", () => {
@@ -31,7 +31,7 @@ describe("token encryption", () => {
 
 describe("paths and trees", () => {
   it("keeps secrets and git internals out", () => {
-    for (const p of [".env", ".env.local", "src/.env.production", ".git/config", "a/../b", "/abs", "node_modules/x/index.js", "a\\b", ""]) expect(safePath(p), p).toBe(false);
+    for (const p of [".env", ".env.local", ".envrc", ".envrc.local", "src/.envrc", "src/.env.production", ".git/config", "a/../b", "/abs", "node_modules/x/index.js", "a\\b", ""]) expect(safePath(p), p).toBe(false);
     for (const p of ["src/App.tsx", "contracts/Vault.sol", ".gitignore", "env.ts", "src/.envelope.ts"]) expect(safePath(p), p).toBe(true);
   });
   it("adds a README and .gitignore only when missing", () => {
@@ -52,7 +52,7 @@ describe("paths and trees", () => {
 describe("oauth state", () => {
   it("only accepts paths on this site", () => {
     expect(safeReturnTo("/p/123?x=1")).toBe("/p/123?x=1");
-    for (const bad of ["//evil.com", "https://evil.com", "\\evil", "/a\nb", null, ""]) expect(safeReturnTo(bad as string | null)).toBe("/settings?tab=github");
+    for (const bad of ["//evil.com", "https://evil.com", "\\evil", "/a\nb", "/\t/evil.example", "/\u0000x", null, ""]) expect(safeReturnTo(bad as string | null)).toBe("/settings?tab=github");
   });
   it("needs the same state and the same person", async () => {
     const { state, cookie } = await newState("user-1", "/p/abc");
@@ -78,6 +78,8 @@ describe("syncing to GitHub", () => {
   let calls: Call[];
   let head: string;
   let createStatus: number[];
+  let defaultBranch: string;
+  let treeStatus: number;
 
   function mockGithub() {
     vi.stubGlobal(
@@ -91,10 +93,12 @@ describe("syncing to GitHub", () => {
         if (url.endsWith("/user")) return json({ id: 1, login: "ada" });
         if (url.endsWith("/user/repos")) {
           const status = createStatus.shift() ?? 201;
-          return status === 201 ? json({ full_name: `ada/${body?.name}`, default_branch: "main", html_url: "x" }, 201) : json({ message: "name exists" }, status);
+          return status === 201 ? json({ full_name: `ada/${body?.name}`, default_branch: defaultBranch, html_url: "x" }, 201) : json({ message: "name exists" }, status);
         }
         if (method === "GET" && url.includes("/git/ref/heads/")) return json({ object: { sha: head } });
-        if (url.endsWith("/git/trees")) return json({ sha: "tree1" }, 201);
+        if (url.endsWith("/git/trees")) return treeStatus === 201 ? json({ sha: "tree1" }, 201) : json({ message: "Validation Failed" }, treeStatus);
+        if (method === "POST" && url.endsWith("/git/refs")) return json({}, 201);
+        if (method === "PATCH" && /\/repos\/[^/]+\/[^/]+$/.test(url)) return json({});
         if (url.endsWith("/git/commits")) return json({ sha: "commit-" + calls.length }, 201);
         if (method === "PATCH" && url.includes("/git/refs/heads/")) {
           head = String(body?.sha);
@@ -110,6 +114,8 @@ describe("syncing to GitHub", () => {
     calls = [];
     head = "init-sha";
     createStatus = [];
+    defaultBranch = "main";
+    treeStatus = 201;
     const user = await signInUser(db, { wallet: "0xabc", walletKind: "external", attestation: { ageOk: true, notUsPerson: true } });
     userId = user.id;
     projectId = (await createProjectFromPrompt(db, userId, { prompt: "A savings jar for our club", network: "celo-sepolia" })).id;
@@ -159,21 +165,125 @@ describe("syncing to GitHub", () => {
     expect(calls.find((c) => c.method === "PATCH")!.body).toMatchObject({ force: false });
   });
 
-  it("treats a rejected branch move as someone else pushing", async () => {
+  async function bumpVersion(n: number) {
+    const { projects } = await import("@/server/db/schema");
+    await db.update(projects).set({ currentVersion: n }).where(eq(projects.id, projectId));
+  }
+
+  it("treats a rejected branch move as someone else pushing only when the branch really moved", async () => {
     await createAndLink(db, userId, projectId);
-    await saveFiles(db, projectId, { "src/App.tsx": "export default 2" });
-    await db.update((await import("@/server/db/schema")).projects).set({ currentVersion: 5 }).where(eq((await import("@/server/db/schema")).projects.id, projectId));
+    await bumpVersion(5);
+    let moved = false;
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: string | URL, init?: RequestInit) => {
         const url = String(input);
-        if (init?.method === "PATCH") return new Response(JSON.stringify({ message: "Update is not a fast forward" }), { status: 422 });
+        if (init?.method === "PATCH") {
+          moved = true; // someone pushed between our read and our write
+          return new Response(JSON.stringify({ message: "Update is not a fast forward" }), { status: 422 });
+        }
+        if (url.includes("/git/ref/heads/")) return new Response(JSON.stringify({ object: { sha: moved ? "theirs" : head } }));
+        return new Response(JSON.stringify({ sha: "x" }), { status: 201 });
+      }),
+    );
+    expect((await syncProject(db, projectId))?.status).toBe("diverged");
+  });
+
+  it("does not call a rejected tree a divergence, and keeps trying later", async () => {
+    await createAndLink(db, userId, projectId);
+    await bumpVersion(6);
+    treeStatus = 422;
+    const result = await syncProject(db, projectId);
+    expect(result?.status).toBe("error");
+    expect(result?.error).toMatch(/Validation Failed/);
+    treeStatus = 201;
+    expect((await syncProject(db, projectId))?.status).toBe("synced");
+  });
+
+  it("does not call a 422 divergence when the branch didn't move", async () => {
+    await createAndLink(db, userId, projectId);
+    await bumpVersion(7);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (init?.method === "PATCH") return new Response(JSON.stringify({ message: "Reference update failed" }), { status: 422 });
         if (url.includes("/git/ref/heads/")) return new Response(JSON.stringify({ object: { sha: head } }));
         return new Response(JSON.stringify({ sha: "x" }), { status: 201 });
       }),
     );
-    const result = await syncProject(db, projectId);
-    expect(result?.status).toBe("diverged");
+    expect((await syncProject(db, projectId))?.status).toBe("error");
+  });
+
+  it("makes main when the person's default branch is called master", async () => {
+    defaultBranch = "master";
+    const link = await createAndLink(db, userId, projectId);
+    expect(link.branch).toBe("main");
+    expect(calls.some((c) => c.method === "POST" && c.url.endsWith("/git/refs") && c.body?.ref === "refs/heads/main")).toBe(true);
+    expect(calls.some((c) => c.method === "PATCH" && c.body?.default_branch === "main")).toBe(true);
+  });
+
+  it("keeps the default branch when main can't be made", async () => {
+    defaultBranch = "trunk";
+    const original = globalThis.fetch;
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL, init?: RequestInit) => (String(input).endsWith("/git/refs") && init?.method === "POST" ? new Response("{}", { status: 403 }) : original(input, init))));
+    const link = await createAndLink(db, userId, projectId);
+    expect(link.branch).toBe("trunk");
+  });
+
+  it("runs a manual and an automatic push one after the other", async () => {
+    await createAndLink(db, userId, projectId);
+    await bumpVersion(8);
+    let active = 0;
+    let overlap = false;
+    const inner = globalThis.fetch;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL, init?: RequestInit) => {
+        active++;
+        if (active > 1) overlap = true;
+        await new Promise((r) => setTimeout(r, 5));
+        const res = await inner(input, init);
+        active--;
+        return res;
+      }),
+    );
+    const [a, b] = await Promise.all([syncProject(db, projectId), syncProject(db, projectId)]);
+    expect(overlap).toBe(false);
+    expect([a?.status, b?.status]).toEqual(["synced", "synced"]);
+  });
+
+  it("an old push can't write its result onto a repository linked afterwards", async () => {
+    await createAndLink(db, userId, projectId);
+    await bumpVersion(9);
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const inner = globalThis.fetch;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL, init?: RequestInit) => {
+        if (String(input).endsWith("/git/trees")) await gate;
+        return inner(input, init);
+      }),
+    );
+    const running = syncProject(db, projectId);
+    const unlinking = unlinkProject(db, projectId); // waits for the push in flight
+    await new Promise((r) => setTimeout(r, 10));
+    release();
+    await running;
+    await unlinking;
+    expect(await db.select().from(githubRepos).where(eq(githubRepos.projectId, projectId))).toHaveLength(0);
+    // Relink to a new repository: it starts clean.
+    const again = await createAndLink(db, userId, projectId);
+    expect(again.status).toBe("synced");
+    expect(again.lastVersion).toBe(9);
+  });
+
+  it("finds apps synced to a different GitHub account", async () => {
+    await createAndLink(db, userId, projectId);
+    expect(await linksOwnedByOthers(db, userId, "ada")).toEqual([]);
+    expect(await linksOwnedByOthers(db, userId, "ADA")).toEqual([]);
+    expect(await linksOwnedByOthers(db, userId, "grace")).toHaveLength(1);
   });
 
   it("forgets the account when GitHub says the token is revoked", async () => {

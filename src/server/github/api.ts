@@ -53,11 +53,11 @@ export async function exchangeCode(code: string): Promise<{ token: string; scope
   return { token: data.access_token, scope: data.scope ?? "" };
 }
 
-/** Best effort: tell GitHub the token is no longer wanted. */
-export async function revokeToken(token: string): Promise<void> {
+/** Tell GitHub the token is no longer wanted. True when GitHub confirms it (or already doesn't know the token). */
+export async function revokeToken(token: string): Promise<boolean> {
   const config = githubConfig();
-  if (!config) return;
-  await fetch(`${API}/applications/${config.clientId}/token`, {
+  if (!config) return false;
+  const res = await fetch(`${API}/applications/${config.clientId}/token`, {
     method: "DELETE",
     headers: {
       Authorization: `Basic ${Buffer.from(`${config.clientId}:${config.clientSecret}`).toString("base64")}`,
@@ -67,7 +67,8 @@ export async function revokeToken(token: string): Promise<void> {
     },
     body: JSON.stringify({ access_token: token }),
     signal: AbortSignal.timeout(15_000),
-  }).catch(() => undefined);
+  }).catch(() => null);
+  return !!res && (res.ok || res.status === 404);
 }
 
 export const getViewer = (token: string) => call<{ id: number; login: string }>(token, "GET", "/user");
@@ -111,3 +112,9 @@ export const createCommit = (token: string, fullName: string, input: { message: 
 /** Fast-forward only: GitHub refuses (422) when the commit doesn't descend from the branch head. */
 export const moveBranch = (token: string, fullName: string, branch: string, sha: string) =>
   call<unknown>(token, "PATCH", `/repos/${fullName}/git/refs/heads/${encodeURIComponent(branch)}`, { sha, force: false });
+
+export const createRef = (token: string, fullName: string, branch: string, sha: string) =>
+  call<unknown>(token, "POST", `/repos/${fullName}/git/refs`, { ref: `refs/heads/${branch}`, sha });
+
+export const setDefaultBranch = (token: string, fullName: string, branch: string) =>
+  call<unknown>(token, "PATCH", `/repos/${fullName}`, { default_branch: branch });

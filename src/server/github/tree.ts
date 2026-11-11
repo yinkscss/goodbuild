@@ -10,7 +10,7 @@ export function safePath(path: string): boolean {
   if (parts.some((p) => p === "" || p === "." || p === ".." || p.toLowerCase() === ".git")) return false;
   if (parts.includes("node_modules")) return false;
   // Environment files hold secrets in most projects; never push them.
-  if (parts.some((p) => /^\.env(\.|$)/i.test(p))) return false;
+  if (parts.some((p) => /^\.env(rc)?(\.|$)/i.test(p))) return false;
   return true;
 }
 

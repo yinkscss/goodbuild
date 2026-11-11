@@ -6,7 +6,7 @@ import { errorResponse, requireSession } from "@/server/auth/http";
 import { getDb } from "@/server/db/client";
 import { githubRepos } from "@/server/db/github-schema";
 import { getOwnedProject } from "@/server/projects";
-import { LinkError, createAndLink, syncProject, toLink } from "@/server/github/sync";
+import { LinkError, createAndLink, syncProject, toLink, unlinkProject } from "@/server/github/sync";
 
 export const maxDuration = 60;
 
@@ -70,7 +70,7 @@ export async function DELETE(_request: Request, ctx: RouteContext<"/api/projects
   try {
     const o = await owned(ctx);
     if (!o) return notFound();
-    await o.db.delete(githubRepos).where(eq(githubRepos.projectId, o.projectId));
+    await unlinkProject(o.db, o.projectId);
     return NextResponse.json({ link: null }, { headers });
   } catch (error) {
     return errorResponse(error);
