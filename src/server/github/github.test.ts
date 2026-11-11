@@ -253,22 +253,33 @@ describe("syncing to GitHub", () => {
     expect([a?.status, b?.status]).toEqual(["synced", "synced"]);
   });
 
-  it("an old push can't write its result onto a repository linked afterwards", async () => {
-    await createAndLink(db, userId, projectId);
-    await bumpVersion(9);
+  /** Holds every push at its tree request until released, and says when one has got there (no sleeping and hoping). */
+  function holdPushes() {
     let release!: () => void;
+    let reached!: () => void;
     const gate = new Promise<void>((r) => (release = r));
+    const arrived = new Promise<void>((r) => (reached = r));
     const inner = globalThis.fetch;
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: string | URL, init?: RequestInit) => {
-        if (String(input).endsWith("/git/trees")) await gate;
+        if (String(input).endsWith("/git/trees")) {
+          reached();
+          await gate;
+        }
         return inner(input, init);
       }),
     );
+    return { release, arrived };
+  }
+
+  it("an old push can't write its result onto a repository linked afterwards", async () => {
+    await createAndLink(db, userId, projectId);
+    await bumpVersion(9);
+    const { release, arrived } = holdPushes();
     const running = syncProject(db, projectId);
-    const unlinking = unlinkProject(db, projectId); // waits for the push in flight
-    await new Promise((r) => setTimeout(r, 10));
+    await arrived; // the push is really in flight
+    const unlinking = unlinkProject(db, projectId); // waits for it, in this process
     release();
     await running;
     await unlinking;
@@ -282,18 +293,9 @@ describe("syncing to GitHub", () => {
   it("a push from another process can't write onto a link made after it started, even to the same repository name", async () => {
     const first = await createAndLink(db, userId, projectId);
     await bumpVersion(10);
-    let release!: () => void;
-    const gate = new Promise<void>((r) => (release = r));
-    const inner = globalThis.fetch;
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: string | URL, init?: RequestInit) => {
-        if (String(input).endsWith("/git/trees")) await gate;
-        return inner(input, init);
-      }),
-    );
+    const { release, arrived } = holdPushes();
     const running = syncProject(db, projectId); // the "worker": stuck mid-push
-    await new Promise((r) => setTimeout(r, 10));
+    await arrived; // it has read the old link and is waiting on GitHub
     // The "web server" unlinks and links again straight in the database, without the worker's lock, to the same repository name.
     await db.delete(githubRepos).where(eq(githubRepos.projectId, projectId));
     await db.insert(githubRepos).values({ projectId, userId, fullName: first.fullName, branch: "main", lastCommitSha: "fresh-link-sha", lastVersion: 1, status: "synced" });
@@ -302,6 +304,8 @@ describe("syncing to GitHub", () => {
     const [row] = await db.select().from(githubRepos).where(eq(githubRepos.projectId, projectId));
     expect(row.lastCommitSha).toBe("fresh-link-sha");
     expect(row.lastVersion).toBe(1);
+    expect(row.status).toBe("synced");
+    expect(row.error).toBeNull();
   });
 
   it("finds apps synced to a different GitHub account", async () => {
