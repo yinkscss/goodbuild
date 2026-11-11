@@ -8,7 +8,7 @@ import { HeroCard } from "@/components/landing/hero-card";
 import { HowItWorks } from "@/components/landing/how-it-works";
 import { InsideBuilder } from "@/components/landing/inside-builder";
 import { LandingPrompt } from "@/components/landing/landing-prompt";
-import { BetaCard } from "@/components/landing/beta-card";
+import { LiveCard } from "@/components/landing/live-card";
 import { Pricing } from "@/components/landing/pricing";
 import { Safety } from "@/components/landing/safety";
 import { SignedInRedirect } from "@/components/landing/signed-in-redirect";
@@ -36,7 +36,7 @@ const SITE_JSON_LD = [
     applicationCategory: "DeveloperApplication",
     operatingSystem: "Web",
     description: "An AI app builder that writes the smart contract and front end for dApps, MiniPay apps, games and websites on Celo. You sign the deploy from your own wallet.",
-    offers: { "@type": "Offer", price: "0", priceCurrency: "USD", description: "New accounts get $0.20 of AI free during the testnet beta." },
+    offers: { "@type": "Offer", price: "0", priceCurrency: "USD", description: "New accounts get $0.20 of AI free." },
   },
 ];
 
@@ -55,7 +55,7 @@ export default function LandingPage() {
             <LandingPrompt />
           </div>
           <div className="order-3 flex lg:order-1 [&>*]:flex-1">
-            <BetaCard />
+            <LiveCard />
           </div>
           <div className="order-4 flex lg:order-3 [&>*]:flex-1">
             <TemplateCard />

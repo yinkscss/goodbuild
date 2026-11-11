@@ -15,7 +15,7 @@ export const freePosts: Post[] = [
       {
         heading: "What free means at GoodBuild",
         paragraphs: [
-          "Every new account gets $0.20 of AI free during the testnet beta. That covers a few small builds or one larger one. After the beta you pay the actual AI cost of each build plus 25%, and you see an estimate before each build, so the cost is never a surprise.",
+          "Every new account gets $0.20 of AI free. That covers a few small builds or one larger one. After that you pay the actual AI cost of each build plus 25%, and you see an estimate before each build, so the cost is never a surprise.",
           "So it is free to try, not unlimited. We say that plainly because a lot of \"free\" pages don't.",
         ],
       },
@@ -92,7 +92,7 @@ export const freePosts: Post[] = [
       },
       {
         heading: "The cost",
-        paragraphs: ["New accounts get $0.20 of AI free during the beta. See [what free really means](/blog/free-ai-app-builder)."],
+        paragraphs: ["New accounts get $0.20 of AI free. See [what free really means](/blog/free-ai-app-builder)."],
       },
     ],
     related: ["free-ai-app-builder", "best-ai-website-builders", "vibe-coding-prompt-tips"],
@@ -171,7 +171,7 @@ export const freePosts: Post[] = [
       { heading: "Project ideas", bullets: ["A study-group savings pot that collects a small amount each week.", "A voting page for a class election.", "A club membership pass.", "A quiz game with a best-score board.", "A fundraiser for a campus event."] },
       { heading: "Make it count", steps: ["Write the problem and who has it.", "Build it and put it in front of ten classmates.", "Write down what changed after their feedback.", "Add a short summary to your portfolio: the problem, what you built and what you learned."] },
       { heading: "Learn from it", paragraphs: ["Ask the builder to explain what it wrote. Reading a real contract and a real React app is an education in itself. See [learn Solidity with AI](/blog/learn-solidity-with-ai)."] },
-      { heading: "Cost", paragraphs: ["Start with the free allowance: $0.20 of AI for new accounts during the beta. Test on Celo Sepolia where nothing costs real money."] },
+      { heading: "Cost", paragraphs: ["Start with the free allowance: $0.20 of AI for new accounts. Test on Celo Sepolia where nothing costs real money."] },
     ],
     related: ["learn-solidity-with-ai", "free-ai-app-builder", "idea-to-app-in-a-weekend"],
   },
@@ -195,7 +195,7 @@ export const freePosts: Post[] = [
       {
         heading: "How GoodBuild charges",
         paragraphs: [
-          "Free now: $0.20 of AI for each new account during the testnet beta. After the beta: the actual AI cost of each build plus 25%, shown in US dollars with the G$ amount alongside. You see an estimate before each build. Credits are bought in G$ packs, and wallets verified with GoodDollar get a 10% bonus up to a monthly cap. Network fees for deploys go to the network, from your own wallet.",
+          "Free to start: $0.20 of AI for each new account. After that: the actual AI cost of each build plus 25%, shown in US dollars with the G$ amount alongside. You see an estimate before each build. Credits are bought in G$ packs, and wallets verified with GoodDollar get a 10% bonus up to a monthly cap. Network fees for deploys go to the network, from your own wallet.",
         ],
       },
       {

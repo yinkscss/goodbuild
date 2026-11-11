@@ -8,7 +8,7 @@ export function SiteFooter() {
     <footer className="mt-24 grid gap-10 border-t border-hairline py-14 text-sm md:grid-cols-[2fr_1fr_1fr_1fr]">
       <div className="max-w-sm">
         <Logo />
-        <p className="mt-4 text-grey-600">Made for the GoodDollar community. In testnet beta on Celo Sepolia.</p>
+        <p className="mt-4 text-grey-600">Made for the GoodDollar community.</p>
         <p className="mt-2 text-grey-600">For people aged 18 and over. Not available to US persons.</p>
       </div>
       {FOOTER_COLUMNS.map((c) => (

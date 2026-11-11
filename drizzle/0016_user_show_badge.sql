@@ -1,0 +1,1 @@
+ALTER TABLE "users" ADD COLUMN "show_badge" boolean DEFAULT true NOT NULL;

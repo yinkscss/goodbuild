@@ -6,8 +6,8 @@ const FACTS = [
   { title: "Your own address", body: "Publish your app with one link to share." },
 ];
 
-/** Left bento card: true facts about the beta, until GoodBuild has real usage numbers to show. */
-export function BetaCard() {
+/** Left bento card: true facts about GoodBuild, until GoodBuild has real usage numbers to show. */
+export function LiveCard() {
   return (
     <section aria-label="Mainnet live" className="flex flex-col rounded-card bg-surface p-6 shadow-card">
       <p className="flex items-center gap-2 text-sm font-medium text-grey-600">

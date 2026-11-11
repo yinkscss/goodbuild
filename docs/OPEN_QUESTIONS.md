@@ -68,7 +68,7 @@
 
 ## Q16. Publishing / hosting of generated apps
 - Resolved for hosting by P19: GoodBuild serves each app at `<slug>.goodbuildit.xyz` from a stored build.
-- Still open: wildcard DNS through Vercel's nameservers (D26), moderation, and a real contact address. Takedown is `scripts/takedown.mjs`, and `/report` takes reports once `NEXT_PUBLIC_CONTACT_EMAIL` is set. `/terms` and `/privacy` are unreviewed drafts.
+- Still open: wildcard DNS through Vercel's nameservers (D26), moderation, and a real contact address. Takedown is `scripts/takedown.mjs`, `/report` takes reports once `NEXT_PUBLIC_CONTACT_EMAIL` is set, and `/support` takes tickets once `SUPPORT_EMAIL` or the Telegram bot is set (D89). `/terms` and `/privacy` are unreviewed drafts.
 
 ## Q17. How does GoodBuild spend users' GoodDollar AI credits? (superseded by D11; kept for a future AntSeed provider)
 - Ideas so far: (A) hold user's derived AntSeed buyer key in a server-side AntSeed gateway; (B) wait for GoodDollar's `gd_live_` keys + Worker proxy (not yet implemented). See [GOODDOLLAR_AI_CREDITS.md](GOODDOLLAR_AI_CREDITS.md) §4–6.

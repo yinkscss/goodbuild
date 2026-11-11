@@ -99,13 +99,13 @@ const SECTIONS: Array<{ id: string; title: string; body: ReactNode }> = [
     title: "Credits and cost",
     body: (
       <>
-        <p>During the testnet beta on Celo Sepolia, every new account gets $0.20 of AI free, and each build shows an estimate of what it costs. A build that starts under that amount can finish, then building pauses for that account.</p>
+        <p>Each build shows an estimate of what it costs. A build that starts under that amount can finish, then building pauses for that account.</p>
         <p>
           Every account starts with $0.20 of free AI. When it runs out, verify with GoodDollar, a quick face check, to get $0.50 more, once per person. The free trial
           has a total limit, so it can fill up.
         </p>
         <p>
-          After the beta, the plan is to bill the actual AI cost of each build plus 25%, shown in US dollars with G$ alongside. Network fees are separate
+          Beyond the free amount, you pay the actual AI cost of each build plus 25%, shown in US dollars with G$ alongside. Network fees are separate
           and are paid from your own wallet.
         </p>
       </>

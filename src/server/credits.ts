@@ -7,7 +7,7 @@ export interface CreditSnapshot {
   /** The real ledger balance in micro-USD (D46). Null if it couldn't be read, which never means zero. */
   balanceMicro: number | null;
   /**
-   * Always null for now. The UI reads null as "Testnet beta · free", and a 0 here would disable the
+   * Always null for now. The UI reads null as "free", and a 0 here would disable the
    * prompt with "Top up to keep building" for everyone. M8 moves the UI to `balanceMicro` (D38: USD only).
    */
   balanceGd: number | null;
