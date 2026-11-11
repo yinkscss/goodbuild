@@ -12,6 +12,7 @@ import { KITS, type Kit } from "./kits";
 import { FREE_BUILD_CEILING_MICRO, freeBuildCeilingMicro, runTurn, TurnBusyError, type TurnEvent } from "./runner";
 import { claimTurn, listVersions, loadFiles, revertTo, saveFiles } from "./store";
 import { starterFiles } from "./template";
+import { fallbackIntake } from "./plan-intake";
 import { fixTier, isRepeat, plainDashes } from "./runner";
 
 describe("plainDashes", () => {
@@ -765,5 +766,46 @@ describe("kits in a turn (D71)", { timeout: 120_000 }, () => {
     expect(String(requests[1].messages.find((m) => m.role === "tool")?.content)).toContain("Turned on the demo-kit kit");
     expect(record.steps.some((s) => s.label === "Adding the demo-kit kit" && s.status === "done")).toBe(true);
     expect((await loadFiles(db, projectId))["src/goodbuild.json"]).toContain("demo-kit");
+  });
+
+  /** A first build from the plan's Start building, after the plan was asked for this request. */
+  const buildFromPlan = async (request: string) => {
+    await db.update(messages).set({ content: request, status: "done" }).where(eq(messages.id, queuedId));
+    await db.insert(messages).values({ projectId, role: "assistant", content: "A few questions.", status: "done", meta: { intake: fallbackIntake(request) } });
+    const [start] = await db.insert(messages).values({ projectId, role: "user", content: "Start building", status: "queued", meta: { mode: "build" } }).returning({ id: messages.id });
+    const { client } = scriptedModel([{ tools: [{ name: "create_file", args: { path: "src/App.tsx", content: APP } }] }, { text: "Built it." }]);
+    await runTurn({ db, model: client }, { projectId, userId, mode: "build", userMessageId: start.id }, () => {});
+    return loadFiles(db, projectId);
+  };
+
+  it("turns the MiniPay leaderboard contract on for a MiniPay game with a leaderboard (D93)", async () => {
+    const mini = await buildFromPlan("A snake game for MiniPay with a leaderboard");
+    expect(JSON.parse(mini["src/goodbuild.json"]).kits).toEqual(expect.arrayContaining(["game-2d", "mini-app", "game-board"]));
+    expect(mini["contracts/GameBoard.sol"]).toContain("contract GameBoard");
+    expect(mini["src/game/chainBoard.ts"]).toContain("export function gameBoard");
+  });
+
+  it("turns everything on for the owner's Neon Drift request: game, MiniPay, the board contract and the G$ shop (D95)", async () => {
+    const files = await buildFromPlan("Build a car racing game for me that's playable on mini pay, I want leaderboards and season pass for people to be able to connect and try to be the high score, make it endless with power ups and there should be an in app store where you can purchase level ups and other cars with $g");
+    expect(JSON.parse(files["src/goodbuild.json"]).kits).toEqual(expect.arrayContaining(["game-2d", "mini-app", "game-board", "game-shop"]));
+    expect(files["contracts/GameShop.sol"]).toContain("contract GameShop");
+    expect(files["src/game/Store.tsx"]).toContain("export function Store");
+    expect(files["src/game/GameOver.tsx"]).toContain("export function GameOver");
+  });
+
+  it("leaves the contract off for a MiniPay game that says it wants no leaderboard, even naming an onchain one", async () => {
+    const files = await buildFromPlan("A snake game for MiniPay without an onchain leaderboard");
+    expect(JSON.parse(files["src/goodbuild.json"]).kits).toEqual(expect.arrayContaining(["game-2d", "mini-app"]));
+    expect(files["src/goodbuild.json"]).not.toContain("game-board");
+    expect(files["contracts/GameBoard.sol"]).toBeUndefined();
+  });
+
+  it("leaves the contract off for a web-only game with a leaderboard: no deploy needed", async () => {
+    const web = await buildFromPlan("A snake game with a leaderboard");
+    expect(web["src/goodbuild.json"]).toContain("game-2d");
+    expect(web["src/goodbuild.json"]).not.toContain("game-board");
+    expect(web["src/game/leaderboard.ts"]).toContain("export function useLeaderboard");
+    // Nothing for sale, so no shop and no shop contract to deploy.
+    expect(web["src/goodbuild.json"]).not.toContain("game-shop");
   });
 });
