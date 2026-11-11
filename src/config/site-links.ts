@@ -29,6 +29,7 @@ export const FOOTER_COLUMNS: Array<{ title: string; links: SiteLink[] }> = [
       { href: "/#how-it-works", label: "How it works" },
       { href: "/#builder", label: "Inside the builder" },
       { href: "/#pricing", label: "Pricing" },
+      { href: "/stats", label: "Open stats" },
     ],
   },
   {
