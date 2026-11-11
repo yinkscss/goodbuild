@@ -222,6 +222,70 @@ export function MiniFooter({ links = MINI_LINKS, children }: { links?: FooterLin
 }
 `;
 
+/**
+ * The MiniPay checklist (D88): every requirement from MiniPay's docs and listing, in one list. The
+ * builder gets it in the guide; miniPayChecklist() says which are met in a project's files, so the
+ * chat can show the owner what was built and what to try on a phone.
+ */
+export type ChecklistHow = "checked" | "phone" | "listing";
+export interface ChecklistItem {
+  id: string;
+  /** What has to be true, in plain words for the owner. */
+  label: string;
+  /** "checked": GoodBuild reads the files. "phone": only trying it in MiniPay shows it. "listing": only for the listing form. */
+  how: ChecklistHow;
+}
+
+export const MINIPAY_CHECKLIST: ChecklistItem[] = [
+  { id: "auto-connect", label: "Connects to the wallet by itself, with no Connect button inside MiniPay", how: "checked" },
+  { id: "no-sign-in", label: "Never asks for a signature to log in", how: "checked" },
+  { id: "legacy-tx", label: "Payments are plain transactions with the network fee in dollar coins", how: "checked" },
+  { id: "decimals", label: "Dollar amounts use each coin's own decimals (6 for USDT and USDC, 18 for USDm)", how: "checked" },
+  { id: "add-cash", label: "Shows Add cash when the balance is too low", how: "checked" },
+  { id: "no-new-tabs", label: "No link opens a new tab", how: "checked" },
+  { id: "footer", label: "Footer with About, How to use, Terms, Privacy and Support, and the line that it isn't run by Opera or MiniPay", how: "checked" },
+  { id: "app-info", label: "The About, Terms and Privacy pages describe this app", how: "checked" },
+  { id: "phone-layout", label: "Fits a small phone (360 x 640), one column, buttons big enough for a thumb", how: "phone" },
+  { id: "opens-in-minipay", label: "Opens and works from MiniPay's test page, on the test network", how: "phone" },
+  { id: "verified", label: "Contracts verified on Celoscan, with one sample transaction", how: "listing" },
+];
+
+const CHECKLIST_TEXT = MINIPAY_CHECKLIST.map((i) => `  - ${i.label}${i.how === "checked" ? " (checked)" : i.how === "phone" ? " (on a phone)" : " (for the listing)"}`).join("\n");
+
+export type ChecklistStatus = "done" | "todo" | "not-needed" | "try-on-phone" | "for-listing";
+
+/** Which checklist items a project's files meet. Items only a phone or the listing can show say so. */
+export function miniPayChecklist(files: Record<string, string>): Array<ChecklistItem & { status: ChecklistStatus }> {
+  const issues = miniAppChecks(files);
+  const has = (re: RegExp) => issues.some((i) => re.test(i.message));
+  const app = Object.entries(files).filter(([f]) => /^src\/.*\.(tsx?|jsx?)$/.test(f) && !f.startsWith("src/lib/") && !f.startsWith("src/minipay/"));
+  const pays = app.some(([, c]) => /\b(sendCoin|coinAmount|writeContract)\b/.test(c));
+  const readsEthereum = app.some(([, c]) => /window\.ethereum/.test(c));
+  const status = (item: ChecklistItem): ChecklistStatus => {
+    switch (item.id) {
+      case "auto-connect":
+        return readsEthereum ? "todo" : "done";
+      case "no-sign-in":
+        return has(/signature/) ? "todo" : "done";
+      case "legacy-tx":
+        return !pays ? "not-needed" : has(/legacy/) ? "todo" : "done";
+      case "decimals":
+        return !pays ? "not-needed" : has(/decimals/) ? "todo" : "done";
+      case "add-cash":
+        return !pays ? "not-needed" : app.some(([, c]) => c.includes("ADD_CASH_URL")) ? "done" : "todo";
+      case "no-new-tabs":
+        return has(/new tab/) ? "todo" : "done";
+      case "footer":
+        return has(/MiniFooter|route table/) ? "todo" : "done";
+      case "app-info":
+        return has(/Fill in MINI_APP/) ? "todo" : "done";
+      default:
+        return item.how === "phone" ? "try-on-phone" : "for-listing";
+    }
+  };
+  return MINIPAY_CHECKLIST.map((item) => ({ ...item, status: status(item) }));
+}
+
 const GUIDE = `MiniPay apps. MiniPay is Opera's stablecoin wallet on phones. There is no sign-in and no SDK: it connects the wallet by itself when the page loads (GoodBuild's wallet layer already does this), and the person pays in dollar coins. The kit's files are in src/minipay/: use them, don't rewrite them.
 - Phone only. Design for 360 x 640 and up, one column, no horizontal scroll, no hover-only controls. Every button and link is at least 44px tall (min-h-11).
 - Never show a "Connect wallet" button or a wallet list. Inside MiniPay the wallet is already connected: show the app straight away, and show the person's balance where it matters. Outside MiniPay (a desktop check, the preview) the normal ConnectButton still works, so keep it as the fallback for when there is no wallet yet.
@@ -233,6 +297,10 @@ const GUIDE = `MiniPay apps. MiniPay is Opera's stablecoin wallet on phones. The
 - Don't show raw 0x addresses. Show a name, a short label or "Your account". Don't offer a box to type any address to withdraw to.
 - The About, How to use, Terms, Privacy and Support pages are already written: src/minipay/InfoPages.tsx. Don't write them yourself and don't load the content-pages guide for them. Do three small things: (1) fill in MINI_APP in src/minipay/app.ts once (name, tagline, publisher, support email, how-to steps, anything the app keeps); (2) add the five routes inside the Layout route: INFO_ROUTES.map((r) => <Route key={r.path} path={r.path} element={<InfoPage kind={r.kind} />} />); (3) put <MiniFooter /> at the bottom of Layout, so every page has it. In your reply, tell the owner the Terms and Privacy pages are plain-words starters to read before listing.
 - If a page has a bar fixed to the bottom (a cart or checkout bar), give the page bottom padding at least as tall as the bar, so the footer links are never hidden behind it.
+- Links never open a new tab. MiniPay has no tabs, so target="_blank" goes nowhere: use in-app routes (#/...) and plain links.
+- A game: the play area fills the phone and is played with the thumb, and MiniFooter goes on the start screen (the Layout under it), never over the play area. A game with no money in it needs none of the payment parts: no balance, no Pay button, no Add cash.
+- Before you finish, go through the MiniPay checklist below. GoodBuild checks the items marked (checked) itself and lists the rest for the owner to try on a phone, so build every one:
+${CHECKLIST_TEXT}
 - Don't spend rounds on anything the kit already has. Write the app's own screens and, if there is one, its contract; write several files in the same round.
 - Only the app's own pinned packages. MiniPay doesn't support ethers: use viem.
 - When the person wants it listed in MiniPay: the listing form (developer.minipay.to/mini-app-listing) needs a name, a one-line tagline, publisher, support link, Terms and Privacy links, a category, the app's address and a 512 x 512 icon; the contracts must be verified on Celoscan with a sample transaction. Tell them this once the app is published, in plain words.`;
@@ -253,6 +321,9 @@ export function miniAppChecks(files: Record<string, string>): CheckIssue[] {
     }
     if (/\b(maxFeePerGas|maxPriorityFeePerGas)\b/.test(content)) {
       issues.push({ file, line: line(/\b(maxFeePerGas|maxPriorityFeePerGas)\b/), source: "guardrail", message: "MiniPay takes plain (legacy) transactions. Remove maxFeePerGas and maxPriorityFeePerGas, and use sendCoin or type: \"legacy\" with feeCurrency." });
+    }
+    if (/target\s*=\s*\{?\s*["']_blank["']/.test(content)) {
+      issues.push({ file, line: line(/target\s*=\s*\{?\s*["']_blank["']/), source: "guardrail", message: "MiniPay has no tabs, so a link that opens a new tab goes nowhere. Remove target=\"_blank\" and use an in-app route or a plain link." });
     }
     if (/\bparseEther\s*\(/.test(content) && /\b(USDT|USDC|USDm|USDM|dollar)/i.test(content)) {
       issues.push({ file, line: line(/\bparseEther\s*\(/), source: "guardrail", message: "USDT and USDC have 6 decimals, not 18. Use coinAmount(coin, text) from src/minipay/minipay.ts." });

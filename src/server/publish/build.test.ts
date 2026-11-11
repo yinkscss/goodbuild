@@ -58,6 +58,15 @@ describe("buildPublishedApp", () => {
     expect(page(await build({}, { hasUndeployedContracts: true }))).toContain("isn't deployed yet");
   });
 
+  it("opens the bar's links in a new tab, except in a MiniPay app, which has no tabs (D88)", async () => {
+    const page = (out: Awaited<ReturnType<typeof build>>) => text(named(out, /^index\.html$/));
+    const bar = (html: string) => html.slice(html.indexOf("<div data-goodbuild-bar "), html.indexOf("</div>", html.indexOf("<div data-goodbuild-bar ")));
+    expect(bar(page(await build({}, { reportUrl: "https://goodbuildit.xyz/report" })))).toContain('target="_blank"');
+    const mini = bar(page(await build({ "src/goodbuild.json": '{"kits":["mini-app"]}' }, { reportUrl: "https://goodbuildit.xyz/report" })));
+    expect(mini).toContain("Report");
+    expect(mini).not.toContain("_blank");
+  });
+
   it("leaves room under the app's last content so the bar never covers it", async () => {
     const page = (out: Awaited<ReturnType<typeof build>>) => text(named(out, /^index\.html$/));
     const plain = page(await build({}));

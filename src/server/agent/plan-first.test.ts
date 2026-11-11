@@ -18,7 +18,10 @@ import type { TurnRecord } from "@/lib/turn-types";
 
 import { demoModel } from "./demo-model";
 import { scriptedModel } from "./fake-model";
-import { INTAKE_MAX_TOKENS, INTAKE_PROMPT, INTAKE_TOOLS, fallbackIntake, parseIntake, planBrief } from "./plan-intake";
+import { INTAKE_MAX_TOKENS, INTAKE_PROMPT, INTAKE_TOOLS, MINIPAY_QUESTION_ID, fallbackIntake, parseIntake, planBrief } from "./plan-intake";
+import { miniApp } from "./kits/mini-app";
+import { detectKits } from "./kits";
+import { starterFiles } from "./template";
 import { savePlanAnswer, shouldPlanFirst } from "./plan-first";
 import { runTurn } from "./runner";
 import { loadFiles } from "./store";
@@ -451,6 +454,35 @@ describe("parseIntake", () => {
     const words = JSON.stringify([fallbackIntake("A tip jar"), fallbackIntake("A landing page for my bakery")]);
     expect(words).not.toMatch(/ERC-?20|modifier|mapping|\bABI\b|gas\b/i);
     expect(fallbackIntake("A landing page for my bakery").questions[0].question).toMatch(/visitors/);
+  });
+});
+
+describe("the MiniPay question (D88)", () => {
+  const model = (questions: unknown[]) => JSON.stringify({ summary: "A jumping game", recommended_palette: "ocean", questions });
+  const five = Array.from({ length: 5 }, (_, i) => ({ question: `Question ${i}?`, label: `L${i}`, options: ["a", "b"] }));
+
+  it("is asked for a game, before the colours, and the model gets one card fewer", () => {
+    const parsed = parseIntake(model([...five, { question: "Should it work in MiniPay?", label: "m", options: ["Yes", "No"] }]), "A jumping game where you dodge rocks")!;
+    expect(parsed.questions.map((q) => q.id)).toEqual(["q1", "q2", "q3", MINIPAY_QUESTION_ID, "palette"]);
+    const fallback = fallbackIntake("A jumping game where you dodge rocks");
+    expect(fallback.questions.map((q) => q.id)).toEqual(["q1", "q2", MINIPAY_QUESTION_ID, "palette"]);
+  });
+
+  it("isn't asked for other apps, or when the request already says MiniPay", () => {
+    expect(parseIntake(model(five), "A tip jar for my club")!.questions.some((q) => q.id === MINIPAY_QUESTION_ID)).toBe(false);
+    expect(fallbackIntake("A snake game for MiniPay").questions.some((q) => q.id === MINIPAY_QUESTION_ID)).toBe(false);
+  });
+
+  it("Yes turns the MiniPay kit on and No doesn't", () => {
+    const intake = fallbackIntake("A jumping game where you dodge rocks");
+    const answer = (pick: string) => planBrief({ ...intake, answers: { [MINIPAY_QUESTION_ID]: { picks: [pick] } } }, true);
+    const yes = answer("yes");
+    const no = answer("no");
+    expect(yes.miniPay).toBe(true);
+    expect(yes.text).toMatch(/mini-app kit is on/);
+    expect(no.miniPay).toBeUndefined();
+    // No's words never name MiniPay, so the kit's keywords can't turn it on from that answer either.
+    expect(detectKits(no.answerWords, starterFiles())).not.toContain(miniApp);
   });
 });
 
