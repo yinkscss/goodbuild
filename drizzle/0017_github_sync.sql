@@ -10,6 +10,7 @@ CREATE TABLE "github_accounts" (
 CREATE TABLE "github_repos" (
 	"project_id" uuid PRIMARY KEY NOT NULL,
 	"user_id" uuid NOT NULL,
+	"link_id" uuid DEFAULT gen_random_uuid() NOT NULL,
 	"full_name" text NOT NULL,
 	"branch" text DEFAULT 'main' NOT NULL,
 	"last_commit_sha" text,

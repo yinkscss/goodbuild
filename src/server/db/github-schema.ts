@@ -30,6 +30,8 @@ export const githubRepos = pgTable("github_repos", {
   userId: uuid("user_id")
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
+  /** Names this link, not the project or the repository: unlinking and linking again makes a new one, so a push that outlives its link can't write onto the next (D93). */
+  linkId: uuid("link_id").notNull().defaultRandom(),
   /** "owner/name". */
   fullName: text("full_name").notNull(),
   branch: text("branch").notNull().default("main"),

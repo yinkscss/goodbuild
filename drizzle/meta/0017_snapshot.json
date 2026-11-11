@@ -1,5 +1,5 @@
 {
-  "id": "2c1e4476-3b6e-4609-9669-9b924fd855f6",
+  "id": "2b7290ab-90c9-4bed-9318-2404f9d39afb",
   "prevId": "cb410b3f-a759-42f3-8162-1c53936e885c",
   "version": "7",
   "dialect": "postgresql",
@@ -3125,6 +3125,13 @@
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
+        },
+        "link_id": {
+          "name": "link_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "gen_random_uuid()"
         },
         "full_name": {
           "name": "full_name",

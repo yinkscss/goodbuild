@@ -279,6 +279,31 @@ describe("syncing to GitHub", () => {
     expect(again.lastVersion).toBe(9);
   });
 
+  it("a push from another process can't write onto a link made after it started, even to the same repository name", async () => {
+    const first = await createAndLink(db, userId, projectId);
+    await bumpVersion(10);
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const inner = globalThis.fetch;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL, init?: RequestInit) => {
+        if (String(input).endsWith("/git/trees")) await gate;
+        return inner(input, init);
+      }),
+    );
+    const running = syncProject(db, projectId); // the "worker": stuck mid-push
+    await new Promise((r) => setTimeout(r, 10));
+    // The "web server" unlinks and links again straight in the database, without the worker's lock, to the same repository name.
+    await db.delete(githubRepos).where(eq(githubRepos.projectId, projectId));
+    await db.insert(githubRepos).values({ projectId, userId, fullName: first.fullName, branch: "main", lastCommitSha: "fresh-link-sha", lastVersion: 1, status: "synced" });
+    release();
+    await running;
+    const [row] = await db.select().from(githubRepos).where(eq(githubRepos.projectId, projectId));
+    expect(row.lastCommitSha).toBe("fresh-link-sha");
+    expect(row.lastVersion).toBe(1);
+  });
+
   it("finds apps synced to a different GitHub account", async () => {
     await createAndLink(db, userId, projectId);
     expect(await linksOwnedByOthers(db, userId, "ada")).toEqual([]);

@@ -53,9 +53,13 @@ function exclusive<T>(projectId: string, fn: () => Promise<T>): Promise<T> {
   return next;
 }
 
-/** Write sync state, but only onto the repository this run started with: an unlink and relink in between must not receive an old run's result. */
+/**
+ * Write sync state, but only onto the link this run started with. The link id changes whenever a project is unlinked
+ * and linked again, so a push that outlives its link (in any process: the lock above is per process) can't write
+ * its commit and version onto the next link, even one to a repository with the same name.
+ */
 async function setState(db: Db, link: GithubRepoRow, patch: Partial<typeof githubRepos.$inferInsert>) {
-  await db.update(githubRepos).set(patch).where(and(eq(githubRepos.projectId, link.projectId), eq(githubRepos.fullName, link.fullName)));
+  await db.update(githubRepos).set(patch).where(and(eq(githubRepos.projectId, link.projectId), eq(githubRepos.linkId, link.linkId)));
 }
 
 /** What a person should read when GitHub refuses. */
@@ -79,7 +83,7 @@ export function syncProject(db: Db, projectId: string, opts: { overwrite?: boole
   return exclusive(projectId, () => syncLocked(db, projectId, opts));
 }
 
-/** Stop syncing a project. Waits for a push in flight, so its result can't land after the unlink. The repository stays on GitHub. */
+/** Stop syncing a project. Waits for a push in flight in this process; one in another process is cut off by the link id instead. The repository stays on GitHub. */
 export function unlinkProject(db: Db, projectId: string): Promise<void> {
   return exclusive(projectId, async () => {
     await db.delete(githubRepos).where(eq(githubRepos.projectId, projectId));
