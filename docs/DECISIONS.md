@@ -1134,3 +1134,47 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - **What changed:** screens show whole credits (100 credits = $1): the balance pills and nav hint, the Credits page, Add credits (amounts, presets and the "plus bonus" line), the top-up pill, the per-build estimate and "N credits of AI" in the chat, and the free-start copy (20 credits free, 50 more when verified). `src/lib/credits-math.ts` has `MICRO_PER_CREDIT`, `microToCredits`, `formatCredits` and `formatCreditsShort`; they replace `formatMicroUsd`, `formatUsd` and the inline `toFixed(2)` calls.
 - **What did not change:** the ledger, quotes, holds, caps, the contract and billing all stay in micro-USD (D51). Nothing is stored in credits.
 - **Left as dollars on purpose:** the naira buy dialog's fee lines (they are real money), blog posts, and `CAP_MESSAGE` in `server/credits/cap.ts` (a test pins it to the earlier wording; change both together later).
+
+### D98. Hackathon page at /hackathon; credit grants keyed to the GoodDollar root (proposal)
+
+- **Decided by:** the owner for the page and its look (approved the poster design and asked for the `/hackathon` route, 12 Nov 2026). The credit rules are Claude's proposal, waiting on the owner (docs/HACKATHON.md §4).
+- **Page:** a public route, reusing sign-in and GoodDollar verification. `useGoodIdVerify` was taken out of `VerifyCard` so both use the same flow. Styles are plain global CSS prefixed `hk-`, because the Turbopack CSS rule in `next.config.ts` turns CSS modules off. It's a louder take on the D12 tokens (poster hero, marquee, big display numbers), kept to violet, pink and Unbounded.
+- **Credit grants (not built):** one ledger entry per GoodDollar root (`hackathon-2027:<root>` as the idempotency key), the chain re-read at claim time, credits only spendable on GoodBuild AI, paid in two parts, expiring at the deadline, with a total budget. Details and limits: docs/HACKATHON.md §2.
+- **Checked:** type check, lint, the content test (the prizes add up to the pool) and the VerifyCard tests pass. The page was opened in a local dev server at 1440px and 390px, with no sideways scroll.
+- **UNVERIFIED:** a real face check from this page, signed-in states on the live site, and the hackathon's dates, prize split and partner details.
+
+### D99. Hackathon credits: 50 per builder in two parts, one grant per GoodDollar root
+
+- **Decided by:** the owner on 12 Nov 2026: the two-part option, about 100 builders, 50 credits each (down from 500, which a ~$30 budget couldn't cover). The 20 + 30 split is Claude's choice.
+- **What:**
+  - 20 credits on registering.
+  - 30 more after the first deploy on Celo or Celo Sepolia made after registering.
+  - A 5,000-credit total cap (`HACKATHON_BUDGET_CREDITS`).
+  - Claims close on 8 Feb 2027 (DRAFT) and can be paused with `HACKATHON_CLAIMS=off`.
+  - Hackathon builders top up like anyone else: the grant is an `adjust` entry on the same ledger balance.
+- **Against abuse:**
+  - The root is read from the chain at claim time.
+  - It's unique in `hackathon_registrations`, and the ledger idempotency keys are built from it.
+  - Budget and grants run under one advisory lock.
+  - The deploy part counts only server-verified deployments.
+- **Checked:** five claim tests on PGlite: unverified refused, replay pays once, second account on the same root refused, deploy part only after a later Celo deploy, and budget, deadline and off switch. Also the API and proxy tests and the type check.
+- **UNVERIFIED:** a real claim on the live site with a verified wallet, and the race tests on real Postgres (run with `TEST_DATABASE_URL`).
+- **Not built:** expiry of unused grants, and an admin view.
+
+### D100. Hackathon: unspent credits expire after the deadline; admin page at /hackathon/admin
+
+- **Decided by:** the owner asked for both (12 Nov 2026). The rules below are Claude's.
+- **Expiry:**
+  - After `CLAIMS_CLOSE`, the standalone worker sweeps every hour, and admins can run it from the page.
+  - Usage since registering counts against the grant first, so only the unspent part is removed. Bought credits are never touched, and no balance goes below zero.
+  - Each person is expired once (ledger key by root). A sweep that races a spend leaves that row for the next run.
+- **Admin page:**
+  - Wallets in `ADMIN_WALLETS` only; anyone else gets a 404. It's also in the proxy's signed-in pages.
+  - Shows totals, budget used, registrations per day, and every builder.
+  - Flags accounts made under 10 minutes before claiming, and wallets linked to another GoodDollar identity.
+  - Lists refused claims (same identity on another account, or budget spent), now kept in `hackathon_refusals` (migration 0018, regenerated before merge).
+- **Checked:** the expiry tests (refuses before close, removes only the unspent grant, keeps bought credits, runs once) and the report tests (totals, new-wallet flag, refused second claim, per-day count), on PGlite. Also the type check and lint.
+- **UNVERIFIED:**
+  - The admin page rendered with a real admin session.
+  - The worker's hourly sweep on the server: watch for `[worker] hackathon expiry:` lines after the deadline.
+  - Only the standalone worker (`pnpm worker`) sweeps, not the web process's inline worker.
