@@ -10,7 +10,7 @@ import { githubAccounts, githubRepos } from "@/server/db/github-schema";
 import { createProjectFromPrompt } from "@/server/projects";
 import { saveFiles } from "@/server/agent/store";
 import { decryptToken, encryptToken } from "./crypto";
-import { GITHUB_STATE_COOKIE, callbackDestination, checkState, newState, safeReturnTo } from "./oauth";
+import { GITHUB_STATE_COOKIE, callbackDestination, checkState, newState, redirectToPath, safeReturnTo } from "./oauth";
 import { createAndLink, linksOwnedByOthers, syncProject, toLink, unlinkProject } from "./sync";
 import { buildTree, repoName, safePath } from "./tree";
 
@@ -53,6 +53,18 @@ describe("oauth state", () => {
   it("only accepts paths on this site", () => {
     expect(safeReturnTo("/p/123?x=1")).toBe("/p/123?x=1");
     for (const bad of ["//evil.com", "https://evil.com", "\\evil", "/a\nb", "/\t/evil.example", "/\u0000x", null, ""]) expect(safeReturnTo(bad as string | null)).toBe("/settings?tab=github");
+  });
+  it("redirects with a path and no host, so a server bound to 0.0.0.0 can't send the browser there", () => {
+    const res = redirectToPath("/p/abc?x=1", { github: "connected" });
+    expect(res.status).toBe(302);
+    const location = res.headers.get("location")!;
+    expect(location).toBe("/p/abc?x=1&github=connected");
+    expect(location).not.toMatch(/^[a-z]+:|0\.0\.0\.0|\.invalid/i);
+    expect(redirectToPath("/", {}).headers.get("location")).toBe("/");
+    expect(redirectToPath("/settings?tab=github", { github: "different_account", revoke: "manual" }).headers.get("location")).toBe("/settings?tab=github&github=different_account&revoke=manual");
+    // An off-site or protocol-relative target still can't be used.
+    expect(redirectToPath("//evil.com/x", { github: "failed" }).headers.get("location")).toBe("/settings?tab=github&github=failed");
+    expect(redirectToPath("https://evil.com", {}).headers.get("location")).toBe("/settings?tab=github");
   });
   it("sends the person to Settings when a revocation wasn't confirmed, wherever they started", () => {
     expect(callbackDestination("/p/abc", true)).toBe("/settings?tab=github");

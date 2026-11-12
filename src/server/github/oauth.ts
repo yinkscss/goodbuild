@@ -2,6 +2,8 @@ import "server-only";
 
 import { randomBytes } from "node:crypto";
 
+import { NextResponse } from "next/server";
+
 import { SignJWT, jwtVerify } from "jose";
 
 import { sessionSecret } from "@/server/auth/config";
@@ -20,6 +22,18 @@ export function safeReturnTo(value: string | null | undefined): string {
   } catch {
     return fallback;
   }
+}
+
+/**
+ * A redirect to a path on this site that doesn't name a host. `NextResponse.redirect` needs an absolute URL, and
+ * building one from `request.url` gives the address the server is bound to (`0.0.0.0:3000`) when it runs on a
+ * bind address or behind a port forward, which is no address a browser can open. A relative `Location` is
+ * resolved by the browser against the address it actually used.
+ */
+export function redirectToPath(path: string, params: Record<string, string> = {}): NextResponse {
+  const target = new URL(safeReturnTo(path), "https://same-site.invalid");
+  for (const [key, value] of Object.entries(params)) target.searchParams.set(key, value);
+  return new NextResponse(null, { status: 302, headers: { Location: `${target.pathname}${target.search}${target.hash}` } });
 }
 
 /**

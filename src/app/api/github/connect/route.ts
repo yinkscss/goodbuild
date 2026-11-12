@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { isProduction } from "@/server/auth/config";
 import { requireSession } from "@/server/auth/http";
 import { githubConfig } from "@/server/github/api";
-import { GITHUB_STATE_COOKIE, newState, safeReturnTo } from "@/server/github/oauth";
+import { GITHUB_STATE_COOKIE, newState, redirectToPath, safeReturnTo } from "@/server/github/oauth";
 
 /**
  * Start connecting GitHub. `public_repo` is the narrowest scope that can create a public repository and
@@ -16,10 +16,10 @@ export async function GET(request: Request) {
   try {
     session = await requireSession();
   } catch {
-    return NextResponse.redirect(new URL("/", request.url));
+    return redirectToPath("/");
   }
   const config = githubConfig();
-  if (!config) return NextResponse.redirect(new URL(`${returnTo}${returnTo.includes("?") ? "&" : "?"}github=unavailable`, request.url));
+  if (!config) return redirectToPath(returnTo, { github: "unavailable" });
   const { state, cookie } = await newState(session.user.id, returnTo);
   const authorize = new URL("https://github.com/login/oauth/authorize");
   authorize.searchParams.set("client_id", config.clientId);
