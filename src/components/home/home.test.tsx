@@ -19,12 +19,12 @@ describe("CreditsPill", () => {
   });
   it("shows the real ledger balance when there is some", () => {
     render(<CreditsPill balanceGd={null} usdPerGd={null} balanceMicro={2_500_000} />);
-    expect(screen.getByText("$2.50")).toBeInTheDocument();
+    expect(screen.getByText("250 credits")).toBeInTheDocument();
   });
   it("shows G$ and USD when live", () => {
     render(<CreditsPill balanceGd={120} usdPerGd={0.000112} />);
     expect(screen.getByText("120 G$")).toBeInTheDocument();
-    expect(screen.getByText("≈ $0.01")).toBeInTheDocument();
+    expect(screen.getByText("≈ 1 credit")).toBeInTheDocument();
     expect(screen.queryByText("Top up")).not.toBeInTheDocument();
   });
   it("warns with a top-up link at 10 G$ or less", () => {
@@ -96,7 +96,7 @@ describe("home prompt and empty state", () => {
 
   it("shows the free-credit hint before credits exist", () => {
     render(<Home />);
-    expect(screen.getByText("$0.20 of AI free")).toBeInTheDocument();
+    expect(screen.getByText("20 credits of AI free")).toBeInTheDocument();
   });
 
   it("disables Build it at zero credits with the top-up message", async () => {

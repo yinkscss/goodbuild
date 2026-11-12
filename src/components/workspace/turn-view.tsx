@@ -6,7 +6,7 @@ import { ArrowUpRight, Check, Eye, Hexagon, RotateCw, Wrench } from "lucide-reac
 import { DeployButton, useDeployAction } from "@/components/deploy/deploy-trigger";
 import { Button } from "@/components/ui/button";
 import { chainLabel } from "@/lib/deploy/explorer";
-import { formatMicroUsd } from "@/lib/pricing";
+import { formatCredits } from "@/lib/credits-math";
 import type { Step, TurnRecord } from "@/lib/turn-types";
 import { formatClock, useElapsed, WaitNote, WaveDots } from "@/components/ui/wait";
 import { cn } from "@/lib/utils";
@@ -349,7 +349,7 @@ export function TurnView({
         <p className="mt-2 text-[11px] text-grey-400">
           {record.version ? `Saved as v${record.version}` : ""}
           {record.version && record.chargedMicro > 0 ? " · " : ""}
-          {record.chargedMicro > 0 ? `${formatMicroUsd(record.chargedMicro)} of AI` : ""}
+          {record.chargedMicro > 0 ? `${formatCredits(record.chargedMicro)} of AI` : ""}
         </p>
       )}
     </div>

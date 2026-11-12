@@ -3,7 +3,7 @@
 import * as React from "react";
 import { ArrowUp, Loader2, Square } from "lucide-react";
 
-import { formatMicroUsd } from "@/lib/pricing";
+import { formatCredits } from "@/lib/credits-math";
 import type { AssetInfo, AssetKind } from "@/server/agent/assets";
 import { START_BUILDING_TEXT } from "@/lib/plan";
 import { TopUpPill } from "@/components/credits/top-up-pill";
@@ -325,8 +325,8 @@ export function Composer({
         </div>
         </div>
         <div className="ml-auto flex items-center gap-2 sm:gap-3">
-          <span className="text-xs text-grey-400" title="Estimated charge for this request: AI cost + 25%. Each new account gets $0.20 of AI free.">
-            ≈ {formatMicroUsd(est)} {running ? "· runs after this build" : ""}
+          <span className="text-xs text-grey-400" title="Estimated charge for this request: AI cost + 25%. Each new account gets 20 credits of AI free.">
+            ≈ {formatCredits(est)} {running ? "· runs after this build" : ""}
           </span>
           {running && onStop && (
             // Secondary pill (DESIGN_SYSTEM §3): white, shadow-card, no border.

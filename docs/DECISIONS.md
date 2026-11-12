@@ -1126,3 +1126,11 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
   - A real model building a game with the shop and extras.
   - The owner's setup on a deployed `GameShop` (G$ inside MiniPay itself was tested on a phone by the owner).
   - Whether DeepSeek keeps purchases fair as the guide asks.
+
+### D97. Credits are shown as credits, not dollars: 1 credit = $0.01 (display only; amends D51)
+
+- **Decided by:** the owner, 2026-11-12.
+- **Why:** a dollar balance invites people to compare every build against other tools' prices and feels stingier than a count of credits. Credits are our own unit, so a promo or a cost change moves what a build costs in credits, not what the balance "is in dollars".
+- **What changed:** screens show whole credits (100 credits = $1): the balance pills and nav hint, the Credits page, Add credits (amounts, presets and the "plus bonus" line), the top-up pill, the per-build estimate and "N credits of AI" in the chat, and the free-start copy (20 credits free, 50 more when verified). `src/lib/credits-math.ts` has `MICRO_PER_CREDIT`, `microToCredits`, `formatCredits` and `formatCreditsShort`; they replace `formatMicroUsd`, `formatUsd` and the inline `toFixed(2)` calls.
+- **What did not change:** the ledger, quotes, holds, caps, the contract and billing all stay in micro-USD (D51). Nothing is stored in credits.
+- **Left as dollars on purpose:** the naira buy dialog's fee lines (they are real money), blog posts, and `CAP_MESSAGE` in `server/credits/cap.ts` (a test pins it to the earlier wording; change both together later).
