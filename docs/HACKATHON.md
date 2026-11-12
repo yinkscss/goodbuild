@@ -6,7 +6,8 @@ Status: page built (D98). Credit claims built (D99): 20 credits on registering, 
 - Code: `src/app/hackathon/page.tsx`, pieces in `src/components/hackathon/`. All copy and numbers live in `content.ts`. Prize split, dates, tracks, team size and partner links there are **DRAFT** until the owner confirms. A test checks the prizes add up to 1,000,000 G$.
 - Styles: `hackathon.css`, plain global CSS with every class prefixed `hk-`, mapped in `styles.ts`. CSS modules don't work in this repo because the Turbopack rule in `next.config.ts` renames every `*.css` file.
 - Registration uses what already exists: the sign-in modal (with its 18+ and not-a-US-person attestation), then GoodDollar face verification through `useGoodIdVerify` (shared with the workspace's `VerifyCard`). The server re-reads the Identity contract (`/api/account/goodid`). Step 3 claims credits through `POST /api/hackathon` (`src/server/hackathon/claim.ts`).
-- Partner links: set `href` on each entry in `PARTNERS`.
+- Partner links: set `href` on each entry in `PARTNERS` (GoodCash and GoodBuild are linked; Jara is not yet).
+- Entries must start on GoodBuild, whose first commit they carry; builders may then continue through GitHub sync (D101). Not checked in code until submissions exist.
 
 ## 2. Granting hackathon credits without being gamed (D99)
 What stops abuse is that **every grant is keyed to a GoodDollar identity root, not a wallet or an account**, and the chain decides what that root is.

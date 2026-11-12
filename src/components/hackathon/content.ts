@@ -50,10 +50,10 @@ export const TIMELINE: Array<{ when: string; title: string; body: string; now?: 
   { when: "22 Feb", title: "Demo day", body: "Finalists present. Winners paid in G$." },
 ];
 
-/** Partner links are not in yet: `href: null` shows "Link coming soon". */
+/** Partners without a link yet have `href: null`, which shows "Link coming soon". */
 export const PARTNERS: Array<{ name: [string, string?]; role: string; body: string; href: string | null; lead?: boolean }> = [
   { name: ["Good", "Cash"], role: "Money partner", body: "Prizes and builder credits move through GoodCash.", href: "https://goodcash.xyz/", lead: true },
-  { name: ["Good", "Build"], role: "Host and sponsor", body: "The AI dApp builder for Celo. Verified entrants get free build credits.", href: null },
+  { name: ["Good", "Build"], role: "Host and sponsor", body: "The AI dApp builder for Celo. Every entry starts here, and verified entrants get free build credits.", href: "https://goodbuildit.xyz/" },
   { name: ["Jara"], role: "Sponsor", body: "Sponsor of the GoodBuild Million Hackathon.", href: null },
 ];
 
@@ -61,6 +61,7 @@ export const RULES: Array<{ ok: boolean; text: string }> = [
   { ok: true, text: "18 or older, verified once with GoodDollar." },
   { ok: true, text: "One verified wallet per person. Teams of up to 4." },
   { ok: true, text: "Your entry is deployed on Celo and signed from your own wallet." },
+  { ok: true, text: "Start your entry on GoodBuild: its first commit comes from GoodBuild. Then connect GitHub and keep building wherever you like." },
   { ok: true, text: "New work started after 8 Jan. Open source is welcome." },
   { ok: false, text: "No betting, gambling or sports-betting apps." },
   { ok: false, text: "Not open to US persons." },
@@ -75,7 +76,10 @@ export const FAQ: Array<{ q: string; a: string }> = [
     q: "What do the build credits pay for?",
     a: "Credits pay for building on GoodBuild: prompts, code generation and previews. Deploys are signed in your wallet, so you pay Celo gas yourself.",
   },
-  { q: "Do I have to build with GoodBuild?", a: "No. You can write the code yourself. The credits are there to help you move faster." },
+  {
+    q: "Do I have to build with GoodBuild?",
+    a: "You have to start there. Your entry's first commit must come from GoodBuild. After that, connect GitHub in GoodBuild and keep building in any editor you like.",
+  },
   { q: "How are prizes paid?", a: "In G$ on Celo, to the verified wallet that registered the entry." },
 ];
 
