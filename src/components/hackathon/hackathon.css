@@ -1128,3 +1128,23 @@
     transition: none !important;
   }
 }
+.hk-ghostLight {
+  background: none;
+  border: 0;
+  padding: 4px 0;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.hk-ghostLight:disabled,
+.hk-cta:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.hk-cta {
+  border: 0;
+  cursor: pointer;
+}

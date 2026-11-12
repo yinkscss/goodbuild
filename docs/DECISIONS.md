@@ -1142,3 +1142,21 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - **Credit grants (not built):** one ledger entry per GoodDollar root (`hackathon-2027:<root>` as the idempotency key), the chain re-read at claim time, credits only spendable on GoodBuild AI, paid in two parts, expiring at the deadline, with a total budget. Details and limits: docs/HACKATHON.md §2.
 - **Checked:** type check, lint, the content test (the prizes add up to the pool) and the VerifyCard tests pass. The page was opened in a local dev server at 1440px and 390px, with no sideways scroll.
 - **UNVERIFIED:** a real face check from this page, signed-in states on the live site, and the hackathon's dates, prize split and partner details.
+
+### D99. Hackathon credits: 50 per builder in two parts, one grant per GoodDollar root
+
+- **Decided by:** the owner on 12 Nov 2026: the two-part option, about 100 builders, 50 credits each (down from 500, which a ~$30 budget couldn't cover). The 20 + 30 split is Claude's choice.
+- **What:**
+  - 20 credits on registering.
+  - 30 more after the first deploy on Celo or Celo Sepolia made after registering.
+  - A 5,000-credit total cap (`HACKATHON_BUDGET_CREDITS`).
+  - Claims close on 8 Feb 2027 (DRAFT) and can be paused with `HACKATHON_CLAIMS=off`.
+  - Hackathon builders top up like anyone else: the grant is an `adjust` entry on the same ledger balance.
+- **Against abuse:**
+  - The root is read from the chain at claim time.
+  - It's unique in `hackathon_registrations`, and the ledger idempotency keys are built from it.
+  - Budget and grants run under one advisory lock.
+  - The deploy part counts only server-verified deployments.
+- **Checked:** five claim tests on PGlite: unverified refused, replay pays once, second account on the same root refused, deploy part only after a later Celo deploy, and budget, deadline and off switch. Also the API and proxy tests and the type check.
+- **UNVERIFIED:** a real claim on the live site with a verified wallet, and the race tests on real Postgres (run with `TEST_DATABASE_URL`).
+- **Not built:** expiry of unused grants, and an admin view.

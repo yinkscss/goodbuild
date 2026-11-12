@@ -27,6 +27,7 @@ export const styles = {
   finaleRow: "hk-finaleRow",
   footer: "hk-footer",
   ghostmark: "hk-ghostmark",
+  ghostLight: "hk-ghostLight",
   go: "hk-go",
   grow: "hk-grow",
   ic: "hk-ic",

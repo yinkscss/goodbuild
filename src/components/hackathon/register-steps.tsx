@@ -11,12 +11,12 @@ import { LINK_WALLET_GUIDE } from "@/lib/goodid";
 import { cn } from "@/lib/utils";
 
 import { styles } from "./styles";
+import { DEPLOY_CREDITS, START_CREDITS, useHackathonClaim } from "./use-hackathon-claim";
 
 /**
  * Register in three moves: sign in with a wallet (the existing modal, which also takes the 18+ and
- * not-a-US-person attestation), verify with GoodDollar (the chain decides, D30), then credits.
- * Step 3 only shows that the person qualifies. Granting hackathon credits is not built yet:
- * see docs/HACKATHON.md for the plan.
+ * not-a-US-person attestation), verify with GoodDollar (the chain decides, D30), then claim
+ * hackathon credits (D99: one grant per GoodDollar root, in two parts).
  */
 export function RegisterSteps() {
   const auth = useAuth();
@@ -27,10 +27,13 @@ export function RegisterSteps() {
   const confettiRef = React.useRef<HTMLCanvasElement>(null);
   const returning = React.useRef(typeof window !== "undefined" && new URL(window.location.href).searchParams.has("isVerified"));
 
+  const celebrate = React.useCallback(() => burst(confettiRef.current), []);
+  const claim = useHackathonClaim(user && verified ? user.id : null, celebrate);
+
   const { busy, note, showLinkGuide, verify } = useGoodIdVerify(
     () => {
       setVerifiedHere(true);
-      burst(confettiRef.current);
+      void claim.run();
     },
     () => `${window.location.origin}${window.location.pathname}`,
   );
@@ -108,21 +111,38 @@ export function RegisterSteps() {
         <div className={cn(styles.card, styles.step, styles.final, verified ? cn(styles.done, styles.active) : styles.locked)}>
           <div className={styles.n}>3</div>
           <h3>Get build credits</h3>
-          <p>Credits land in your GoodBuild account once you are verified. Use them to build and deploy your entry.</p>
-          <div className={styles.act}>
-            {verified ? (
-              <>
-                <div className={styles.finalBig}>
-                  You&apos;re <span>in</span>
-                </div>
-                <span className={styles.status} style={{ color: "rgba(255,255,255,.8)" }}>
-                  Hackathon credits arrive when building opens.
-                </span>
-              </>
-            ) : (
+          <p>
+            {START_CREDITS} credits when you register, and {DEPLOY_CREDITS} more after your first deploy on Celo. Top up any time like everyone else.
+          </p>
+          <div className={styles.act} aria-live="polite">
+            {!verified ? (
               <span className={styles.status} style={{ color: "rgba(255,255,255,.7)" }}>
                 Unlocks after step 2
               </span>
+            ) : claim.status?.registered ? (
+              <>
+                <div className={styles.finalBig}>
+                  {claim.status.startCredits + claim.status.deployCredits} <span>credits</span>
+                </div>
+                <span className={styles.status} style={{ color: "rgba(255,255,255,.8)" }}>
+                  {claim.status.deployPending ? `Deploy your entry on Celo to unlock ${DEPLOY_CREDITS} more.` : "All hackathon credits collected."}
+                </span>
+                {claim.status.deployPending && (
+                  <button type="button" className={styles.ghostLight} disabled={claim.busy} onClick={() => void claim.run()}>
+                    {claim.busy ? "Checking…" : "I've deployed, check again"}
+                  </button>
+                )}
+              </>
+            ) : (
+              <button type="button" className={styles.cta} disabled={claim.busy || claim.status === null} onClick={() => void claim.run()}>
+                {claim.busy ? "Registering…" : `Claim ${START_CREDITS} credits`}
+                <span className={styles.disc}>{claim.busy ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <ArrowRight className="size-4" aria-hidden />}</span>
+              </button>
+            )}
+            {claim.error && (
+              <p className={styles.error} role="alert" style={{ color: "#FFD1EF" }}>
+                {claim.error}
+              </p>
             )}
           </div>
         </div>

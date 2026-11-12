@@ -17,8 +17,9 @@ import * as settingsSchema from "./settings-schema";
 import * as onchainCreditsSchema from "./onchain-credits-schema";
 import * as creditQuotesSchema from "./credit-quotes-schema";
 import * as githubSchema from "./github-schema";
+import * as hackathonSchema from "./hackathon-schema";
 
-const schema = { ...coreSchema, ...deploySchema, ...publishSchema, ...appDataSchema, ...settingsSchema, ...onchainCreditsSchema, ...creditQuotesSchema, ...githubSchema };
+const schema = { ...coreSchema, ...deploySchema, ...publishSchema, ...appDataSchema, ...settingsSchema, ...onchainCreditsSchema, ...creditQuotesSchema, ...githubSchema, ...hackathonSchema };
 
 /** Driver-agnostic handle: postgres-js in production, PGlite in dev and tests. */
 export type Db = PgDatabase<PgQueryResultHKT, typeof schema>;
