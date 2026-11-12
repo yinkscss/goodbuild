@@ -52,7 +52,7 @@ export const TIMELINE: Array<{ when: string; title: string; body: string; now?: 
 
 /** Partner links are not in yet: `href: null` shows "Link coming soon". */
 export const PARTNERS: Array<{ name: [string, string?]; role: string; body: string; href: string | null; lead?: boolean }> = [
-  { name: ["Good", "Cash"], role: "Money partner", body: "Prizes and builder credits move through GoodCash.", href: null, lead: true },
+  { name: ["Good", "Cash"], role: "Money partner", body: "Prizes and builder credits move through GoodCash.", href: "https://goodcash.xyz/", lead: true },
   { name: ["Good", "Build"], role: "Host and sponsor", body: "The AI dApp builder for Celo. Verified entrants get free build credits.", href: null },
   { name: ["Jara"], role: "Sponsor", body: "Sponsor of the GoodBuild Million Hackathon.", href: null },
 ];

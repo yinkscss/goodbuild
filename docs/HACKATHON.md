@@ -26,8 +26,13 @@ What stops abuse is that **every grant is keyed to a GoodDollar identity root, n
 
 The same root-keyed rule should drive the community vote (one vote per root) and prize payouts (to the root's verified wallet).
 
-## 3. Prizes in G$ (UNVERIFIED)
-The dollar value of 1,000,000 G$ depends on G$'s market price, which hasn't been checked here. Before launch, confirm what the pool is worth and whether "$1 million" anywhere in marketing means 1,000,000 G$ (the page says G$).
+## 3. Prizes in G$
+The owner puts 1,000,000 G$ at about ₦150,000 (12 Nov 2026). So the page and all marketing say "1,000,000 G$" and never "$1 million".
+
+## 3a. Owner's numbers so far (12 Nov 2026)
+- **500 credits per verified builder**, which is $5 at D97's 1 credit = $0.01.
+- **Total budget:** not set. The owner mentioned about $30 of DeepSeek and Anthropic spend. Credits are billed at cost plus 25% (D13), so $30 of provider cost covers about 3,750 credits: **7 builders at 500 each**. The per-builder amount and the budget have to be reconciled before launch.
+- **Refills:** hackathon builders top up like anyone else. The grant is one ledger entry on the same balance. If unused grant credits expire (§2.6), only the unspent part of the grant is removed, never credits someone bought.
 
 ## 4. Needs the owner
 - Credits per verified builder, and the split between the two parts (§2.5).
