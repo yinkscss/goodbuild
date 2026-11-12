@@ -161,25 +161,28 @@ async function Stats() {
         ) : (
           <ul className="mt-6 divide-y divide-hairline">
             {stats.contracts.slice(0, CONTRACTS_SHOWN).map((c) => (
-              <li key={c.address} className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 py-3 text-sm">
-                <span className="min-w-0">
-                  <span className="block truncate font-medium">{c.name}</span>
+              <li key={c.address} className="flex flex-col gap-2 py-4 text-sm md:flex-row md:items-center md:justify-between md:gap-6 md:py-3">
+                <div className="min-w-0">
+                  <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                    <span className="max-w-full truncate font-medium">{c.name}</span>
+                    {c.sourceChecked && (
+                      <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-success/10 px-2.5 py-0.5 text-[12px] font-medium text-success">
+                        <Check className="size-3" aria-hidden /> Source code checked
+                      </span>
+                    )}
+                  </div>
                   <span className="text-grey-600">{day(c.deployedAt)}</span>
-                </span>
-                <span className="flex flex-wrap items-center gap-3">
-                  {c.sourceChecked && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-success/10 px-3 py-1 text-[13px] font-medium text-success">
-                      <Check className="size-3.5" aria-hidden /> Source code checked
-                    </span>
-                  )}
+                </div>
+                <div className="flex shrink-0 items-center gap-4">
                   <a href={explorerAddressUrl(chainId, c.address)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-mono text-[13px] text-violet hover:underline">
                     {shortAddress(c.address)} <ExternalLink className="size-3.5" aria-hidden />
                     <span className="sr-only">(opens Celoscan)</span>
                   </a>
-                  <a href={explorerTxUrl(chainId, c.txHash)} target="_blank" rel="noreferrer" className="text-[13px] text-grey-600 hover:text-violet">
-                    Transaction
+                  <a href={explorerTxUrl(chainId, c.txHash)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[13px] text-grey-600 hover:text-violet">
+                    Transaction <ExternalLink className="size-3.5" aria-hidden />
+                    <span className="sr-only">(opens Celoscan)</span>
                   </a>
-                </span>
+                </div>
               </li>
             ))}
           </ul>

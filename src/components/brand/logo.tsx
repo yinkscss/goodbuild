@@ -19,9 +19,9 @@ export function LogoMark({ className }: { className?: string }) {
 
 export function Logo({ href = "/", wordmarkClassName }: { href?: string; wordmarkClassName?: string }) {
   return (
-    <Link href={href} className="flex items-center gap-2.5 rounded-full" aria-label="GoodBuild home">
+    <Link href={href} className="flex shrink-0 items-center gap-2.5 rounded-full" aria-label="GoodBuild home">
       <LogoMark />
-      <span className={cn("text-lg font-semibold tracking-tight", wordmarkClassName)}>GoodBuild</span>
+      <span className={cn("text-lg font-semibold tracking-tight whitespace-nowrap", wordmarkClassName)}>GoodBuild</span>
     </Link>
   );
 }
