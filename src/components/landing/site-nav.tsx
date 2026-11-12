@@ -12,7 +12,7 @@ export function SiteNav() {
         <Logo />
         <nav
           aria-label="Main"
-          className="absolute left-1/2 hidden -translate-x-1/2 gap-9 text-sm text-ink/60 lg:flex"
+          className="absolute left-1/2 hidden -translate-x-1/2 gap-6 text-sm whitespace-nowrap text-ink/60 lg:flex xl:gap-9"
         >
           {NAV_LINKS.map((l) => (
             <Link key={l.href} href={l.href} className="rounded-full transition-colors duration-200 ease-gb hover:text-violet">

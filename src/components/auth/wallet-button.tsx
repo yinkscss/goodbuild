@@ -54,7 +54,9 @@ export function WalletButton({
     return (
       <Button variant="primary" className={className} disabled aria-live="polite">
         <Loader2 className="animate-spin" aria-hidden />
-        Check your wallet
+        <span>
+          Check <span className="max-sm:hidden">your</span> wallet
+        </span>
       </Button>
     );
   }
@@ -63,7 +65,9 @@ export function WalletButton({
     return (
       <Button variant="primary" className={className} onClick={openConnect}>
         <span className="size-1.5 rounded-full bg-pink" aria-hidden />
-        Connect wallet
+        <span>
+          Connect{" "}<span className="max-sm:hidden">wallet</span>
+        </span>
       </Button>
     );
   }
@@ -144,7 +148,7 @@ function AccountMenu({
               <span className="size-1.5 rounded-full bg-pink" aria-hidden />
               <span className="font-mono text-[13px] whitespace-nowrap">{shortAddress(wallet.address)}</span>
               {showNetwork && wallet.chainId !== null && (
-                <span className="rounded-full bg-tint px-2 py-0.5 text-[11px] font-semibold text-violet">
+                <span className="rounded-full bg-tint px-2 py-0.5 text-[11px] font-semibold text-violet max-sm:hidden">
                   {chainName(wallet.chainId)}
                 </span>
               )}
