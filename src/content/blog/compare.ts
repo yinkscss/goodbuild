@@ -207,10 +207,10 @@ export const comparePosts: Post[] = [
         ],
       },
       { heading: "What non-developers should check", bullets: ["Plain-language errors, not stack traces.", "A clear estimate before each build.", "A way to ask for changes in the chat.", "A free start so you can try before paying."] },
-      { heading: "In GoodBuild", paragraphs: ["It asks questions before the first build, shows the estimated cost before each one, and gives new accounts $0.20 of AI free. See [the free AI builder guide](/blog/free-ai-app-builder)."] },
+      { heading: "In GoodBuild", paragraphs: ["It asks questions before the first build, shows the estimated cost before each one, and gives new accounts 20 credits of AI free. See [the free AI builder guide](/blog/free-ai-app-builder)."] },
     ],
     faq: [
-      { q: "Is there a free way to try a Base44 alternative?", a: "GoodBuild gives new accounts $0.20 of AI free. Other tools have their own starts, so check their sites." },
+      { q: "Is there a free way to try a Base44 alternative?", a: "GoodBuild gives new accounts 20 credits of AI free. Other tools have their own starts, so check their sites." },
       { q: "Can a non-developer build a blockchain app?", a: "Yes, by describing the rules. You still need to test it and have anything that holds real money reviewed." },
       { q: "What if I need user accounts and a database?", a: "Check that before choosing. GoodBuild apps have no separate server of their own for now, though forms and saved data are supported." },
     ],
