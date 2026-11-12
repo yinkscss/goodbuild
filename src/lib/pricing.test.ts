@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { chargedMicro, costMicro, estimateTurnMicro, formatMicroUsd, priceFor } from "./pricing";
+import { chargedMicro, costMicro, estimateTurnMicro, priceFor } from "./pricing";
 
 describe("pricing", () => {
   it("prices Sonnet 5.5 at $2 / $10 per MTok", () => {
@@ -39,10 +39,5 @@ describe("pricing", () => {
     // A first build with ~40K chars of context lands in the tens of cents.
     expect(first).toBeGreaterThan(100_000);
     expect(first).toBeLessThan(1_000_000);
-  });
-
-  it("formats micro-USD", () => {
-    expect(formatMicroUsd(123_456)).toBe("$0.12");
-    expect(formatMicroUsd(4_000)).toBe("< $0.01");
   });
 });

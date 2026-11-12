@@ -6,6 +6,7 @@ import { NetworkNotice } from "@/components/home/home-prompt";
 import { RecentBuilds, RecentBuildsSkeleton } from "@/components/home/projects";
 import { HomeTopBar } from "@/components/home/top-bar";
 import { Button } from "@/components/ui/button";
+import { formatCreditsShort } from "@/lib/credits-math";
 import { cn } from "@/lib/utils";
 import { getCredits } from "@/server/credits";
 import { availableMicro } from "@/server/credits/available";
@@ -29,7 +30,7 @@ async function CreditsHint() {
   const session = await loadSession();
   const balanceMicro = await availableMicro(await getDb(), session.user.id, (await getCredits(session.user.id)).balanceMicro);
   if (balanceMicro === null) return null;
-  return <span className="text-[11px] font-medium text-grey-600">${(balanceMicro / 1_000_000).toFixed(2)}</span>;
+  return <span className="text-[11px] font-medium text-grey-600">{formatCreditsShort(balanceMicro)}</span>;
 }
 
 async function SidebarRecent() {

@@ -36,7 +36,7 @@ const SITE_JSON_LD = [
     applicationCategory: "DeveloperApplication",
     operatingSystem: "Web",
     description: "An AI app builder that writes the smart contract and front end for dApps, MiniPay apps, games and websites on Celo. You sign the deploy from your own wallet.",
-    offers: { "@type": "Offer", price: "0", priceCurrency: "USD", description: "New accounts get $0.20 of AI free." },
+    offers: { "@type": "Offer", price: "0", priceCurrency: "USD", description: "New accounts get 20 credits of AI free." },
   },
 ];
 

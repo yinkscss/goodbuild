@@ -81,9 +81,3 @@ export function formatGd(amount: number): string {
   if (abs >= 10_000) return fmt(amount / 1_000, "K");
   return `${amount.toLocaleString("en-US", { maximumFractionDigits: 2 })} G$`;
 }
-
-/** "≈ $0.02"; tiny amounts show "< $0.01". */
-export function formatUsd(amount: number): string {
-  if (amount > 0 && amount < 0.01) return "< $0.01";
-  return `≈ $${amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}

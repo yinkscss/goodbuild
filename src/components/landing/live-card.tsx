@@ -1,7 +1,7 @@
 import { Check } from "lucide-react";
 
 const FACTS = [
-  { title: "Free to start", body: "$0.20 of AI on every new account, then add credits with G$." },
+  { title: "Free to start", body: "20 credits of AI on every new account, then add credits with G$." },
   { title: "Your wallet signs", body: "GoodBuild never holds your keys." },
   { title: "Your own address", body: "Publish your app with one link to share." },
 ];

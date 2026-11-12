@@ -58,10 +58,3 @@ export function estimateTurnMicro(input: EstimateInput, strongModel = "claude-so
   const inputTokens = calls * context + Math.ceil((calls * output) / 2);
   return chargedMicro(costMicro(strongModel, { inputTokens, outputTokens: output }));
 }
-
-/** "$0.12", "< $0.01". */
-export function formatMicroUsd(micro: number): string {
-  const usd = micro / MICRO;
-  if (usd > 0 && usd < 0.01) return "< $0.01";
-  return `$${usd.toFixed(2)}`;
-}

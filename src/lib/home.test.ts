@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { creditState, formatGd, formatUsd, greetingFor, projectStatusMeta, relativeTime } from "./home";
+import { creditState, formatGd, greetingFor, projectStatusMeta, relativeTime } from "./home";
 
 const at = (h: number) => new Date(2026, 10, 4, h, 0, 0);
 
@@ -55,8 +55,5 @@ describe("formatting", () => {
     expect(formatGd(120)).toBe("120 G$");
     expect(formatGd(12_500)).toBe("12.5K G$");
     expect(formatGd(2_480_000)).toBe("2.48M G$");
-    expect(formatUsd(0.0134)).toBe("≈ $0.01");
-    expect(formatUsd(0.004)).toBe("< $0.01");
-    expect(formatUsd(4.2)).toBe("≈ $4.20");
   });
 });

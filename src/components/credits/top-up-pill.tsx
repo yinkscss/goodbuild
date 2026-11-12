@@ -4,6 +4,7 @@ import * as React from "react";
 import { Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { formatCredits } from "@/lib/credits-math";
 import { UNITS, estimateGdWei, formatGd, useBuyCredits, useCreditsInfo } from "./use-buy-credits";
 
 /** What one build reserves (RESERVED_PER_BUILD_MICRO in server/credits/cap.ts): the amount a person needs on hand to start one. */
@@ -11,7 +12,7 @@ const BUILD_RESERVE_MICRO = 350_000;
 
 /**
  * Shown in the chat when a build can't run because the AI credit is used up. It says the exact amount that would
- * cover the build (the build reserve less what is left, never under the $0.35 minimum), prices it in G$, and one click
+ * cover the build (the build reserve less what is left, never under the 35-credit minimum), prices it in G$, and one click
  * signs the payment. When the credit lands, `onPaid` retries the build.
  */
 export function TopUpPill({ onPaid }: { onPaid?: () => void }) {
@@ -31,12 +32,12 @@ export function TopUpPill({ onPaid }: { onPaid?: () => void }) {
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-block bg-tint px-4 py-3 text-sm" role="status">
       <p className="min-w-0 flex-1">
         {phase.name === "done" ? (
-          <b>Added ${(phase.addedMicro / UNITS).toFixed(2)}. You can keep building.</b>
+          <b>Added {formatCredits(phase.addedMicro)}. You can keep building.</b>
         ) : phase.name === "error" ? (
           <span className="text-warning">{phase.message}</span>
         ) : (
           <>
-            Add <b>${(amountMicro / UNITS).toFixed(2)}</b> to keep building{gd ? <> (about <b>{formatGd(gd)} G$</b>)</> : null}.{" "}
+            Add <b>{formatCredits(amountMicro)}</b> to keep building{gd ? <> (about <b>{formatGd(gd)} G$</b>)</> : null}.{" "}
             <span className="text-grey-600">Keep about 0.1 CELO in your wallet for the network fee.</span>
           </>
         )}

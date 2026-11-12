@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { AddCredits } from "@/components/credits/add-credits";
 import { AppShell } from "@/components/home/app-shell";
 import { RowsSkeleton, Shimmer, SlowLoadNote } from "@/components/ui/wait";
+import { formatCredits } from "@/lib/credits-math";
 import { chainName } from "@/lib/format";
 import { relativeTime } from "@/lib/home";
 import { getCredits } from "@/server/credits";
@@ -12,8 +13,6 @@ import { getDb } from "@/server/db/client";
 import { loadSession } from "@/server/home-data";
 
 export const metadata = { title: "Credits · GoodBuild" };
-
-const usd = (micro: number) => `$${(micro / 1_000_000).toFixed(2)}`;
 
 /** The balance, the Add credits flow (G$ against a signed quote) and the latest top-ups. */
 export default function CreditsPage() {
@@ -59,8 +58,8 @@ async function CreditsBody() {
       <div className="mt-8 flex flex-col gap-4 rounded-card bg-surface p-6 shadow-card sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-xs font-semibold tracking-[.14em] text-grey-400 uppercase">Available</p>
-          <p className="display mt-1 text-[40px] font-extrabold">{totalMicro === null ? "Unavailable" : usd(totalMicro)}</p>
-          <p className="mt-1 text-sm text-grey-600">{balanceMicro === null ? "We couldn't read your balance. Reload to try again." : freeMicro === null ? `${usd(balanceMicro)} paid credit, plus unlimited free AI. Each build uses a few cents.` : `${usd(balanceMicro)} paid credit + ${usd(freeMicro)} free AI left. Free AI is used first. Each build uses a few cents.`}</p>
+          <p className="display mt-1 text-[40px] font-extrabold">{totalMicro === null ? "Unavailable" : formatCredits(totalMicro)}</p>
+          <p className="mt-1 text-sm text-grey-600">{balanceMicro === null ? "We couldn't read your balance. Reload to try again." : freeMicro === null ? `${formatCredits(balanceMicro)} paid, plus unlimited free AI. Each build uses a few credits.` : `${formatCredits(balanceMicro)} paid + ${formatCredits(freeMicro)} of free AI left. Free AI is used first. Each build uses a few credits.`}</p>
         </div>
         <AddCredits />
       </div>
@@ -80,7 +79,7 @@ async function CreditsBody() {
                 {relativeTime(t.createdAt, now)} <span aria-hidden>· </span>
                 {chainName(t.chainId)}
               </span>
-              <b className="font-semibold">+{usd(t.amountMicro)}</b>
+              <b className="font-semibold">+{formatCredits(t.amountMicro)}</b>
             </li>
           ))}
         </ul>

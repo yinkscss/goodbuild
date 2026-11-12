@@ -142,7 +142,7 @@ export default async function BlogPostPage({ params }: PageProps<"/blog/[slug]">
         <aside className="mt-4 flex flex-col items-start justify-between gap-6 rounded-card bg-violet p-8 text-white shadow-card md:flex-row md:items-center md:p-12">
           <div className="max-w-xl">
             <p className="display text-[28px] font-bold">Describe it. Sign it. Ship it.</p>
-            <p className="mt-3 text-sm text-white/80">New accounts get $0.20 of AI free. For people 18 and over, not available to US persons.</p>
+            <p className="mt-3 text-sm text-white/80">New accounts get 20 credits of AI free. For people 18 and over, not available to US persons.</p>
           </div>
           <Link href="/#build" className="rounded-full bg-ink px-6 py-3 text-sm font-medium text-white">
             Start building

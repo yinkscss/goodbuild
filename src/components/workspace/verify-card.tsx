@@ -90,7 +90,7 @@ export function VerifyCard({ onVerified }: { onVerified: () => unknown }) {
         <BadgeCheck className="size-4 shrink-0 text-violet" aria-hidden />
         Verify to keep building
       </p>
-      <p className="mt-1 text-grey-600">You&apos;ve used your free $0.20 of AI. Verify with GoodDollar, a quick face check, to get $0.50 more.</p>
+      <p className="mt-1 text-grey-600">You&apos;ve used your free 20 credits of AI. Verify with GoodDollar, a quick face check, to get 50 more credits.</p>
       <div className="mt-3 flex flex-wrap items-center gap-3">
         <Button variant="primary" size="sm" disabled={busy} onClick={() => void verify()}>
           {busy && <Loader2 className="animate-spin motion-reduce:animate-none" />}

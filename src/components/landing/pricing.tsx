@@ -13,7 +13,7 @@ export function Pricing() {
             <p className="display mt-3 text-[58px] font-extrabold text-violet">Free</p>
           </div>
           <p className="max-w-md text-sm text-grey-600">
-            Every new account gets $0.20 of AI free, which covers a few small builds or one
+            Every new account gets 20 credits of AI free, which covers a few small builds or one
             larger one. On a test network, tokens are free and nothing spends real money.
           </p>
         </article>

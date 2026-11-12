@@ -52,7 +52,7 @@ export function HomePrompt({ balanceGd }: { balanceGd: number | null }) {
       ref={ref}
       chips={chips}
       chipsPlacement="below"
-      hint={state === "preview" ? "$0.20 of AI free" : undefined}
+      hint={state === "preview" ? "20 credits of AI free" : undefined}
       creditsLabel={undefined}
       mainnetEnabled={mainnetAllowed}
       disabled={state === "empty"}
