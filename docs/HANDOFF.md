@@ -5,6 +5,9 @@ Written 4 Nov 2026 at the end of the first build session (claude.ai), for whoeve
 ## GitHub sync (11 Nov 2026, D96, branch `claude/nice-mayer-dlol5t`)
 A GitHub logo in the workspace top bar and a Settings → GitHub tab. Connect once (OAuth, `public_repo`), then one tap creates a public repo for the app and pushes it to `main`; every new version (turn, revert, network switch) is pushed after that. One way, never a force push: if `main` has commits GoodBuild didn't write, sync pauses and the person chooses to replace. Design and limits: D96. **Needs the owner:** create a GitHub OAuth App (callback `https://goodbuildit.xyz/api/github/callback`) and set `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` in `.env.production`, then `up -d web worker`; run migration 0017. **UNVERIFIED:** everything against real GitHub (tests use a mocked `fetch`).
 
+## Hackathon page (12 Nov 2026, D98, branch `claude/nifty-einstein-da5v5l`)
+A public page at `/hackathon` for the 1,000,000 G$ hackathon. Registration reuses sign-in and GoodDollar verification; **granting hackathon credits is not built**. The plan and the owner's open questions: [HACKATHON.md](HACKATHON.md).
+
 ## Start here (5 Nov 2026)
 **Live:** https://goodbuildit.xyz, on one VPS with Cloudflare in front. How it runs, how to reach it and what not to break: [DEPLOY.md](DEPLOY.md). Merging a PR to `main` deploys it, so every merge is a release.
 

@@ -1134,3 +1134,11 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - **What changed:** screens show whole credits (100 credits = $1): the balance pills and nav hint, the Credits page, Add credits (amounts, presets and the "plus bonus" line), the top-up pill, the per-build estimate and "N credits of AI" in the chat, and the free-start copy (20 credits free, 50 more when verified). `src/lib/credits-math.ts` has `MICRO_PER_CREDIT`, `microToCredits`, `formatCredits` and `formatCreditsShort`; they replace `formatMicroUsd`, `formatUsd` and the inline `toFixed(2)` calls.
 - **What did not change:** the ledger, quotes, holds, caps, the contract and billing all stay in micro-USD (D51). Nothing is stored in credits.
 - **Left as dollars on purpose:** the naira buy dialog's fee lines (they are real money), blog posts, and `CAP_MESSAGE` in `server/credits/cap.ts` (a test pins it to the earlier wording; change both together later).
+
+### D98. Hackathon page at /hackathon; credit grants keyed to the GoodDollar root (proposal)
+
+- **Decided by:** the owner for the page and its look (approved the poster design and asked for the `/hackathon` route, 12 Nov 2026). The credit rules are Claude's proposal, waiting on the owner (docs/HACKATHON.md §4).
+- **Page:** a public route, reusing sign-in and GoodDollar verification. `useGoodIdVerify` was taken out of `VerifyCard` so both use the same flow. Styles are plain global CSS prefixed `hk-`, because the Turbopack CSS rule in `next.config.ts` turns CSS modules off. It's a louder take on the D12 tokens (poster hero, marquee, big display numbers), kept to violet, pink and Unbounded.
+- **Credit grants (not built):** one ledger entry per GoodDollar root (`hackathon-2027:<root>` as the idempotency key), the chain re-read at claim time, credits only spendable on GoodBuild AI, paid in two parts, expiring at the deadline, with a total budget. Details and limits: docs/HACKATHON.md §2.
+- **Checked:** type check, lint, the content test (the prizes add up to the pool) and the VerifyCard tests pass. The page was opened in a local dev server at 1440px and 390px, with no sideways scroll.
+- **UNVERIFIED:** a real face check from this page, signed-in states on the live site, and the hackathon's dates, prize split and partner details.
