@@ -7,7 +7,7 @@ import { GITHUB_STATE_COOKIE, newState, safeReturnTo } from "@/server/github/oau
 
 /**
  * Start connecting GitHub. `public_repo` is the narrowest scope that can create a public repository and
- * push to it (D93). The person comes back through /api/github/callback.
+ * push to it (D96). The person comes back through /api/github/callback.
  */
 export async function GET(request: Request) {
   const url = new URL(request.url);

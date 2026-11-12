@@ -1,6 +1,6 @@
 import "server-only";
 
-/** A thin client for the few GitHub REST calls we make (D93). No SDK: five endpoints don't need one. */
+/** A thin client for the few GitHub REST calls we make (D96). No SDK: five endpoints don't need one. */
 const API = "https://api.github.com";
 
 export class GithubApiError extends Error {
