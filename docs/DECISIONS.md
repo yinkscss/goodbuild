@@ -1160,3 +1160,21 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - **Checked:** five claim tests on PGlite: unverified refused, replay pays once, second account on the same root refused, deploy part only after a later Celo deploy, and budget, deadline and off switch. Also the API and proxy tests and the type check.
 - **UNVERIFIED:** a real claim on the live site with a verified wallet, and the race tests on real Postgres (run with `TEST_DATABASE_URL`).
 - **Not built:** expiry of unused grants, and an admin view.
+
+### D100. Hackathon: unspent credits expire after the deadline; admin page at /hackathon/admin
+
+- **Decided by:** the owner asked for both (12 Nov 2026). The rules below are Claude's.
+- **Expiry:**
+  - After `CLAIMS_CLOSE`, the standalone worker sweeps every hour, and admins can run it from the page.
+  - Usage since registering counts against the grant first, so only the unspent part is removed. Bought credits are never touched, and no balance goes below zero.
+  - Each person is expired once (ledger key by root). A sweep that races a spend leaves that row for the next run.
+- **Admin page:**
+  - Wallets in `ADMIN_WALLETS` only; anyone else gets a 404. It's also in the proxy's signed-in pages.
+  - Shows totals, budget used, registrations per day, and every builder.
+  - Flags accounts made under 10 minutes before claiming, and wallets linked to another GoodDollar identity.
+  - Lists refused claims (same identity on another account, or budget spent), now kept in `hackathon_refusals` (migration 0018, regenerated before merge).
+- **Checked:** the expiry tests (refuses before close, removes only the unspent grant, keeps bought credits, runs once) and the report tests (totals, new-wallet flag, refused second claim, per-day count), on PGlite. Also the type check and lint.
+- **UNVERIFIED:**
+  - The admin page rendered with a real admin session.
+  - The worker's hourly sweep on the server: watch for `[worker] hackathon expiry:` lines after the deadline.
+  - Only the standalone worker (`pnpm worker`) sweeps, not the web process's inline worker.

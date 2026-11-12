@@ -36,7 +36,7 @@ function toBackend(request: NextRequest, backend: string, path: string) {
 }
 
 /** Signed-in pages that redirect to the landing page without a session cookie. */
-const APP_PAGES = new Set(["/home", "/templates", "/deployments", "/credits"]);
+const APP_PAGES = new Set(["/home", "/templates", "/deployments", "/credits", "/hackathon/admin"]);
 
 /**
  * - Backend behind an edge (EDGE_SECRET, no BACKEND_ORIGIN): only the edge may call it. The edge has

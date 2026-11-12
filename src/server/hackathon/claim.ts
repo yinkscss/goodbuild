@@ -7,7 +7,7 @@ import { MICRO_PER_CREDIT } from "@/lib/credits-math";
 import { postLedgerEntry } from "@/server/credits/ledger";
 import type { Db } from "@/server/db/client";
 import { deployments } from "@/server/db/deploy-schema";
-import { hackathonRegistrations, type HackathonRegistration } from "@/server/db/hackathon-schema";
+import { hackathonRefusals, hackathonRegistrations, type HackathonRegistration } from "@/server/db/hackathon-schema";
 import { users } from "@/server/db/schema";
 
 /**
@@ -54,10 +54,14 @@ export interface ClaimDeps {
 
 const toCredits = (micro: number) => Math.round(micro / MICRO_PER_CREDIT);
 
-function budgetMicro(env: Record<string, string | undefined>): number {
-  const n = Number(env.HACKATHON_BUDGET_CREDITS);
-  return (Number.isSafeInteger(n) && n >= 0 ? n : DEFAULT_BUDGET_CREDITS) * MICRO_PER_CREDIT;
+/** The total cap in credits: HACKATHON_BUDGET_CREDITS when it's a whole number, else the default. */
+export function budgetCredits(env: Record<string, string | undefined>): number {
+  const raw = env.HACKATHON_BUDGET_CREDITS?.trim();
+  const n = raw ? Number(raw) : NaN;
+  return Number.isSafeInteger(n) && n >= 0 ? n : DEFAULT_BUDGET_CREDITS;
 }
+
+const budgetMicro = (env: Record<string, string | undefined>) => budgetCredits(env) * MICRO_PER_CREDIT;
 
 function statusOf(row: HackathonRegistration | undefined): HackathonStatus {
   if (!row) return { registered: false, startCredits: 0, deployCredits: 0, deployPending: false };
@@ -89,6 +93,21 @@ export async function claimHackathon(db: Db, user: { id: string; wallet: string 
   if (!rootAddress) throw new HackathonError("not_verified", "This wallet isn't verified with GoodDollar yet. Verify, then try again.");
   const root = rootAddress.toLowerCase();
 
+  try {
+    return await grantInLock(db, user, root, now, env);
+  } catch (error) {
+    // Kept for the admin page. Written after the rollback, so it survives it.
+    if (error instanceof HackathonError && (error.code === "claimed_elsewhere" || error.code === "budget_spent")) {
+      await db
+        .insert(hackathonRefusals)
+        .values({ hackathon: HACKATHON_ID, userId: user.id, goodidRoot: root, wallet: user.wallet.toLowerCase(), code: error.code, createdAt: now })
+        .catch((e) => console.error("hackathon refusal not logged", e));
+    }
+    throw error;
+  }
+}
+
+function grantInLock(db: Db, user: { id: string; wallet: string }, root: string, now: Date, env: Record<string, string | undefined>): Promise<HackathonStatus> {
   return db.transaction(async (raw) => {
     const tx = raw as unknown as Db;
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`hackathon:${HACKATHON_ID}`}))`);

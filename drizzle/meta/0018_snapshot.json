@@ -1,5 +1,5 @@
 {
-  "id": "dd4a24c0-2c70-4d2c-8c82-ff732ac94239",
+  "id": "e4d229f6-7c89-4504-9c86-e03f90dad69f",
   "prevId": "39d15857-e11c-424a-b589-73b728213d1f",
   "version": "7",
   "dialect": "postgresql",
@@ -3245,6 +3245,99 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.hackathon_refusals": {
+      "name": "hackathon_refusals",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "hackathon": {
+          "name": "hackathon",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "goodid_root": {
+          "name": "goodid_root",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "wallet": {
+          "name": "wallet",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "hackathon_refusals_idx": {
+          "name": "hackathon_refusals_idx",
+          "columns": [
+            {
+              "expression": "hackathon",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "hackathon_refusals_user_id_users_id_fk": {
+          "name": "hackathon_refusals_user_id_users_id_fk",
+          "tableFrom": "hackathon_refusals",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.hackathon_registrations": {
       "name": "hackathon_registrations",
       "schema": "",
@@ -3315,6 +3408,25 @@
         },
         "deploy_granted_at": {
           "name": "deploy_granted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "expired_entry_id": {
+          "name": "expired_entry_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "expired_micro": {
+          "name": "expired_micro",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "expired_at": {
+          "name": "expired_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false

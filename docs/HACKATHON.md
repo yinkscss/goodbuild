@@ -1,6 +1,6 @@
 # GoodBuild Million Hackathon
 
-Status: page built (D98). Credit claims built (D99): 20 credits on registering, 30 after the first Celo deploy, one grant per GoodDollar root. Expiry and the admin view (§2.6, §2.8) are not built.
+Status: page built (D98). Credit claims built (D99): 20 credits on registering, 30 after the first Celo deploy, one grant per GoodDollar root. Expiry of unspent credits and the admin page at `/hackathon/admin` are built too (D100).
 
 ## 1. The page (`/hackathon`)
 - Code: `src/app/hackathon/page.tsx`, pieces in `src/components/hackathon/`. All copy and numbers live in `content.ts`. Prize split, dates, tracks, team size and partner links there are **DRAFT** until the owner confirms. A test checks the prizes add up to 1,000,000 G$.
@@ -39,7 +39,15 @@ The owner puts 1,000,000 G$ at about ₦150,000 (12 Nov 2026). So the page and a
 - `claimHackathon` reads the root from the Identity contract, then takes a hackathon-wide advisory lock. Inside it, it checks the budget and posts `adjust` ledger entries keyed `hackathon:million-2027:start:<root>` and `...:deploy:<root>`.
 - **The deploy part** needs a row in `deployments` on Celo or Celo Sepolia, made after registering. Those rows are written only after the server reads the receipt, so a browser can't fake one.
 - **Switches:** `HACKATHON_CLAIMS=off` pauses claims. They stop by themselves at `CLAIMS_CLOSE` (8 Feb 2027, DRAFT).
-- **Not built:** expiring unused credits, and the admin view.
+- **Expiry (D100):** after `CLAIMS_CLOSE`, the worker runs a sweep every hour. Admins can also run it from `/hackathon/admin`.
+  - AI usage since registering counts against the grant first, so only the unspent part of the 50 is removed (a negative `adjust` keyed `...:expire:<root>`).
+  - Bought credits are never removed, and no balance goes below zero.
+  - A row whose balance moved during the sweep is left for the next run.
+- **Admin page (D100):** `/hackathon/admin`, for wallets in `ADMIN_WALLETS` only (everyone else gets a 404). It shows:
+  - totals and budget used
+  - registrations per day
+  - every builder, flagged when the account was made under 10 minutes before claiming, or the wallet is linked to another GoodDollar identity
+  - refused claims, which are logged in `hackathon_refusals`
 
 ## 5. Needs the owner
 - Split 20 + 30: Claude's choice. Change `START_CREDITS` and `DEPLOY_CREDITS` in `claim.ts`; a test keeps the page's copy in step.
