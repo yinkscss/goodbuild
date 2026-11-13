@@ -134,7 +134,7 @@ export function ChatPanel({
               fixDisabled={running}
               onSuggest={!live && canSuggest && m.id === lastAssistantId ? suggest : undefined}
               checking={m.id === lastAssistantId && ws.checking}
-              checkFailed={m.id === lastAssistantId && ws.checkFailed}
+              checkFailed={m.id === lastAssistantId ? ws.checkFailed : null}
               plan={
                 m.id === lastAssistantId && !running
                   ? record.intake?.for === "plan"

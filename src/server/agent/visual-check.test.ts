@@ -43,6 +43,19 @@ describe("runVisualCheck", () => {
     expect(await runVisualCheck({ db, model: client, projectId: p.id, userId: user.id, version: 9, width: 400, png })).toBeNull();
   });
 
+  it("takes a JPEG, which the preview sends when a page is too big for a PNG", async () => {
+    const db = await createTestDb();
+    const user = await signInUser(db, { wallet: "0xa1b", walletKind: "external", attestation: { ageOk: true, notUsPerson: true } });
+    const p = await createProjectFromPrompt(db, user.id, { prompt: "A photo gallery dApp", network: "celo-sepolia" });
+    const record: TurnRecord = { kind: "turn", mode: "build", steps: [], log: [], changes: [], chargedMicro: 0, status: "ready", version: 1 };
+    await db.insert(messages).values({ projectId: p.id, role: "assistant", content: "Built.", status: "done", meta: record as unknown as Record<string, unknown> });
+    const jpeg = new Uint8Array(await sharp({ create: { width: 400, height: 300, channels: 3, background: "#ffffff" } }).jpeg().toBuffer());
+    const { client, requests } = scriptedModel([{ text: '{"ok": true}' }]);
+    expect(await runVisualCheck({ db, model: client, projectId: p.id, userId: user.id, version: 1, width: 400, png: jpeg })).toMatchObject({ ok: true });
+    const image = (requests[0].messages[0].content as Array<{ type: string; mediaType?: string }>).find((x) => x.type === "image");
+    expect(image?.mediaType).toBe("image/jpeg");
+  });
+
   it("retries once on an unusable reply, then gives up without saving", async () => {
     const db = await createTestDb();
     const user = await signInUser(db, { wallet: "0xdef", walletKind: "external", attestation: { ageOk: true, notUsPerson: true } });

@@ -172,7 +172,7 @@ export function SuggestionChips({ items, onPick, disabled }: { items: string[]; 
 }
 
 /** Visual check result (P17): a quiet line when it looks right, a card with "Fix these" when not. */
-export function VisualCheckNote({ record, checking, failed, onFix, disabled }: { record: TurnRecord; checking?: boolean; failed?: boolean; onFix?: (prompt: string) => void; disabled: boolean }) {
+export function VisualCheckNote({ record, checking, failed, onFix, disabled }: { record: TurnRecord; checking?: boolean; failed?: string | null; onFix?: (prompt: string) => void; disabled: boolean }) {
   const check = record.visualCheck;
   if (!check && checking) {
     return (
@@ -184,7 +184,7 @@ export function VisualCheckNote({ record, checking, failed, onFix, disabled }: {
   if (!check && failed) {
     return (
       <p className="mt-3 flex items-center gap-2 text-xs text-grey-600">
-        <Eye className="size-3.5" aria-hidden /> The visual check couldn&apos;t run for this build. The build itself is fine.
+        <Eye className="size-3.5" aria-hidden /> {failed}
       </p>
     );
   }
@@ -306,8 +306,8 @@ export function TurnView({
   onSuggest?: (prompt: string) => void;
   /** The visual check of this turn's preview is running. */
   checking?: boolean;
-  /** The visual check of this turn's preview couldn't produce a result. */
-  checkFailed?: boolean;
+  /** Why the visual check of this turn's preview has no result, when it has none. */
+  checkFailed?: string | null;
   /** Set while this turn's questions can still be answered. Without it they show read-only. */
   plan?: PlanActions;
   /** Set while this turn's drafted plan (Plan mode) can still be built or changed. Without it the plan shows read-only. */

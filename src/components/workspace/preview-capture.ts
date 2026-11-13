@@ -13,6 +13,7 @@ import "../src/main";
 `;
 
 const CAPTURE = `// GoodBuild preview helper: answers screenshot requests from the workspace. Not part of the app.
+const MAX_PNG_URL = 5_000_000;
 window.addEventListener("message", async (event: MessageEvent) => {
   const data = event.data as { gb?: string; id?: string; maxHeight?: number } | null;
   if (!data || data.gb !== "capture" || !event.source) return;
@@ -35,6 +36,11 @@ window.addEventListener("message", async (event: MessageEvent) => {
     } catch {
       // Web fonts from another origin can block embedding; the layout still matters most.
       url = await toPng(node, { ...options, skipFonts: true });
+    }
+    // A long page full of photos can make a PNG bigger than the server takes (4 MB). JPEG keeps it small.
+    if (url.length > MAX_PNG_URL) {
+      const { toJpeg } = await import("html-to-image");
+      url = await toJpeg(node, { ...options, skipFonts: true, quality: 0.85 });
     }
     restoreFx();
     reply({ ok: true, url, width: window.innerWidth, height });
