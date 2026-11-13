@@ -27,3 +27,23 @@ export function saveSent(key: string, sent: Record<string, Hex>) {
     /* private mode */
   }
 }
+
+/** The nonce each sent transaction went out with (GB-03), kept beside `sent` under its own key. */
+export function loadNonces(key: string): Record<string, number> {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(`${key}:nonces`) ?? "{}");
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return Object.fromEntries(Object.entries(parsed).filter(([, v]) => Number.isSafeInteger(v) && (v as number) >= 0)) as Record<string, number>;
+  } catch {
+    return {};
+  }
+}
+
+export function saveNonces(key: string, nonces: Record<string, number>) {
+  try {
+    if (Object.keys(nonces).length) localStorage.setItem(`${key}:nonces`, JSON.stringify(nonces));
+    else localStorage.removeItem(`${key}:nonces`);
+  } catch {
+    /* private mode */
+  }
+}

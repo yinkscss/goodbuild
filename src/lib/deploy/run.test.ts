@@ -116,12 +116,94 @@ describe("runDeploy", () => {
     expect(e.send).toHaveBeenCalledTimes(2);
   });
 
-  it("a transaction that never mines is dropped, so the retry isn't stuck waiting on it", async () => {
-    const progress: DeployProgress = { deployed: {}, sent: {} };
+  // GB-03 (Daybreak Blue review): a receipt timeout doesn't prove the transaction was dropped.
+  describe("a sent transaction Celo hasn't confirmed (GB-03)", () => {
     const timeout = Object.assign(new Error("timed out"), { name: "WaitForTransactionReceiptTimeoutError" });
-    const { e } = env({ waitForReceipt: vi.fn(async () => Promise.reject(timeout)) });
-    await expect(runDeploy(plan({ steps: plan().steps.slice(0, 1) }), e, undefined, progress)).rejects.toBeInstanceOf(StepFailure);
-    expect(progress.sent).toEqual({});
+    const one = () => plan({ steps: plan().steps.slice(0, 1) });
+
+    it("keeps it on a timeout and shows it as waiting, not failed", async () => {
+      const progress: DeployProgress = { deployed: {}, sent: {} };
+      const events: DeployEvent[] = [];
+      const { e } = env({ waitForReceipt: vi.fn(async () => Promise.reject(timeout)) });
+      const err = (await runDeploy(one(), e, (ev) => events.push(ev), progress).catch((x) => x)) as StepFailure;
+      expect(err.error.kind).toBe("uncertain");
+      expect(err.error.message).toMatch(/hasn't confirmed Token yet[\s\S]*nothing new will be sent/);
+      expect(progress.sent.Token).toBeDefined();
+      expect(events.at(-1)).toMatchObject({ type: "phase", phase: "uncertain", txHash: progress.sent.Token });
+    });
+
+    it("records a first transaction that is mined late, and signs only once", async () => {
+      const progress: DeployProgress = { deployed: {}, sent: {} };
+      let mined = false;
+      const { e } = env({
+        send: vi.fn(async () => ({ hash: `0x${"0a".repeat(32)}` as Hex, nonce: 5 })),
+        waitForReceipt: vi.fn(async () => (mined ? { status: "success" as const } : Promise.reject(timeout))),
+        checkSent: vi.fn(async () => ({ kind: "mined" as const })),
+      });
+      await expect(runDeploy(one(), e, undefined, progress)).rejects.toBeInstanceOf(StepFailure);
+      expect(progress.nonces).toEqual({ Token: 5 });
+      mined = true; // the first transaction lands after the 120 seconds
+      await runDeploy(one(), e, undefined, progress);
+      expect(e.send).toHaveBeenCalledTimes(1);
+      expect(e.checkSent).toHaveBeenCalledWith({ hash: `0x${"0a".repeat(32)}`, nonce: 5, creation: true });
+      expect(e.record).toHaveBeenCalledWith(expect.anything(), `0x${"0a".repeat(32)}`, undefined);
+      expect(progress.sent).toEqual({});
+      expect(progress.nonces).toEqual({});
+    });
+
+    it("keeps waiting on a transaction the node still has, without a new signature", async () => {
+      const progress: DeployProgress = { deployed: {}, sent: { Token: `0x${"0b".repeat(32)}` }, nonces: { Token: 3 } };
+      const { e } = env({ waitForReceipt: vi.fn(async () => Promise.reject(timeout)), checkSent: vi.fn(async () => ({ kind: "pending" as const })) });
+      const err = (await runDeploy(one(), e, undefined, progress).catch((x) => x)) as StepFailure;
+      expect(err.error.kind).toBe("uncertain");
+      expect(e.send).not.toHaveBeenCalled();
+      expect(progress.sent.Token).toBe(`0x${"0b".repeat(32)}`);
+    });
+
+    it("resends a dropped transaction in its own nonce slot, once", async () => {
+      const progress: DeployProgress = { deployed: {}, sent: { Token: `0x${"0c".repeat(32)}` }, nonces: { Token: 7 } };
+      const { e } = env({ checkSent: vi.fn(async () => ({ kind: "dropped" as const, nonce: 7 })) });
+      await runDeploy(one(), e, undefined, progress);
+      expect(e.send).toHaveBeenCalledTimes(1);
+      expect((e.send as ReturnType<typeof vi.fn>).mock.calls[0][3]).toBe(7);
+    });
+
+    it("doesn't resend when the wallet replaced it and a contract came of it", async () => {
+      const progress: DeployProgress = { deployed: {}, sent: { Token: `0x${"0d".repeat(32)}` }, nonces: { Token: 9 } };
+      const made = "0x4444444444444444444444444444444444444444";
+      const { e } = env({ checkSent: vi.fn(async () => ({ kind: "replaced" as const, contract: made as Address })) });
+      const err = (await runDeploy(one(), e, undefined, progress).catch((x) => x)) as StepFailure;
+      expect(err.error.kind).toBe("uncertain");
+      expect(err.error.message).toContain(made);
+      expect(err.error.message).toMatch(/wallet's activity/);
+      expect(e.send).not.toHaveBeenCalled();
+    });
+
+    it("resends when the wallet replaced it and no contract came of it (a cancel)", async () => {
+      const progress: DeployProgress = { deployed: {}, sent: { Token: `0x${"0e".repeat(32)}` }, nonces: { Token: 9 } };
+      const { e } = env({ checkSent: vi.fn(async () => ({ kind: "replaced" as const, contract: null })) });
+      await runDeploy(one(), e, undefined, progress);
+      expect(e.send).toHaveBeenCalledTimes(1);
+      expect((e.send as ReturnType<typeof vi.fn>).mock.calls[0][3]).toBeUndefined();
+    });
+
+    it("leaves the choice to the owner when it can't tell (no nonce saved)", async () => {
+      const progress: DeployProgress = { deployed: {}, sent: { Token: `0x${"0f".repeat(32)}` } };
+      const { e } = env({ checkSent: vi.fn(async () => ({ kind: "unknown" as const })) });
+      const err = (await runDeploy(one(), e, undefined, progress).catch((x) => x)) as StepFailure;
+      expect(err.error.message).toMatch(/can't tell/);
+      expect(e.send).not.toHaveBeenCalled();
+    });
+
+    it("sends again once the owner forgets the transaction (Deploy again anyway)", async () => {
+      const progress: DeployProgress = { deployed: {}, sent: {} };
+      const { e } = env({ waitForReceipt: vi.fn(async () => Promise.reject(timeout)) });
+      await expect(runDeploy(one(), e, undefined, progress)).rejects.toBeInstanceOf(StepFailure);
+      delete progress.sent.Token; // what useDeploy's deployAgain does, after the warning
+      (e.waitForReceipt as ReturnType<typeof vi.fn>).mockResolvedValue({ status: "success" });
+      await runDeploy(one(), e, undefined, progress);
+      expect(e.send).toHaveBeenCalledTimes(2);
+    });
   });
 
   it("resumes a transaction remembered from before a reload, without a new signature", async () => {
@@ -167,7 +249,7 @@ describe("runDeploy", () => {
   it("hands the wallet the simulation's gas estimate", async () => {
     const { e } = env();
     await runDeploy(plan({ steps: plan().steps.slice(0, 1) }), e);
-    expect(e.send).toHaveBeenCalledWith(expect.any(String), BigInt(100));
+    expect(e.send).toHaveBeenCalledWith(expect.any(String), BigInt(100), undefined, undefined);
   });
 
   it("logs the wallet's real reason, which viem puts past the long transaction data", () => {
@@ -292,6 +374,17 @@ describe("runDeploy behind a proxy (D33)", () => {
     steps: [{ name: "Vault", abi: initAbi, bytecode: "0xc0de" as Hex, args: { cap_: "7" }, dependsOn: [], upgradeable: { kind: "first" as const, proxyAbi, proxyBytecode: "0xabcd" as Hex } }],
   } as unknown as Plan;
   const upgradePlan = { ...firstPlan, steps: [{ ...firstPlan.steps[0], upgradeable: { kind: "upgrade" as const, proxy: PROXY, admin: ADMIN } }] } as unknown as Plan;
+
+  it("keeps the code transaction on a timeout and checks it before signing again (GB-03)", async () => {
+    const { env, sends } = harness();
+    const progress: DeployProgress = { deployed: {}, sent: {} };
+    const slow = { ...env, waitForReceipt: async () => Promise.reject(Object.assign(new Error("timed out"), { name: "WaitForTransactionReceiptTimeoutError" })) };
+    await expect(runDeploy(firstPlan, slow, undefined, progress)).rejects.toMatchObject({ error: { kind: "uncertain" } });
+    expect(progress.sent["Vault#code"]).toBe(hash(1));
+    await expect(runDeploy(firstPlan, { ...env, checkSent: async () => ({ kind: "mined" as const }) }, undefined, progress)).resolves.toEqual({ Vault: PROXY });
+    expect(sends.map((x) => x.data)[0]).toBe("0xc0de");
+    expect(sends.filter((x) => x.data === "0xc0de")).toHaveLength(1); // the code went out once
+  });
 
   it("sends the code, then a proxy that runs initialize with the wallet as owner", async () => {
     const { env, sends, records } = harness();

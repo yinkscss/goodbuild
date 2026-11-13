@@ -1,5 +1,6 @@
 /** What went wrong in a simulation or a wallet request, in terms the deploy modal can act on. */
-export type DeployErrorKind = "opcode" | "user_rejected" | "insufficient_funds" | "wrong_chain" | "revert" | "timeout" | "not_saved" | "unknown";
+/** "uncertain": a transaction was sent and Celo hasn't confirmed it; it may still go through (GB-03). */
+export type DeployErrorKind = "opcode" | "user_rejected" | "insufficient_funds" | "wrong_chain" | "revert" | "timeout" | "not_saved" | "uncertain" | "unknown";
 
 export interface ClassifiedError {
   kind: DeployErrorKind;
