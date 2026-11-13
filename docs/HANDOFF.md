@@ -2,6 +2,9 @@
 
 Written 4 Nov 2026 at the end of the first build session (claude.ai), for whoever continues in Claude Code. Read CLAUDE.md and docs/BUILD_PROMPT_STAGE1.md first; this file only covers where things stand.
 
+## Mainnet contract checks (13 Nov 2026, D107, branch `claude/relaxed-feynman-flexlp`)
+Fixes GB-02 from GoodDollar's security review. Deploy-time security guardrails for every contract; money-holding contracts found from the compiled code (not names) need exploit tests, and outside the known vault/DAO shapes the owner's review on mainnet; mainnet records need a passed gate (`deploy_reviews`, migration 0020). **Needs the owner:** run migration 0020 with the deploy. GB-03 is still open.
+
 ## Credits scan fix (13 Nov 2026, D106, branch `claude/relaxed-feynman-flexlp`)
 Fixes GB-01 from GoodDollar's security review: a paid G$ credit purchase could go uncredited if the tab closed. The scan now keeps its own checkpoint (migration 0019), the browser re-sends saved payments, and the add-credits dialog has **Missing a payment?** Deployed and reconciled on 13 Nov: the scan caught up from block 82304791, all 9 on-chain payments credited once, none missed (D106). GB-02 and GB-03 are still open.
 

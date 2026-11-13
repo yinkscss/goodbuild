@@ -136,20 +136,32 @@ describe("the DAOs and vaults kit", { timeout: 180_000 }, () => {
   });
 
   it("lets a real vault with real exploit tests through to mainnet", async () => {
-    expect(await exploitGate(files())).toEqual([]);
+    const gate = await exploitGate(files());
+    expect(gate.problems).toEqual([]);
+    // A shape the named vault attacks were written for: no owner review needed (GB-02), though it still holds money.
+    expect(gate).toMatchObject({ knownShape: true, exploitTests: "passed" });
+    expect(gate.custody.length).toBeGreaterThan(0);
   });
 
   it("stops a vault whose exploit test fails, and one with a test missing, before mainnet", async () => {
     // A vault that lets anyone set the cap: the unauthorized-call test must now fail.
     const leaky = VAULT.replace("function setCap(uint256 cap_) external onlyOwner", "function setCap(uint256 cap_) external");
     const failing = await exploitGate(files({ "contracts/SavingsVault.sol": leaky }));
-    expect(failing.join("\n")).toMatch(/testExploitUnauthorizedCall failed|a stranger can't set the cap/);
+    expect(failing.problems.join("\n")).toMatch(/testExploitUnauthorizedCall failed|a stranger can't set the cap/);
     const missing = await exploitGate(files({ "contracts/test/SavingsVault.t.sol": TEST.replace(/function testExploitDonationInflation\(\)/, "function helper()") }));
-    expect(missing.join("\n")).toMatch(/testExploitDonationInflation/);
+    expect(missing.problems.join("\n")).toMatch(/testExploitDonationInflation/);
   });
 
-  it("stops a vault without the kit too, and leaves contracts that hold no deposits alone", async () => {
-    expect((await exploitGate({ ...starterFiles(), "contracts/SavingsVault.sol": VAULT })).join("\n")).toMatch(/testExploit/);
-    expect(await exploitGate({ ...starterFiles(), "contracts/Tip.sol": "contract Tip { function tip() external payable {} }" })).toEqual([]);
+  it("stops a vault without the kit too, and leaves contracts that take in no money alone", async () => {
+    expect((await exploitGate({ ...starterFiles(), "contracts/SavingsVault.sol": VAULT })).problems.join("\n")).toMatch(/testExploit/);
+    const counter = await exploitGate({ ...starterFiles(), "contracts/Counter.sol": "contract Counter { uint256 public n; function inc() external { n++; } }" });
+    expect(counter).toMatchObject({ problems: [], custody: [], exploitTests: "not_required" });
+  });
+
+  it("treats a payable tip jar as taking in other people's money (GB-02): it needs the general exploit tests", async () => {
+    const tip = await exploitGate({ ...starterFiles(), "contracts/Tip.sol": "contract Tip { function tip() external payable {} }" });
+    expect(tip.custody.map((c) => `${c.contract}.${c.fn}`)).toEqual(["Tip.tip"]);
+    expect(tip.knownShape).toBe(false);
+    expect(tip.problems.join("\n")).toMatch(/testExploitUnauthorizedCall[\s\S]*testExploitReentrancy/);
   });
 });

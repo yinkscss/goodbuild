@@ -123,7 +123,7 @@ describe("prepareDeploy", () => {
 
   it("refuses a mainnet deploy when the exploit gate has problems, and leaves Sepolia alone (D76)", async () => {
     await setMainnetMode(db, "everyone", null);
-    const gate = vi.fn(async () => ["contracts/test/V.t.sol: testExploitReentrancy is missing"]);
+    const gate = vi.fn(async () => ({ problems: ["contracts/test/V.t.sol: testExploitReentrancy is missing"], custody: [], knownShape: true, exploitTests: "passed" as const }));
     await expect(prepareDeploy(db, { projectId, chainId: 42220, wallet: WALLET }, { exploitGate: gate })).rejects.toMatchObject({ code: "exploit_tests_failed", details: ["contracts/test/V.t.sol: testExploitReentrancy is missing"] });
     expect(gate).toHaveBeenCalledTimes(1);
     await prepareDeploy(db, { projectId, chainId: 11142220 }, { exploitGate: gate });

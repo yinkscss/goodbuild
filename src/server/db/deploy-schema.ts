@@ -95,3 +95,35 @@ export const contractUpgrades = pgTable(
   },
   (t) => [uniqueIndex("contract_upgrades_chain_tx_idx").on(t.chainId, t.txHash), index("contract_upgrades_deployment_idx").on(t.deploymentId, t.createdAt)],
 );
+
+/**
+ * Each code version that passed GoodBuild's checks for Celo mainnet (GB-02), one row per project, chain
+ * and exact source. Prepare writes it after the exploit gate and the deploy compile pass; recording a
+ * mainnet deployment requires the row for that source, so nothing is recorded (or published) on
+ * mainnet without having gone through the gate. It is also the audit trail: what was checked, where the
+ * code takes in other people's money, and when the owner confirmed they had reviewed it.
+ */
+export const deployReviews = pgTable(
+  "deploy_reviews",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    chainId: integer("chain_id").notNull(),
+    sourceHash: text("source_hash").notNull(),
+    /** Lowercased wallet that prepared it, when known. */
+    wallet: text("wallet"),
+    /** "passed" when exploit tests were required and passed, "not_required" when the code holds nobody's money. */
+    exploitTests: text("exploit_tests").notNull(),
+    /** custodyText() of each place the code takes in other people's money. Empty when none. */
+    custody: jsonb("custody").$type<string[]>().notNull().default([]),
+    /** Set when the owner confirmed the review of a money-holding contract outside the known vault/DAO shapes. */
+    ownerReviewedAt: timestamp("owner_reviewed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("deploy_reviews_source_unique").on(t.projectId, t.chainId, t.sourceHash)],
+);
+
+export type DeployReview = typeof deployReviews.$inferSelect;

@@ -219,8 +219,11 @@ function ErrorCard({ deploy, onFix, chainId }: { deploy: Deploy; onFix: (prompt:
   const opcode = error.kind === "opcode";
   const refused = error.code === "upgrade_refused";
   const notReady = error.code === "upgradeable_not_ready";
+  const review = error.code === "needs_owner_review";
+  const exploitTests = error.code === "exploit_tests_failed";
   // Waiting on the network, not a failure: nothing was lost, and Try again is the whole fix.
   const waiting = error.kind === "not_saved" || error.kind === "timeout";
+  if (review) return <OwnerReview deploy={deploy} />;
   const heading = refused
     ? "We can't upgrade this safely"
     : notReady
@@ -293,7 +296,16 @@ function ErrorCard({ deploy, onFix, chainId }: { deploy: Deploy; onFix: (prompt:
                 </Button>
               </>
             )}
-            {!opcode && !fromBuilder && !refused && !notReady && (
+            {exploitTests && (
+              <Button
+                variant="chipSelected"
+                size="chip"
+                onClick={() => onFix(`The deploy to Celo was stopped because the contract holds other people's money and its exploit tests don't all pass:\n${error.logs.join("\n")}\nAdd or fix the exploit tests (contracts/test/<Name>.t.sol) and fix the contract if a test shows a real problem. Call add_kit("dao-vault") for how to write them.`)}
+              >
+                Ask the builder to fix them
+              </Button>
+            )}
+            {!opcode && !fromBuilder && !refused && !notReady && !exploitTests && (
               <Button variant="chipSelected" size="chip" onClick={() => (error.at === "prepare" ? void deploy.prepare(state.evmVersion) : deploy.retry())}>
                 Try again
               </Button>
@@ -310,6 +322,41 @@ function ErrorCard({ deploy, onFix, chainId }: { deploy: Deploy; onFix: (prompt:
         </div>
       </div>
       <span className="sr-only">{chainLabel(chainId)}</span>
+    </div>
+  );
+}
+
+/**
+ * GB-02: the contract takes in other people's money in a way GoodBuild's vault and DAO tests weren't
+ * written for. Its general exploit tests passed; the owner must confirm they reviewed it before mainnet,
+ * and the server records when they did. Nothing here calls the contract safe.
+ */
+function OwnerReview({ deploy }: { deploy: Deploy }) {
+  const { state } = deploy;
+  const [checked, setChecked] = React.useState(false);
+  const error = state.error!;
+  return (
+    <div className="mt-5 rounded-block bg-warning/10 p-4" role="alert">
+      <p className="text-sm font-semibold">Review this contract before it goes to Celo</p>
+      <p className="mt-1 text-sm text-grey-600">{error.message}</p>
+      {error.logs.length > 0 && (
+        <>
+          <p className="mt-3 text-sm font-medium">Where it takes in money</p>
+          <ul className="mt-1 list-disc space-y-0.5 pl-5 text-sm text-grey-600">
+            {error.logs.map((line) => (
+              <li key={line} className="break-words">{line}</li>
+            ))}
+          </ul>
+        </>
+      )}
+      <p className="mt-3 text-sm text-grey-600">Check who can take money out, and when, and that nobody else can change the rules. If anything is unclear, ask the builder to explain it before you deploy.</p>
+      <label className="mt-3 flex cursor-pointer items-start gap-3 text-sm">
+        <input type="checkbox" checked={checked} onChange={(e) => setChecked(e.target.checked)} className="mt-0.5 size-4 shrink-0 accent-violet" />
+        <span className="text-grey-600">I&apos;ve reviewed where money goes in and out, and I understand GoodBuild hasn&apos;t audited this contract.</span>
+      </label>
+      <Button variant="primary" className="mt-3 w-full" disabled={!checked} onClick={() => void deploy.prepare(state.evmVersion, { ownerReviewed: true })}>
+        Continue
+      </Button>
     </div>
   );
 }
@@ -594,6 +641,7 @@ export function DeployModal({
               </Row>
               <Row label="Review">
                 <span className="rounded-full bg-warning/10 px-2 py-0.5 text-[11px] font-semibold text-warning">Unaudited</span>
+                {state.plan.chainId === 42220 && <span className="block text-xs font-normal text-grey-600">Passing GoodBuild&apos;s checks isn&apos;t an audit</span>}
               </Row>
               {isUpgradeableChain(state.plan.chainId) && <UpgradeableRow deploy={deploy} />}
             </dl>

@@ -79,10 +79,14 @@ export function exploitTests(files: Record<string, string>): Array<{ file: strin
  * others after every compile and a failing one is fixed like any other. This shows that the attacks
  * the builder thought of are tried and turned away, not that the contract is safe: a contract that
  * holds real money still deserves a human audit, and the guide says so.
+ *
+ * `custody` (GB-02): the compiler found that the contracts take in other people's money (custodyOf),
+ * whatever their functions are called. When no vault or DAO shape matched, they still need the two
+ * attacks every money-holding contract faces: a stranger calling admin functions, and re-entrancy.
  */
-export function exploitTestIssues(files: Record<string, string>): CheckIssue[] {
+export function exploitTestIssues(files: Record<string, string>, { custody = false }: { custody?: boolean } = {}): CheckIssue[] {
   const roles = rolesOf(files);
-  if (!roles.length) return [];
+  if (!roles.length && !custody) return [];
   const tests = exploitTests(files);
   const issues: CheckIssue[] = [];
   const file = tests[0]?.file ?? "contracts/test/";
@@ -94,7 +98,7 @@ export function exploitTestIssues(files: Record<string, string>): CheckIssue[] {
   const needs = [...NEEDS.any, ...roles.flatMap((r) => NEEDS[r])];
   for (const need of needs) {
     if (!tests.some((t) => need.pattern.test(t.name))) {
-      issues.push({ file, message: `This ${roles.join(" and ")} holds other people's money, so it needs an exploit test. Add ${need.say}. Put it in contracts/test/<Name>.t.sol.`, source: "test" });
+      issues.push({ file, message: `This ${roles.length ? roles.join(" and ") : "contract"} holds other people's money, so it needs an exploit test. Add ${need.say}. Put it in contracts/test/<Name>.t.sol.`, source: "test" });
     }
   }
   return issues;

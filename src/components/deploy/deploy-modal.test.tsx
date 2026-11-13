@@ -168,6 +168,27 @@ describe("DeployModal, upgradeable trial (D33)", () => {
     expect(onFix.mock.calls[0][0]).toMatch(/keep the same name, type and order/);
   });
 
+  it("asks the owner to review a money-holding contract before mainnet, and continues only once they confirm (GB-02)", async () => {
+    const user = userEvent.setup();
+    const api = renderModal(state({ stage: "error", plan: null, steps: [], error: { kind: "unknown", message: "This contract takes in other people's money in a way GoodBuild's vault and DAO tests weren't written for.", at: "prepare", logs: ["GoodPool.joinPool pulls tokens in with transferFrom (contracts/GoodPool.sol:28)"], opcodes: [], code: "needs_owner_review" } }));
+    expect(screen.getByText("Review this contract before it goes to Celo")).toBeInTheDocument();
+    expect(screen.getByText(/GoodPool\.joinPool pulls tokens in/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Try again" })).not.toBeInTheDocument();
+    const go = screen.getByRole("button", { name: "Continue" });
+    expect(go).toBeDisabled();
+    await user.click(screen.getByRole("checkbox"));
+    await user.click(go);
+    expect(api.prepare).toHaveBeenCalledWith("cancun", { ownerReviewed: true });
+  });
+
+  it("sends failing exploit tests back to the builder", async () => {
+    const user = userEvent.setup();
+    const onFix = vi.fn();
+    renderModal(state({ stage: "error", plan: null, steps: [], error: { kind: "unknown", message: "This contract holds other people's money, and its exploit tests don't all pass yet.", at: "prepare", logs: ["contracts/test/: Add testExploitReentrancy"], opcodes: [], code: "exploit_tests_failed" } }), {}, onFix);
+    await user.click(screen.getByRole("button", { name: "Ask the builder to fix them" }));
+    expect(onFix.mock.calls[0][0]).toMatch(/testExploitReentrancy/);
+  });
+
   it("offers the option on testnet only", async () => {
     const user = userEvent.setup();
     const setUpgradeable = vi.fn();

@@ -69,20 +69,23 @@ export function useDeploy({ projectId, chainId, onDeployed }: { projectId: strin
   const planRef = React.useRef<ServerPlan | null>(null);
   const progressRef = React.useRef<DeployProgress>({ deployed: {}, sent: {} });
   const logsRef = React.useRef<string[]>([]);
+  const reviewedRef = React.useRef(false);
 
   const log = React.useCallback((line: string) => {
     logsRef.current = [...logsRef.current.slice(-80), `${new Date().toISOString().slice(11, 19)} ${line}`];
   }, []);
 
   const prepare = React.useCallback(
-    async (evmVersion: "cancun" | "paris" = "cancun", options: { fresh?: boolean } = {}) => {
+    async (evmVersion: "cancun" | "paris" = "cancun", options: { fresh?: boolean; ownerReviewed?: boolean } = {}) => {
+      // The owner's review (GB-02) is for this code: it carries over to a rebuild, not to a new modal.
+      if (options.ownerReviewed) reviewedRef.current = true;
       setState({ ...initial, stage: "preparing", evmVersion });
       logsRef.current = [];
       try {
         const res = await fetch(`/api/projects/${projectId}/deploy/prepare`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ chainId, evmVersion, ...(options.fresh ? { fresh: true } : {}) }),
+          body: JSON.stringify({ chainId, evmVersion, ...(options.fresh ? { fresh: true } : {}), ...(reviewedRef.current ? { ownerReviewed: true } : {}) }),
         });
         const body = (await res.json()) as { plan?: ServerPlan; error?: string; message?: string; details?: string[] };
         if (!res.ok || !body.plan) {
@@ -192,6 +195,7 @@ export function useDeploy({ projectId, chainId, onDeployed }: { projectId: strin
 
   const reset = React.useCallback(() => {
     planRef.current = null;
+    reviewedRef.current = false;
     progressRef.current = { deployed: {}, sent: {} };
     setState(initial);
   }, []);

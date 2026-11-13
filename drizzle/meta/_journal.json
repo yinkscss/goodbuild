@@ -141,6 +141,13 @@
       "when": 1794601508214,
       "tag": "0019_credits_sync_cursor",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1794605124586,
+      "tag": "0020_deploy_reviews",
+      "breakpoints": true
     }
   ]
 }

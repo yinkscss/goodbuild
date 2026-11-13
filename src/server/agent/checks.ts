@@ -10,6 +10,7 @@ import { COLLECTION_NAME, DATA_PATH_PREFIX, DATA_RULES_PATH, parseDataRules, par
 import { MANIFEST_PATH, parseManifest, planManifest } from "@/lib/deploy/manifest";
 
 import { assetRefs } from "./assets";
+import { custodyOf, type CustodyReason } from "./custody";
 import { exploitTestIssues } from "./kits/dao-vault";
 import { KIT_MARKER, kitForPackage, kitReplacing, kitsOf, type Kit } from "./kits/registry";
 import { ALLOWED_DEPENDENCIES, PLATFORM_DIR, WALLET_DIR, dependenciesOf, isStarterApp } from "./template";
@@ -48,6 +49,8 @@ export interface CompiledTest {
 
 export interface CheckReport {
   ok: boolean;
+  /** Where the project's own contracts take in other people's money (GB-02). Set after a compile. */
+  custody?: CustodyReason[];
   errors: CheckIssue[];
   warnings: CheckIssue[];
   contracts: CompiledContract[];
@@ -187,8 +190,12 @@ function lineAt(content: string | undefined, offset: number): number | undefined
  * no delegatecall/callcode, selfdestruct, inline assembly, tx.origin, or low-level
  * call with arbitrary data (plain value transfers `call{value: x}("")` are allowed).
  * Plus house style: custom errors only (no require strings, no revert("text")).
+ *
+ * `securityOnly` (GB-02) keeps the rules that stop a contract taking or destroying funds and drops the
+ * house-style ones (require strings, a token calling its own transfer), for the re-check at deploy time:
+ * a safe but untidy older project must still be able to deploy.
  */
-export function guardrailIssues(file: string, ast: Json, content?: string, { upgradeable = false }: { upgradeable?: boolean } = {}): CheckIssue[] {
+export function guardrailIssues(file: string, ast: Json, content?: string, { upgradeable = false, securityOnly = false }: { upgradeable?: boolean; securityOnly?: boolean } = {}): CheckIssue[] {
   const issues: CheckIssue[] = [];
   const at = (node: Json) => {
     const start = Number(String(node.src ?? "").split(":")[0]);
@@ -235,7 +242,7 @@ export function guardrailIssues(file: string, ast: Json, content?: string, { upg
         let callee = n.expression as Json | undefined;
         const args = (n.arguments as Json[]) ?? [];
         // Custom errors only: no require(...) without an error, no revert("text").
-        if (callee?.nodeType === "Identifier" && callee.name === "require") {
+        if (!securityOnly && callee?.nodeType === "Identifier" && callee.name === "require") {
           const reason = args[1];
           const customError = reason?.nodeType === "FunctionCall";
           if (!customError) flag(n, "Use a custom error instead of require: declare `error Name();` and write `if (!condition) revert Name();`.");
@@ -243,10 +250,10 @@ export function guardrailIssues(file: string, ast: Json, content?: string, { upg
         // A token contract calling its own public transferFrom/transfer: msg.sender is still
         // the user, so it spends allowance[user][user] (or moves from the user) and usually
         // reverts. It must use the internal _transfer.
-        if (inErc20 && callee?.nodeType === "Identifier" && (callee.name === "transferFrom" || callee.name === "transfer")) {
+        if (!securityOnly && inErc20 && callee?.nodeType === "Identifier" && (callee.name === "transferFrom" || callee.name === "transfer")) {
           flag(n, `Don't call this token's own public ${String(callee.name)}() from inside the contract: msg.sender is still the user, so it spends their allowance to themselves and reverts. Use _transfer(from, to, amount).`);
         }
-        if (callee?.nodeType === "Identifier" && callee.name === "revert") {
+        if (!securityOnly && callee?.nodeType === "Identifier" && callee.name === "revert") {
           flag(n, 'Use a custom error instead of revert("..."): `revert Name();`.');
         }
         if (callee?.nodeType === "FunctionCallOptions") callee = callee.expression as Json;
@@ -471,6 +478,10 @@ export async function checkContracts(files: Record<string, string>, options: Con
     projectAsts.push({ file, ast: src.ast, content: files[file] });
   }
   if (options.gdToken && projectAsts.length) errors.push(...gdTokenIssues(projectAsts, { allowNative: options.allowNative }));
+  // GB-02: where the code takes in other people's money, by what it does rather than what it's called.
+  // Only reported here: the mainnet gate (exploit-gate.ts) turns it into required exploit tests, so
+  // testnet builds of a tip jar or a shop don't need them (owner's choice, D107).
+  const custody = custodyOf(projectAsts);
   const contracts: CompiledContract[] = [];
   const tests: CompiledTest[] = [];
   const abis: unknown[][] = [];
@@ -511,7 +522,7 @@ export async function checkContracts(files: Record<string, string>, options: Con
   }
   // Only worth running on code that compiled and follows the rules: the agent fixes those first.
   if (options.upgradeChecks && !errors.length && contracts.length) errors.push(...(await options.upgradeChecks(files)));
-  return { ok: errors.length === 0, errors, warnings, contracts, tests, abis, compilerVersion: result.version };
+  return { ok: errors.length === 0, errors, warnings, contracts, tests, abis, compilerVersion: result.version, custody };
 }
 
 export function isTestFile(path: string): boolean {
