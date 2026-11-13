@@ -6,7 +6,8 @@ import { createPublicClient, formatEther, http, type Address, type Hex } from "v
 import { useAuth } from "@/lib/auth/context";
 import { celoChainFor } from "@/lib/auth/wallet-client";
 import { classifyDeployError, errorDetail, type ClassifiedError } from "@/lib/deploy/errors";
-import { loadSent, pendingKey, saveSent } from "@/lib/deploy/pending";
+import { loadNonces, loadSent, pendingKey, saveNonces, saveSent } from "@/lib/deploy/pending";
+import { checkSentTx } from "@/lib/deploy/reconcile";
 import { runDeploy, SIMULATE_TIMEOUT_MS, StepFailure, usesGoodDollar, withDeadline, type DeployEvent, type DeployProgress, type Plan, type PlanStep, type StepPart, type StepPhase } from "@/lib/deploy/run";
 import { simulateCreation } from "@/lib/deploy/simulate";
 import { proxyAdminAbi } from "@/lib/deploy/upgradeable";
@@ -67,7 +68,7 @@ export function useDeploy({ projectId, chainId, onDeployed }: { projectId: strin
   const auth = useAuth();
   const [state, setState] = React.useState<DeployState>(initial);
   const planRef = React.useRef<ServerPlan | null>(null);
-  const progressRef = React.useRef<DeployProgress>({ deployed: {}, sent: {} });
+  const progressRef = React.useRef<DeployProgress>({ deployed: {}, sent: {}, nonces: {} });
   const logsRef = React.useRef<string[]>([]);
   const reviewedRef = React.useRef(false);
 
@@ -100,7 +101,7 @@ export function useDeploy({ projectId, chainId, onDeployed }: { projectId: strin
         }
         const plan = body.plan;
         planRef.current = plan;
-        progressRef.current = { deployed: {}, sent: {} };
+        progressRef.current = { deployed: {}, sent: {}, nonces: {} };
         log(`Plan: ${plan.steps.map((s) => s.name).join(" → ")} on chain ${plan.chainId} (${plan.evmVersion}, solc ${plan.compilerVersion}, OpenZeppelin ${plan.openZeppelin})`);
         const steps: StepView[] = plan.steps.map((s) => ({ name: s.name, phase: plan.alreadyDeployed[s.name] ? "reused" : "waiting", address: plan.alreadyDeployed[s.name] }));
         // Nothing left to sign: this exact source and manifest is already live, so show its addresses.
@@ -141,17 +142,24 @@ export function useDeploy({ projectId, chainId, onDeployed }: { projectId: strin
       const account = wallet.address;
       const pending = pendingKey(projectId, plan.chainId, plan.sourceHash, account);
       progressRef.current.sent = { ...loadSent(pending), ...progressRef.current.sent };
+      progressRef.current.nonces = { ...loadNonces(pending), ...progressRef.current.nonces };
 
       const deployed = await runDeploy(
         plan,
         {
           account,
           simulate: ({ data, runtimeBytecode, to }) => simulateCreation(publicClient, { account, data, runtimeBytecode, to }),
-          send: async (data, gas, to) => {
+          send: async (data, gas, to, nonce) => {
             // Email wallets get explicit gas and fees: left to itself, Magic can fail on a custom network.
             const fees = wallet.kind === "embedded" ? { gas: (gas * BigInt(13)) / BigInt(10), ...(await publicClient.estimateFeesPerGas()) } : {};
-            return walletClient.sendTransaction({ account, chain: celoChainFor(plan.chainId), data, to, ...fees });
+            // GB-03: remember the nonce the transaction goes out with, so a later check can tell slow from dropped.
+            // A resend after a drop asks for the same nonce; a wallet may still pick its own (UNVERIFIED for MetaMask).
+            const next = nonce ?? (await publicClient.getTransactionCount({ address: account, blockTag: "pending" }).catch(() => undefined));
+            const hash = await walletClient.sendTransaction({ account, chain: celoChainFor(plan.chainId), data, to, ...fees, ...(nonce !== undefined ? { nonce } : {}) });
+            const seen = await publicClient.getTransaction({ hash }).then((t) => t.nonce, () => undefined);
+            return { hash, nonce: seen ?? next };
           },
+          checkSent: ({ hash, nonce, creation }) => checkSentTx(publicClient, { hash, account, nonce, creation }),
           waitForReceipt: (hash) => publicClient.waitForTransactionReceipt({ hash, timeout: 120_000 }),
           record: async (step, txHash, implementationTx) => {
             const proxied = step.upgradeable && implementationTx ? { kind: step.upgradeable.kind === "upgrade" ? "upgrade" : "proxy", implementationTxHash: implementationTx } : undefined;
@@ -170,6 +178,7 @@ export function useDeploy({ projectId, chainId, onDeployed }: { projectId: strin
         },
         (event: DeployEvent) => {
           saveSent(pending, progressRef.current.sent);
+          saveNonces(pending, progressRef.current.nonces ?? {});
           if (event.type === "phase") {
             log(`${event.step}: ${event.phase}${event.txHash ? ` ${event.txHash}` : ""}`);
             setState((s) => ({ ...s, steps: s.steps.map((x) => (x.name === event.step ? { ...x, phase: event.phase, txHash: event.txHash ?? x.txHash, address: event.address ?? x.address, part: event.part ?? x.part } : x)) }));
@@ -196,7 +205,7 @@ export function useDeploy({ projectId, chainId, onDeployed }: { projectId: strin
   const reset = React.useCallback(() => {
     planRef.current = null;
     reviewedRef.current = false;
-    progressRef.current = { deployed: {}, sent: {} };
+    progressRef.current = { deployed: {}, sent: {}, nonces: {} };
     setState(initial);
   }, []);
 
@@ -204,6 +213,36 @@ export function useDeploy({ projectId, chainId, onDeployed }: { projectId: strin
   const retry = React.useCallback(() => {
     setState((s) => ({ ...s, stage: "ready", error: null, steps: s.steps.map((x) => (x.phase === "failed" || x.phase === "unsaved" ? { ...x, phase: "waiting" } : x)) }));
   }, []);
+
+  /** GB-03: a transaction Celo hasn't confirmed. Check it again: nothing new is signed unless it was dropped. */
+  const checkAgain = React.useCallback(() => {
+    retry();
+    void start();
+  }, [retry, start]);
+
+  /**
+   * The owner chose to deploy again although the transaction `hash` may still go through (GB-03). It is
+   * forgotten here and in the browser, so the next run asks the wallet for a new one.
+   */
+  const deployAgain = React.useCallback(
+    (hash: Hex) => {
+      const plan = planRef.current;
+      const progress = progressRef.current;
+      for (const [key, sent] of Object.entries(progress.sent)) {
+        if (sent.toLowerCase() !== hash.toLowerCase()) continue;
+        delete progress.sent[key];
+        delete progress.nonces?.[key];
+      }
+      if (plan && auth.wallet) {
+        const pending = pendingKey(projectId, plan.chainId, plan.sourceHash, auth.wallet.address);
+        saveSent(pending, Object.fromEntries(Object.entries(loadSent(pending)).filter(([, v]) => v.toLowerCase() !== hash.toLowerCase())));
+        const keep = new Set(Object.keys(progress.sent));
+        saveNonces(pending, Object.fromEntries(Object.entries(loadNonces(pending)).filter(([k]) => keep.has(k))));
+      }
+      checkAgain();
+    },
+    [auth.wallet, projectId, checkAgain],
+  );
 
   /** Claim 1,000 test G$ from the Celo Sepolia faucet (D23), once a day per wallet. */
   const claimTestGd = React.useCallback(async (): Promise<string> => {
@@ -254,7 +293,7 @@ export function useDeploy({ projectId, chainId, onDeployed }: { projectId: strin
     [auth],
   );
 
-  return { state, prepare, start, reset, retry, claimTestGd, setUpgradeable, lockContract };
+  return { state, prepare, start, reset, retry, checkAgain, deployAgain, claimTestGd, setUpgradeable, lockContract };
 }
 
 function firstName(plan: ServerPlan) {

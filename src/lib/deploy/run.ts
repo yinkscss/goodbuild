@@ -2,6 +2,7 @@ import { encodeDeployData, type Abi, type Address, type Hex } from "viem";
 
 import { classifyDeployError, type ClassifiedError } from "./errors";
 import { referencesIn, resolveArgs, type ArgValue } from "./manifest";
+import type { SentStatus } from "./reconcile";
 import { UnsupportedOpcodeError } from "./simulate";
 import { encodeProxyDeploy, encodeUpgrade, initializerData, type ProxyInfo, type UpgradeableStep } from "./upgradeable";
 
@@ -40,8 +41,17 @@ export interface DeployEnv {
   account: Address;
   /** Throws on a rejected bytecode or a reverting constructor. */
   simulate(args: { data: Hex; runtimeBytecode?: Hex; to?: Address }): Promise<{ gas: bigint }>;
-  /** Asks the wallet to sign and broadcast the transaction; returns its hash. `gas` is the simulation's estimate. `to` is unset for a creation. */
-  send(data: Hex, gas: bigint, to?: Address): Promise<Hex>;
+  /**
+   * Asks the wallet to sign and broadcast the transaction; returns its hash, and the nonce it went out
+   * with when known (GB-03). `gas` is the simulation's estimate. `to` is unset for a creation. `nonce`
+   * is set only to resend a dropped transaction in its own slot, so the two can't both be mined.
+   */
+  send(data: Hex, gas: bigint, to?: Address, nonce?: number): Promise<Hex | { hash: Hex; nonce?: number }>;
+  /**
+   * What became of a transaction sent in an earlier attempt (reconcile.ts). Without it, a remembered
+   * transaction is simply waited on again.
+   */
+  checkSent?(args: { hash: Hex; nonce?: number; creation: boolean }): Promise<SentStatus>;
   /** Waits until the transaction is mined. */
   waitForReceipt(hash: Hex): Promise<{ status: "success" | "reverted"; contractAddress?: Address | null }>;
   /**
@@ -55,7 +65,8 @@ export interface DeployEnv {
 }
 
 /** "unsaved": every transaction mined, but GoodBuild couldn't record it yet. Try again only records. */
-export type StepPhase = "waiting" | "reused" | "simulating" | "signing" | "broadcasting" | "recording" | "unsaved" | "done" | "failed";
+/** "uncertain": sent, but Celo hasn't confirmed it and we can't tell yet whether it will be (GB-03). Nothing new is sent. */
+export type StepPhase = "waiting" | "reused" | "simulating" | "signing" | "broadcasting" | "recording" | "unsaved" | "uncertain" | "done" | "failed";
 
 /**
  * The longest the pre-sign check may take (the Playwright run on 6 Nov 2026 sat on "Checking on
@@ -81,6 +92,33 @@ export function withDeadline<T>(promise: Promise<T>, ms: number): Promise<T> {
  */
 const RETRYABLE_RECORD = new Set(["chain_read_failed", "tx_not_found"]);
 const RECORD_RETRY_MS = [5000, 10_000];
+
+/** A sent transaction whose fate we can't tell yet (GB-03). The step keeps it; nothing new is sent. */
+class Uncertain extends Error {
+  constructor(
+    readonly reason: "timeout" | "unknown" | "replaced",
+    readonly txHash: Hex,
+    readonly contract: Address | null = null,
+    readonly raw?: unknown,
+  ) {
+    super("uncertain");
+  }
+}
+
+function uncertain(step: PlanStep, u: Uncertain): ClassifiedError {
+  if (u.reason === "replaced") {
+    return {
+      kind: "uncertain",
+      message: u.contract
+        ? `Your wallet sent ${step.name} as a different transaction (sped up or replaced), and a contract now exists at ${u.contract}. GoodBuild needs that transaction to save it: look in your wallet's activity. Deploying again would make a second contract.`
+        : `Your wallet replaced the ${step.name} transaction with another one, and no contract came from it. You can deploy again.`,
+    };
+  }
+  if (u.reason === "unknown") {
+    return { kind: "uncertain", message: `We can't tell whether ${step.name}'s transaction went through: Celo doesn't know it any more. Check your wallet's activity before deploying again, or you may end up with two contracts.` };
+  }
+  return { kind: "uncertain", message: `Celo hasn't confirmed ${step.name} yet. It may still go through, so nothing new will be sent until we know. Check again in a minute.` };
+}
 
 /** Every transaction for this step mined, but recording it didn't finish. */
 class NotSaved extends Error {
@@ -125,6 +163,8 @@ export interface DeployProgress {
   deployed: Record<string, Address>;
   /** Sent but not yet recorded. A retry picks these up again instead of sending a second transaction. */
   sent: Record<string, Hex>;
+  /** The nonce each of `sent` went out with, when known: how a retry tells slow from dropped (GB-03). */
+  nonces?: Record<string, number>;
 }
 
 export class StepFailure extends Error {
@@ -175,35 +215,21 @@ export async function runDeploy(
       });
       const data = args.length || hasConstructor(step.abi) ? encodeDeployData({ abi: step.abi, bytecode: step.bytecode, args }) : step.bytecode;
 
-      let txHash = progress.sent[step.name];
-      if (!txHash) {
-        phase("simulating");
-        const { gas } = await withDeadline(env.simulate({ data, runtimeBytecode: step.deployedBytecode }), SIMULATE_TIMEOUT_MS);
-
-        phase("signing");
-        txHash = await env.send(data, gas);
-        progress.sent[step.name] = txHash;
-        onEvent({ type: "sent", step: step.name, txHash });
-      }
-
-      phase("broadcasting", { txHash });
-      const receipt = await env.waitForReceipt(txHash).catch((error: unknown) => {
-        // Never mined in the time allowed: probably dropped, and keeping it would block every retry.
-        if ((error as Error).name === "WaitForTransactionReceiptTimeoutError") delete progress.sent[step.name];
-        throw error;
-      });
-      if (receipt.status !== "success") {
-        delete progress.sent[step.name]; // dead on-chain, so a retry must send a new one
-        throw Object.assign(new Error("execution reverted"), { code: "reverted" });
-      }
+      const { txHash } = await sendOnce(step.name, step, env, progress, phase, onEvent, undefined, { data, runtimeBytecode: step.deployedBytecode });
 
       phase("recording", { txHash });
       const { address } = await recordStep(env, step, txHash);
       deployed[step.name] = address;
       progress.deployed[step.name] = address;
       delete progress.sent[step.name];
+      delete progress.nonces?.[step.name];
       phase("done", { txHash, address });
     } catch (error) {
+      if (error instanceof Uncertain) {
+        // Sent, not confirmed: not a failure, and the transaction is kept so nothing is signed twice.
+        onEvent({ type: "phase", step: step.name, phase: "uncertain", txHash: error.txHash });
+        throw new StepFailure(step.name, uncertain(step, error), [], error.raw);
+      }
       if (error instanceof NotSaved) {
         // Nothing failed on-chain, so the step doesn't say Failed. Try again picks up the sent hashes.
         onEvent({ type: "phase", step: step.name, phase: "unsaved" });
@@ -220,7 +246,13 @@ export async function runDeploy(
   return deployed;
 }
 
-/** A sent transaction under its own key, so a retry picks up each one and never sends it twice. */
+/**
+ * A sent transaction under its own key, so a retry picks up each one and never sends it twice.
+ *
+ * GB-03: a transaction remembered from an earlier attempt is checked before anything is signed
+ * (checkSent): mined or still pending, it is waited on; dropped, it is sent again in its own nonce slot;
+ * replaced by the wallet, it is sent again only when no contract came of it. A receipt timeout keeps it.
+ */
 async function sendOnce(
   key: string,
   step: PlanStep,
@@ -228,28 +260,54 @@ async function sendOnce(
   progress: DeployProgress,
   phase: (p: StepPhase, extra?: { txHash?: Hex; part?: StepPart }) => void,
   onEvent: (e: DeployEvent) => void,
-  part: StepPart,
+  part: StepPart | undefined,
   tx: { data: Hex; to?: Address; runtimeBytecode?: Hex },
 ) {
-  let txHash = progress.sent[key];
+  const nonces = (progress.nonces ??= {});
+  const forget = () => {
+    delete progress.sent[key];
+    delete nonces[key];
+  };
+  let txHash: Hex | undefined = progress.sent[key];
+  let reuseNonce: number | undefined;
+  if (txHash && env.checkSent) {
+    phase("broadcasting", { txHash, part });
+    const status = await env.checkSent({ hash: txHash, nonce: nonces[key], creation: !tx.to });
+    if (status.kind === "dropped") {
+      reuseNonce = status.nonce;
+      forget();
+      txHash = undefined;
+    } else if (status.kind === "replaced") {
+      if (status.contract) throw new Uncertain("replaced", txHash, status.contract);
+      forget();
+      txHash = undefined;
+    } else if (status.kind === "unknown") {
+      throw new Uncertain("unknown", txHash);
+    }
+  }
   if (!txHash) {
     phase("simulating", { part });
     const { gas } = await withDeadline(env.simulate(tx), SIMULATE_TIMEOUT_MS);
     phase("signing", { part });
-    txHash = await env.send(tx.data, gas, tx.to);
+    const sent = await env.send(tx.data, gas, tx.to, reuseNonce);
+    txHash = typeof sent === "string" ? sent : sent.hash;
+    const nonce = typeof sent === "string" ? reuseNonce : (sent.nonce ?? reuseNonce);
     progress.sent[key] = txHash;
+    if (nonce !== undefined) nonces[key] = nonce;
     onEvent({ type: "sent", step: step.name, txHash });
   }
-  phase("broadcasting", { txHash, part });
-  const receipt = await env.waitForReceipt(txHash).catch((error: unknown) => {
-    if ((error as Error).name === "WaitForTransactionReceiptTimeoutError") delete progress.sent[key];
+  const hash = txHash;
+  phase("broadcasting", { txHash: hash, part });
+  const receipt = await env.waitForReceipt(hash).catch((error: unknown) => {
+    // Not confirmed in the time allowed doesn't mean dropped: keep it, and check before signing again.
+    if ((error as Error).name === "WaitForTransactionReceiptTimeoutError") throw new Uncertain("timeout", hash, null, error);
     throw error;
   });
   if (receipt.status !== "success") {
-    delete progress.sent[key];
+    forget(); // dead on-chain, so a retry must send a new one
     throw Object.assign(new Error("execution reverted"), { code: "reverted" });
   }
-  return { txHash, contractAddress: receipt.contractAddress ?? null };
+  return { txHash: hash, contractAddress: receipt.contractAddress ?? null };
 }
 
 /**
@@ -284,6 +342,10 @@ async function runProxiedStep(
   const { address } = await recordStep(env, step, txHash, code.txHash);
   delete progress.sent[codeKey];
   delete progress.sent[step.name];
+  if (progress.nonces) {
+    delete progress.nonces[codeKey];
+    delete progress.nonces[step.name];
+  }
   return { address, txHash };
 }
 

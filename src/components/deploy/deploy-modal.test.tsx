@@ -189,6 +189,26 @@ describe("DeployModal, upgradeable trial (D33)", () => {
     expect(onFix.mock.calls[0][0]).toMatch(/testExploitReentrancy/);
   });
 
+  it("a deploy Celo hasn't confirmed waits, checks again, and deploys again only after a warning (GB-03)", async () => {
+    const user = userEvent.setup();
+    const tx = `0x${"0a".repeat(32)}`;
+    const checkAgain = vi.fn();
+    const deployAgain = vi.fn();
+    renderModal(
+      state({ stage: "error", steps: [{ name: "Tip", phase: "uncertain", txHash: tx as never }], error: { kind: "uncertain", message: "Celo hasn't confirmed Tip yet. It may still go through, so nothing new will be sent until we know.", at: "Tip", logs: [], opcodes: [] } }),
+      { checkAgain, deployAgain },
+    );
+    expect(screen.getByText("Waiting on Celo", { selector: "p" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "See the transaction on the explorer" })).toHaveAttribute("href", expect.stringContaining(tx));
+    expect(screen.queryByRole("button", { name: "Try again" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Check again" }));
+    expect(checkAgain).toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Deploy again anyway" }));
+    expect(screen.getByText(/two contracts and pay the network fee twice/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Deploy again" }));
+    expect(deployAgain).toHaveBeenCalledWith(tx);
+  });
+
   it("offers the option on testnet only", async () => {
     const user = userEvent.setup();
     const setUpgradeable = vi.fn();

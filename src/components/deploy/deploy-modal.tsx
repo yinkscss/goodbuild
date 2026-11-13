@@ -29,6 +29,7 @@ const PHASE_COPY: Record<StepPhase, string> = {
   broadcasting: "Sending to Celo…",
   recording: "Saving…",
   unsaved: "Sent, not saved yet",
+  uncertain: "Waiting on Celo",
   done: "Deployed",
   failed: "Failed",
 };
@@ -53,6 +54,9 @@ export function stageIndex(step: StepView | undefined): { active: number; done: 
     case "unsaved":
       // Signed and mined. Only GoodBuild's record is missing, so nothing is marked as failed.
       return { active: -1, done: 2 };
+    case "uncertain":
+      // Sent and not confirmed (GB-03): it sits on Broadcast, not failed.
+      return { active: 1, done: 1 };
     case "done":
     case "reused":
       return step.verify === "verified" ? { active: 3, done: 3 } : { active: 2, done: 2 };
@@ -224,6 +228,7 @@ function ErrorCard({ deploy, onFix, chainId }: { deploy: Deploy; onFix: (prompt:
   // Waiting on the network, not a failure: nothing was lost, and Try again is the whole fix.
   const waiting = error.kind === "not_saved" || error.kind === "timeout";
   if (review) return <OwnerReview deploy={deploy} />;
+  if (error.kind === "uncertain") return <WaitingOnCelo deploy={deploy} chainId={chainId} />;
   const heading = refused
     ? "We can't upgrade this safely"
     : notReady
@@ -357,6 +362,59 @@ function OwnerReview({ deploy }: { deploy: Deploy }) {
       <Button variant="primary" className="mt-3 w-full" disabled={!checked} onClick={() => void deploy.prepare(state.evmVersion, { ownerReviewed: true })}>
         Continue
       </Button>
+    </div>
+  );
+}
+
+/**
+ * GB-03: a deploy transaction was sent and Celo hasn't confirmed it. It may still go through, so the
+ * first answer is Check again, which signs nothing unless the chain shows it was dropped. Deploying again
+ * anyway is possible, behind a warning, so an odd chain state can't leave the owner stuck.
+ */
+function WaitingOnCelo({ deploy, chainId }: { deploy: Deploy; chainId: number }) {
+  const { state } = deploy;
+  const [confirming, setConfirming] = React.useState(false);
+  const error = state.error!;
+  const step = state.steps.find((s) => s.name === error.at);
+  const hash = step?.txHash;
+  const network = state.plan?.chainId ?? chainId;
+  return (
+    <div className="mt-5 rounded-block bg-canvas p-4" role="alert">
+      <div className="flex items-start gap-3">
+        <span className="mt-1.5 size-2 shrink-0 rounded-full bg-warning" aria-hidden />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold">Waiting on Celo</p>
+          <p className="mt-1 text-sm text-grey-600">{error.message}</p>
+          {hash && (
+            <a href={explorerTxUrl(network, hash)} target="_blank" rel="noreferrer" className="mt-1 inline-block text-xs text-violet hover:underline">
+              See the transaction on the explorer
+            </a>
+          )}
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button variant="chipSelected" size="chip" onClick={() => deploy.checkAgain()}>
+              Check again
+            </Button>
+            {hash && !confirming && (
+              <Button variant="chip" size="chip" onClick={() => setConfirming(true)}>
+                Deploy again anyway
+              </Button>
+            )}
+          </div>
+          {hash && confirming && (
+            <div className="mt-3 rounded-tip bg-warning/10 p-3 text-sm">
+              <p className="text-grey-600">This asks your wallet for a new transaction. If the first one still goes through, you&apos;ll have two contracts and pay the network fee twice.</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Button variant="chipSelected" size="chip" onClick={() => deploy.deployAgain(hash)}>
+                  Deploy again
+                </Button>
+                <Button variant="chip" size="chip" onClick={() => setConfirming(false)}>
+                  Keep waiting
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { loadSent, pendingKey, saveSent } from "./pending";
+import { loadNonces, loadSent, pendingKey, saveNonces, saveSent } from "./pending";
 
 const TX = `0x${"ab".repeat(32)}` as const;
 const A = "0xABCDEFabcdefABCDEFabcdefABCDEFabcdefABCD" as const;
@@ -28,5 +28,15 @@ describe("pending deploy transactions", () => {
     expect(loadSent("k")).toEqual({});
     localStorage.setItem("k", "not json");
     expect(loadSent("k")).toEqual({});
+  });
+
+  it("keeps each sent transaction's nonce beside it, and drops anything that isn't one (GB-03)", () => {
+    const key = pendingKey("p1", 42220, TX, A);
+    saveNonces(key, { Token: 7, "Vault#code": 0 });
+    expect(loadNonces(key)).toEqual({ Token: 7, "Vault#code": 0 });
+    localStorage.setItem(`${key}:nonces`, JSON.stringify({ a: -1, b: 1.5, c: "3", d: 2 }));
+    expect(loadNonces(key)).toEqual({ d: 2 });
+    saveNonces(key, {});
+    expect(localStorage.getItem(`${key}:nonces`)).toBeNull();
   });
 });
