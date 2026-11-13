@@ -1178,3 +1178,11 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
   - The admin page rendered with a real admin session.
   - The worker's hourly sweep on the server: watch for `[worker] hackathon expiry:` lines after the deadline.
   - Only the standalone worker (`pnpm worker`) sweeps, not the web process's inline worker.
+
+### D101. Hackathon entries start on GoodBuild; GoodBuild is linked as a partner
+
+- **Decided by:** the owner, 12 Nov 2026.
+- **Rule:** every entry is started on GoodBuild, so its first commit comes from GoodBuild. After that, builders may connect GitHub (D96) and keep building outside.
+- **Shown on `/hackathon`:** in the rules and the FAQ. Before this, the FAQ said entries didn't have to use GoodBuild.
+- **Not enforced in code yet:** submissions aren't built. When they are, check that the entry's repo is one GoodBuild created through GitHub sync, and that its first commit is GoodBuild's.
+- **Partner card:** the GoodBuild card links to https://goodbuildit.xyz/ instead of "Link coming soon".
