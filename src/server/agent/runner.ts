@@ -18,8 +18,8 @@ import { dbAssetStore, type AssetStore } from "./asset-store";
 import { ASSETS_MODULE, assetManifest, assetsModule, reviewImage, visionImage } from "./assets";
 import { HISTORY_WINDOW, memoryBlock, updateMemory, type Memory, type MemoryMessage } from "./memory";
 import { MODEL_IDS, TIER_FOR, ModelUnavailableError, type ChatMessage, type ModelClient, type ModelEvent, type ModelTier, type ToolCall, type UserPart } from "./model";
-import { INTAKE_MAX_TOKENS, INTAKE_PROMPT, fallbackIntake, intakeTools, intakeContext, latestIntake, parseIntake, planBrief } from "./plan-intake";
-import { BUILD_TOOLS, PLAN_TOOLS, contextWithPicks, systemPrompt } from "./prompt";
+import { INTAKE_MAX_TOKENS, INTAKE_PROMPT, PLAN_ASK_TOOL_NAME, askedJustBefore, fallbackIntake, intakeTools, intakeContext, latestIntake, parseIntake, parsePlanQuestions, planBrief } from "./plan-intake";
+import { BUILD_TOOLS, contextWithPicks, planTools, systemPrompt } from "./prompt";
 import { checkpoint, claimTurn, loadFiles, recordUsage, releaseTurn } from "./store";
 import { decideFunding } from "@/server/credits/cap";
 import { OutOfCreditsError, ensureHold, worstCaseCallMicro } from "@/server/credits/holds";
@@ -211,8 +211,8 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     if (saved) log(`↻ resumed after an interruption (attempt ${job.resume?.attempt ?? 2}), replaying ${replayLog.length} saved ${replayLog.length === 1 ? "response" : "responses"}`);
 
     const intake = setup.intake === true;
-    const convo: ChatMessage[] = [{ role: "system", content: intake ? INTAKE_PROMPT : systemPrompt(input.mode) }, ...rehydrate(setup.prefix, images)];
-    const tools = intake ? intakeTools(setup.request) : input.mode === "plan" ? PLAN_TOOLS : BUILD_TOOLS;
+    const convo: ChatMessage[] = [{ role: "system", content: intake ? INTAKE_PROMPT : systemPrompt(input.mode, setup.canAsk === true) }, ...rehydrate(setup.prefix, images)];
+    const tools = intake ? intakeTools(setup.request) : input.mode === "plan" ? planTools(setup.canAsk === true) : BUILD_TOOLS;
 
     let calls = 0;
     let callIdx = 0;
@@ -409,6 +409,22 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
             convo.push({ role: "tool", tool_call_id: call.id, content: await checkForTheBuilder() });
             continue;
           }
+          // Plan mode's own questions (D103): shown as cards, and the turn ends so the answers can start the plan.
+          if (call.name === PLAN_ASK_TOOL_NAME) {
+            const asked = input.mode === "plan" && setup.canAsk && !record.intake ? parsePlanQuestions(call.arguments) : null;
+            if (!asked) {
+              convo.push({ role: "tool", tool_call_id: call.id, content: "Error: no questions were shown. Call set_plan with your best plan instead." });
+              continue;
+            }
+            record.intake = asked;
+            if (!text.trim()) {
+              text = "A couple of quick questions first, so the plan fits.";
+              out({ type: "text_set", text });
+            }
+            out({ type: "questions", intake: asked });
+            convo.push({ role: "tool", tool_call_id: call.id, content: "The questions are on the user's screen. Stop here." });
+            continue;
+          }
           const outcome = ws.execute(call.name, call.arguments, input.mode);
           if (outcome.guides?.length) log(`guides: ${outcome.guides.join(", ")}`);
           if (outcome.access) log(`· ${outcome.access}`);
@@ -441,7 +457,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
           });
           continue;
         }
-        if (final) return true;
+        if (final || record.intake) return true;
       }
       log("! stopped: too many tool rounds in one pass");
       return false;
@@ -838,7 +854,10 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
 
     // The plan's answers carry into every later turn. The first build also gets the palette, in
     // place before the model reads the page.
-    const brief = planBrief(latestIntake(await db.select({ role: messages.role, meta: messages.meta }).from(messages).where(eq(messages.projectId, input.projectId)).orderBy(asc(messages.createdAt))), firstBuild);
+    const chat = await db.select({ id: messages.id, role: messages.role, meta: messages.meta }).from(messages).where(eq(messages.projectId, input.projectId)).orderBy(asc(messages.createdAt));
+    const brief = planBrief(latestIntake(chat), firstBuild);
+    // Plan mode may ask its own questions, but never twice in a row (D103). This turn's own messages are already in the chat.
+    const canAsk = input.mode === "plan" && !askedJustBefore(chat.filter((m) => m.id !== assistantId && m.id !== userMessageId));
     const chosenPalette = firstBuild ? paletteById(brief.paletteId) : undefined;
     if (chosenPalette && files["public/index.html"] !== undefined) files["public/index.html"] = applyPalette(files["public/index.html"], chosenPalette);
 
@@ -945,6 +964,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       userMessageId,
       request,
       firstBuild,
+      ...(canAsk ? { canAsk } : {}),
       ...(input.mode === "build" && chosenPalette ? { paletteId: chosenPalette.id } : {}),
       ...(input.mode === "build" && firstBuild && brief.customColours ? { customColours: true } : {}),
       priorStatus: finalStatus,

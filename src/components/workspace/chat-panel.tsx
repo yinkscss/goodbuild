@@ -5,7 +5,7 @@ import { ArrowUp, Loader2, Square } from "lucide-react";
 
 import { formatCredits } from "@/lib/credits-math";
 import type { AssetInfo, AssetKind } from "@/server/agent/assets";
-import { nextQuestion, PLAN_OTHER_MAX, planBuildPrompt, START_BUILDING_TEXT } from "@/lib/plan";
+import { DRAFT_PLAN_TEXT, nextQuestion, PLAN_OTHER_MAX, planBuildPrompt, START_BUILDING_TEXT } from "@/lib/plan";
 import { TopUpPill } from "@/components/credits/top-up-pill";
 import { FIX_PROMPT } from "@/lib/preview-errors";
 import { isSubmitShortcut } from "@/lib/prompt";
@@ -67,18 +67,18 @@ export function ChatPanel({
   // The running turn is writing the plan's questions: "Skip" is offered there too.
   const planning = (state.messages.find((m) => m.id === state.jobs[0]?.userMessageId)?.meta as { intake?: boolean } | null)?.intake === true;
   const lastRecord = state.messages.find((m) => m.id === lastAssistantId)?.meta as TurnRecord | null | undefined;
-  // The prompt the newest turn answered, for "Try again" on a failed or interrupted build.
   // The newest reply's questions are still open: a typed answer in the composer answers the next one.
-  const openIntake = lastRecord?.intake && !running && !state.project.currentVersion ? lastRecord.intake : null;
+  const openIntake = lastRecord?.intake && !running && (lastRecord.intake.for === "plan" || !state.project.currentVersion) ? lastRecord.intake : null;
   const openQuestion = openIntake ? openIntake.questions[nextQuestion(openIntake)] : undefined;
   const onComposerSend = (prompt: string, mode: TurnMode) => {
     const text = prompt.trim();
-    if (lastAssistantId && openQuestion && mode === "build" && text.length <= PLAN_OTHER_MAX) ws.answerPlan(lastAssistantId, openQuestion.id, { picks: [], other: text });
+    if (lastAssistantId && openQuestion && mode === (openIntake?.for === "plan" ? "plan" : "build") && text.length <= PLAN_OTHER_MAX) ws.answerPlan(lastAssistantId, openQuestion.id, { picks: [], other: text });
     else send(prompt, mode);
   };
   // "Change something" on a drafted plan: the composer, in Plan mode, with the cursor in it.
   const [composerCue, setComposerCue] = React.useState(0);
   const draftOpen = Boolean(lastRecord?.mode === "plan" && lastRecord.plan && !lastRecord.intake && !running);
+  // The prompt the newest turn answered, for "Try again" on a failed or interrupted build.
   const lastUserPrompt = [...state.messages].reverse().find((m) => m.role === "user" && m.status !== "queued" && m.status !== "cancelled")?.content;
   return (
     <section aria-label="Chat" className="flex min-h-0 flex-col rounded-card bg-surface shadow-card">
@@ -137,7 +137,10 @@ export function ChatPanel({
               checkFailed={m.id === lastAssistantId && ws.checkFailed}
               plan={
                 m.id === lastAssistantId && !running
-                  ? { answer: (q, a) => ws.answerPlan(m.id, q, a), start: () => send(START_BUILDING_TEXT, "build"), skip: ws.skipPlan }
+                  ? record.intake?.for === "plan"
+                    ? // Plan mode's questions (D103): the answers start the plan, not the build.
+                      { answer: (q, a) => ws.answerPlan(m.id, q, a), start: () => send(DRAFT_PLAN_TEXT, "plan"), skip: () => send(DRAFT_PLAN_TEXT, "plan") }
+                    : { answer: (q, a) => ws.answerPlan(m.id, q, a), start: () => send(START_BUILDING_TEXT, "build"), skip: ws.skipPlan }
                   : undefined
               }
               draft={
@@ -219,7 +222,7 @@ export function ChatPanel({
         placeholder={
           openQuestion
             ? "Or type your own answer here."
-            : lastRecord?.intake && !state.project.currentVersion
+            : lastRecord?.intake && lastRecord.intake.for !== "plan" && !state.project.currentVersion
               ? "Or type what you want here. Sending starts the build."
               : draftOpen
                 ? 'Say what to change, e.g. "make it weekly"'

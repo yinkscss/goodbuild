@@ -294,7 +294,7 @@ export function PlanCard({ intake, actions }: { intake: PlanIntake; actions?: Pl
         <AnswerList intake={intake} onChange={go} />
         <div className="mt-4 flex justify-end">
           <ActionButton disabled={leaving} onClick={() => leave(actions.start)}>
-            Start building
+            {intake.for === "plan" ? "Draft the plan" : "Start building"}
           </ActionButton>
         </div>
       </div>
@@ -328,7 +328,7 @@ export function PlanCard({ intake, actions }: { intake: PlanIntake; actions?: Pl
           <span />
         )}
         <Button variant="ghost" size="sm" className="-mr-2" disabled={leaving} onClick={() => leave(actions.skip)}>
-          Skip, just build it
+          {intake.for === "plan" ? "Skip, just plan it" : "Skip, just build it"}
         </Button>
       </div>
     </div>

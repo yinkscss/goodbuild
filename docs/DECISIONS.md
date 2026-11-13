@@ -1196,6 +1196,18 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
   - **Build this plan** sends a build turn whose message is the plan itself (`planBuildPrompt`), so the builder, the history window and the rolling memory all see it with no server change. It sends `skipPlan`, so a first message that was planned in Plan mode builds instead of asking the first-message questions.
   - **Change something** switches the composer to Plan mode and puts the cursor in it. The next plan reply replaces this one.
 - **Typed answers:** while the questions card has an unanswered question, text typed in the composer in Build mode (300 characters or fewer) is saved as that question's "Other" answer. Before, sending ended the card and started a build. Start building is still the way to build from the card. Longer text, and anything sent in Plan mode, is sent as a normal message.
-- **Not done (proposed, waiting on the owner):** letting Plan mode ask questions with the existing card, at one extra cheap call per round.
+- **Plan mode asking questions:** done in D103.
 - **Checked:** `plan-card.test.tsx` (card, actions, double-tap guard, build-mode turns show no card, prompt text), lint, and the unchanged type-error count. **UNVERIFIED:** the composer behaviour (`chat-panel.tsx`, no test file exists for it), a real model's `set_plan` output in the card, and a phone.
 - **Known limit:** if someone has stepped Back to an earlier question, a typed answer goes to the next unanswered one, not the one on screen.
+
+### D103. Plan mode can ask its own questions before it plans (extends D102)
+
+- **Decided by:** the owner, 13 Nov 2026 ("yes, do step 4"). Claude proposed the design.
+- **What it does:** in Plan mode on a project, the model may call `ask_before_planning` with one to three questions when the request leaves out something that changes the plan. They show on the same card as the first-message questions. The turn ends there, with no further model call.
+- **Finishing the card:** the last screen says **Draft the plan** and Skip says "Skip, just plan it". Both send a Plan mode message ("Draft the plan with my answers"). The answers reach that turn through the same `planBrief` block every turn already gets, so there is no new plumbing. Typed text in the composer answers the open question while Plan mode is selected (Build mode, for the first-message questions).
+- **Cap:** never twice in a row. The tool is offered only when the newest reply in the chat isn't a set of questions (`askedJustBefore`), so one round per plan. The choice is saved on the turn's setup (`canAsk`), so a resumed turn sees the same tools.
+- **Not the first-message planner:** that one (D32) is unchanged. A project's first message still gets its own questions, which include colours, MiniPay and game cards. Plan mode's round has none of those.
+- **Why a different tool name:** `ask_questions` marks the first-message planning call in the demo model and the tests, so Plan mode's tool is `ask_before_planning`.
+- **Cost:** a question round is a normal Plan mode turn that stops after its first model call, and the plan after it is a second Plan mode turn. No extra call beyond those two. A model that asks when it didn't need to costs one turn, so the prompt tells it to skip questions when the request is clear.
+- **Checked:** parsing (three cards, no colour card), the turn ends after one call, the answer reaches the next plan, no second round in a row, an unusable call is refused and the model plans instead, build mode never gets the tool, and the card's labels. Lint and the type-error count (unchanged).
+- **UNVERIFIED:** whether a real model asks well or too often (watch how many Plan mode turns end in questions), the composer's typed answers, and a phone.

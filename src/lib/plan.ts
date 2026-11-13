@@ -5,6 +5,7 @@ import type { PlanAnswer, PlanIntake, PlanQuestion } from "./turn-types";
 export const PLAN_OTHER_MAX = 300;
 
 export const START_BUILDING_TEXT = "Start building";
+export const DRAFT_PLAN_TEXT = "Draft the plan with my answers";
 export const SKIP_PLAN_TEXT = "Skip the questions, just build it";
 
 /** The next question to ask, or questions.length when all are answered (show the summary). */

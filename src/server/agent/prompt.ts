@@ -2,6 +2,7 @@ import { manifest, selectContext, type ContextPick } from "./codebase";
 import type { ToolSpec } from "./model";
 import { guideCatalog, guideNames } from "./guides";
 import { KITS, kitCatalog } from "./kits/registry";
+import { PLAN_ASK_TOOL } from "./plan-intake";
 import { BASE_ALLOWED_DEPENDENCIES, PLATFORM_DIR } from "./template";
 import { UI_PRIMITIVE_NAMES } from "./ui-primitives";
 
@@ -66,6 +67,11 @@ export const BUILD_TOOLS: ToolSpec[] = [
 export const PLAN_TOOLS: ToolSpec[] = BUILD_TOOLS.filter((t) =>
   t.type === "function" ? ["set_plan", "read_guide", "suggest_next", "list_files", "read_file", "search_code", "find_symbol"].includes(t.function.name) : false,
 );
+
+/** Plan mode's tools; with `canAsk` it may also put questions on screen first (D103). */
+export function planTools(canAsk: boolean): ToolSpec[] {
+  return canAsk ? [...PLAN_TOOLS, PLAN_ASK_TOOL] : PLAN_TOOLS;
+}
 
 function fn(name: string, description: string, properties: Record<string, unknown>, required: string[]): ToolSpec {
   return { type: "function", function: { name, description, parameters: { type: "object", properties, required, additionalProperties: false } } };
@@ -146,10 +152,11 @@ ${kitCatalog()}`
 
 const FOLLOW_UP = `Then, in the same response as that reply, call suggest_next with one or two next steps specific to this app, written as the request the user would send ("Add a leaderboard of top tippers", "Let tips carry a short message"). They appear as buttons under your reply. suggest_next is the only place for next steps: don't list or ask them in the reply text. Nothing already built, no pushing.`;
 
-export function systemPrompt(mode: "build" | "plan"): string {
+export function systemPrompt(mode: "build" | "plan", canAsk = false): string {
   const role =
     mode === "plan"
-      ? `You are in PLAN MODE. Do not edit files. Read what you need, then answer the user's question or call set_plan with a concrete plan, then reply with a short explanation (under about 120 words, plain sentences, no code blocks: describe the contract and UI changes in words). The user will switch to build mode to execute it.
+      ? `You are in PLAN MODE. Do not edit files. Read what you need, then answer the user's question or call set_plan with a concrete plan, then reply with a short explanation (under about 120 words, plain sentences, no code blocks: describe the contract and UI changes in words). The user will switch to build mode to execute it.${canAsk ? `
+If the request leaves out something that would change the plan (who can do what, how much, what a page shows), call ask_before_planning with one to three questions instead of guessing, then stop: the person answers on cards and you plan on their next message. Skip it when the request is clear, when it is only a question, or when their earlier answers already cover it. Everyday words, 2 to 4 short options each with exactly one recommended, no technical terms, no em dashes.` : ""}
 ${FOLLOW_UP}`
       : `You are in BUILD MODE. Work in this order:
 1. Call set_plan once with a short summary, steps and the guides this work needs (skip set_plan when you are only answering a question).

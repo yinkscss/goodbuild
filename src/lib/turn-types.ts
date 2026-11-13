@@ -66,6 +66,8 @@ export interface PlanIntake {
   game?: GameBrief;
   /** A game whose request already asked for a leaderboard, so the card wasn't shown. */
   leaderboard?: boolean;
+  /** Asked by Plan mode (D103): finishing the card drafts the plan, not the build. */
+  for?: "plan";
 }
 
 export type TurnEvent =

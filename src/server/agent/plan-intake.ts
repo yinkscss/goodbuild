@@ -102,6 +102,46 @@ export const INTAKE_TOOLS: ToolSpec[] = [
   },
 ];
 
+/** Plan mode's own question tool (D103). Not named ask_questions: that name marks the first-message planning call. */
+export const PLAN_ASK_TOOL_NAME = "ask_before_planning";
+/** Most cards one Plan mode round may show. */
+const MAX_PLAN_ASK_QUESTIONS = 3;
+
+export const PLAN_ASK_TOOL: ToolSpec = {
+  type: "function",
+  function: {
+    name: PLAN_ASK_TOOL_NAME,
+    description: "Show the user one to three clickable questions before you plan, when the request leaves out something that changes the plan. Call it alone, once. Then stop: their answers come back with the next message.",
+    parameters: {
+      type: "object",
+      properties: {
+        summary: { type: "string", description: "One plain sentence: what you understood they want." },
+        questions: (INTAKE_TOOLS[0].function.parameters as { properties: { questions: unknown } }).properties.questions,
+      },
+      required: ["summary", "questions"],
+    },
+  },
+};
+
+/** Plan mode's question round as a card set, or null when it gives nothing usable. No colour, MiniPay or game cards: those belong to the first plan. */
+export function parsePlanQuestions(rawArguments: string): PlanIntake | null {
+  let args: { summary?: unknown; questions?: unknown };
+  try {
+    args = JSON.parse(rawArguments || "{}") as typeof args;
+  } catch {
+    return null;
+  }
+  const questions = parseQuestions(args.questions, MAX_PLAN_ASK_QUESTIONS);
+  if (!questions.length) return null;
+  return { summary: clean(args.summary, 240), questions, answers: {}, for: "plan" };
+}
+
+/** True when the newest reply in the chat is a set of questions: Plan mode doesn't ask twice in a row. */
+export function askedJustBefore(rows: Array<{ role: string; meta: unknown }>): boolean {
+  const last = [...rows].reverse().find((m) => m.role === "assistant");
+  return Boolean((last?.meta as TurnRecord | null)?.intake);
+}
+
 /** A game's planner also pitches the game (D93). Only games get the field, so other plans don't pay for it. */
 const GAME_BRIEF_FIELD = {
   type: "object",

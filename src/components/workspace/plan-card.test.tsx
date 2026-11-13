@@ -187,3 +187,17 @@ describe("PlanDraftCard", () => {
     expect(planBuildPrompt(plan)).toBe("Build this plan: A weekly savings jar.\n1. Add a Jar contract\n2. Build the deposit page");
   });
 });
+
+describe("PlanCard for Plan mode's questions (D103)", () => {
+  it("ends on Draft the plan, and skips to the plan, not the build", () => {
+    const a = actions();
+    const { unmount } = render(<PlanCard intake={{ ...intake(), for: "plan" }} actions={a} />);
+    fireEvent.click(screen.getByRole("button", { name: "Skip, just plan it" }));
+    expect(a.skip).toHaveBeenCalledOnce();
+    unmount();
+    render(<PlanCard intake={{ ...intake({ q1: { picks: ["o1"] }, q2: { picks: ["o1"] }, palette: { picks: ["ocean"] } }), for: "plan" }} actions={a} />);
+    expect(screen.queryByRole("button", { name: /Start building/ })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Draft the plan" }));
+    expect(a.start).toHaveBeenCalledOnce();
+  });
+});
