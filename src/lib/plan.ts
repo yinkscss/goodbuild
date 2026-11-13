@@ -5,6 +5,7 @@ import type { PlanAnswer, PlanIntake, PlanQuestion } from "./turn-types";
 export const PLAN_OTHER_MAX = 300;
 
 export const START_BUILDING_TEXT = "Start building";
+export const DRAFT_PLAN_TEXT = "Draft the plan with my answers";
 export const SKIP_PLAN_TEXT = "Skip the questions, just build it";
 
 /** The next question to ask, or questions.length when all are answered (show the summary). */
@@ -30,4 +31,16 @@ export function cleanAnswer(question: PlanQuestion, answer: PlanAnswer): PlanAns
   const kept = question.multiple ? picks : other ? [] : picks.slice(0, 1);
   if (!kept.length && !other) return null;
   return { picks: kept, ...(other ? { other } : {}) };
+}
+
+/** A drafted plan from Plan mode: one sentence and a few short steps. */
+export interface PlanDraft {
+  summary: string;
+  steps: string[];
+}
+
+/** What "Build this plan" sends. The plan travels in the message, so the builder, the history and the memory all see it. */
+export function planBuildPrompt(plan: PlanDraft): string {
+  const steps = plan.steps.map((s, i) => `${i + 1}. ${s}`).join("\n");
+  return `Build this plan${plan.summary ? `: ${plan.summary}` : ":"}${steps ? `\n${steps}` : ""}`;
 }

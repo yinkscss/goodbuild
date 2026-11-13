@@ -18,7 +18,7 @@ import type { TurnRecord } from "@/lib/turn-types";
 
 import { demoModel } from "./demo-model";
 import { scriptedModel } from "./fake-model";
-import { GAME_RULES, INTAKE_MAX_TOKENS, INTAKE_PROMPT, INTAKE_TOOLS, INTAKE_TOOLS_GAME, LEADERBOARD_QUESTION_ID, MINIPAY_QUESTION_ID, fallbackIntake, intakeContext, intakeTools, parseIntake, planBrief } from "./plan-intake";
+import { GAME_RULES, INTAKE_MAX_TOKENS, INTAKE_PROMPT, INTAKE_TOOLS, INTAKE_TOOLS_GAME, LEADERBOARD_QUESTION_ID, MINIPAY_QUESTION_ID, fallbackIntake, intakeContext, intakeTools, parseIntake, parsePlanQuestions, planBrief } from "./plan-intake";
 import { miniApp } from "./kits/mini-app";
 import { detectKits } from "./kits";
 import { starterFiles } from "./template";
@@ -564,5 +564,69 @@ describe("a game's plan (D93)", () => {
     const intake = fallbackIntake("A snake game with a leaderboard");
     expect(intake.questions.some((q) => q.id === LEADERBOARD_QUESTION_ID)).toBe(false);
     expect(planBrief(intake, true).leaderboard).toBe(true);
+  });
+});
+
+describe("Plan mode's own questions (D103)", () => {
+  const ASK_ARGS = {
+    summary: "A savings jar for the club.",
+    recommended_palette: "forest",
+    questions: [
+      { question: "How often does everyone pay in?", label: "How often", options: [{ label: "Every week", recommended: true }, { label: "Every month" }] },
+      { question: "Which colours do you like?", label: "Colours", options: [{ label: "Green" }, { label: "Blue" }] },
+      { question: "Who can start a round?", label: "Who", options: [{ label: "Only me", recommended: true }, { label: "Anyone" }] },
+      { question: "Can people leave early?", label: "Leaving", options: [{ label: "No", recommended: true }, { label: "Yes" }] },
+      { question: "A fifth question?", label: "Fifth", options: [{ label: "A" }, { label: "B" }] },
+    ],
+  };
+  const toolNames = (r: { tools?: Array<{ function: { name: string } }> }) => (r.tools ?? []).map((t) => t.function.name);
+  const planTurn = (model: ReturnType<typeof scriptedModel>, prompt: string) => runTurn({ db, model: model.client }, { projectId, userId, mode: "plan", prompt }, () => undefined);
+
+  it("parses a round into at most three cards, with no colour card, marked for the plan", () => {
+    const parsed = parsePlanQuestions(JSON.stringify(ASK_ARGS))!;
+    expect(parsed.for).toBe("plan");
+    expect(parsed.questions.map((q) => q.question)).toEqual(["How often does everyone pay in?", "Who can start a round?", "Can people leave early?"]);
+    expect(parsed.questions.some((q) => q.kind === "palette")).toBe(false);
+    expect(parsePlanQuestions("{not json")).toBeNull();
+    expect(parsePlanQuestions(JSON.stringify({ summary: "x", questions: [] }))).toBeNull();
+  });
+
+  it("offers the tool, shows the cards and ends the turn without another model call", async () => {
+    const model = scriptedModel([{ text: "", tools: [{ name: "ask_before_planning", args: ASK_ARGS }], usage: { input: 900, output: 200 } }]);
+    const events: unknown[] = [];
+    const record = await runTurn({ db, model: model.client }, { projectId, userId, mode: "plan", prompt: "Plan a savings jar" }, (e) => events.push(e));
+    expect(toolNames(model.requests[0])).toContain("ask_before_planning");
+    expect(model.requests).toHaveLength(1);
+    expect(record.intake?.for).toBe("plan");
+    expect(record.intake?.questions).toHaveLength(3);
+    expect(record.plan).toBeUndefined();
+    expect(events.some((e) => (e as { type: string }).type === "questions")).toBe(true);
+    const m = await assistantOf(record);
+    expect(m.content).toContain("quick questions");
+  });
+
+  it("doesn't offer it again right after a round, and the answers reach the plan", async () => {
+    const first = await planTurn(scriptedModel([{ tools: [{ name: "ask_before_planning", args: ASK_ARGS }] }]), "Plan a savings jar");
+    const m = await assistantOf(first);
+    await savePlanAnswer(db, { projectId, messageId: m.id, questionId: "q1", answer: { picks: [], other: "Every Friday" } });
+    const second = scriptedModel([{ tools: [{ name: "set_plan", args: { summary: "Weekly jar", steps: ["Add a Jar contract", "Build the page"] } }] }, { text: "Here is the plan." }]);
+    const record = await planTurn(second, "Draft the plan with my answers");
+    expect(toolNames(second.requests[0])).not.toContain("ask_before_planning");
+    expect(JSON.stringify(second.requests[0].messages)).toContain("Every Friday");
+    expect(record.plan?.steps).toEqual(["Add a Jar contract", "Build the page"]);
+    expect(record.intake).toBeUndefined();
+  });
+
+  it("an unusable call is refused and the model plans instead", async () => {
+    const model = scriptedModel([{ tools: [{ name: "ask_before_planning", args: { summary: "x", questions: [] } }] }, { tools: [{ name: "set_plan", args: { summary: "Plan", steps: ["One"] } }] }, { text: "Here is the plan." }]);
+    const record = await planTurn(model, "Plan a savings jar");
+    expect(record.intake).toBeUndefined();
+    expect(record.plan?.summary).toBe("Plan");
+  });
+
+  it("build mode never gets the tool", async () => {
+    const model = scriptedModel([{ text: "Built your app." }]);
+    await runTurn({ db, model: model.client }, { projectId, userId, mode: "build", prompt: "go", skipPlan: true } as never, () => undefined);
+    expect(toolNames(model.requests[0])).not.toContain("ask_before_planning");
   });
 });
