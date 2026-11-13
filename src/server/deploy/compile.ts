@@ -142,6 +142,16 @@ export async function compileForDeploy(
     }
   }
   if (problems.length) return { ok: false, errors: problems };
+  // GB-02: the guardrails run again here, on every contract and chain, not only in the builder's loop.
+  // Code edited after its last check, or never checked, can't reach a chain with delegatecall,
+  // selfdestruct, assembly, tx.origin or a low-level call. Recording re-runs this compile, so it guards that too.
+  // Upgradeable projects get the full set (style included) in their own branch below.
+  if (!upgradeable) {
+    const unsafe = Object.entries(output.sources ?? {})
+      .filter(([file]) => deployable(file))
+      .flatMap(([file, src]) => guardrailIssues(file, src.ast, files[file], { securityOnly: true }));
+    if (unsafe.length) return { ok: false, errors: unsafe.map((i) => `${i.file}${i.line ? `:${i.line}` : ""}: ${i.message}`) };
+  }
   if (!artifacts.length) return { ok: false, errors: ["No deployable contract was found (only interfaces or abstract contracts)."] };
 
   const stdJsonInput = {

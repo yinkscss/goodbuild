@@ -5,6 +5,9 @@ export type DeployErrorCode =
   | "manifest_invalid"
   | "compile_failed"
   | "exploit_tests_failed"
+  // GB-02: money-holding code outside the known vault/DAO shapes, and a mainnet record with no passed gate
+  | "needs_owner_review"
+  | "not_reviewed"
   | "gooddollar_missing"
   | "source_changed"
   | "tx_not_found"

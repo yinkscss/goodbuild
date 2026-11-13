@@ -8,7 +8,7 @@ import { getOwnedProject } from "@/server/projects";
 
 export const maxDuration = 60;
 
-const body = z.object({ chainId: z.number().int(), evmVersion: z.enum(["cancun", "paris"]).optional(), fresh: z.boolean().optional() });
+const body = z.object({ chainId: z.number().int(), evmVersion: z.enum(["cancun", "paris"]).optional(), fresh: z.boolean().optional(), ownerReviewed: z.boolean().optional() });
 
 /** Compile the saved project and return the ordered deploy plan (D23). */
 export async function POST(request: Request, ctx: RouteContext<"/api/projects/[id]/deploy/prepare">) {

@@ -13,13 +13,14 @@ import type { ProxyInfo, UpgradeableStep } from "@/lib/deploy/upgradeable";
 import { loadFiles } from "@/server/agent/store";
 import { PLATFORM_DIR } from "@/server/agent/template";
 import type { Db } from "@/server/db/client";
-import { deployments, type Deployment } from "@/server/db/deploy-schema";
+import { custodyText } from "@/server/agent/custody";
+import { deployReviews, deployments, type Deployment } from "@/server/db/deploy-schema";
 import { messages, projectFiles, projects } from "@/server/db/schema";
 import { allowsMainnet, getMainnetMode } from "@/server/settings/mainnet-access";
 import { withCurrentAddresses } from "./addresses";
 import { compileForDeploy, type DeployCompile, type EvmVersion } from "./compile";
 import { DeployError } from "./deploy-error";
-import { exploitGate } from "./exploit-gate";
+import { exploitGate, type GateResult } from "./exploit-gate";
 import {
   adoptUnchanged,
   assertUpgradeableChain,
@@ -125,6 +126,8 @@ export async function prepareDeploy(
     wallet?: string;
     /** After a refused upgrade: deploy what changed as new contracts at new addresses instead. */
     fresh?: boolean;
+    /** The owner confirmed they reviewed a money-holding contract GoodBuild's tests weren't written for (GB-02). */
+    ownerReviewed?: boolean;
   },
   deps: { compile?: typeof compileForDeploy; client?: Pick<PublicClient, "readContract" | "getStorageAt">; exploitGate?: typeof exploitGate } = {},
 ): Promise<DeployPlan> {
@@ -134,9 +137,15 @@ export async function prepareDeploy(
   const upgradeable = await isUpgradeableProject(db, input.projectId);
   if (upgradeable) assertUpgradeableChain(input.chainId);
   const files = await loadFiles(db, input.projectId);
+  let review: { exploitTests: GateResult["exploitTests"]; custody: string[]; ownerReviewed: boolean } | null = null;
   if (input.chainId === celo.id) {
-    const problems = await (deps.exploitGate ?? exploitGate)(files);
-    if (problems.length) throw new DeployError("exploit_tests_failed", "This contract holds other people's money, and its safety tests don't all pass yet. Ask the builder to fix them before it goes to Celo.", problems);
+    const gate = await (deps.exploitGate ?? exploitGate)(files);
+    if (gate.problems.length) throw new DeployError("exploit_tests_failed", "This contract holds other people's money, and its exploit tests don't all pass yet. Ask the builder to fix them before it goes to Celo. Passing them still isn't an audit.", gate.problems);
+    // GB-02: money-holding code outside the vault/DAO shapes the named attack tests were written for.
+    // Its two general exploit tests passed, but nobody has checked its design, so the owner must say they reviewed it.
+    const needsReview = gate.custody.length > 0 && !gate.knownShape;
+    if (needsReview && !input.ownerReviewed) throw new DeployError("needs_owner_review", OWNER_REVIEW, gate.custody.map(custodyText).slice(0, 12));
+    review = { exploitTests: gate.exploitTests, custody: gate.custody.map(custodyText), ownerReviewed: needsReview };
   }
   const [project] = await db.select({ version: projects.currentVersion }).from(projects).where(eq(projects.id, input.projectId)).limit(1);
 
@@ -149,6 +158,14 @@ export async function prepareDeploy(
 
   const compiled = await (deps.compile ?? compileForDeploy)(files, input.evmVersion ?? "cancun", undefined, { upgradeable });
   if (!compiled.ok) throw new DeployError("compile_failed", "The contracts didn't compile.", compiled.errors.slice(0, 8));
+  if (review) {
+    // The record step requires this row for the exact source (GB-02).
+    const values = { projectId: input.projectId, chainId: input.chainId, sourceHash: compiled.sourceHash, wallet: input.wallet?.toLowerCase() ?? null, exploitTests: review.exploitTests, custody: review.custody, ownerReviewedAt: review.ownerReviewed ? new Date() : null };
+    await db
+      .insert(deployReviews)
+      .values(values)
+      .onConflictDoUpdate({ target: [deployReviews.projectId, deployReviews.chainId, deployReviews.sourceHash], set: { ...values, updatedAt: new Date() } });
+  }
 
   const plan = planManifest(parsed.manifest, compiled.artifacts.map((a) => ({ name: a.name, abi: a.abi })), { upgradeable });
   if (!plan.ok) {
@@ -226,6 +243,8 @@ export async function prepareDeploy(
   };
 }
 
+const OWNER_REVIEW =
+  "This contract takes in other people's money in a way GoodBuild's vault and DAO tests weren't written for. Its general exploit tests passed, but that isn't an audit: nobody has checked its design. Review where the money goes in and out before you put it on Celo.";
 const NOT_READY = "These contracts aren't ready to be upgradeable yet. Ask the builder to convert them, or turn upgrades off for this project.";
 
 /**
@@ -317,7 +336,7 @@ export interface RecordInput {
 export async function recordDeployment(
   db: Db,
   input: RecordInput,
-  deps: { client?: PublicClient; compile?: typeof compileForDeploy; wait?: ChainWait } = {},
+  deps: { client?: PublicClient; compile?: typeof compileForDeploy; wait?: ChainWait; exploitGate?: typeof exploitGate } = {},
 ): Promise<Deployment> {
   assertChain(input.chainId);
   const client = deps.client ?? publicClientFor(input.chainId);
@@ -356,6 +375,27 @@ export async function recordDeployment(
   const compiled = await (deps.compile ?? compileForDeploy)(files, input.evmVersion);
   if (!compiled.ok || compiled.sourceHash !== input.sourceHash) {
     throw new DeployError("source_changed", "The project's code changed since this deploy started. Start the deploy again.");
+  }
+  if (input.chainId === celo.id) {
+    // GB-02: only code that went through GoodBuild's mainnet checks is recorded, so a contract compiled
+    // and deployed around the gate can't be listed or published as this project's.
+    const [reviewed] = await db
+      .select({ id: deployReviews.id })
+      .from(deployReviews)
+      .where(and(eq(deployReviews.projectId, input.projectId), eq(deployReviews.chainId, input.chainId), eq(deployReviews.sourceHash, compiled.sourceHash)))
+      .limit(1);
+    if (!reviewed) {
+      // No passed prepare for this code (prepared before GB-02 shipped, or deployed around GoodBuild):
+      // run the gate now. It records only if the gate passes and nothing needs the owner's review.
+      const gate = await (deps.exploitGate ?? exploitGate)(files);
+      if (gate.problems.length || (gate.custody.length && !gate.knownShape)) {
+        throw new DeployError("not_reviewed", "This code didn't go through GoodBuild's checks for Celo, so GoodBuild won't record it. Start the deploy again from GoodBuild.", gate.problems);
+      }
+      await db
+        .insert(deployReviews)
+        .values({ projectId: input.projectId, chainId: input.chainId, sourceHash: compiled.sourceHash, wallet: input.wallet.toLowerCase(), exploitTests: gate.exploitTests, custody: gate.custody.map(custodyText) })
+        .onConflictDoNothing();
+    }
   }
   const artifact = compiled.artifacts.find((a) => a.name === input.contractName);
   if (!artifact) throw new DeployError("wrong_contract", `${input.contractName} isn't a contract in this project.`);
