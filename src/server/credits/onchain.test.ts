@@ -9,7 +9,7 @@ import type { Db } from "@/server/db/client";
 import { onchainCreditEvents } from "@/server/db/onchain-credits-schema";
 import { users } from "@/server/db/schema";
 import { getBalanceMicro } from "./ledger";
-import { CREDITS_ABI, creditPendingForWallet, creditsContract, recordRedemption, redeemFromReceipt, syncRedemptions } from "./onchain";
+import { CREDITS_ABI, creditPendingForWallet, creditsContract, recordRedemption, redeemFromReceipt, SYNC_REORG_OVERLAP, syncCursor, syncRedemptions } from "./onchain";
 import { MIGRATIONS, testBackends, type TestDatabase } from "./test-backends";
 
 const CONTRACT = getAddress("0x00000000000000000000000000000000000c0de1");
@@ -135,6 +135,78 @@ describe.each(testBackends())("on-chain credits on $name", (backend) => {
       expect(await getBalanceMicro(db, u.id)).toBe(1_234_567);
       const rows = await db.select().from(onchainCreditEvents).where(eq(onchainCreditEvents.wallet, u.wallet));
       expect(rows).toHaveLength(1);
+    });
+
+    // GB-01 (Daybreak Blue review): the scan keeps its own checkpoint, so neither an empty stretch nor an
+    // out-of-order direct receipt can stop a payment nobody reported from being credited.
+    let nextChain = 900_001;
+    const chainScan = (events: { wallet: string; units: bigint; block: bigint; hash: Hex; logIndex?: number }[], head: bigint, failFrom?: bigint) => {
+      const chainId = nextChain++;
+      const env = { [`CREDITS_CONTRACT_${chainId}`]: CONTRACT, [`CREDITS_START_BLOCK_${chainId}`]: "1000" } as unknown as NodeJS.ProcessEnv;
+      const ranges: [bigint, bigint][] = [];
+      const client = {
+        getBlockNumber: async () => head,
+        getContractEvents: async ({ fromBlock, toBlock }: { fromBlock: bigint; toBlock: bigint }) => {
+          if (failFrom !== undefined && toBlock >= failFrom) throw new Error("rpc down");
+          ranges.push([fromBlock, toBlock]);
+          return events
+            .filter((e) => e.block >= fromBlock && e.block <= toBlock)
+            .map((e) => ({ ...redeemedLog(e.wallet, e.units, e.logIndex ?? 0, e.hash, CONTRACT, e.block), args: { account: getAddress(e.wallet), credits: e.units, ref: pad("0x01") } }));
+        },
+      } as never;
+      return { chainId, env, client, ranges };
+    };
+
+    it("crosses an empty stretch longer than one call and reaches a payment after it", async () => {
+      const u = await account();
+      const late = { wallet: u.wallet, units: BigInt(700_000), block: BigInt(1000 + 120_000), hash: tx() };
+      const { chainId, env, client } = chainScan([late], BigInt(1000 + 130_000));
+      for (let i = 0; i < 4; i++) await syncRedemptions(db, client, chainId, env);
+      expect(await getBalanceMicro(db, u.id)).toBe(700_000);
+      expect(await syncCursor(db, chainId)).toBe(1000 + 130_000);
+    });
+
+    it("still credits an older unreported payment after a newer one was reported directly", async () => {
+      const older = await account();
+      const newer = await account();
+      const oldPay = { wallet: older.wallet, units: BigInt(300_000), block: BigInt(5_000), hash: tx() };
+      const newPay = { wallet: newer.wallet, units: BigInt(400_000), block: BigInt(9_000), hash: tx() };
+      const { chainId, env, client } = chainScan([oldPay, newPay], BigInt(10_000));
+      // The newer buyer's browser reported first; the older buyer closed the tab.
+      await recordRedemption(db, { chainId, txHash: newPay.hash, logIndex: 0, blockNumber: Number(newPay.block), wallet: newer.wallet, amountMicro: 400_000 });
+      await syncRedemptions(db, client, chainId, env);
+      expect(await getBalanceMicro(db, older.id)).toBe(300_000);
+      expect(await getBalanceMicro(db, newer.id)).toBe(400_000);
+    });
+
+    it("credits exactly once across overlapping scans, re-reads and a direct receipt", async () => {
+      const u = await account();
+      const pay = { wallet: u.wallet, units: BigInt(250_000), block: BigInt(1_990), hash: tx() };
+      const { chainId, env, client, ranges } = chainScan([pay], BigInt(2_000));
+      await syncRedemptions(db, client, chainId, env);
+      await recordRedemption(db, { chainId, txHash: pay.hash, logIndex: 0, blockNumber: 1_990, wallet: u.wallet, amountMicro: 250_000 });
+      await syncRedemptions(db, client, chainId, env);
+      await syncRedemptions(db, client, chainId, env);
+      expect(await getBalanceMicro(db, u.id)).toBe(250_000);
+      // Later scans step back SYNC_REORG_OVERLAP blocks, so the payment's block is read again.
+      expect(ranges.at(-1)).toEqual([BigInt(2_000) + BigInt(1) - SYNC_REORG_OVERLAP, BigInt(2_000)]);
+      const rows = await db.select().from(onchainCreditEvents).where(eq(onchainCreditEvents.wallet, u.wallet));
+      expect(rows).toHaveLength(1);
+    });
+
+    it("keeps the checkpoint at the last chunk fully read when the node fails part-way", async () => {
+      const { chainId, env, client } = chainScan([], BigInt(20_000), BigInt(1000 + 6_000));
+      await expect(syncRedemptions(db, client, chainId, env)).rejects.toThrow("rpc down");
+      // Chunks 1000-2999, 3000-4999 and 5000-6999 were read; the one reaching block 7000 failed.
+      expect(await syncCursor(db, chainId)).toBe(6_999);
+    });
+
+    it("never moves the checkpoint backward", async () => {
+      const ahead = chainScan([], BigInt(30_000));
+      await syncRedemptions(db, ahead.client, ahead.chainId, ahead.env);
+      const behind = { ...chainScan([], BigInt(5_000)), chainId: ahead.chainId, env: ahead.env };
+      await syncRedemptions(db, behind.client, behind.chainId, behind.env);
+      expect(await syncCursor(db, ahead.chainId)).toBe(30_000);
     });
 
     it("does nothing for a chain with no contract", async () => {

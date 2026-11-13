@@ -134,6 +134,13 @@
       "when": 1794519825561,
       "tag": "0018_hackathon",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1794601508214,
+      "tag": "0019_credits_sync_cursor",
+      "breakpoints": true
     }
   ]
 }

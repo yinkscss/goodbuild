@@ -1,10 +1,10 @@
 import "server-only";
 
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { parseAbi, parseEventLogs, type Hex, type PublicClient } from "viem";
 
 import type { Db } from "@/server/db/client";
-import { onchainCreditEvents } from "@/server/db/onchain-credits-schema";
+import { creditsSyncCursor, onchainCreditEvents } from "@/server/db/onchain-credits-schema";
 import { users } from "@/server/db/schema";
 import { postLedgerEntry } from "./ledger";
 import { creditsContract } from "./contract-address";
@@ -133,22 +133,49 @@ export class CreditsNotConfiguredError extends Error {
 type LogClient = Pick<PublicClient, "getBlockNumber" | "getContractEvents">;
 const SYNC_CHUNK = BigInt(2_000);
 const SYNC_MAX_BLOCKS = BigInt(50_000);
+/** Blocks re-read behind the checkpoint each scan, in case the newest ones were reorganised. Re-reading is free: events credit once. */
+export const SYNC_REORG_OVERLAP = BigInt(64);
+
+/** Where the background scan has read up to on this chain, or null before its first scan. */
+export async function syncCursor(db: Db, chainId: number): Promise<number | null> {
+  const [row] = await db.select({ b: creditsSyncCursor.lastBlock }).from(creditsSyncCursor).where(eq(creditsSyncCursor.chainId, chainId)).limit(1);
+  return row ? row.b : null;
+}
+
+/** Move the checkpoint forward to `block`. Never backward, so two servers scanning at once can't undo each other. */
+async function advanceCursor(db: Db, chainId: number, block: bigint) {
+  await db
+    .insert(creditsSyncCursor)
+    .values({ chainId, lastBlock: Number(block) })
+    .onConflictDoUpdate({ target: creditsSyncCursor.chainId, set: { lastBlock: sql`greatest(${creditsSyncCursor.lastBlock}, excluded.last_block)`, updatedAt: new Date() } });
+}
 
 /**
  * The background safety net: scan new blocks for `Redeemed` events, so credit lands even if the user
- * closed the tab after redeeming. It starts at the newest stored block (or CREDITS_START_BLOCK_<chain>),
- * which is safe to re-read, and does at most SYNC_MAX_BLOCKS per call so a long gap catches up over a few ticks.
+ * closed the tab after redeeming. It reads from its own checkpoint (GB-01), not from the newest stored
+ * event: before, an empty stretch longer than one call never moved the start, and a newer receipt
+ * reported directly could move it past an older payment nobody reported. The checkpoint moves after
+ * every chunk that was fully read, starts at CREDITS_START_BLOCK_<chain> on the first scan (so the
+ * first scan after this change re-reads all history once and credits anything missed), and each scan
+ * re-reads SYNC_REORG_OVERLAP blocks behind it. At most SYNC_MAX_BLOCKS per call, so a long gap
+ * catches up over a few ticks.
  */
 export async function syncRedemptions(db: Db, client: LogClient, chainId: number, env: NodeJS.ProcessEnv = process.env): Promise<{ scanned: number; events: number }> {
   const contract = creditsContract(chainId, env);
   if (!contract) return { scanned: 0, events: 0 };
-  const [last] = await db.select({ b: onchainCreditEvents.blockNumber }).from(onchainCreditEvents).where(eq(onchainCreditEvents.chainId, chainId)).orderBy(desc(onchainCreditEvents.blockNumber)).limit(1);
   const configured = BigInt(env[`CREDITS_START_BLOCK_${chainId}`] ?? 0);
+  const cursor = await syncCursor(db, chainId);
   const head = await client.getBlockNumber();
-  let from = last ? BigInt(last.b) : configured;
-  const stop = from + SYNC_MAX_BLOCKS < head ? from + SYNC_MAX_BLOCKS : head;
+  let from = configured;
+  if (cursor !== null) {
+    const resume = BigInt(cursor) + BigInt(1) - SYNC_REORG_OVERLAP;
+    if (resume > from) from = resume;
+  }
+  if (from > head) return { scanned: 0, events: 0 };
+  const last = from + SYNC_MAX_BLOCKS - BigInt(1);
+  const stop = last < head ? last : head;
   let events = 0;
-  const scanned = Number(stop - from);
+  const scanned = Number(stop - from + BigInt(1));
   while (from <= stop) {
     const to = from + SYNC_CHUNK - BigInt(1) < stop ? from + SYNC_CHUNK - BigInt(1) : stop;
     const logs = await client.getContractEvents({ address: contract, abi: CREDITS_ABI, eventName: "Redeemed", fromBlock: from, toBlock: to, strict: true });
@@ -156,6 +183,8 @@ export async function syncRedemptions(db: Db, client: LogClient, chainId: number
       await recordRedemption(db, { chainId, txHash: l.transactionHash, logIndex: l.logIndex, blockNumber: Number(l.blockNumber), wallet: l.args.account, amountMicro: Number(l.args.credits), ref: l.args.ref });
       events++;
     }
+    // Only once every event in the chunk is recorded: a failure above leaves the checkpoint where it was.
+    await advanceCursor(db, chainId, to);
     from = to + BigInt(1);
   }
   return { scanned, events };

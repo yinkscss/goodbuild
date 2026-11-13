@@ -5,6 +5,7 @@ import { createPublicClient, custom, encodeAbiParameters } from "viem";
 import { celo, celoSepolia } from "viem/chains";
 
 import { useAuth } from "@/lib/auth/context";
+import { forgetPending, redeemTx, retryPending, savePending } from "./pending-payments";
 
 const GD_ABI = [{ type: "function", name: "transferAndCall", stateMutability: "nonpayable", inputs: [{ name: "to", type: "address" }, { name: "amount", type: "uint256" }, { name: "data", type: "bytes" }], outputs: [{ type: "bool" }] }] as const;
 const BALANCE_ABI = [{ type: "function", name: "balanceOf", stateMutability: "view", inputs: [{ name: "account", type: "address" }], outputs: [{ type: "uint256" }] }] as const;
@@ -38,7 +39,8 @@ export interface Pricing {
   balanceMicro: number | null;
 }
 
-export type BuyPhase = { name: "idle" } | { name: "signing" } | { name: "crediting"; hash: string } | { name: "done"; addedMicro: number; balanceMicro: number } | { name: "error"; message: string; needsGd?: boolean; needsCelo?: boolean };
+/** `paid`: the G$ was sent but the credit isn't confirmed yet; it still lands (saved hash, background scan, or "Missing a payment?"). */
+export type BuyPhase = { name: "idle" } | { name: "signing" } | { name: "crediting"; hash: string } | { name: "paid"; hash: string } | { name: "done"; addedMicro: number; balanceMicro: number } | { name: "error"; message: string; needsGd?: boolean; needsCelo?: boolean };
 
 export const UNITS = 1_000_000;
 
@@ -106,19 +108,30 @@ export function useBuyCredits(info: ChainInfo | null | undefined) {
         }
         const data = encodeAbiParameters(QUOTE_TUPLE, [{ buyer: q.buyer as `0x${string}`, gdAmount: BigInt(q.gdAmount), credits: BigInt(q.credits), bonus: BigInt(q.bonus), ref: q.ref as `0x${string}`, deadline: BigInt(q.deadline) }, signed.signature]);
         const hash = await client.writeContract({ account: wallet as `0x${string}`, chain, address: info.goodDollar, abi: GD_ABI, functionName: "transferAndCall", args: [info.contract, BigInt(q.gdAmount), data] });
+        // Saved before anything else, so a closed tab can't lose it (GB-01): the next page load sends it again.
+        savePending(info.chainId, hash);
         setPhase({ name: "crediting", hash });
         for (let i = 0; i < 40; i++) {
-          const r = await fetch("/api/credits/redeem", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ chainId: info.chainId, txHash: hash }) });
-          if (r.status === 202) {
+          const out = await redeemTx(info.chainId, hash);
+          if (out.kind === "pending") {
             await new Promise((t) => setTimeout(t, 3000));
             continue;
           }
-          const out = (await r.json()) as { creditedMicro?: number; balanceMicro?: number; message?: string };
-          if (!r.ok) throw new Error(out.message ?? "We couldn't confirm that yet. Your payment is safe: reopen this in a minute and it will be credited.");
-          setPhase({ name: "done", addedMicro: out.creditedMicro ?? 0, balanceMicro: out.balanceMicro ?? 0 });
-          return true;
+          if (out.kind === "credited") {
+            forgetPending(hash);
+            setPhase({ name: "done", addedMicro: out.addedMicro, balanceMicro: out.balanceMicro });
+            return true;
+          }
+          if (out.kind === "not_credits") {
+            forgetPending(hash);
+            setPhase({ name: "error", message: "That payment didn't go through on-chain, so nothing was charged. Try again." });
+            return false;
+          }
+          break;
         }
-        throw new Error("The network is slow. Your payment went through, and the credit lands as soon as it's confirmed.");
+        // The G$ has moved; only the credit is still on its way. Never say "nothing was charged" from here.
+        setPhase({ name: "paid", hash });
+        return false;
       } catch (error) {
         const text = (error as Error).message ?? "";
         const noGd = NO_GD_PATTERN.test(text);
@@ -131,5 +144,17 @@ export function useBuyCredits(info: ChainInfo | null | undefined) {
     [auth, info, wallet],
   );
 
-  return { phase, setPhase, buy, wallet };
+  // A payment whose tab closed before it was credited: send its saved hash again on the next page load.
+  const [recoveredMicro, setRecoveredMicro] = React.useState(0);
+  const signedIn = Boolean(auth.user);
+  React.useEffect(() => {
+    if (!signedIn) return;
+    let live = true;
+    void retryPending().then((added) => live && added > 0 && setRecoveredMicro((m) => m + added));
+    return () => {
+      live = false;
+    };
+  }, [signedIn]);
+
+  return { phase, setPhase, buy, wallet, recoveredMicro };
 }
