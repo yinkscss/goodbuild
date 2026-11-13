@@ -37,3 +37,18 @@ export const onchainCreditEvents = pgTable(
 );
 
 export type OnchainCreditEvent = typeof onchainCreditEvents.$inferSelect;
+
+/**
+ * How far the background scan for `Redeemed` events has read, per chain (GB-01). It is its own
+ * checkpoint, not the newest stored event: an empty stretch of blocks still moves it forward, and a
+ * redemption the user reported directly (out of order) can't move it past an older one nobody reported.
+ * It only ever moves forward; each scan re-reads a few blocks behind it in case the chain reorganised.
+ */
+export const creditsSyncCursor = pgTable("credits_sync_cursor", {
+  chainId: integer("chain_id").primaryKey(),
+  /** The last block every `Redeemed` event up to and including has been read and recorded. */
+  lastBlock: bigint("last_block", { mode: "number" }).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type CreditsSyncCursor = typeof creditsSyncCursor.$inferSelect;

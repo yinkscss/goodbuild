@@ -6,7 +6,8 @@ import { BuyDialog } from "@/components/buy/buy-dialog";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { MICRO_PER_CREDIT, formatCredits, formatCreditsShort } from "@/lib/credits-math";
-import { UNITS, estimateGdWei, formatGd, useBuyCredits, useCreditsInfo } from "./use-buy-credits";
+import { isTxHash, redeemTx, shortHash, type RedeemOutcome } from "./pending-payments";
+import { UNITS, estimateGdWei, formatGd, useBuyCredits, useCreditsInfo, type ChainInfo } from "./use-buy-credits";
 
 const PRESET_CREDITS = [100, 500, 1000, 2500];
 
@@ -19,7 +20,7 @@ const PRESET_CREDITS = [100, 500, 1000, 2500];
 export function AddCredits({ className }: { className?: string }) {
   const [open, setOpen] = React.useState(false);
   const { info, pricing, reload } = useCreditsInfo(open);
-  const { phase, setPhase, buy, wallet } = useBuyCredits(info);
+  const { phase, setPhase, buy, wallet, recoveredMicro } = useBuyCredits(info);
   const [credits, setCredits] = React.useState("100");
   const [buyAsset, setBuyAsset] = React.useState<"g" | "celo" | null>(null);
 
@@ -30,6 +31,11 @@ export function AddCredits({ className }: { className?: string }) {
   const gd = pricing && valid ? estimateGdWei(pricing, amountMicro) : null;
   const bonusMicro = pricing?.verified ? Math.floor(amountMicro / 10) : 0;
   const busy = phase.name === "signing" || phase.name === "crediting";
+
+  // A saved payment from an earlier visit was just credited: show the new balance.
+  React.useEffect(() => {
+    if (recoveredMicro > 0 && open) reload();
+  }, [recoveredMicro, open, reload]);
 
   return (
     <>
@@ -84,15 +90,32 @@ export function AddCredits({ className }: { className?: string }) {
                 </p>
               )}
               {phase.name === "crediting" && <p role="status" className="text-sm text-grey-600">Payment sent. Adding your credit…</p>}
+              {phase.name === "paid" && (
+                <div role="status" className="space-y-1 rounded-xl bg-tint px-3 py-2 text-sm text-grey-600">
+                  <p>
+                    <b className="text-ink">Your G$ payment went through.</b> The credit is still being added and usually shows within a few minutes, even if you close this.
+                  </p>
+                  <p>
+                    Transaction: <span className="select-all break-all font-mono text-xs text-ink">{phase.hash}</span>
+                  </p>
+                  <p>If it hasn&apos;t arrived in an hour, use &ldquo;Missing a payment?&rdquo; below with this transaction.</p>
+                </div>
+              )}
+              {recoveredMicro > 0 && phase.name !== "done" && (
+                <p role="status" className="text-sm text-success">
+                  We added {formatCredits(recoveredMicro)} from an earlier payment.
+                </p>
+              )}
               {phase.name === "done" && (
                 <p role="status" className="text-sm text-success">
                   Added {formatCredits(phase.addedMicro)}. Your balance is {formatCredits(phase.balanceMicro)}.
                 </p>
               )}
-              <Button variant="primary" className="w-full" disabled={busy || !valid || !wallet || phase.name === "done"} onClick={() => void buy(amountMicro)}>
+              <Button variant="primary" className="w-full" disabled={busy || !valid || !wallet || phase.name === "done" || phase.name === "paid"} onClick={() => void buy(amountMicro)}>
                 {phase.name === "signing" ? "Confirm in your wallet…" : phase.name === "crediting" ? "Adding credit…" : "Pay with G$"}
               </Button>
               <p className="text-center text-xs text-grey-600">Price follows the live G$ market price, quoted for 10 minutes. Keep about 0.1 CELO in your wallet for the network fee.</p>
+              <MissingPayment key={phase.name === "paid" ? phase.hash : "form"} info={info} onCredited={reload} initialHash={phase.name === "paid" ? phase.hash : ""} />
             </div>
           )}
           <p className="mt-4 text-center text-sm text-grey-600">
@@ -105,5 +128,64 @@ export function AddCredits({ className }: { className?: string }) {
       </Dialog>
       <BuyDialog open={buyAsset !== null} onOpenChange={(v) => !v && setBuyAsset(null)} defaultAsset={buyAsset ?? "g"} onDelivered={() => { reload(); setPhase({ name: "idle" }); }} />
     </>
+  );
+}
+
+const MISSING_MESSAGES: Record<RedeemOutcome["kind"], string> = {
+  credited: "",
+  not_credits: "That transaction isn't a completed GoodBuild credits payment on this network, so there is nothing to add.",
+  pending: "That transaction isn't confirmed yet. Try again in a minute.",
+  failed: "We couldn't check that right now. Try again in a minute.",
+};
+
+/**
+ * "Missing a payment?" (GB-01): paste the transaction from your wallet's activity and the server reads it
+ * on-chain and credits whoever the contract says paid. Safe to use any number of times: a payment credits once,
+ * and someone else's transaction can only credit that wallet, never the one asking.
+ */
+function MissingPayment({ info, onCredited, initialHash }: { info: ChainInfo; onCredited: () => void; initialHash: string }) {
+  const [open, setOpen] = React.useState(false);
+  const [hash, setHash] = React.useState(initialHash);
+  const [checking, setChecking] = React.useState(false);
+  const [result, setResult] = React.useState<{ ok: boolean; text: string } | null>(null);
+  const trimmed = hash.trim();
+  const check = async () => {
+    setChecking(true);
+    setResult(null);
+    const out = await redeemTx(info.chainId, trimmed);
+    setChecking(false);
+    if (out.kind === "credited") {
+      onCredited();
+      setResult({ ok: true, text: out.addedMicro > 0 ? `Added ${formatCredits(out.addedMicro)}. Your balance is ${formatCredits(out.balanceMicro)}.` : `That payment ${shortHash(trimmed)} was already credited. Your balance is ${formatCredits(out.balanceMicro)}.` });
+    } else {
+      setResult({ ok: false, text: out.kind === "failed" && out.message ? out.message : MISSING_MESSAGES[out.kind] });
+    }
+  };
+
+  if (!open) {
+    return (
+      <p className="text-center text-xs text-grey-600">
+        Paid but no credit?{" "}
+        <button type="button" className="font-semibold text-ink underline" onClick={() => setOpen(true)}>
+          Missing a payment?
+        </button>
+      </p>
+    );
+  }
+  return (
+    <div className="space-y-2 rounded-xl bg-tint px-3 py-3 text-sm">
+      <label className="block">
+        <span className="text-grey-600">Transaction from your wallet&apos;s activity (starts with 0x)</span>
+        <input value={hash} onChange={(e) => setHash(e.target.value)} spellCheck={false} autoComplete="off" placeholder="0x…" className="mt-1 w-full rounded-full bg-white px-4 py-2.5 font-mono text-xs outline-none focus-visible:shadow-focus" />
+      </label>
+      <Button variant="secondary" className="w-full" disabled={checking || !isTxHash(trimmed)} onClick={() => void check()}>
+        {checking ? "Checking…" : "Check and add credit"}
+      </Button>
+      {result && (
+        <p role={result.ok ? "status" : "alert"} className={`text-sm ${result.ok ? "text-success" : "text-warning"}`}>
+          {result.text}
+        </p>
+      )}
+    </div>
   );
 }

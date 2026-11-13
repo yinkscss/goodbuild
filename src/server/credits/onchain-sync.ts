@@ -11,6 +11,10 @@ const g = globalThis as { __gbCreditsSync?: ReturnType<typeof setInterval> };
 /** Start the once-a-minute scan for `Redeemed` events (D52). One timer per process, whatever hot reload does. */
 export function startCreditsSync() {
   if (g.__gbCreditsSync || !CHAIN_IDS.some((c) => creditsContract(c))) return;
+  for (const chainId of CHAIN_IDS) {
+    // GB-01: with no start block, the first scan reads from block 0, which takes many hours on mainnet.
+    if (creditsContract(chainId) && !process.env[`CREDITS_START_BLOCK_${chainId}`]) console.warn(`[credits] CREDITS_START_BLOCK_${chainId} is not set: the first scan starts at block 0. Set it to the contract's deploy block.`);
+  }
   const tick = async () => {
     const db = await getDb();
     for (const chainId of CHAIN_IDS) {
