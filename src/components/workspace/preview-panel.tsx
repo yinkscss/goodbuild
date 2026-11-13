@@ -142,6 +142,7 @@ export function PreviewPanel({
   checkVersion,
   onCaptured,
   onCaptureFailed,
+  onCaptureSkipped,
 }: {
   projectId: string;
   chainId: number;
@@ -152,6 +153,8 @@ export function PreviewPanel({
   checkVersion?: number | null;
   onCaptured?: (shot: { url: string; width: number }, version: number) => void;
   onCaptureFailed?: () => void;
+  /** The own build can't be screenshotted from here: the check is skipped, which isn't a failure. */
+  onCaptureSkipped?: () => void;
   version: number;
   contracts: Array<{ name: string; file: string; bytecodeBytes: number }>;
   onFix: (prompt: string) => void;
@@ -174,11 +177,12 @@ export function PreviewPanel({
   const ownError = ownErrorAt?.key === buildKey ? ownErrorAt.error : null;
   const setOwnError = React.useCallback((error: PreviewError | null) => setOwnErrorAt(error ? { key: buildKey, error } : null), [buildKey]);
   // The visual check captures from inside Sandpack's frame. On the own build there is nothing to
-  // wait for, so say so instead of leaving the workspace waiting for a screenshot.
-  const skipCapture = React.useRef(onCaptureFailed);
+  // wait for, so the workspace stops waiting. It used to report this as "couldn't run", which read as
+  // a fault on every game, 3D or fallback preview.
+  const skipCapture = React.useRef(onCaptureSkipped);
   React.useEffect(() => {
-    skipCapture.current = onCaptureFailed;
-  }, [onCaptureFailed]);
+    skipCapture.current = onCaptureSkipped;
+  }, [onCaptureSkipped]);
   React.useEffect(() => {
     if (engine === "own" && checkVersion === version) skipCapture.current?.();
   }, [engine, checkVersion, version]);

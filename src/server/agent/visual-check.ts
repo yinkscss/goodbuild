@@ -60,16 +60,18 @@ export async function runVisualCheck(args: {
   userId: string;
   version: number;
   width: number;
+  /** The screenshot: a PNG, or a JPEG for a page too big for one. */
   png: Uint8Array;
 }): Promise<VisualCheck | null> {
-  if (sniffType(args.png) !== "image/png") throw new Error("not a png");
+  const mime = sniffType(args.png);
+  if (mime !== "image/png" && mime !== "image/jpeg") throw new Error("not a png or jpeg");
   const rows = await db_messages(args.db, args.projectId);
   const turn = [...rows].reverse().find((m) => m.role === "assistant" && (m.meta as TurnRecord | null)?.version === args.version);
   if (!turn) return null;
   const request = rows.slice(0, rows.indexOf(turn)).reverse().find((m) => m.role === "user")?.content ?? "";
   // "Fix these" or "Start building" doesn't say it's a game: the project's first messages do.
   const game = isGameRequest(rows.filter((m) => m.role === "user").map((m) => m.content).join("\n"));
-  const image = await visionImage(args.png, "image/png");
+  const image = await visionImage(args.png, mime);
   let charged = 0;
   // Outside any turn, so who funds it is decided now (D48).
   const funding = await decideDirectFunding(args.db, args.userId);

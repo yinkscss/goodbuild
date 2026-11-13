@@ -41,10 +41,11 @@ export interface UseWorkspace {
   /** The version to screenshot for the visual check, and whether a check is running. */
   checkVersion: number | null;
   checking: boolean;
-  /** The check couldn't produce a result for the latest build. */
-  checkFailed: boolean;
+  /** Why the check has no result for the latest build, in words for the chat; null when nothing went wrong. */
+  checkFailed: string | null;
   onPreviewCaptured: (shot: { url: string; width: number }, version: number) => Promise<void>;
   onCaptureFailed: () => void;
+  onCaptureSkipped: () => void;
   uploading: boolean;
 }
 
@@ -93,6 +94,18 @@ export function useAssetDataUrls(projectId: string, assets: Array<AssetInfo & { 
   return urls;
 }
 
+export const CHECK_FAILED = "The visual check couldn't run for this build. The build itself is fine.";
+
+/**
+ * What to say when the server refuses or fails a visual check. Out of free AI or credit is not a
+ * fault, so it says so instead of "couldn't run"; a too-large screenshot is named too.
+ */
+export async function visualCheckFailure(res: Response): Promise<string> {
+  if (res.status === 402) return "The visual check was skipped: no AI credit is left for it. The build itself is fine.";
+  if (res.status === 413) return "The visual check was skipped: the page was too large to screenshot. The build itself is fine.";
+  return CHECK_FAILED;
+}
+
 /** Workspace state, streamed turns, a follow-up queue, and recovery after reloads. */
 export function useWorkspace(initial: WorkspaceState): UseWorkspace {
   const [state, setState] = React.useState(initial);
@@ -103,7 +116,7 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
   const [autoFixVersion, setAutoFixVersion] = React.useState<number | null>(null);
   const [checkVersion, setCheckVersion] = React.useState<number | null>(null);
   const [checking, setChecking] = React.useState(false);
-  const [checkFailed, setCheckFailed] = React.useState(false);
+  const [checkFailed, setCheckFailed] = React.useState<string | null>(null);
 
   const refresh = React.useCallback(async () => {
     const res = await fetch(`/api/projects/${projectId}`, { cache: "no-store" });
@@ -120,7 +133,7 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
   const enqueue = React.useCallback(
     async (body: { mode: TurnMode; prompt?: string; userMessageId?: string; skipPlan?: boolean }) => {
       setError(null);
-      setCheckFailed(false);
+      setCheckFailed(null);
       if (body.prompt) {
         const prompt = body.prompt;
         // Show the prompt at once; the refresh below replaces it with the saved message.
@@ -354,10 +367,10 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ version, width: Math.round(shot.width), image: shot.url }),
         });
-        if (!res.ok) setCheckFailed(true);
+        if (!res.ok) setCheckFailed(await visualCheckFailure(res));
         await refresh();
       } catch {
-        setCheckFailed(true);
+        setCheckFailed(CHECK_FAILED);
       } finally {
         setChecking(false);
       }
@@ -367,8 +380,11 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
 
   const onCaptureFailed = React.useCallback(() => {
     setCheckVersion(null);
-    setCheckFailed(true);
+    setCheckFailed(CHECK_FAILED);
   }, []);
+
+  /** The preview can't be screenshotted here (the own build): an expected skip, not a failure. */
+  const onCaptureSkipped = React.useCallback(() => setCheckVersion(null), []);
 
   return {
     checkVersion,
@@ -376,6 +392,7 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
     checkFailed,
     onPreviewCaptured,
     onCaptureFailed,
+    onCaptureSkipped,
     onPreviewError,
     changeAssetKind,
     state,

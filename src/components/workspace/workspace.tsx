@@ -156,6 +156,7 @@ export function Workspace({ initial }: { initial: WorkspaceState }) {
             checkVersion={live ? null : ws.checkVersion}
             onCaptured={(shot, v) => void ws.onPreviewCaptured(shot, v)}
             onCaptureFailed={ws.onCaptureFailed}
+            onCaptureSkipped={ws.onCaptureSkipped}
             fixDisabled={running}
           />
         </div>

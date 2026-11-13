@@ -1211,3 +1211,10 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - **Cost:** a question round is a normal Plan mode turn that stops after its first model call, and the plan after it is a second Plan mode turn. No extra call beyond those two. A model that asks when it didn't need to costs one turn, so the prompt tells it to skip questions when the request is clear.
 - **Checked:** parsing (three cards, no colour card), the turn ends after one call, the answer reaches the next plan, no second round in a row, an unusable call is refused and the model plans instead, build mode never gets the tool, and the card's labels. Lint and the type-error count (unchanged).
 - **UNVERIFIED:** whether a real model asks well or too often (watch how many Plan mode turns end in questions), the composer's typed answers, and a phone.
+
+### D104. The visual check says why it has no result, and doesn't report a skip as a failure
+
+- **Decided by:** Claude, 13 Nov 2026, from a tester's report ("The visual check couldn't run for this build").
+- **Found:** that line showed in three cases that aren't faults. (1) A project on the own build (games, 3D, or a Sandpack fallback) can't be screenshotted from the browser, and the workspace reported that skip as "couldn't run" on every such build the review (D87) hadn't looked at. (2) Someone out of free AI or credit got a 402 from the check, shown the same way. The review is also skipped at the free ceiling, so a second project near the cap hits this. (3) A long page full of photos can make a PNG bigger than the 4 MB the route takes, which failed zod with a 400.
+- **Now:** the own build clears the pending check and shows nothing. A 402 says no AI credit is left for the check; a 413 says the page was too large. The preview sends a JPEG (quality 0.85) when the PNG data URL is over 5 MB, and the route and `runVisualCheck` take PNG or JPEG. Anything else still says "couldn't run".
+- **Checked:** unit tests for the messages and a JPEG check; DeepSeek's vision call answered live with thinking off. **UNVERIFIED:** in a real browser.
