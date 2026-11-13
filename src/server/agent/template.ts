@@ -650,53 +650,75 @@ export function collection<T = unknown>(name: string) {
 }
 `;
 
-const USE_DB = `import { useCallback, useEffect, useRef, useState } from "react";
+const USE_DB = `import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { collection, isPreview, sendEmailCode, sessionInfo, signIn as dbSignIn, signOut as dbSignOut, verifyEmailCode, type DbRecord, type DbWhere } from "./db";
 import { errorMessage } from "./format";
 import { subscribeWallet, walletState } from "./goodbuild/wallet";
 import { useRead } from "./hooks";
 
+// One sign-in for the whole app. Every useDbSession() reads the same state, so a sign-in button on
+// one card updates the header, the page that decides what to show, and every list waiting on it.
+interface SessionState {
+  wallet: string | null;
+  email: string | null;
+  isOwner: boolean;
+  emailSignIn: boolean;
+  loading: boolean;
+  codeSentTo: string | null;
+}
+let session: SessionState = { wallet: null, email: null, isOwner: false, emailSignIn: false, loading: true, codeSentTo: null };
+const sessionListeners = new Set<() => void>();
+let started = false;
+
+function setSession(next: Partial<SessionState>) {
+  session = { ...session, ...next };
+  for (const listener of [...sessionListeners]) listener();
+}
+function subscribeSession(listener: () => void): () => void {
+  sessionListeners.add(listener);
+  return () => {
+    sessionListeners.delete(listener);
+  };
+}
+const readSession = () => session;
+
+async function refreshSession() {
+  const s = await sessionInfo();
+  setSession({ wallet: s.wallet, email: s.email, isOwner: s.owner, emailSignIn: s.emailSignIn });
+}
+
+/** Read the session once for the whole app, and end a wallet sign-in when the wallet changes. */
+function startSession() {
+  if (started) return;
+  started = true;
+  refreshSession().catch(() => setSession({ wallet: null })).finally(() => setSession({ loading: false }));
+  // Switching or disconnecting the wallet ends a wallet sign-in, on the server too, so a reload
+  // doesn't bring it back. No wallet connected yet doesn't: the session outlives the page, and the
+  // wallet reconnects a moment after it loads. An email sign-in has no wallet here, so it's untouched.
+  let last = (walletState().account ?? "").toLowerCase();
+  subscribeWallet(() => {
+    const account = (walletState().account ?? "").toLowerCase();
+    if (account === last) return;
+    last = account;
+    if (!session.wallet || session.wallet === account) return;
+    setSession({ wallet: null, isOwner: isPreview });
+    void dbSignOut().catch(() => {});
+  });
+}
+
 /**
  * Who is signed in to this app's saved data. Separate from useWallet: connecting a wallet only shows
  * its address, signing in proves it. If the visitor switches account, they must sign in again.
+ * Call it in as many components as you like: they all share one sign-in.
  */
 export function useDbSession() {
-  const [wallet, setWallet] = useState<string | null>(null);
-  const [email, setEmail] = useState<string | null>(null);
-  const [isOwner, setIsOwner] = useState(false);
-  const [emailSignIn, setEmailSignIn] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const state = useSyncExternalStore(subscribeSession, readSession, readSession);
   const [signingIn, setSigningIn] = useState(false);
-  const [codeSentTo, setCodeSentTo] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const walletSession = useRef<string | null>(null);
-  walletSession.current = wallet;
-
-  const refresh = useCallback(async () => {
-    const s = await sessionInfo();
-    setWallet(s.wallet);
-    setEmail(s.email);
-    setIsOwner(s.owner);
-    setEmailSignIn(s.emailSignIn);
-  }, []);
 
   useEffect(() => {
-    refresh().catch(() => setWallet(null)).finally(() => setLoading(false));
-    // Switching or disconnecting the wallet ends a wallet sign-in, on the server too, so a reload
-    // doesn't bring it back. No wallet connected yet doesn't: the session outlives the page, and the
-    // wallet reconnects a moment after it loads. An email sign-in has no wallet here, so it's untouched.
-    let last = (walletState().account ?? "").toLowerCase();
-    return subscribeWallet(() => {
-      const account = (walletState().account ?? "").toLowerCase();
-      if (account === last) return;
-      last = account;
-      if (!walletSession.current || walletSession.current === account) return;
-      walletSession.current = null;
-      setWallet(null);
-      setIsOwner(isPreview);
-      void dbSignOut().catch(() => {});
-    });
-  }, [refresh]);
+    startSession();
+  }, []);
 
   /** Run one step, keeping signingIn and error in step. */
   const step = useCallback(async (run: () => Promise<void>) => {
@@ -714,30 +736,28 @@ export function useDbSession() {
   /** Wallet sign-in: connect if needed, then one signature (no transaction, no gas). */
   const signIn = useCallback(() => step(async () => {
     await dbSignIn();
-    await refresh();
-  }), [step, refresh]);
+    await refreshSession();
+  }), [step]);
 
   /** Email sign-in, step 1: send the code. Then show a code box and call confirmCode. */
   const sendCode = useCallback((address: string) => step(async () => {
     await sendEmailCode(address);
-    setCodeSentTo(address.trim().toLowerCase());
+    setSession({ codeSentTo: address.trim().toLowerCase() });
   }), [step]);
 
   /** Email sign-in, step 2: the 6 digits from the email. */
   const confirmCode = useCallback((code: string) => step(async () => {
-    if (!codeSentTo) throw new Error("Ask for a code first.");
-    await verifyEmailCode(codeSentTo, code);
-    setCodeSentTo(null);
-    await refresh();
-  }), [step, refresh, codeSentTo]);
+    const sentTo = session.codeSentTo;
+    if (!sentTo) throw new Error("Ask for a code first.");
+    await verifyEmailCode(sentTo, code);
+    setSession({ codeSentTo: null });
+    await refreshSession();
+  }), [step]);
 
   const signOut = useCallback(async () => {
     setError(null);
     await dbSignOut().catch(() => {});
-    setWallet(null);
-    setEmail(null);
-    setCodeSentTo(null);
-    setIsOwner(isPreview);
+    setSession({ wallet: null, email: null, codeSentTo: null, isOwner: isPreview });
   }, []);
 
   /**
@@ -745,6 +765,7 @@ export function useDbSession() {
    * isOwner: the app's owner is signed in (always in the preview), so show the owner view behind it.
    * emailSignIn: this app offers email codes. codeSentTo: an address is waiting for its code.
    */
+  const { wallet, email, isOwner, emailSignIn, loading, codeSentTo } = state;
   const signedIn = Boolean(wallet || email);
   return { wallet, email, signedIn, isOwner, emailSignIn, loading, signingIn, codeSentTo, error, signIn, sendCode, confirmCode, signOut, isPreview };
 }
