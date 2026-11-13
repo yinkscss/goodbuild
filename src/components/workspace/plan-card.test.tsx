@@ -4,7 +4,9 @@ import { describe, expect, it, vi } from "vitest";
 import { PALETTES } from "@/lib/palettes";
 import type { PlanIntake, TurnRecord } from "@/lib/turn-types";
 
-import { PlanCard } from "./plan-card";
+import { planBuildPrompt } from "@/lib/plan";
+
+import { PlanCard, PlanDraftCard } from "./plan-card";
 import { TurnView } from "./turn-view";
 
 vi.mock("@/components/deploy/deploy-trigger", () => ({
@@ -149,5 +151,39 @@ describe("TurnView", () => {
     const ready = { ...record, status: "ready" as const, contracts: [{ name: "Tip", file: "contracts/Tip.sol", bytecodeBytes: 1024 }] };
     render(view(ready, false, 42220));
     expect(screen.getByText(/Celo · 1\.0 kB/)).toBeTruthy();
+  });
+});
+
+describe("PlanDraftCard", () => {
+  const plan = { summary: "A weekly savings jar.", steps: ["Add a Jar contract", "Build the deposit page"] };
+
+  it("lists the steps, builds in one tap and sends Change to the composer", () => {
+    const a = { build: vi.fn(), change: vi.fn() };
+    render(<PlanDraftCard plan={plan} actions={a} />);
+    expect(screen.getByText("A weekly savings jar.")).toBeTruthy();
+    expect(screen.getByText("Build the deposit page")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Build this plan" }));
+    fireEvent.click(screen.getByRole("button", { name: "Build this plan" }));
+    expect(a.build).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole("button", { name: "Change something" }));
+    expect(a.change).toHaveBeenCalledOnce();
+  });
+
+  it("is read-only without actions, and shows only in Plan mode turns", () => {
+    const { unmount } = render(<PlanDraftCard plan={plan} />);
+    expect(screen.getByText("Add a Jar contract")).toBeTruthy();
+    expect(screen.queryByRole("button")).toBeNull();
+    unmount();
+    const record: TurnRecord = { kind: "turn", mode: "build", plan, steps: [], log: [], changes: [], chargedMicro: 0, status: "ready" };
+    const view = (r: TurnRecord) => <TurnView text="Done." record={r} chainId={11142220} live={false} onFix={() => undefined} fixDisabled={false} draft={{ build: vi.fn(), change: vi.fn() }} />;
+    const built = render(view(record));
+    expect(screen.queryByText("Build this plan")).toBeNull();
+    built.unmount();
+    render(view({ ...record, mode: "plan", status: "answered" }));
+    expect(screen.getByRole("button", { name: "Build this plan" })).toBeTruthy();
+  });
+
+  it("the build message carries the whole plan", () => {
+    expect(planBuildPrompt(plan)).toBe("Build this plan: A weekly savings jar.\n1. Add a Jar contract\n2. Build the deposit page");
   });
 });

@@ -16,7 +16,8 @@ export interface UseWorkspace {
   /** A turn is running or queued for this project (on the server, P18). */
   running: boolean;
   /** Queue a prompt on the server; it runs after any turn ahead of it (AI_AGENT.md §4). */
-  send: (prompt: string, mode: TurnMode) => void;
+  /** `skipPlan` builds even on a project's first message, for a plan the person already approved. */
+  send: (prompt: string, mode: TurnMode, opts?: { skipPlan?: boolean }) => void;
   /** Stop the running turn and cancel queued follow-ups. */
   stop: () => Promise<void>;
   /** Save one answer to the plan's questions (D32). */
@@ -153,9 +154,9 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
   // (measured: three quick sends raced and were queued out of order).
   const sending = React.useRef<Promise<void>>(Promise.resolve());
   const send = React.useCallback(
-    (prompt: string, mode: TurnMode) => {
+    (prompt: string, mode: TurnMode, opts?: { skipPlan?: boolean }) => {
       const trimmed = prompt.trim();
-      if (trimmed) sending.current = sending.current.then(() => enqueue({ mode, prompt: trimmed }));
+      if (trimmed) sending.current = sending.current.then(() => enqueue({ mode, prompt: trimmed, ...(opts?.skipPlan ? { skipPlan: true } : {}) }));
     },
     [enqueue],
   );

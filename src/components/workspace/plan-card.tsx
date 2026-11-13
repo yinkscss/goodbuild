@@ -4,7 +4,7 @@ import * as React from "react";
 import { Check } from "lucide-react";
 
 import { ActionButton, Button } from "@/components/ui/button";
-import { answerText, nextQuestion, PLAN_OTHER_MAX } from "@/lib/plan";
+import { answerText, nextQuestion, PLAN_OTHER_MAX, type PlanDraft } from "@/lib/plan";
 import { paletteById, type Palette } from "@/lib/palettes";
 import type { PlanAnswer, PlanIntake, PlanOption, PlanQuestion } from "@/lib/turn-types";
 import { cn } from "@/lib/utils";
@@ -331,6 +331,57 @@ export function PlanCard({ intake, actions }: { intake: PlanIntake; actions?: Pl
           Skip, just build it
         </Button>
       </div>
+    </div>
+  );
+}
+
+export interface PlanDraftActions {
+  /** Build this plan now. */
+  build: () => void;
+  /** Take the person to the composer, in Plan mode, to say what to change. */
+  change: () => void;
+}
+
+/**
+ * A plan drafted in Plan mode: the summary and its steps, then Build this plan. Without `actions`
+ * (an older plan, or one being built) it shows the same plan read-only.
+ */
+export function PlanDraftCard({ plan, actions }: { plan: PlanDraft; actions?: PlanDraftActions }) {
+  const [leaving, setLeaving] = React.useState(false);
+  if (!plan.summary && !plan.steps.length) return null;
+  // Guards a double click. It wears off, because a refused send (the free AI cap) leaves this card up.
+  const build = () => {
+    if (leaving || !actions) return;
+    setLeaving(true);
+    setTimeout(() => setLeaving(false), 4_000);
+    actions.build();
+  };
+  return (
+    <div className="mt-3 rounded-block bg-canvas p-4">
+      <p className="text-[11px] font-semibold tracking-[.18em] text-violet uppercase">Your plan</p>
+      {plan.summary && <h3 className="mt-1 text-sm font-medium">{plan.summary}</h3>}
+      {plan.steps.length > 0 && (
+        <ol className="mt-3 space-y-2">
+          {plan.steps.map((step, i) => (
+            <li key={i} className="flex items-start gap-3 rounded-block bg-surface p-3 text-sm">
+              <span className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-tint text-[11px] font-semibold text-violet" aria-hidden>
+                {i + 1}
+              </span>
+              <span className="min-w-0 flex-1 break-words">{step}</span>
+            </li>
+          ))}
+        </ol>
+      )}
+      {actions && (
+        <div className="mt-4 flex items-center justify-between gap-2">
+          <Button variant="ghost" size="sm" className="-ml-2" onClick={actions.change}>
+            Change something
+          </Button>
+          <ActionButton disabled={leaving} onClick={build}>
+            Build this plan
+          </ActionButton>
+        </div>
+      )}
     </div>
   );
 }

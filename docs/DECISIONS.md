@@ -1186,3 +1186,16 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - **Shown on `/hackathon`:** in the rules and the FAQ. Before this, the FAQ said entries didn't have to use GoodBuild.
 - **Not enforced in code yet:** submissions aren't built. When they are, check that the entry's repo is one GoodBuild created through GitHub sync, and that its first commit is GoodBuild's.
 - **Partner card:** the GoodBuild card links to https://goodbuildit.xyz/ instead of "Link coming soon".
+
+### D102. Plan mode gets a plan card with Build this plan, and typed text answers an open question
+
+- **Decided by:** the owner, 13 Nov 2026 ("the plan toggle, do steps 1 to 3 and 5 first"). Claude proposed the design.
+- **Problem:** Plan mode produced a paragraph and a one-line "Plan" step row. `record.plan` was never drawn, and to act on a plan the person had to flip the toggle to Build and type something.
+- **Plan card:** a plan turn shows its summary and numbered steps (`PlanDraftCard`, same card style as the questions summary). Build-mode turns don't show it, because their steps are already in the step rows.
+- **Actions, on the newest reply only (older plans are read-only, like the questions card):**
+  - **Build this plan** sends a build turn whose message is the plan itself (`planBuildPrompt`), so the builder, the history window and the rolling memory all see it with no server change. It sends `skipPlan`, so a first message that was planned in Plan mode builds instead of asking the first-message questions.
+  - **Change something** switches the composer to Plan mode and puts the cursor in it. The next plan reply replaces this one.
+- **Typed answers:** while the questions card has an unanswered question, text typed in the composer in Build mode (300 characters or fewer) is saved as that question's "Other" answer. Before, sending ended the card and started a build. Start building is still the way to build from the card. Longer text, and anything sent in Plan mode, is sent as a normal message.
+- **Not done (proposed, waiting on the owner):** letting Plan mode ask questions with the existing card, at one extra cheap call per round.
+- **Checked:** `plan-card.test.tsx` (card, actions, double-tap guard, build-mode turns show no card, prompt text), lint, and the unchanged type-error count. **UNVERIFIED:** the composer behaviour (`chat-panel.tsx`, no test file exists for it), a real model's `set_plan` output in the card, and a phone.
+- **Known limit:** if someone has stepped Back to an earlier question, a typed answer goes to the next unanswered one, not the one on screen.

@@ -10,7 +10,7 @@ import { formatCredits } from "@/lib/credits-math";
 import type { Step, TurnRecord } from "@/lib/turn-types";
 import { formatClock, useElapsed, WaitNote, WaveDots } from "@/components/ui/wait";
 import { cn } from "@/lib/utils";
-import { PlanCard, type PlanActions } from "./plan-card";
+import { PlanCard, PlanDraftCard, type PlanActions, type PlanDraftActions } from "./plan-card";
 
 /** A step running this long gets a calm explanation (A2). */
 const SLOW_STEP_SECONDS = 20;
@@ -293,6 +293,7 @@ export function TurnView({
   checking,
   checkFailed,
   plan,
+  draft,
   onSkipPlan,
 }: {
   text: string;
@@ -309,6 +310,8 @@ export function TurnView({
   checkFailed?: boolean;
   /** Set while this turn's questions can still be answered. Without it they show read-only. */
   plan?: PlanActions;
+  /** Set while this turn's drafted plan (Plan mode) can still be built or changed. Without it the plan shows read-only. */
+  draft?: PlanDraftActions;
   /** Set while the questions are still being written. */
   onSkipPlan?: () => void;
 }) {
@@ -332,6 +335,7 @@ export function TurnView({
       )}
       <StepRows steps={record.steps} live={live} open={live || record.status === "needs_fix" || record.status === "error" || record.status === "stopped"} />
       {record.intake && <PlanCard intake={record.intake} actions={plan} />}
+      {record.mode === "plan" && record.plan && !record.intake && <PlanDraftCard plan={record.plan} actions={!live ? draft : undefined} />}
       {!live && record.status === "ready" && <DeployCard record={record} chainId={chainId} />}
       {showError && <TurnError record={record} onFix={onFix} disabled={fixDisabled} />}
       {!live && record.status === "stopped" && record.mode === "build" && (

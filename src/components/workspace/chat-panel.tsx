@@ -5,7 +5,7 @@ import { ArrowUp, Loader2, Square } from "lucide-react";
 
 import { formatCredits } from "@/lib/credits-math";
 import type { AssetInfo, AssetKind } from "@/server/agent/assets";
-import { START_BUILDING_TEXT } from "@/lib/plan";
+import { nextQuestion, PLAN_OTHER_MAX, planBuildPrompt, START_BUILDING_TEXT } from "@/lib/plan";
 import { TopUpPill } from "@/components/credits/top-up-pill";
 import { FIX_PROMPT } from "@/lib/preview-errors";
 import { isSubmitShortcut } from "@/lib/prompt";
@@ -68,6 +68,17 @@ export function ChatPanel({
   const planning = (state.messages.find((m) => m.id === state.jobs[0]?.userMessageId)?.meta as { intake?: boolean } | null)?.intake === true;
   const lastRecord = state.messages.find((m) => m.id === lastAssistantId)?.meta as TurnRecord | null | undefined;
   // The prompt the newest turn answered, for "Try again" on a failed or interrupted build.
+  // The newest reply's questions are still open: a typed answer in the composer answers the next one.
+  const openIntake = lastRecord?.intake && !running && !state.project.currentVersion ? lastRecord.intake : null;
+  const openQuestion = openIntake ? openIntake.questions[nextQuestion(openIntake)] : undefined;
+  const onComposerSend = (prompt: string, mode: TurnMode) => {
+    const text = prompt.trim();
+    if (lastAssistantId && openQuestion && mode === "build" && text.length <= PLAN_OTHER_MAX) ws.answerPlan(lastAssistantId, openQuestion.id, { picks: [], other: text });
+    else send(prompt, mode);
+  };
+  // "Change something" on a drafted plan: the composer, in Plan mode, with the cursor in it.
+  const [composerCue, setComposerCue] = React.useState(0);
+  const draftOpen = Boolean(lastRecord?.mode === "plan" && lastRecord.plan && !lastRecord.intake && !running);
   const lastUserPrompt = [...state.messages].reverse().find((m) => m.role === "user" && m.status !== "queued" && m.status !== "cancelled")?.content;
   return (
     <section aria-label="Chat" className="flex min-h-0 flex-col rounded-card bg-surface shadow-card">
@@ -127,6 +138,11 @@ export function ChatPanel({
               plan={
                 m.id === lastAssistantId && !running
                   ? { answer: (q, a) => ws.answerPlan(m.id, q, a), start: () => send(START_BUILDING_TEXT, "build"), skip: ws.skipPlan }
+                  : undefined
+              }
+              draft={
+                m.id === lastAssistantId && !running && record.plan
+                  ? { build: () => send(planBuildPrompt(record.plan!), "build", { skipPlan: true }), change: () => setComposerCue((n) => n + 1) }
                   : undefined
               }
             />
@@ -197,14 +213,19 @@ export function ChatPanel({
         uploading={ws.uploading}
         running={running}
         estimate={state.estimate}
-        onSend={send}
+        onSend={onComposerSend}
         onStop={ws.stop}
+        focusCue={composerCue}
         placeholder={
-          lastRecord?.intake && !state.project.currentVersion
-            ? "Or type what you want here. Sending starts the build."
-            : state.messages.length
-              ? 'Ask for a change… e.g. "let members vote to skip a week"'
-              : "Describe the dApp you want to build…"
+          openQuestion
+            ? "Or type your own answer here."
+            : lastRecord?.intake && !state.project.currentVersion
+              ? "Or type what you want here. Sending starts the build."
+              : draftOpen
+                ? 'Say what to change, e.g. "make it weekly"'
+                : state.messages.length
+                  ? 'Ask for a change… e.g. "let members vote to skip a week"'
+                  : "Describe the dApp you want to build…"
         }
       />
     </section>
@@ -223,6 +244,7 @@ export function Composer({
   onSend,
   onStop,
   placeholder,
+  focusCue = 0,
 }: {
   assets: AssetInfo[];
   assetUrls: Record<string, string>;
@@ -235,6 +257,8 @@ export function Composer({
   onSend: (prompt: string, mode: TurnMode) => void;
   onStop?: () => Promise<void>;
   placeholder: string;
+  /** Each increase puts the cursor in the box and switches to Plan mode (a drafted plan's "Change something"). */
+  focusCue?: number;
 }) {
   const [value, setValue] = React.useState("");
   const [mode, setMode] = React.useState<TurnMode>("build");
@@ -246,6 +270,16 @@ export function Composer({
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 6 * 22 + 8)}px`;
   }, [value]);
+
+  // A new cue switches to Plan mode while rendering (not in an effect), then the cursor goes in the box.
+  const [seenCue, setSeenCue] = React.useState(focusCue);
+  if (focusCue !== seenCue) {
+    setSeenCue(focusCue);
+    setMode("plan");
+  }
+  React.useEffect(() => {
+    if (focusCue) ref.current?.focus();
+  }, [focusCue]);
 
   function submit() {
     if (!value.trim()) return;

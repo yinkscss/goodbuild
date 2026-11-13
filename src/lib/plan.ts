@@ -31,3 +31,15 @@ export function cleanAnswer(question: PlanQuestion, answer: PlanAnswer): PlanAns
   if (!kept.length && !other) return null;
   return { picks: kept, ...(other ? { other } : {}) };
 }
+
+/** A drafted plan from Plan mode: one sentence and a few short steps. */
+export interface PlanDraft {
+  summary: string;
+  steps: string[];
+}
+
+/** What "Build this plan" sends. The plan travels in the message, so the builder, the history and the memory all see it. */
+export function planBuildPrompt(plan: PlanDraft): string {
+  const steps = plan.steps.map((s, i) => `${i + 1}. ${s}`).join("\n");
+  return `Build this plan${plan.summary ? `: ${plan.summary}` : ":"}${steps ? `\n${steps}` : ""}`;
+}
