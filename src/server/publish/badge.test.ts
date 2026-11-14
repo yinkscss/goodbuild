@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 
-import { bar } from "./build";
+import { bar, hasOwnContracts } from "./build";
 
 describe("the Built with GoodBuild badge", () => {
   it("shows by default", () => {
@@ -19,5 +19,19 @@ describe("the Built with GoodBuild badge", () => {
     expect(changeable).not.toContain("<img");
     expect(changeable).toContain("Report");
     expect(bar(true, undefined, false, false, false)).toContain("Demo:");
+  });
+
+  it("always says an app's own contracts are unaudited, even with the badge off (D109)", () => {
+    const off = bar(false, "https://x/report?app=a", false, false, false, true);
+    expect(off).toContain("Unaudited contract");
+    expect(off).not.toContain("<img"); // the owner's choice still removes the logo
+    expect(bar(false, undefined, false, false, true, true)).toMatch(/<img[\s\S]*Unaudited contract/);
+    expect(bar(false, undefined, false, false, true, false)).not.toContain("Unaudited");
+  });
+
+  it("counts the project's own contracts, not its tests", () => {
+    expect(hasOwnContracts({ "contracts/Pool.sol": "" })).toBe(true);
+    expect(hasOwnContracts({ "contracts/test/Pool.t.sol": "", "contracts/deploy.json": "{}", "src/App.tsx": "" })).toBe(false);
+    expect(hasOwnContracts({ "contracts/Pool.t.sol": "" })).toBe(false);
   });
 });

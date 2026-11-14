@@ -33,7 +33,7 @@ export interface BuildInput {
   changeableContract?: boolean;
   /** A link for visitors to report this app, on the main site. */
   reportUrl?: string;
-  /** Show the "Built with GoodBuild" badge. The owner can turn it off in Settings. Default on. Safety notices stay either way. */
+  /** Show the "Built with GoodBuild" logo. The owner can turn it off in Settings. Default on. Safety notices (demo, changeable, unaudited contract) stay either way. */
   showBadge?: boolean;
   /** The public id src/lib/db.ts reads from the page. Its presence is also how the helper knows it isn't in the preview. */
   dataClientId?: string;
@@ -222,21 +222,28 @@ const BAR_DISMISS_CSS =
 const BAR_TOGGLE_STYLE = "position:fixed;left:12px;bottom:12px;width:1px;height:1px;margin:0;padding:0;border:0;opacity:0;z-index:2147483000";
 
 /** False when the owner turned the badge off and the app has nothing visitors must be told. */
-export const hasBar = (hasUndeployedContracts: boolean, changeableContract: boolean, showBadge: boolean) => showBadge || hasUndeployedContracts || changeableContract;
+export const hasBar = (hasUndeployedContracts: boolean, changeableContract: boolean, showBadge: boolean, unaudited = false) => showBadge || hasUndeployedContracts || changeableContract || unaudited;
+
+/** What every app with its own contracts tells visitors (GB-02 review): GoodBuild hasn't audited them. The owner can't turn it off. */
+export const UNAUDITED_LABEL = "Unaudited contract";
+
+/** The project has contracts of its own (not tests), so its published page says they're unaudited. */
+export const hasOwnContracts = (files: Record<string, string>) => Object.keys(files).some((p) => /^contracts\/.+\.sol$/.test(p) && !p.startsWith("contracts/test/") && !p.endsWith(".t.sol"));
 
 /**
  * Just the logo at the bottom left, with a cross to close it (D56). The words "Built with GoodBuild" are in the
  * link's label for screen readers. Notices that matter (demo, changeable, report) sit beside the logo when there are any.
- * With the badge off (the owner's choice, D90) the logo goes, but the notices stay when there is a demo or changeable-contract
- * notice, because visitors need to know. With none of those, no bar at all (see hasBar).
+ * With the badge off (the owner's choice, D90) the logo goes, but the notices stay when there is a demo, changeable-contract
+ * or unaudited-contract notice, because visitors need to know. With none of those, no bar at all (see hasBar).
+ * `unaudited` (D109): the app has its own contracts, which GoodBuild hasn't audited; shown whatever the owner's setting.
  */
-export function bar(hasUndeployedContracts: boolean, reportUrl?: string, changeableContract = false, sameTab = false, showBadge = true) {
-  if (!hasBar(hasUndeployedContracts, changeableContract, showBadge)) return "";
+export function bar(hasUndeployedContracts: boolean, reportUrl?: string, changeableContract = false, sameTab = false, showBadge = true, unaudited = false) {
+  if (!hasBar(hasUndeployedContracts, changeableContract, showBadge, unaudited)) return "";
   // MiniPay has no tabs, so in a MiniPay app (D88) the bar's links open in the same view.
   const blank = sameTab ? "" : ` target="_blank"`;
   const report = reportUrl ? `<a href="${escapeHtml(reportUrl)}"${blank} rel="noreferrer" style="color:inherit;text-decoration:underline">Report</a>` : "";
   const demo = hasUndeployedContracts ? "Demo: this app's contract isn't deployed yet, so on-chain actions won't work." : "";
-  const notices = [changeableContract ? CAN_BE_CHANGED_LABEL : "", demo, report].filter(Boolean).join(" · ");
+  const notices = [unaudited ? UNAUDITED_LABEL : "", changeableContract ? CAN_BE_CHANGED_LABEL : "", demo, report].filter(Boolean).join(" · ");
   const note = notices ? `<span style="padding:0 4px">${notices}</span>` : "";
   const logo = `<a href="https://goodbuildit.xyz"${blank} rel="noreferrer" aria-label="Built with GoodBuild" title="Built with GoodBuild" style="display:inline-flex;align-items:center;padding:2px"><img src="${LOGO_32_DATA_URI}" alt="" width="20" height="20" style="display:block;width:20px;height:20px" /></a>`;
   const close = `<label for="gb-bar-off" aria-hidden="true" title="Close" style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:999px;cursor:pointer;font-size:15px;line-height:1;opacity:.6">&times;</label>`;
@@ -276,10 +283,11 @@ export async function buildPublishedApp(input: BuildInput): Promise<PublishedFil
   const walletMeta = input.walletConnectProjectId ? `<meta name="goodbuild-walletconnect" content="${escapeHtml(input.walletConnectProjectId)}" />\n` : "";
   page = page.replace("</head>", () => `${dataMeta}${walletMeta}<link rel="stylesheet" href="/${cssName}" />\n</head>`);
   const bridge = input.preview?.bridge(js, jsName);
-  if (!input.preview) page = page.replace(/<body[^>]*>/, (open) => `${open}\n${bar(input.hasUndeployedContracts, input.reportUrl, input.changeableContract, hasMiniPayKit(files), input.showBadge ?? true)}`);
+  const unaudited = hasOwnContracts(files);
+  if (!input.preview) page = page.replace(/<body[^>]*>/, (open) => `${open}\n${bar(input.hasUndeployedContracts, input.reportUrl, input.changeableContract, hasMiniPayKit(files), input.showBadge ?? true, unaudited)}`);
   // The bridge is a classic script, so it is listening before the app's module runs.
   const showBadge = input.showBadge ?? true;
-  const space = input.preview || !hasBar(input.hasUndeployedContracts, !!input.changeableContract, showBadge) ? "" : `${barSpace(input.hasUndeployedContracts || !!input.reportUrl || !!input.changeableContract)}\n`;
+  const space = input.preview || !hasBar(input.hasUndeployedContracts, !!input.changeableContract, showBadge, unaudited) ? "" : `${barSpace(input.hasUndeployedContracts || !!input.reportUrl || !!input.changeableContract || unaudited)}\n`;
   page = page.replace("</body>", () => `${space}${bridge ? `<script src="/${PREVIEW_BRIDGE_PATH}"></script>\n` : ""}<script type="module" src="/${jsName}"></script>\n</body>`);
 
   const encoder = new TextEncoder();
