@@ -3,7 +3,8 @@ import "server-only";
 import { keccak256, toHex, type Abi, type Hex } from "viem";
 
 import { MANIFEST_PATH } from "@/lib/deploy/manifest";
-import { SOLC_SETTINGS, guardrailIssues, isTestFile, runSolc, solcSettings, upgradeableIssues, type CheckIssue } from "@/server/agent/checks";
+import { isDeployableSource } from "@/lib/deploy/test-file";
+import { SOLC_SETTINGS, guardrailIssues, runSolc, solcSettings, upgradeableIssues, type CheckIssue } from "@/server/agent/checks";
 import { analyseContracts, type ContractAnalysis } from "./upgrade-check";
 
 export type EvmVersion = "cancun" | "paris";
@@ -89,9 +90,8 @@ export function sourceKey(files: Record<string, string>, evmVersion: EvmVersion,
   return keccak256(toHex(stableStringify({ sources, manifest: files[MANIFEST_PATH] ?? null, evmVersion, optimizer: SOLC_SETTINGS.optimizer, ...(upgradeable ? { upgradeable: true } : {}) })));
 }
 
-function deployable(path: string) {
-  return path.startsWith("contracts/") && path.endsWith(".sol") && !isTestFile(path);
-}
+/** A project contract that deploys: never a test, wherever the test file lives (GB-04). */
+const deployable = isDeployableSource;
 
 const NEEDS_CANCUN = /mcopy|tstore|tload|cancun|instruction .* not found/i;
 

@@ -2,6 +2,7 @@ import "server-only";
 
 import { and, asc, eq } from "drizzle-orm";
 
+import { isTestFile } from "@/lib/deploy/test-file";
 import { templateBriefFor } from "@/config/page-template-data";
 import type { Db } from "@/server/db/client";
 import { messages, projects } from "@/server/db/schema";
@@ -1219,7 +1220,7 @@ export function fixTier(attempt: number, errors: CheckIssue[]): ModelTier {
 
 /** Every remaining error is a contract test failing or a test file that won't compile: nothing is wrong with the contract or the app themselves. */
 export function onlyTestFailures(errors: CheckIssue[]): boolean {
-  return errors.length > 0 && errors.every((i) => i.source === "test" || (i.source === "solc" && i.file.startsWith("contracts/test/")));
+  return errors.length > 0 && errors.every((i) => i.source === "test" || (i.source === "solc" && isTestFile(i.file)));
 }
 
 /** Track the best error count and how many attempts in a row failed to beat it. */

@@ -140,7 +140,7 @@ export async function prepareDeploy(
   let review: { exploitTests: GateResult["exploitTests"]; custody: string[]; ownerReviewed: boolean } | null = null;
   if (input.chainId === celo.id) {
     const gate = await (deps.exploitGate ?? exploitGate)(files);
-    if (gate.problems.length) throw new DeployError("exploit_tests_failed", "This contract holds other people's money, and its exploit tests don't all pass yet. Ask the builder to fix them before it goes to Celo. Passing them still isn't an audit.", gate.problems);
+    if (gate.problems.length) throw new DeployError("exploit_tests_failed", "This contract holds other people's money, and its exploit tests haven't all run and passed yet. Ask the builder to fix them before it goes to Celo. Passing them still isn't an audit.", gate.problems);
     // GB-02: money-holding code outside the vault/DAO shapes the named attack tests were written for.
     // Its two general exploit tests passed, but nobody has checked its design, so the owner must say they reviewed it.
     const needsReview = gate.custody.length > 0 && !gate.knownShape;

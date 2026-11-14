@@ -8,6 +8,7 @@ import * as Lucide from "lucide-react";
 
 import { COLLECTION_NAME, DATA_PATH_PREFIX, DATA_RULES_PATH, parseDataRules, parseSignIn } from "@/lib/app-data";
 import { MANIFEST_PATH, parseManifest, planManifest } from "@/lib/deploy/manifest";
+import { isTestFile } from "@/lib/deploy/test-file";
 
 import { assetRefs } from "./assets";
 import { custodyOf, type CustodyReason } from "./custody";
@@ -233,6 +234,11 @@ export function guardrailIssues(file: string, ast: Json, content?: string, { upg
         if (n.memberName === "delegatecall" || n.memberName === "callcode") flag(n, `${n.memberName} isn't allowed.`);
         // The same instruction through OpenZeppelin's helper, in any of its forms.
         if (n.memberName === "functionDelegateCall") flag(n, "delegatecall isn't allowed, and that includes Address.functionDelegateCall.");
+        // GB-05: OpenZeppelin's wrappers around a low-level .call with data. They can pull tokens in with a
+        // hand-built transferFrom that no typed call shows, so they're refused like the raw .call.
+        if ((n.memberName === "functionCall" || n.memberName === "functionCallWithValue") && ((expr?.nodeType === "Identifier" && expr.name === "Address") || /^address( payable)?$/.test(typeString(expr)))) {
+          flag(n, `Address.${String(n.memberName)} isn't allowed: it is a low-level call with data. Use typed interface calls (SafeERC20 for tokens), or call{value: x}("") for transfers.`);
+        }
         if (n.memberName === "origin" && expr?.nodeType === "Identifier" && expr.name === "tx") {
           flag(n, "tx.origin isn't allowed for authorization. Use msg.sender.");
         }
@@ -481,7 +487,11 @@ export async function checkContracts(files: Record<string, string>, options: Con
   // GB-02: where the code takes in other people's money, by what it does rather than what it's called.
   // Only reported here: the mainnet gate (exploit-gate.ts) turns it into required exploit tests, so
   // testnet builds of a tip jar or a shop don't need them (owner's choice, D107).
-  const custody = custodyOf(projectAsts);
+  // The compile's other sources (OpenZeppelin, test helpers) are not analysed themselves, but a contract's
+  // inherited functions and its bases, whatever name they were imported under, are read from them.
+  const projectFiles = new Set(projectAsts.map((a) => a.file));
+  const others = Object.entries(output.sources ?? {}).filter(([file]) => !projectFiles.has(file)).map(([file, src]) => ({ file, ast: src.ast }));
+  const custody = custodyOf(projectAsts, others);
   const contracts: CompiledContract[] = [];
   const tests: CompiledTest[] = [];
   const abis: unknown[][] = [];
@@ -525,9 +535,8 @@ export async function checkContracts(files: Record<string, string>, options: Con
   return { ok: errors.length === 0, errors, warnings, contracts, tests, abis, compilerVersion: result.version, custody };
 }
 
-export function isTestFile(path: string): boolean {
-  return path.startsWith("contracts/test/");
-}
+/** GB-04: one rule for "is this a test", shared with the deploy compile (src/lib/deploy/test-file.ts). */
+export { isTestFile };
 
 // ---------------------------------------------------------------------------
 // App (TypeScript / React)
