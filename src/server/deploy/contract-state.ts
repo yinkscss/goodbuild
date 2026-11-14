@@ -3,6 +3,7 @@ import "server-only";
 import { and, desc, eq } from "drizzle-orm";
 
 import { MANIFEST_PATH, parseManifest } from "@/lib/deploy/manifest";
+import { isDeployableSource } from "@/lib/deploy/test-file";
 import type { Db } from "@/server/db/client";
 import { deployments } from "@/server/db/deploy-schema";
 import { sourceKey } from "./compile";
@@ -24,7 +25,7 @@ export interface ContractState {
 /** How the project's saved contracts compare with what's on its chain. */
 export async function contractState(db: Db, project: { id: string; chainId: number }, files: Record<string, string>): Promise<ContractState> {
   const upgradeable = await isUpgradeableProject(db, project.id);
-  const sources = Object.keys(files).filter((p) => p.startsWith("contracts/") && p.endsWith(".sol") && !p.startsWith("contracts/test/"));
+  const sources = Object.keys(files).filter(isDeployableSource);
   if (!sources.length) return { names: [], live: [], outdated: [], upgradable: [], upgradeable };
   const manifest = files[MANIFEST_PATH] ? parseManifest(files[MANIFEST_PATH]) : null;
   const names = manifest?.ok ? manifest.manifest.contracts.map((c) => c.name) : sources.map((p) => p.slice("contracts/".length, -".sol".length));

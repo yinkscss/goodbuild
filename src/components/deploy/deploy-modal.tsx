@@ -305,7 +305,7 @@ function ErrorCard({ deploy, onFix, chainId }: { deploy: Deploy; onFix: (prompt:
               <Button
                 variant="chipSelected"
                 size="chip"
-                onClick={() => onFix(`The deploy to Celo was stopped because the contract holds other people's money and its exploit tests don't all pass:\n${error.logs.join("\n")}\nAdd or fix the exploit tests (contracts/test/<Name>.t.sol) and fix the contract if a test shows a real problem. Call add_kit("dao-vault") for how to write them.`)}
+                onClick={() => onFix(`The deploy to Celo was stopped because the contract holds other people's money and its exploit tests haven't all run and passed:\n${error.logs.join("\n")}\nAdd or fix the exploit tests (contracts/test/<Name>.t.sol) and fix the contract if a test shows a real problem. Call add_kit("dao-vault") for how to write them.`)}
               >
                 Ask the builder to fix them
               </Button>

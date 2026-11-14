@@ -8,6 +8,7 @@ import { WalletButton } from "@/components/auth/wallet-button";
 import { Logo } from "@/components/brand/logo";
 import { DeployButton, DeployProvider } from "@/components/deploy/deploy-trigger";
 import { contractAddressKey, contractsToWire, deployedContracts, wirePrompt } from "@/lib/deploy/wiring";
+import { isDeployableSource } from "@/lib/deploy/test-file";
 import { CreditsPill } from "@/components/home/credits-pill";
 import { NetworkBadge } from "@/components/home/top-bar";
 import {
@@ -68,7 +69,7 @@ export function Workspace({ initial }: { initial: WorkspaceState }) {
   const backendOn = backendState(files).on;
   const publish = usePublish(state.project.id, state.project.currentVersion, publishOpen);
 
-  const hasContracts = Object.keys(files).some((p) => p.startsWith("contracts/") && p.endsWith(".sol") && !p.startsWith("contracts/test/"));
+  const hasContracts = Object.keys(files).some(isDeployableSource);
 
   const addressKey = contractAddressKey(files);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- files change on every keystroke of a live turn; addresses rarely do

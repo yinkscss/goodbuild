@@ -4,6 +4,7 @@ import * as React from "react";
 import { ArrowUp, Loader2, Square } from "lucide-react";
 
 import { formatCredits } from "@/lib/credits-math";
+import { isDeployableSource } from "@/lib/deploy/test-file";
 import type { AssetInfo, AssetKind } from "@/server/agent/assets";
 import { DRAFT_PLAN_TEXT, nextQuestion, PLAN_OTHER_MAX, planBuildPrompt, START_BUILDING_TEXT } from "@/lib/plan";
 import { TopUpPill } from "@/components/credits/top-up-pill";
@@ -197,7 +198,7 @@ export function ChatPanel({
             projectId={state.project.id}
             chainId={state.project.chainId}
             files={state.files}
-            hasContracts={Object.keys(state.files).some((p) => p.startsWith("contracts/") && p.endsWith(".sol") && !p.startsWith("contracts/test/"))}
+            hasContracts={Object.keys(state.files).some(isDeployableSource)}
             outdatedContracts={state.outdatedContracts}
             publish={publish}
             onPublish={onPublish}

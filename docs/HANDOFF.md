@@ -2,6 +2,9 @@
 
 Written 4 Nov 2026 at the end of the first build session (claude.ai), for whoever continues in Claude Code. Read CLAUDE.md and docs/BUILD_PROMPT_STAGE1.md first; this file only covers where things stand.
 
+## Mainnet gate: "passed" means the tests ran (14 Nov 2026, D110, branch `claude/fix-gb04-gb05`)
+Fixes GB-04 and GB-05 from the 14 Nov security sweep. The exploit gate records `passed` only when each required exploit test, as its own public function that asserts something real, is in the results of a real test run and passed; zero executed tests with money-holding code is a refusal. Comments and strings never count (`stripSolidity`), so a comment can't make a contract a known vault and skip the owner's review. A `*.t.sol` file anywhere is a test, never deployable. `custodyOf` now reads libraries, free functions, constructors and modifiers, resolves bases through the compiler's linearized inheritance (aliases, OpenZeppelin receivers), and knows the ERC-1363 hooks; `Address.functionCall*` is refused by the guardrails. Case (f), a pot funded by plain `transfer`, is flagged only when the contract reads its own token balance and sends tokens (known limit in D110). No migration. **Merging to `main` deploys to production.** Old `deploy_reviews` rows still say `passed` on the old meaning. Every other sweep finding (GB-06 onward) is untouched.
+
 ## Slow deploys don't re-sign (13 Nov 2026, D108, branch `claude/relaxed-feynman-flexlp`)
 Fixes GB-03, the last finding from GoodDollar's security review. A deploy transaction Celo hasn't confirmed is kept and checked (receipt, mempool, nonce) before any new signature; the modal shows Waiting on Celo with Check again, and Deploy again anyway behind a warning. No migration.
 
