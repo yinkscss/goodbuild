@@ -58,6 +58,16 @@ describe("buildPublishedApp", () => {
     expect(page(await build({}, { hasUndeployedContracts: true }))).toContain("isn't deployed yet");
   });
 
+  it("labels an app with its own contracts \"Unaudited contract\", which the owner can't turn off (D109)", async () => {
+    const page = (out: Awaited<ReturnType<typeof build>>) => text(named(out, /^index\.html$/));
+    const withPool = { "contracts/Pool.sol": "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.24;\ncontract Pool {}\n" };
+    expect(page(await build(withPool))).toContain("Unaudited contract");
+    const hidden = page(await build(withPool, { showBadge: false }));
+    expect(hidden).toContain("Unaudited contract");
+    expect(hidden).toContain("data-goodbuild-bar-space");
+    expect(page(await build({}, { showBadge: false }))).not.toContain("data-goodbuild-bar ");
+  });
+
   it("opens the bar's links in a new tab, except in a MiniPay app, which has no tabs (D88)", async () => {
     const page = (out: Awaited<ReturnType<typeof build>>) => text(named(out, /^index\.html$/));
     const bar = (html: string) => html.slice(html.indexOf("<div data-goodbuild-bar "), html.indexOf("</div>", html.indexOf("<div data-goodbuild-bar ")));
