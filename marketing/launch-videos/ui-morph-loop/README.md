@@ -1,0 +1,45 @@
+# UI morph loop
+
+1440x1440, 21 s, 60 fps, 80 BPM, 7 bars (28 beats of 0.75 s; slowed from the first cut's 120 BPM / 14 s on request), seamless loop (frame 0 follows the last frame; cursor included). Output: `out/ui-morph-loop.mp4` (H.264, BT.709 limited range, AAC).
+
+One black/white shape is never cut. Every state is that shape changing width, height, radius and colour (one closed-form spring per target change, summed), content swaps with a short blur, a cursor drives every change, and the camera scale springs so each state fills the frame.
+
+## State list on the beat grid (assumed: 12 states, one accent = GoodBuild violet `#592E81`)
+| Beat | Time (first-cut seconds, multiply by 1.5 for the 21 s film) | State | Driven by |
+|---|---|---|---|
+| 0 | 0.0 s | **Build it** pill (black, violet arrow disc) | cursor arrives, click on beat 2 |
+| 2 | 1.0 s | Loader ring | click |
+| 3 | 1.5 s | Check (draws itself) | beat |
+| 4 | 2.0 s | Dynamic island "Live on testnet" / "Celo Sepolia", label swaps to "Test it first" on beat 5 | beat |
+| 6 | 3.0 s | **Add credits** pill, "from $0.25, one signature" | beat, hover on the plus |
+| 8 | 4.0 s | Credit card: amount scrubs $0.25 to $5.00 by dragging the knob (the knob is the cursor), then **Pay with G$** | click on beat 8, drag beats 9 to 10.5, click on beat 11 |
+| 11 | 5.5 s | "Confirm in your wallet..." then "Added $5.00" (text swaps inside the container) | click |
+| 13 | 6.5 s | Network toggle **Celo Sepolia / Celo**, knob flips on beat 14 | cursor click on the beat |
+| 15 | 7.5 s | Tabs Preview / Code / Contract, indicator edges on two different springs | click on beat 16 |
+| 17 | 8.5 s | Backend card "Your app saves data": line draws itself, tooltip | hover |
+| 20 | 10.0 s | Command palette, types "Deploy", Enter | keys |
+| 22 | 11.0 s | Toast "Live on Celo mainnet", "Signed in your wallet", then "GoodBuild never holds your keys" | Enter |
+| 25 | 12.5 s | back to **Build it** (loop) | cursor returns |
+
+Strings come from the app: `Build it`, `Add credits`, `Pay with G$`, `Confirm in your wallet…`, `Celo Sepolia`/`Celo`, `Backend`, `Your app saves data`, `Live on Celo`. The chart value ("14 saved") is sample data.
+
+## Song and sounds (assumed)
+No song was supplied, so the track is synthesised (`make-audio.cjs`, plain JS, no samples): 120 BPM kick, off-beat hat, bass and arpeggio. `make-audio.cjs` measures the bed's onsets with an energy-flux detector (28 onsets, median interval 0.500 s = 120.0 BPM, first peak at 0.010 s; `beatgrid.json`), and places the UI sounds (clicks, morph blips, drag ticks, "live" chime) on the nearest measured peak. numpy was not available, so the analysis is in Node. Swap in another ~80 BPM track by replacing `audio.wav` (start on a downbeat).
+
+## Re-render
+```bash
+node ../_shared/render-dom.cjs --page index.html --w 1440 --h 1440 --dur 21 --fps 60 --sub 4 --shutter 0.5 --workers 3 --out ../.work/v1/frames
+../_shared/encode.sh ../.work/v1/frames 4 out/ui-morph-loop.mp4 audio.wav
+node make-audio.cjs   # regenerates audio.wav and beatgrid.json
+```
+Stills: `node ../_shared/render-dom.cjs --page index.html --w 1440 --h 1440 --dur 21 --out ../.work/v1/stills --at 0,0.9,1.9`.
+Four subframes over half a frame are blended with ffmpeg `tmix` (motion blur). Banned list respected: no bounce, particles, glows or gradients on the UI; overshoot is under 2 percent.
+
+Every beat carries a beat-locked 4 percent scale kick (peak after 70 ms) on top of the state changes, so the shortest per-beat motion energy (mean frame difference at 30 fps) rose from 0.016 to 0.086.
+
+## Voice-over
+`out/*-vo.mp4` carry a voice-over; the untouched silent-of-voice cuts stay next to them. Script and cue times: `vo/script.json` (seconds from the start, each line cued to its beat). Voice: the macOS system voice Samantha via `say` (offline, no account, no upload). Music is ducked under the voice and the mix is normalised to about -15.5 LUFS (true peak below -4 dBFS).
+```bash
+node ../_shared/vo.cjs . audio.wav out/ui-morph-loop.mp4 out/ui-morph-loop-vo.mp4   # run from this folder; edit vo/script.json to change lines or timing
+```
+The tool flags overlaps and lines that run into the loop point. To use a better voice, change `voice` in `vo/script.json` (any `say -v '?'` voice) or replace `vo/voiceover.wav` with a recording and mux it the same way.
