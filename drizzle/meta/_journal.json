@@ -148,6 +148,13 @@
       "when": 1794605124586,
       "tag": "0020_deploy_reviews",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1794649312531,
+      "tag": "0021_onchain_credit_ref",
+      "breakpoints": true
     }
   ]
 }
