@@ -1,0 +1,2 @@
+ALTER TABLE "onchain_credit_events" ADD COLUMN "ref" text;--> statement-breakpoint
+CREATE UNIQUE INDEX "onchain_credit_events_ref_unique" ON "onchain_credit_events" USING btree ("chain_id","ref") WHERE "onchain_credit_events"."ref" is not null;

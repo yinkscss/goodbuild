@@ -3,25 +3,27 @@ import { randomUUID } from "node:crypto";
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
-import { encodeAbiParameters, encodeEventTopics, getAddress, pad, type Hex } from "viem";
+import { encodeAbiParameters, encodeEventTopics, getAddress, type Hex } from "viem";
 
 import type { Db } from "@/server/db/client";
 import { onchainCreditEvents } from "@/server/db/onchain-credits-schema";
 import { users } from "@/server/db/schema";
 import { getBalanceMicro } from "./ledger";
-import { CREDITS_ABI, creditPendingForWallet, creditsContract, recordRedemption, redeemFromReceipt, SYNC_REORG_OVERLAP, syncCursor, syncRedemptions } from "./onchain";
+import { CREDITS_ABI, creditPendingForWallet, creditsContract, recordRedemption, redeemFromReceipt, SYNC_CHECKPOINT_LAG, SYNC_CONFIRMATIONS, syncCursor, syncRedemptions } from "./onchain";
 import { MIGRATIONS, testBackends, type TestDatabase } from "./test-backends";
 
 const CONTRACT = getAddress("0x00000000000000000000000000000000000c0de1");
 const ENV = { CREDITS_CONTRACT_42220: CONTRACT } as unknown as NodeJS.ProcessEnv;
 const newWallet = () => `0x${randomUUID().replaceAll("-", "").padEnd(40, "0").slice(0, 40)}`;
 const tx = () => `0x${randomUUID().replaceAll("-", "").padEnd(64, "0")}` as Hex;
+/** Every real Redeemed log carries its own quote ref (GB-13: credit is keyed on it). */
+const newRef = () => `0x${randomUUID().replaceAll("-", "").repeat(2)}` as Hex;
 
-function redeemedLog(wallet: string, units: bigint, logIndex: number, transactionHash: Hex, address = CONTRACT, blockNumber = BigInt(10)) {
+function redeemedLog(wallet: string, units: bigint, logIndex: number, transactionHash: Hex, address = CONTRACT, blockNumber = BigInt(10), ref = newRef()) {
   return {
     address,
     topics: encodeEventTopics({ abi: CREDITS_ABI, eventName: "Redeemed", args: { account: getAddress(wallet) } }),
-    data: encodeAbiParameters([{ type: "uint256" }, { type: "bytes32" }], [units, pad("0x01")]),
+    data: encodeAbiParameters([{ type: "uint256" }, { type: "bytes32" }], [units, ref]),
     logIndex,
     blockNumber,
     transactionHash,
@@ -42,7 +44,7 @@ describe.each(testBackends())("on-chain credits on $name", (backend) => {
     const [u] = await db.insert(users).values({ wallet }).returning();
     return u;
   };
-  const log = (wallet: string, amountMicro: number, over: Partial<Parameters<typeof recordRedemption>[1]> = {}) => ({ chainId: 42220, txHash: tx(), logIndex: 0, blockNumber: 10, wallet, amountMicro, ...over });
+  const log = (wallet: string, amountMicro: number, over: Partial<Parameters<typeof recordRedemption>[1]> = {}) => ({ chainId: 42220, txHash: tx(), logIndex: 0, blockNumber: 10, wallet, amountMicro, ref: newRef(), ...over });
 
   it("credits the wallet's account one-for-one in micro-USD", async () => {
     const u = await account();
@@ -89,7 +91,9 @@ describe.each(testBackends())("on-chain credits on $name", (backend) => {
   });
 
   describe("from a receipt", () => {
-    const receiptClient = (logs: ReturnType<typeof redeemedLog>[], status: "success" | "reverted" = "success") => ({ getTransactionReceipt: async () => ({ status, logs }) }) as never;
+    // The receipt is SYNC_CONFIRMATIONS blocks deep (GB-13); shallower ones are covered in gb13.test.ts.
+    const receiptClient = (logs: ReturnType<typeof redeemedLog>[], status: "success" | "reverted" = "success") =>
+      ({ getTransactionReceipt: async () => ({ status, blockNumber: BigInt(10), logs }), getBlockNumber: async () => BigInt(10) + SYNC_CONFIRMATIONS }) as never;
 
     it("credits the account named in the log, not whoever submitted it", async () => {
       const u = await account();
@@ -123,11 +127,12 @@ describe.each(testBackends())("on-chain credits on $name", (backend) => {
     it("picks up redemptions nobody reported, and a second pass changes nothing", async () => {
       const u = await account();
       const hash = tx();
-      const l = redeemedLog(u.wallet, BigInt(1_234_567), 3, hash, CONTRACT, BigInt(500));
+      const ref = newRef();
+      const l = redeemedLog(u.wallet, BigInt(1_234_567), 3, hash, CONTRACT, BigInt(500), ref);
       const client = {
         getBlockNumber: async () => BigInt(600),
         getContractEvents: async ({ fromBlock, toBlock }: { fromBlock: bigint; toBlock: bigint }) =>
-          l.blockNumber >= fromBlock && l.blockNumber <= toBlock ? [{ ...l, args: { account: getAddress(u.wallet), credits: BigInt(1_234_567), ref: pad("0x01") } }] : [],
+          l.blockNumber >= fromBlock && l.blockNumber <= toBlock ? [{ ...l, args: { account: getAddress(u.wallet), credits: BigInt(1_234_567), ref } }] : [],
       } as never;
       const env = { ...ENV, CREDITS_START_BLOCK_42220: "400" } as NodeJS.ProcessEnv;
       expect((await syncRedemptions(db, client, 42220, env)).events).toBeGreaterThanOrEqual(1);
@@ -140,7 +145,8 @@ describe.each(testBackends())("on-chain credits on $name", (backend) => {
     // GB-01 (Daybreak Blue review): the scan keeps its own checkpoint, so neither an empty stretch nor an
     // out-of-order direct receipt can stop a payment nobody reported from being credited.
     let nextChain = 900_001;
-    const chainScan = (events: { wallet: string; units: bigint; block: bigint; hash: Hex; logIndex?: number }[], head: bigint, failFrom?: bigint) => {
+    const chainScan = (events: { wallet: string; units: bigint; block: bigint; hash: Hex; logIndex?: number; ref?: Hex }[], head: bigint, failFrom?: bigint) => {
+      for (const e of events) e.ref ??= newRef();
       const chainId = nextChain++;
       const env = { [`CREDITS_CONTRACT_${chainId}`]: CONTRACT, [`CREDITS_START_BLOCK_${chainId}`]: "1000" } as unknown as NodeJS.ProcessEnv;
       const ranges: [bigint, bigint][] = [];
@@ -151,7 +157,7 @@ describe.each(testBackends())("on-chain credits on $name", (backend) => {
           ranges.push([fromBlock, toBlock]);
           return events
             .filter((e) => e.block >= fromBlock && e.block <= toBlock)
-            .map((e) => ({ ...redeemedLog(e.wallet, e.units, e.logIndex ?? 0, e.hash, CONTRACT, e.block), args: { account: getAddress(e.wallet), credits: e.units, ref: pad("0x01") } }));
+            .map((e) => ({ ...redeemedLog(e.wallet, e.units, e.logIndex ?? 0, e.hash, CONTRACT, e.block, e.ref), args: { account: getAddress(e.wallet), credits: e.units, ref: e.ref! } }));
         },
       } as never;
       return { chainId, env, client, ranges };
@@ -163,17 +169,18 @@ describe.each(testBackends())("on-chain credits on $name", (backend) => {
       const { chainId, env, client } = chainScan([late], BigInt(1000 + 130_000));
       for (let i = 0; i < 4; i++) await syncRedemptions(db, client, chainId, env);
       expect(await getBalanceMicro(db, u.id)).toBe(700_000);
-      expect(await syncCursor(db, chainId)).toBe(1000 + 130_000);
+      // GB-13: the checkpoint trails head by SYNC_CHECKPOINT_LAG.
+      expect(await syncCursor(db, chainId)).toBe(1000 + 130_000 - Number(SYNC_CHECKPOINT_LAG));
     });
 
     it("still credits an older unreported payment after a newer one was reported directly", async () => {
       const older = await account();
       const newer = await account();
       const oldPay = { wallet: older.wallet, units: BigInt(300_000), block: BigInt(5_000), hash: tx() };
-      const newPay = { wallet: newer.wallet, units: BigInt(400_000), block: BigInt(9_000), hash: tx() };
+      const newPay = { wallet: newer.wallet, units: BigInt(400_000), block: BigInt(9_000), hash: tx(), ref: newRef() };
       const { chainId, env, client } = chainScan([oldPay, newPay], BigInt(10_000));
       // The newer buyer's browser reported first; the older buyer closed the tab.
-      await recordRedemption(db, { chainId, txHash: newPay.hash, logIndex: 0, blockNumber: Number(newPay.block), wallet: newer.wallet, amountMicro: 400_000 });
+      await recordRedemption(db, { chainId, txHash: newPay.hash, logIndex: 0, blockNumber: Number(newPay.block), wallet: newer.wallet, amountMicro: 400_000, ref: newPay.ref });
       await syncRedemptions(db, client, chainId, env);
       expect(await getBalanceMicro(db, older.id)).toBe(300_000);
       expect(await getBalanceMicro(db, newer.id)).toBe(400_000);
@@ -181,15 +188,16 @@ describe.each(testBackends())("on-chain credits on $name", (backend) => {
 
     it("credits exactly once across overlapping scans, re-reads and a direct receipt", async () => {
       const u = await account();
-      const pay = { wallet: u.wallet, units: BigInt(250_000), block: BigInt(1_990), hash: tx() };
-      const { chainId, env, client, ranges } = chainScan([pay], BigInt(2_000));
+      const head = BigInt(5_000);
+      const pay = { wallet: u.wallet, units: BigInt(250_000), block: head - SYNC_CONFIRMATIONS - BigInt(10), hash: tx(), ref: newRef() };
+      const { chainId, env, client, ranges } = chainScan([pay], head);
       await syncRedemptions(db, client, chainId, env);
-      await recordRedemption(db, { chainId, txHash: pay.hash, logIndex: 0, blockNumber: 1_990, wallet: u.wallet, amountMicro: 250_000 });
+      await recordRedemption(db, { chainId, txHash: pay.hash, logIndex: 0, blockNumber: Number(pay.block), wallet: u.wallet, amountMicro: 250_000, ref: pay.ref });
       await syncRedemptions(db, client, chainId, env);
       await syncRedemptions(db, client, chainId, env);
       expect(await getBalanceMicro(db, u.id)).toBe(250_000);
-      // Later scans step back SYNC_REORG_OVERLAP blocks, so the payment's block is read again.
-      expect(ranges.at(-1)).toEqual([BigInt(2_000) + BigInt(1) - SYNC_REORG_OVERLAP, BigInt(2_000)]);
+      // Later scans re-read the newest SYNC_CHECKPOINT_LAG blocks (up to the confirmation depth), so the payment's block is read again.
+      expect(ranges.at(-1)).toEqual([head + BigInt(1) - SYNC_CHECKPOINT_LAG, head - SYNC_CONFIRMATIONS]);
       const rows = await db.select().from(onchainCreditEvents).where(eq(onchainCreditEvents.wallet, u.wallet));
       expect(rows).toHaveLength(1);
     });
@@ -206,7 +214,7 @@ describe.each(testBackends())("on-chain credits on $name", (backend) => {
       await syncRedemptions(db, ahead.client, ahead.chainId, ahead.env);
       const behind = { ...chainScan([], BigInt(5_000)), chainId: ahead.chainId, env: ahead.env };
       await syncRedemptions(db, behind.client, behind.chainId, behind.env);
-      expect(await syncCursor(db, ahead.chainId)).toBe(30_000);
+      expect(await syncCursor(db, ahead.chainId)).toBe(30_000 - Number(SYNC_CHECKPOINT_LAG));
     });
 
     it("does nothing for a chain with no contract", async () => {

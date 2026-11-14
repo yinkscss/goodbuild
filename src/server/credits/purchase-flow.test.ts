@@ -13,7 +13,7 @@ import { LocalChain } from "@/server/deploy/local-chain";
 import { compileCredits, compileTestGd } from "../../../scripts/compile-credits.mjs";
 import { getBalanceMicro } from "./ledger";
 import { creditsContract } from "./contract-address";
-import { redeemFromReceipt } from "./onchain";
+import { redeemFromReceipt, SYNC_CONFIRMATIONS } from "./onchain";
 import { issueQuote } from "./quote";
 import { MIGRATIONS, testBackends, type TestDatabase } from "./test-backends";
 
@@ -56,7 +56,8 @@ describe.each(testBackends())("purchase flow on $name", (backend) => {
     const hash = await chain.send({ from: buyer, to: gd, data: encodeFunctionData({ abi: g.abi, functionName: "transferAndCall", args: [token as Address, q.gdAmount, data] }) });
     expect(chain.receipts.get(hash)!.status).toBe("success");
 
-    const shim = { getTransactionReceipt: async ({ hash: h }: { hash: Hex }) => chain.receipts.get(h) as never };
+    // Report a head SYNC_CONFIRMATIONS past the receipt's block, so it is deep enough to credit (GB-13).
+    const shim = { getTransactionReceipt: async ({ hash: h }: { hash: Hex }) => chain.receipts.get(h) as never, getBlockNumber: async () => BigInt(chain.receipts.get(hash)!.blockNumber) + SYNC_CONFIRMATIONS };
     const first = await redeemFromReceipt(db, shim, 1, hash, env);
     expect(first).toEqual({ events: 1, creditedMicro: 10_000_000 });
     expect(await getBalanceMicro(db, user.id)).toBe(10_000_000);

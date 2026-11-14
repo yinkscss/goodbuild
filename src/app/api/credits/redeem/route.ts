@@ -12,7 +12,8 @@ const NO_STORE = { "Cache-Control": "no-store" };
 
 /**
  * "I redeemed on-chain": reads the transaction and credits what the contract says was burned (D52).
- * It never trusts the caller about who or how much. A transaction that isn't mined yet answers 202 so the screen retries.
+ * It never trusts the caller about who or how much. A transaction that isn't mined yet, or is fewer than
+ * SYNC_CONFIRMATIONS blocks deep (GB-13), answers 202 so the screen retries.
  */
 export async function POST(request: Request) {
   await connection();
@@ -29,6 +30,7 @@ export async function POST(request: Request) {
       if ((error as Error).name === "TransactionReceiptNotFoundError") return NextResponse.json({ pending: true }, { status: 202, headers: NO_STORE });
       throw error;
     }
+    if (result.pending) return NextResponse.json({ pending: true }, { status: 202, headers: NO_STORE });
     const balanceMicro = await getBalanceMicro(db, session.user.id);
     return NextResponse.json({ ...result, balanceMicro }, { headers: NO_STORE });
   } catch (error) {

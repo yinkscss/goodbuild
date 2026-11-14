@@ -32,15 +32,15 @@ interface IGoodBuildCreditsVault {
     function pause() external; function unpause() external;
 }
 ```
-- `depositId = keccak256(chainId, txHash-equivalent nonce)`. Simplest: a contract counter. The off-chain idempotency key is `(chainId, txHash, logIndex)`.
+- `depositId = keccak256(chainId, txHash-equivalent nonce)`. Simplest: a contract counter. The off-chain idempotency key was `(chainId, txHash, logIndex)`; as built it is `(chainId, ref)`, the quote ref the contract releases once (D111).
 - Proposed: non-upgradeable, OpenZeppelin `Ownable2Step` + `Pausable` + `ReentrancyGuard`, owned by a Safe multisig. A minimum deposit (for example 1,000 G$) prevents dust spam. This fits P2 in [CONTRACTS_AND_DEPLOYMENT.md](CONTRACTS_AND_DEPLOYMENT.md).
 - G$ address on Celo: take it from GoodProtocol `deployment.json` at build time. (UNVERIFIED here; `0x62B8…9c7A` is the address GoodDollar's antseed-integration uses as the G$ SuperToken.)
 
 ## 3. Off-chain ledger
-- The **indexer** watches `Deposited` logs (viem `watchContractEvent` plus a backfill from the last processed block) and waits for confirmations (Celo finality is fast; proposed: wait for N=3 blocks).
+- The **indexer** watches `Deposited` logs (viem `watchContractEvent` plus a backfill from the last processed block) and waits for confirmations. As built (D111): credit only once an event is 30 blocks deep (about 30 s at Celo's one block a second), from the scan and from the user's receipt alike; the scan checkpoint never passes head − 1,800 blocks.
 - **Price source (proposed):** the GoodDollar reserve / static oracle price for G$ (the source antseed-integration uses, `CELO_STATIC_ORACLE_ADDRESS`). Fallbacks: a TWAP from Uniswap/Ubeswap pools, or CoinGecko. If both sources fail or disagree by more than 5%, the indexer holds the deposit as `pending_price`. Q19. Claude's input: _TBD_
 - **Snapshot:** store `gd_usd_price`, `price_source` and `price_block` on each deposit. The credit amount is fixed at the moment of deposit.
-- Idempotency: unique `(chain_id, tx_hash, log_index)`. A replayed log is a no-op.
+- Idempotency: unique `(chain_id, tx_hash, log_index)`, and as built unique `(chain_id, ref)` with the ledger keyed on the ref (D111), so a reorg copy or a re-paid quote is also a no-op. Rows recorded before migration 0021 have no ref and keep the transaction + log key.
 - The ledger is **append-only double entry**. Balance = sum of entries, cached in `balances` and updated in the same DB transaction.
 
 ### Tables (Postgres)
@@ -86,9 +86,9 @@ sequenceDiagram
   U->>G: transferAndCall(vault, amount, data)
   G->>V: onTokenTransfer(from, amount, data)
   V-->>I: Deposited(payer, beneficiary, amount, id)
-  I->>I: wait N confirmations
+  I->>I: wait N confirmations (as built: 30 blocks, D111)
   I->>P: G$/USD at block
-  I->>L: insert deposit + ledger_entry (idempotent on txHash, logIndex)
+  I->>L: insert deposit + ledger_entry (idempotent on chainId, ref; D111)
   L-->>U: balance updated (UI poll / websocket)
 ```
 ```mermaid
