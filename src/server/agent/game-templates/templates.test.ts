@@ -48,7 +48,7 @@ describe("game templates (D114)", { timeout: 180_000 }, () => {
     for (const t of GAME_TEMPLATES) expect(gameTemplateCatalog()).toContain(`- ${t.id} (`);
     // No existing game's name in any template.
     const all = GAME_TEMPLATES.flatMap((t) => Object.values(t.files)).join("\n");
-    expect(all).not.toMatch(/\b(tetris|flappy|pac-?man|mario|sonic|candy crush|subway surfers|temple run|angry birds|kahoot)\b/i);
+    expect(all).not.toMatch(/\b(tetris|flappy|pac-?man|mario|sonic|candy crush|subway surfers|temple run|angry birds|kahoot|breakout|arkanoid|bejeweled|mario kart|helicopter game)\b/i);
   });
 
   it("turn their kits on, write their files and add the leaderboard's rule, leaving other rules alone", () => {
@@ -104,7 +104,7 @@ describe("game templates (D114)", { timeout: 180_000 }, () => {
 });
 
 describe("game templates in MiniPay (D114)", { timeout: 180_000 }, () => {
-  for (const id of ["lane-racer", "quick-quiz", "runner-3d"]) {
+  for (const id of GAME_TEMPLATES.map((t) => t.id)) {
     it(`${id}: with the MiniPay and board kits, the pages, footer and board contract are wired, and it type-checks`, async () => {
       let files = withKit(withKit(withKit(starterFiles(), kitById("game-2d")!), kitById("mini-app")!), kitById("game-board")!);
       files = withGameTemplate(files, gameTemplateById(id)!);
