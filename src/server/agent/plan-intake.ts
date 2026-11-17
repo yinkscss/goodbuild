@@ -47,10 +47,22 @@ const ASKS_SCORES = /\b(leader ?boards?|high ?scores?|scores?|rankings?)\b/i;
 
 /** The three parts of a game the owner wants asked one by one (D93), and how to recognise each card. */
 export const GAME_PARTS = [
-  { id: "obstacles", test: /\b(obstacles?|in (?:the|your|their) way|hazards?|dodge|avoid|traps?|challenges?|blocks? (?:you|the))\b/i },
-  { id: "powerups", test: /\b(power[- ]?ups?|boosts?|pick[- ]?ups?|bonus(?:es)?|special items?)\b/i },
-  { id: "npcs", test: /\b(npcs?|computer|rivals?|opponents?|enem(?:y|ies)|characters?|bots?|who else|ai (?:cars|players|racers))\b/i },
+  { id: "obstacles", test: /\b(obstacles?|in (?:the|your|their) way|hazards?|dodge|avoid|traps?|challenges?|blocks? (?:you|the)|makes? it hard(?:er)?)\b/i },
+  { id: "powerups", test: /\b(power[- ]?ups?|boosts?|pick[- ]?ups?|bonus(?:es)?|special items?|helps? (?:the )?player|hints?|lifelines?)\b/i },
+  { id: "npcs", test: /\b(npcs?|computer|rivals?|opponents?|enem(?:y|ies)|characters?|bots?|who else|ai (?:cars|players|racers)|play against)\b/i },
 ] as const;
+
+export type GameStyle = "action" | "puzzle" | "turns";
+
+/**
+ * The kind of game by its words (D115), when the planner didn't say: a quiz or a board game is "turns",
+ * a puzzle is "puzzle", anything else "action". It decides which three cards a game is asked.
+ */
+export function styleFromWords(request: string): GameStyle {
+  if (/\b(quiz(?:zes)?|trivia|questions?|true or false|card games?|board games?|chess|draughts|checkers|ludo|whot|ayo|oware|tic[- ]tac[- ]toe|noughts and crosses|turn[- ]based|guess(?:ing)? game)\b/i.test(request)) return "turns";
+  if (/\b(puzzles?|match[- ]?(?:3|three)|sudoku|crosswords?|word (?:games?|search|puzzles?)|memory game|sliding|jigsaw|sort(?:ing)? game)\b/i.test(request)) return "puzzle";
+  return "action";
+}
 type GamePart = (typeof GAME_PARTS)[number]["id"];
 
 /** Which of the three a card asks about, by its own words (not its options). */
@@ -154,6 +166,11 @@ const GAME_BRIEF_FIELD = {
     lose: { type: "string", description: "How a round ends." },
     harder: { type: "string", description: "How it gets harder as you go." },
     extras: { type: "array", items: { type: "string" }, description: "Two or three small extras that make people play again, fitted to this game: near-miss bonus, combo multiplier, daily missions, a ghost of your best run, coins to unlock things by playing." },
+    style: {
+      type: "string",
+      enum: ["action", "puzzle", "turns"],
+      description: "action: things come at the player and it speeds up (runners, racers, shooters, catchers). puzzle: moves on a board with no rush (match, slide, sort, word grids). turns: questions, cards or turns (quizzes, card and board games).",
+    },
     template: {
       type: "string",
       enum: [...GAME_TEMPLATES.map((t) => t.id), "none"],
@@ -201,7 +218,7 @@ If the message is only a question and not something to build, answer it in a sen
  * The game rules (D93), sent only with a game's request so other plans don't pay for them: obstacles,
  * power-ups and the computer's characters each get their own card, and the planner pitches the game.
  */
-export const GAME_RULES = `Game rules: up to 5 questions. Unless they already said, ask how it's played (the controls). Then ALWAYS ask these three, each as its own question with multiple set to true and 3 or 4 options that fit THIS game: what gets in the player's way (obstacles and challenges), which power-ups there are, and who else is in the game, controlled by the computer (rivals, enemies, traffic, a boss). For a car racer that could be: oncoming traffic, slower cars to overtake, oil slicks, road works closing a lane / nitro boost, shield, coin magnet, slow motion / rival racers who block you, police who chase you, just traffic. Use a fifth question only for something they asked for that needs a choice (what the store sells, how a season pass rewards players). Don't ask about scores or a leaderboard: GoodBuild adds that question. Also fill game_brief: name it, pitch the best version of their idea, and pick extras that make it more fun than what they asked for.
+export const GAME_RULES = `Game rules: up to 5 questions. Unless they already said, ask how it's played (the controls). Then ALWAYS ask these three, each as its own question with multiple set to true and 3 or 4 options that fit THIS game. For an action game: what gets in the player's way (obstacles and challenges), which power-ups there are, and who else is in the game, controlled by the computer (rivals, enemies, traffic, a boss). For a puzzle, quiz or turn-based game nothing comes at the player, so ask instead: what makes it hard (a clock, fewer moves, harder rounds), what helps the player (hints, undo, extra time), and who they play against (their own best, a computer player, everyone's scores). For a car racer that could be: oncoming traffic, slower cars to overtake, oil slicks, road works closing a lane / nitro boost, shield, coin magnet, slow motion / rival racers who block you, police who chase you, just traffic. Use a fifth question only for something they asked for that needs a choice (what the store sells, how a season pass rewards players). Don't ask about scores or a leaderboard: GoodBuild adds that question. Also fill game_brief: name it, pitch the best version of their idea, say its style, and pick extras that make it more fun than what they asked for. If they name an existing game or a famous character (a well-known puzzle, bird, plumber or racer), never copy it: keep the kind of play and give it a new name, its own look and its own characters, and say so in the pitch ("a falling-blocks puzzle of our own").
 
 Example for "a jumping game with a monkey" (multiple on the last three): "How do you play?": Tap to jump (recommended) / Tap and hold for a bigger jump. "What gets in the monkey's way?": Gaps between trees (recommended) / Falling coconuts / Snakes on branches. "Which power-ups?": Banana magnet (recommended) / Double jump / Shield. "Who else is in the jungle?": Birds that swoop at you (recommended) / A rival monkey racing you / Nobody, just you.`;
 
@@ -300,18 +317,27 @@ function fixedChoice(id: string, label: string, question: string, multiple: bool
   return { id, kind: "choice", label, question, multiple, options: options.map((text, i) => ({ id: `o${i + 1}`, label: text, ...(i === 0 ? { recommended: true } : {}) })) };
 }
 
-/** Generic cards for a game part the model didn't ask about, worded to fit any game. */
+/** Generic cards for a game part the model didn't ask about, worded to fit any action game. */
 const GAME_PART_CARDS: Record<GamePart, () => PlanQuestion> = {
   obstacles: () => fixedChoice("obstacles", "Obstacles", "What should get in the player's way?", true, ["Things to dodge", "Gaps or drops to jump", "Moving hazards", "A clock running out"]),
   powerups: () => fixedChoice("powerups", "Power-ups", "Which power-ups should there be?", true, ["A shield", "A speed boost", "A coin magnet", "An extra life"]),
   npcs: () => fixedChoice("npcs", "Characters", "Who else is in the game, controlled by the computer?", true, ["Rivals who compete with you", "Enemies who chase you", "Crowds or traffic to get past", "Nobody, just the player"]),
 };
 
+/** The same three parts for a puzzle, quiz or turn-based game (D115): nothing comes at the player there. */
+const CALM_PART_CARDS: Record<GamePart, () => PlanQuestion> = {
+  obstacles: () => fixedChoice("obstacles", "Challenge", "What should make it hard?", true, ["A clock on each turn", "A limit on moves or lives", "Harder rounds as you go", "Tricky choices that look alike"]),
+  powerups: () => fixedChoice("powerups", "Help", "What should help the player?", true, ["Hints", "An undo or a skip", "Extra time", "Bonus points for a streak"]),
+  npcs: () => fixedChoice("npcs", "Opponent", "Who do people play against?", true, ["Their own best score", "A computer player", "Everyone else's scores", "A friend, taking turns"]),
+};
+
+const partCards = (style: GameStyle) => (style === "action" ? GAME_PART_CARDS : CALM_PART_CARDS);
+
 /**
  * Obstacles, power-ups and the computer's characters each get a card (D93): the model's when it asked,
  * a generic one when it didn't. Its other cards come after them and are dropped first to keep five.
  */
-function withGameParts(questions: PlanQuestion[]): PlanQuestion[] {
+function withGameParts(questions: PlanQuestion[], style: GameStyle = "action"): PlanQuestion[] {
   const parts = new Map<GamePart, PlanQuestion>();
   const rest: PlanQuestion[] = [];
   for (const q of questions) {
@@ -319,7 +345,7 @@ function withGameParts(questions: PlanQuestion[]): PlanQuestion[] {
     if (part && !parts.has(part)) parts.set(part, { ...q, multiple: true });
     else rest.push(q);
   }
-  for (const { id } of GAME_PARTS) if (!parts.has(id)) parts.set(id, GAME_PART_CARDS[id]());
+  for (const { id } of GAME_PARTS) if (!parts.has(id)) parts.set(id, partCards(style)[id]());
   // How it's played (usually the model's first card) stays first.
   const [first, ...others] = rest;
   const ordered = [...(first ? [first] : []), ...GAME_PARTS.map((p) => parts.get(p.id)!), ...others];
@@ -341,7 +367,7 @@ export function leaderboardQuestion(): PlanQuestion {
   };
 }
 
-function parseGameBrief(raw: unknown): GameBrief | undefined {
+function parseGameBrief(raw: unknown, request = ""): GameBrief | undefined {
   if (!raw || typeof raw !== "object") return undefined;
   const b = raw as Record<string, unknown>;
   const brief: GameBrief = {
@@ -358,6 +384,9 @@ function parseGameBrief(raw: unknown): GameBrief | undefined {
     brief.template = template.id;
     brief.templateName = template.name;
   }
+  // The kind of game (D115): the template's, else the model's, else by the request's words.
+  const said = b.style === "action" || b.style === "puzzle" || b.style === "turns" ? b.style : undefined;
+  brief.style = template?.style ?? said ?? styleFromWords(request);
   return brief.name && brief.pitch ? brief : undefined;
 }
 
@@ -380,11 +409,11 @@ export function parseIntake(rawArguments: string, request: string): PlanIntake |
   const miniPay = asksMiniPay(request);
   let questions = parseQuestions(args.questions, game ? MAX_GAME_MODEL_QUESTIONS : miniPay ? MAX_MODEL_QUESTIONS - 1 : MAX_MODEL_QUESTIONS, game);
   if (!questions.length) return null;
-  if (game) questions = withGameParts(questions);
+  const brief = game ? parseGameBrief(args.game_brief, request) : undefined;
+  if (game) questions = withGameParts(questions, brief?.style ?? styleFromWords(request));
   const saidBoard = game && asksLeaderboard(request);
   const palette = clean(args.recommended_palette, 20).toLowerCase();
   const all = [...questions, ...(game && !saidBoard ? [leaderboardQuestion()] : []), ...(miniPay ? [miniPayQuestion()] : [])];
-  const brief = game ? parseGameBrief(args.game_brief) : undefined;
   return {
     summary: clean(args.summary, 240) || clean(request, 240),
     questions: palette === "none" ? all : [...all, paletteQuestion(palette, looksLikeWebsite(request))],
@@ -415,7 +444,7 @@ export function fallbackIntake(request: string): PlanIntake {
   const questions = game
     ? [
         choice("q1", "How to play", "How should people play?", false, ["One tap or click", "Move left and right", "Answer questions"]),
-        ...GAME_PARTS.map((p) => GAME_PART_CARDS[p.id]()),
+        ...GAME_PARTS.map((p) => partCards(styleFromWords(request))[p.id]()),
         ...(saidBoard ? [] : [leaderboardQuestion()]),
       ]
     : website
@@ -494,7 +523,7 @@ export function planBrief(intake: PlanIntake | null, firstBuild: boolean): PlanB
   const game = intake.game;
   if (game) {
     lines.push(
-      `- The game idea they saw before building, to build as the spec: "${game.name}". ${game.pitch} Loop: ${game.loop}. A round ends when ${game.lose.replace(/^when\s+/i, "")}. It gets harder: ${game.harder}.${game.extras.length ? ` Extras: ${game.extras.join("; ")}.` : ""}`,
+      `- The game idea they saw before building, to build as the spec: "${game.name}". ${game.pitch} Loop: ${game.loop}. A round ends when ${game.lose.replace(/^when\s+/i, "")}. It gets harder: ${game.harder}.${game.extras.length ? ` Extras: ${game.extras.join("; ")}.` : ""}${game.style ? ` Kind of game: ${game.style} (declareGame({ style: "${game.style}" })).` : ""}`,
     );
   }
   const unanswered = intake.questions.length - answered.length;

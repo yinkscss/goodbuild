@@ -579,6 +579,8 @@ const GUIDE = `2D games. The kit's files are in src/game/: use them, don't rewri
 
 In a 3D game (the 3D kit is on and the game is drawn in Scene3D) the screen is Scene3D, not GameCanvas: follow the 3D guide for the screen, input and score panel (Hud3D). Everything else here applies as written: free play, the probe, the building blocks, sound, the leaderboard, GameOver and the shop.
 
+Original games only. If the person names an existing game or a famous character, build the same kind of play with its own name, look and characters, and never use the original's name, characters, art, music or levels. Tell them so in a sentence.
+
 Free play first. Anyone can open the game and play straight away: no wallet, no sign-in, no account. The best score is kept on the device (saveBest). A wallet is asked for only when the player chooses to post a score on the leaderboard, buy something, or pay an entry, and the page says so at that moment. Never put Play behind a wallet, and never block the game while a wallet or the leaderboard loads.
 
 The screen
