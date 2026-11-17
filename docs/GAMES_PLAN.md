@@ -160,3 +160,102 @@ Each step records its decision in DECISIONS.md, has tests in the repo's usual st
 3. **Leaderboard default:** everyone with no wallet (proposed; easy to spoof, but no game score can be trusted anyway), or wallet-only?
 4. **G$ in MiniPay (E3):** can you test a G$ purchase in MiniPay on a phone, or should MiniPay stores also accept USDm?
 5. **The transcript:** the wallet failure in v4 is the one retry this plan can't pin down without it. Most useful would be the wallet message shown under the header, and where you tested (MiniPay, the preview on a computer, or a phone browser).
+
+---
+
+# Part 2: game templates and checks that fit every kind of game (proposal, 17 Nov 2026)
+
+Status: **proposal, level L2 chosen by the owner on 17 Nov 2026** ("L2: genres + 3D parity"). Nothing built yet. Waiting for the owner's go-ahead on this plan.
+
+## 7. Ten game requests GoodBuild can't handle yet (found 17 Nov 2026, each checked in the code on `main` at c5a7b7cd1)
+
+| # | The request or player | Where the gap is | What happens |
+|---|---|---|---|
+| 1 | A quiz, puzzle, memory, word, card, idle or turn-based game | `game-check.ts:189-217`: "first obstacle within 3.5 s", "speed never rose" and "player never moved" run for every game, even one that declares no obstacles. `plan-intake.ts` GAME_RULES asks every game about obstacles, power-ups and computer characters | False issues. The fix loop bolts things to dodge onto a sudoku, and each one costs a build |
+| 2 | Any 3D game | The 3D guide tells the builder to `add_kit("game-2d")` for sound and saving (`three-d.ts:328`), so the blocks, probe file and leaderboard can be there. But `Scene3D` never reports rounds or runs at check speed, and the full play test is keyed on `game-2d` (`run-check.ts:356`, `:560`). The MiniPay board turns on only with `game-2d` (`runner.ts:881`) | A 3D game that skips `game-2d` gets only a blank-screen check. One that adds it is judged by 2D rules against a WebGL canvas, likely a false "start screen is flat" or "no probe calls" (**UNVERIFIED**, needs a test) |
+| 3 | Swipe, drag, hold-to-charge, aim and release, draw a path | The bot only taps the left or right side or presses Left, Right, Space (`game-check.ts:103-113`) | "Never moved the player", sent to the fix loop |
+| 4 | A game that spawns with `setInterval`, `setTimeout` or `Date.now` | The check runs 4 game steps per frame (`stepsPerFrame`). Timers on the wall clock don't speed up | Obstacles arrive "late", the game fails the 3.5 s rule. Nothing in the guide or the checks mentions it |
+| 5 | "Make Tetris", "Flappy Bird with Mario" | The game words list matches flappy, tetris, pong, space invaders (`game-2d.ts:747`). No prompt steers to an original game | A copy of a named game, published on GoodBuild's domain. Legal risk |
+| 6 | Slingshot, stacking tower, pool, car handling | matter-js is blocked (`game-2d.ts:776`), "no physics engine" (`three-d.ts:324`) | The model writes its own physics: buggy and not checkable. **Not in this plan** |
+| 7 | "Race my friend on two phones" | No live connection; apps poll every 3 s or more | Only turn-based play works. **Not in this plan** |
+| 8 | Tilt steering, two players on one phone, a controller, shout to jump, landscape only | No `orientation` code in any kit; input is single pointer, arrows and one action | A sideways-only game has no "turn your phone" handling; whether MiniPay's window can turn sideways is **UNVERIFIED** |
+| 9 | Idle or tycoon games, 30-level campaigns, story games | Saved data is the best score only; the bot plays about 7 s | Progress lost when a cheap phone kills the tab; level 2 onwards never tested |
+| 10 | Cheap Android phones | No `webglcontextlost` handling in `Scene3D`; the guide recommends emoji as pictures (`game-2d.ts:618`), and newer emoji may show as boxes on older Android (**UNVERIFIED**); smoothness is guessed from the files | A black 3D screen until reload; possibly missing pictures; slow games not caught |
+
+This plan fixes 1 to 5 and the 3D half of 10. 6 and 7 stay out (each would be its own kit). 8 and 9 get a small part each (landscape notice, mid-run save for templates that have levels); the rest is later.
+
+## 8. Goal and the bar
+
+**Goal:** almost any game a person asks for, 2D or 3D, works on the first build and passes the whole game check (section 2) for its own kind of game.
+
+**The bar for every template (the outside judge):** it passes the app check, the type check and the real run check, with the bot playing it in a headless browser, in the same tests as `kits/game-2d.test.ts`. A broken copy of each template (no probe, a score that never rises, controls that do nothing) must fail. Every template is original: named by how it plays, never after an existing game.
+
+## 9. The plan
+
+### Phase H: judge each game by its own kind (fixes 1, 3, 4)
+
+- **H1. A game says what kind it is.** `declareGame({ style, controls, obstacles, powerups, npcs })`. `style` is `"action"` (today's rules), `"puzzle"` (moves on a board, no clock pressure) or `"turns"` (questions, cards, turn-based). `controls` lists `"tap" | "sides" | "keys" | "swipe" | "drag" | "hold" | "buttons"`. Old games that declare neither are judged as `"action"`, so nothing already built changes.
+- **H2. Rules by kind.** Action keeps every rule. Puzzle and turns drop "obstacle in 3.5 s", "got harder" and "player moved", and instead need: a move changes something (`moved()` in the probe), the score or progress rises, and a round can end (win or lose) and Play again works. Declared obstacles, power-ups and characters are still checked for every kind.
+- **H2b. Games with no canvas.** Rounds come from `GameCanvas` pausing today (D94), and the start-screen check looks for a game canvas. A quiz or a grid of buttons has neither. The probe gets `roundStart()` and `roundEnd()` for games without a canvas (the kit's `useRound()` hook calls them from the screen state), and the run check takes a no-canvas path: no flat-canvas rule, Play found, rounds and score from the probe.
+- **H3. The bot plays the declared controls.** Swipe (a quick drag across the canvas), drag (press, move, release), hold (press for 0.6 s), and buttons (click the answer or tile buttons the game shows outside the canvas, by role). Today's tap-and-keys stays for `"sides"`, `"tap"` and `"keys"`.
+- **H4. Wall-clock timers, caught at run time, not by reading files.** A file check can't tell a spawn timer from `setTimeout(() => setToast(null))`, so it would cause the false fix-loops this plan removes. Instead the check compares when things spawn on the game clock against wall time at 4x: spawns that keep wall-clock pace get one issue naming the fix (count in `dt`). The guide gains one line on it.
+- **New rules never become errors for games already built:** a game that doesn't call the new parts of the probe is judged as today.
+- **H5. The planner asks the right questions per kind.** GAME_RULES keeps the three cards for action games. For puzzle and turns games they become "What makes it hard?", "What helps the player?" (hints, undo, extra time) and "Who do you play against?" (the clock, a computer player, other people's scores). The server's fallback cards follow the same split.
+- **H6. Original games only.** The planner and builder are told: a named existing game becomes an original game with the same kind of play, a new name, new look and no characters, art, music or levels from it. The plan card shows the new name. The game words keep catching "tetris" and so on, so the kit still turns on.
+
+### Phase I: 3D games get everything 2D games have (fixes 2 and the 3D half of 10)
+
+- **I1. `Scene3D` joins the probe.** It calls `checkTick`, `checkRound` and runs `stepsPerFrame()` steps while checked, marks its canvas `data-game-canvas`, and takes `onIdleFrame` so the start screen shows the world. Old file hash goes into `superseded`.
+- **I2. Building blocks for 3D.** `world.ts`, `npc.ts`, `powerups.ts`, `probe.ts`, `sound.ts`, `storage.ts`, `haptics.ts`, `juice` already work on plain numbers. Decision to make in the build: keep "a 3D game also turns on `game-2d`" (today's guide line, least change) and make the run check pick 2D or 3D judging by which canvas the game uses, not by which kits are on. Claude's lean: keep it, because splitting the files into a shared kit means moving files in projects already built. New `Hud3D.tsx`: the score panel, lives and power-up timers as a React overlay, since the 2D HUD draws on a 2D canvas.
+- **I3. Leaderboard, `GameBoard` (MiniPay), shop and extras for 3D.** The runner's rule becomes "a game kit" instead of `game-2d`. `Sprite` gets a 3D version that renders one mesh-building function to a small picture for store cards and the board.
+- **I4. The run check plays 3D games like 2D ones:** start screen not flat, Play found, bot play with the probe, Play again, post a score, wallet, MiniPay. Pictures for the review and visual check: the preview capture uses html-to-image, and `Scene3D` doesn't set `preserveDrawingBuffer`, so a WebGL canvas likely captures blank that way. Use Playwright's own screenshot, or a read taken inside the frame (as D85's flat check does). **UNVERIFIED** until a test shows a 3D picture comes out drawn.
+- **I5. Losing the 3D context on a cheap phone:** `Scene3D` listens for `webglcontextlost` and `webglcontextrestored`, pauses and rebuilds, or shows "Tap to reload the game" instead of a black box.
+
+### Phase J: templates, a working game the builder changes (L1 core)
+
+- **J1. How a template reaches a project.** A new catalogue, `src/server/agent/game-templates/`, one module per template: id, plain name, 2D or 3D, style, controls, its files, and default answers for the plan. On the **first build only**, when the plan picked a template, the runner adds its files (the game screen, its drawing functions, `App.tsx` wiring) the way a kit adds starter files, and writes `"template": "<id>"` into `src/goodbuild.json`. Unlike kit files they are the person's from then on: never in `superseded`, never put back. The builder is told "this is your starting point: rename, restyle and change the rules to fit the plan", not "write a game".
+- **J2. Why not one kit per template:** kits never come off and their files come back when deleted, which is wrong for a game the person reshapes. Why not prose only (like page templates): a working, checked game is what removes the retries.
+- **J3. Six 2D templates** (original, named by how they play):
+  1. **Lane racer:** three lanes, traffic, oncoming cars, nitro, near-miss combos (action, sides/swipe)
+  2. **Catch and dodge:** things fall, catch the good, dodge the bad (action, drag). Today's "Mini game" chip
+  3. **Cave flyer:** one tap to rise, gaps to pass, gets narrower (action, tap)
+  4. **Brick breaker:** paddle, ball, bricks, power-up drops, levels saved mid-run (action, drag)
+  5. **Match grid:** swap tiles, match three, moves limit, goals per level (puzzle, swipe)
+  6. **Quick quiz:** timed questions, streaks, hint power-up, daily set (turns, buttons)
+- **J4. Four 3D templates:**
+  1. **Endless runner 3D:** run down a track, jump and slide, lanes (action, swipe)
+  2. **Kart track:** laps against computer rivals, boost pads, no physics engine (action, sides/keys)
+  3. **Maze escape:** collect keys, a chaser, minimap (action, swipe/keys)
+  4. **Sky rings:** fly through rings, drag to steer, wind and towers (action, drag)
+- **J5. Each template ships with:** start screen drawn, free play, leaderboard, wallet, MiniPay ready, mute, the probe declared, `<Sprite>` drawings reused in the store, and nothing allocated per frame. Shapes and colours only, no emoji as pictures (fix 10). Landscape templates (kart track) say "Turn your phone" in an upright window.
+
+### Phase K: the planner picks the template
+
+- **K1.** `game_brief` gains `template` (one of the ids, or none for something no template fits) and `style`. The planner gets the catalogue in one line each. The server ignores an unknown id.
+- **K2.** The plan card shows "Starts from: Lane racer" in plain words, with the pitch. Nobody is asked to choose a template; a later message can change it.
+- **K3.** No template fits (a tycoon game, physics): the build runs as today, judged by its declared style.
+- **K4.** Home: the "Mini game" chip stays; the game gallery is a later, separate change.
+
+### Phase P: prove it
+
+- **P1.** Tests: each template passes the run check with the bot (2D in `kits/game-2d.test.ts` style, 3D in `three-d.test.ts`), and a broken copy of each fails. H2 rules have their own tests in `game-check.test.ts`, including today's games still judged the same.
+- **P2.** Eval suite: one request per template plus a puzzle and a quiz with no template, scored on the checklist. Running it needs the owner's provider keys (D70). **UNVERIFIED** until then.
+
+## 10. Order and size
+
+| Step | What | Size | Depends on |
+|---|---|---|---|
+| 1 | H1 to H4 (kinds, rules, games with no canvas, bot controls, timer check) | Medium | Nothing |
+| 2 | I1 to I5 (3D parity) | Medium to large | H1 for the probe shape |
+| 3 | One full slice: J1 plus **Lane racer** and **Quick quiz** (the quiz tests H2, H2b and H3 for real) | Medium | H |
+| 4 | The other four 2D templates, then the four 3D templates | Large | Step 3 passing, I |
+| 5 | H5, H6, K (planner, original games, plan card) | Small to medium | J1 |
+| 6 | P (tests run with each step; evals at the end) | Small | All |
+
+Steps 1 and 2 both change `game-check.ts` and `run-check.ts`, so they run one after the other, not in parallel. Each step gets its own decision in DECISIONS.md and its own PR.
+
+## 11. Questions for the owner
+
+1. **Go-ahead** on this plan and order, one PR per step?
+2. **The six 2D and four 3D templates:** keep this list, or swap any (for example a platformer with levels instead of the cave flyer)?
+3. **Sideways games:** allow sideways-only games (kart track) with a "Turn your phone" notice, or keep every template upright? Upright is the safe default until someone checks on a phone whether MiniPay turns sideways.
