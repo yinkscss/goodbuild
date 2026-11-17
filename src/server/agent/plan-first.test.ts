@@ -18,7 +18,9 @@ import type { TurnRecord } from "@/lib/turn-types";
 
 import { demoModel } from "./demo-model";
 import { scriptedModel } from "./fake-model";
-import { GAME_RULES, INTAKE_MAX_TOKENS, INTAKE_PROMPT, INTAKE_TOOLS, INTAKE_TOOLS_GAME, LEADERBOARD_QUESTION_ID, MINIPAY_QUESTION_ID, fallbackIntake, intakeContext, intakeTools, parseIntake, parsePlanQuestions, planBrief } from "./plan-intake";
+import { GAME_RULES, INTAKE_MAX_TOKENS, INTAKE_PROMPT, INTAKE_TOOLS, INTAKE_TOOLS_GAME, LEADERBOARD_QUESTION_ID, MINIPAY_QUESTION_ID, fallbackIntake, intakeContext, intakeTools, parseIntake, parsePlanQuestions, planBrief, styleFromWords } from "./plan-intake";
+import { game2d } from "./kits/game-2d";
+import { systemPrompt } from "./prompt";
 import { miniApp } from "./kits/mini-app";
 import { detectKits } from "./kits";
 import { starterFiles } from "./template";
@@ -523,9 +525,56 @@ describe("a game's plan (D93)", () => {
   it("keeps the brief, cleaned, and only for a game", () => {
     const brief = { name: "Neon Drift", pitch: "Weave through night traffic — chain near misses.", loop: "dodge, collect, boost", lose: "you crash", harder: "traffic speeds up", extras: ["near-miss bonus", "daily missions", "ghost run", "a fourth"] };
     const parsed = parseIntake(args([card("How do you steer?", ["Tap", "Tilt"])], { game_brief: brief }), racer)!;
-    expect(parsed.game).toEqual({ ...brief, pitch: "Weave through night traffic, chain near misses.", extras: ["near-miss bonus", "daily missions", "ghost run"] });
+    expect(parsed.game).toEqual({ ...brief, pitch: "Weave through night traffic, chain near misses.", extras: ["near-miss bonus", "daily missions", "ghost run"], style: "action" });
     expect(parseIntake(args([card("Who can join?", ["Anyone", "Friends"])], { game_brief: brief }), "A tip jar for my club")!.game).toBeUndefined();
     expect(planBrief(parsed, true).text).toMatch(/"Neon Drift"[\s\S]*Loop: dodge, collect, boost[\s\S]*near-miss bonus/);
+  });
+
+  it("keeps a template GoodBuild has, drops one the model made up, and carries it to the build (D114)", () => {
+    const brief = { name: "Night Lanes", pitch: "Weave through traffic.", loop: "dodge", lose: "you crash", harder: "faster", extras: [] };
+    const picked = parseIntake(args([card("How do you steer?", ["Tap", "Tilt"])], { game_brief: { ...brief, template: "lane-racer" } }), racer)!;
+    expect(picked.game).toMatchObject({ template: "lane-racer", templateName: "Lane racer" });
+    expect(planBrief(picked, true).gameTemplate).toBe("lane-racer");
+    const madeUp = parseIntake(args([card("How do you steer?", ["Tap", "Tilt"])], { game_brief: { ...brief, template: "kart-world-9000" } }), racer)!;
+    expect(madeUp.game?.template).toBeUndefined();
+    expect(planBrief(madeUp, true).gameTemplate).toBeUndefined();
+    const none = parseIntake(args([card("How do you steer?", ["Tap", "Tilt"])], { game_brief: { ...brief, template: "none" } }), racer)!;
+    expect(none.game?.template).toBeUndefined();
+  });
+
+  it("tells the kind of game by its words (D115)", () => {
+    for (const turns of ["A quiz game about Lagos", "a trivia night app", "A ludo game for two", "a card game like whot"]) expect(styleFromWords(turns), turns).toBe("turns");
+    for (const puzzle of ["A match-3 puzzle with fruit", "a word search game", "a sudoku app", "a memory game for kids"]) expect(styleFromWords(puzzle), puzzle).toBe("puzzle");
+    for (const action of [racer, "an endless runner", "a game where you catch falling mangoes"]) expect(styleFromWords(action), action).toBe("action");
+  });
+
+  it("asks a quiz what makes it hard, what helps and who they play against, never what gets in the way (D115)", () => {
+    const quiz = "A quiz game about Nigerian history with a leaderboard";
+    const fallback = fallbackIntake(quiz).questions.map((q) => q.question).join(" | ");
+    expect(fallback).toMatch(/What should make it hard\?[\s\S]*What should help the player\?[\s\S]*Who do people play against\?/);
+    expect(fallback).not.toMatch(/get in the player's way|power-ups|controlled by the computer/);
+    // The model asked only how it's played: the server adds the quiz's three, not the racer's.
+    const parsed = parseIntake(args([card("How do you answer?", ["Tap an answer", "Type it"])], { game_brief: { name: "Naija Quiz", pitch: "Ten quick questions.", loop: "answer", lose: "three wrong", harder: "less time", extras: [] } }), quiz)!;
+    const asked = parsed.questions.map((q) => q.question).join(" | ");
+    expect(asked).toMatch(/What should make it hard\?/);
+    expect(asked).not.toMatch(/get in the player's way/);
+    expect(parsed.game?.style).toBe("turns");
+    expect(planBrief({ ...parsed, answers: { [parsed.questions[0].id]: { picks: ["o1"] } } }, true).text).toMatch(/Kind of game: turns/);
+    // A racer still gets the racer's three.
+    const race = parseIntake(args([card("How do you steer?", ["Tap", "Tilt"])]), racer)!;
+    expect(race.questions.map((q) => q.question).join(" | ")).toMatch(/get in the player's way/);
+  });
+
+  it("takes the kind from the template when one is picked (D115)", () => {
+    const brief = { name: "Brain Lane", pitch: "Questions on the go.", loop: "answer", lose: "three wrong", harder: "faster", extras: [], style: "action", template: "quick-quiz" };
+    expect(parseIntake(args([card("How do you play?", ["Tap an answer", "Type it"])], { game_brief: brief }), "a quiz game")!.game?.style).toBe("turns");
+  });
+
+  it("tells the planner and the builder to make a named game their own, never a copy (D115)", () => {
+    expect(GAME_RULES).toMatch(/never copy it[\s\S]*new name, its own look and its own characters/);
+    expect(intakeContext("make tetris for my class", [])).toContain("never copy it");
+    expect(systemPrompt("build")).toMatch(/Original work only/);
+    expect(game2d.guide).toMatch(/^Original games only/m);
   });
 
   it("sends the game rules and the brief field only with a game's request", () => {

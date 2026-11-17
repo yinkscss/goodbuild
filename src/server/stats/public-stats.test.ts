@@ -55,6 +55,9 @@ describe("public stats", () => {
     const old = await signInUser(db, { wallet: "0xcccc", walletKind: "external", attestation: yes }, NOW);
     await db.update(users).set({ createdAt: new Date("2026-01-01T00:00:00Z"), lastSeenAt: new Date("2026-01-01T00:00:00Z") }).where(eqId(old.id));
     await db.update(users).set({ verifiedAt: NOW }).where(eqId(a.id));
+    // The database stamps createdAt with the real clock: pin it to the test's "now", or the week buckets drift with the date.
+    await db.update(users).set({ createdAt: NOW }).where(eqId(a.id));
+    await db.update(users).set({ createdAt: NOW }).where(eqId(b.id));
 
     const p1 = await createProjectFromPrompt(db, a.id, { prompt: "Tip jar", network: "celo" });
     const p2 = await createProjectFromPrompt(db, b.id, { prompt: "Savings circle", network: "celo" });

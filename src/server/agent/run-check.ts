@@ -5,8 +5,11 @@ import type { Browser, BrowserContext, Page, Route } from "playwright-core";
 import { buildPublishedApp, moduleStarts, PublishBuildError, type PublishedFile } from "@/server/publish/build";
 
 import type { CheckIssue } from "./checks";
-import { GAME_CHECK_SPEED, gameCanvas, gameCheckScript, insideMiniPay, judgeRounds, playRounds, probeReport, standInWalletScript, walletAndBoard } from "./game-check";
-import { kitIdsOf } from "./kits/registry";
+import { checkControls, GAME_CHECK_SPEED, gameCanvas, gameCheckScript, insideMiniPay, judgeRounds, playRounds, probeReport, standInWalletScript, walletAndBoard } from "./game-check";
+import { KITS, kitIdsOf } from "./kits/registry";
+
+/** Every file a kit ships, so the game's own code can be told apart from GoodBuild's. */
+const KIT_FILES: Record<string, true> = Object.fromEntries(KITS.flatMap((k) => Object.keys(k.files).map((p) => [p, true] as const)));
 
 /**
  * The run check (D67): build the app the way publishing does, open it in a headless browser and
@@ -33,6 +36,10 @@ export interface RunCheckOptions {
   miniPay?: boolean;
   /** The project's GameCanvas reports rounds to the probe, so a Play that starts none is a fault (D95). */
   probeReady?: boolean;
+  /** The game draws in a GameCanvas. A game without one (a quiz, a grid of buttons) reports rounds with round() (D112). */
+  canvas?: boolean;
+  /** A 3D game: a Scene3D with the game probe. Played like a 2D game, its start screen judged by the 3D canvas (D113). */
+  game3d?: boolean;
   /** The project draws a 3D scene from shapes alone: look for one that shows nothing but its background (set from its kits and files). */
   scene?: boolean;
   /** Also return screenshots at phone and desktop width. */
@@ -40,6 +47,12 @@ export interface RunCheckOptions {
   timeoutMs?: number;
   /** Tests: a browser to use instead of the shared one. */
   browser?: Browser;
+  /** Tests: a script run on every page before the app's own, to stand in for an older browser. */
+  initScript?: string;
+  /** Tests: stand in for a cheap phone: a touch screen, and the CPU slowed this many times. */
+  phone?: { cpuSlowdown: number };
+  /** Tests: called with the page once a game has been played and judged, before the wallet steps. */
+  afterPlay?: (page: Page) => Promise<void>;
 }
 
 export interface RunCheckResult {
@@ -321,10 +334,12 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
   const js = files.find((f) => /^app\.[0-9a-f]{12}\.js$/.test(f.path));
   const jsText = js ? new TextDecoder().decode(js.bytes) : "";
   await context.route("**/*", serve(files, new Set(options.assets ?? []), options.chainId ?? 11142220));
+  if (options.initScript) await context.addInitScript(options.initScript);
   // A socket can't be answered from memory; close it so nothing leaves through one.
   await context.routeWebSocket(/.*/, (ws) => ws.close());
 
   const page = await context.newPage();
+  if (options.phone) await (await context.newCDPSession(page)).send("Emulation.setCPUThrottlingRate", { rate: options.phone.cpuSlowdown });
   const seen: Seen[] = [];
   // React's development build names the component in a console message next to the error. Both are
   // kept in the order they arrived, and each error takes the first name logged after it.
@@ -353,12 +368,28 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
   };
   watch(page);
   // A 2D game is played for real (D94): the kit's probe records what happens. Not for the review's pictures.
-  const deep = Boolean(options.game2d && !options.screenshots);
+  let played = Boolean(options.game2d || options.game3d);
+  let deep = Boolean(played && !options.screenshots);
   // Normal speed at first, so the first moments of play look as a player sees them; faster once they're checked.
-  // The probe is on for every 2D game at normal speed, so the check knows whether a round is running.
-  if (options.game2d) await page.addInitScript(gameCheckScript(1));
+  // The probe is on for every 2D or 3D game at normal speed, so the check knows whether a round is running.
+  if (played) await page.addInitScript(gameCheckScript(1));
   let pressedPlay = false;
   await open(page);
+  // A 3D game on a checker with no WebGL shows Scene3D's plain message: there is nothing to play or judge,
+  // so it is left alone rather than reported (as D85 does for scenes). Only when the browser really has no
+  // WebGL: with WebGL, a game that never shows its scene is played and judged like any other.
+  let no3d = false;
+  const noWebGL = () =>
+    page
+      .evaluate(() => {
+        const c = document.createElement("canvas");
+        return !(c.getContext("webgl2") ?? c.getContext("webgl"));
+      })
+      .catch(() => false);
+  if (options.game3d && !(await page.locator("canvas[data-game-canvas]").count().catch(() => 0)) && (await noWebGL())) {
+    no3d = true;
+    played = deep = false;
+  }
 
   const blank = await page.evaluate(() => {
     const root = document.getElementById("root");
@@ -375,15 +406,17 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
   let noPlay = false;
   const gameShots: NonNullable<RunCheckResult["screenshots"]> = [];
   const phoneShot = async (shows: "start" | "playing") => {
-    if (options.screenshots && options.game2d) gameShots.push({ width: PHONE.width, png: await page.screenshot({ type: "png" }), shows });
+    if (options.screenshots && played) gameShots.push({ width: PHONE.width, png: await page.screenshot({ type: "png" }), shows });
   };
   if (!blank && !seen.length && options.game) {
     const start = page.getByRole("button", { name: /\b(play|start|begin|go|race|tap to)\b/i }).first();
     const hasStart = await start.isVisible().catch(() => false);
-    if (options.game2d) {
+    if (played) {
       // Two frames of the idle loop, so a start screen that draws is seen drawing.
       await settle(page, 200);
-      blankStart = await flat2dCanvas(page);
+      // A 3D start screen is read from inside the scene's own frame, twice, like the empty-scene check, and
+      // only for a scene of shapes: one waiting for an uploaded model gets a blank stand-in here and looks empty.
+      blankStart = options.game3d ? Boolean(options.scene) && (await flatScene(page)) && ((await settle(page, 300)), await flatScene(page)) : await flat2dCanvas(page);
       noPlay = !hasStart;
       await phoneShot("start");
     }
@@ -401,17 +434,21 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
       }
       await settle(page, 500);
       blankGame = await flat2dCanvas(page);
-      // A short round may already be over: the "playing" picture must show play, so start another first,
-      // and take it only once a round is confirmed running. Otherwise the review gets no "playing" picture.
-      const running = async () => {
-        const last = (await probeReport(page))?.rounds.at(-1);
-        return Boolean(last && last.end === undefined);
-      };
-      if (options.screenshots && options.game2d && !(await running())) {
+    }
+    // A short round may already be over: the "playing" picture must show play, so start another first,
+    // and take it only once a round is confirmed running. Otherwise the review gets no "playing" picture.
+    // Also for a game of buttons with no canvas (a quiz, a grid), which reports its rounds with round().
+    const running = async () => {
+      const last = (await probeReport(page))?.rounds.at(-1);
+      return Boolean(last && last.end === undefined);
+    };
+    const showing = (await canvas.isVisible().catch(() => false)) || (played && (await running()));
+    if (showing) {
+      if (options.screenshots && played && !(await running())) {
         await page.getByRole("button", { name: /\b(play|again|retry|restart|start|race)\b/i }).first().click({ timeout: 1_000 }).catch(() => undefined);
         await settle(page, 300);
       }
-      if (!options.screenshots || !options.game2d || (await running())) await phoneShot("playing");
+      if (!options.screenshots || !played || (await running())) await phoneShot("playing");
     }
   }
 
@@ -419,15 +456,23 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
   // score to the board, and MiniPay. Only when the game started cleanly, so one problem is reported once.
   const gameIssues: string[] = [];
   const gameNotes: string[] = [];
+  if (no3d) gameNotes.push("no WebGL on this checker, so the 3D game wasn't played");
   if (deep && !blank && !blankStart && !noPlay && !blankGame && !seen.length) {
     await page.evaluate((speed) => {
       const g = (window as unknown as { __gbGame?: { speed: number } }).__gbGame;
       if (g) g.speed = speed;
     }, GAME_CHECK_SPEED);
     gameIssues.push(...(await playRounds(page)));
-    const judged = judgeRounds(await probeReport(page), { pressedPlay: pressedPlay && Boolean(options.probeReady) });
+    const judged = judgeRounds(await probeReport(page), { pressedPlay: pressedPlay && Boolean(options.probeReady), canvas: options.game3d ? "3d" : (options.canvas ?? true) });
     gameIssues.push(...judged.issues);
     gameNotes.push(judged.note);
+    // A game that moves the player by itself (a bending road, gravity): do the controls move them too (D118)?
+    if (!gameIssues.length) {
+      const controls = await checkControls(page);
+      gameIssues.push(...controls.issues);
+      if (controls.note) gameNotes.push(controls.note);
+    }
+    if (options.afterPlay) await options.afterPlay(page);
     if (!seen.length && !gameIssues.length) {
       const chainId = options.chainId ?? 11142220;
       const withWallet = await context.newPage();
@@ -512,7 +557,13 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
     return { file, message: `The app crashed when it ran${where}: ${s.message}${inside}`, source: "runtime" };
   });
   if (blankStart && !issues.length) {
-    issues.push({ file: "src/App.tsx", message: "The start screen shows the game area as an empty box: nothing is drawn on the canvas before Play. Pass onIdleFrame to GameCanvas and draw the game world there (the track, the player standing still), the same drawing onFrame uses.", source: "runtime" });
+    issues.push({
+      file: "src/App.tsx",
+      message: options.game3d
+        ? "The start screen shows the 3D scene empty: nothing is in view before Play. Build the world in onReady (the track, the player) and point the camera at it: Scene3D draws it while paused, so the start screen shows the game."
+        : "The start screen shows the game area as an empty box: nothing is drawn on the canvas before Play. Pass onIdleFrame to GameCanvas and draw the game world there (the track, the player standing still), the same drawing onFrame uses.",
+      source: "runtime",
+    });
   }
   if (noPlay && !issues.length) {
     issues.push({ file: "src/App.tsx", message: "The start screen has no Play button. Add a big <button> with the word Play or Start that begins the game, with no wallet needed.", source: "runtime" });
@@ -552,19 +603,31 @@ export async function runCheck(files: Record<string, string>, options: RunCheckO
   try {
     const browser = options.browser ?? (await sharedBrowser());
     const kits = kitIdsOf(files);
-    context = await browser.newContext({ viewport: PHONE, serviceWorkers: "block", acceptDownloads: false, permissions: [] });
+    context = await browser.newContext({ viewport: PHONE, hasTouch: Boolean(options.phone), serviceWorkers: "block", acceptDownloads: false, permissions: [] });
     const timeout = new Promise<Omit<RunCheckResult, "ms">>((resolve) => {
       timer = setTimeout(() => resolve({ ran: false, issues: [], note: "skipped: the app took too long to open" }), options.timeoutMs ?? (kits.includes("game-2d") ? GAME_TIMEOUT_MS : DEFAULT_TIMEOUT_MS));
     });
     const game = options.game ?? (kits.includes("game-2d") || kits.includes("three-d"));
-    const game2d = options.game2d ?? kits.includes("game-2d");
+    // The game's own code, so the kit's files (which name GameCanvas and round in comments) don't count.
+    const authored = Object.entries(files).filter(([p]) => /^src\/.*\.(tsx?|jsx?)$/.test(p) && !(p in KIT_FILES)).map(([, c]) => c);
+    // A Scene3D game that reports to the probe is played like a 2D one (D113). A 3D scene that only borrows the
+    // 2D kit's sound is a scene, not a 2D game: it gets the scene check, never the 2D start-screen rules.
+    const scene3d = authored.some((c) => /<Scene3D\b/.test(c));
+    const game3d = options.game3d ?? (scene3d && kits.includes("game-2d") && authored.some((c) => /\bdeclareGame\s*\(/.test(c)) && Boolean(files["src/three/Scene3D.tsx"]?.includes("checkRound")));
+    const game2d = options.game2d ?? (kits.includes("game-2d") && !scene3d);
     const board = options.board ?? Object.entries(files).some(([p, c]) => p.startsWith("src/") && !p.startsWith("src/game/") && /<PostScore\b/.test(c));
     const miniPay = options.miniPay ?? kits.includes("mini-app");
-    const probeReady = options.probeReady ?? Boolean(files["src/game/GameCanvas.tsx"]?.includes("checkRound"));
+    const canvas = options.canvas ?? authored.some((c) => /<GameCanvas\b/.test(c));
+    // Rounds are reported by a GameCanvas that knows how, or by round() in a game without one. A game with neither
+    // (a 3D scene that only borrows the 2D kit's sound) starts no round when Play is pressed, and that isn't a fault.
+    const probeReady =
+      options.probeReady ??
+      (game3d ||
+        (canvas && Boolean(files["src/game/GameCanvas.tsx"]?.includes("checkRound"))) || (Boolean(files["src/game/probe.ts"]?.includes("export function round")) && authored.some((c) => /(?<![.\w])round\s*\(\s*(?:true|false)\b/.test(c))));
     // A scene that waits for an uploaded model or picture is empty here (uploads are blank stand-ins), so only
     // scenes built from shapes are looked at.
     const scene = options.scene ?? (kits.includes("three-d") && !Object.entries(files).some(([p, c]) => p.startsWith("src/") && p !== "src/three/Scene3D.tsx" && /GLTFLoader|TextureLoader/.test(c)));
-    return done(await Promise.race([check(context, built, { ...options, game, game2d, board, miniPay, probeReady, scene }), timeout]));
+    return done(await Promise.race([check(context, built, { ...options, game, game2d, game3d, board, miniPay, probeReady, canvas, scene }), timeout]));
   } catch (error) {
     return done({ ran: false, issues: [], note: `skipped: the browser wasn't available (${String((error as Error)?.message ?? error).split("\n")[0].slice(0, 120)})` });
   } finally {
