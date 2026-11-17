@@ -170,7 +170,9 @@ export function Scene3D({
   const letGo = () => {
     const state = input.current;
     state.left = state.right = state.up = state.down = false;
-    state.pointer.down = false;
+    state.pointer.down = state.pointer.pressed = false;
+    state.pointer.presses = [];
+    state.pointer.dx = state.pointer.dy = 0;
     held.current.key = held.current.button = false;
     state.action = state.actionPressed = false;
   };
@@ -257,6 +259,8 @@ export function Scene3D({
       state.pointer.down = false;
       place(e);
       state.pointer.down = true;
+      // A tap on the start or game-over screen isn't a move: it would steer the first frame of play.
+      if (pausedRef.current) return;
       state.pointer.pressed = true;
       state.pointer.presses.push({ x: state.pointer.x, y: state.pointer.y });
     };

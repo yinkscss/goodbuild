@@ -186,6 +186,8 @@ async function fidget(page: Page, controls: GameControl[] = ["sides", "keys"]): 
     if (!(await free(from))) return;
     await page.mouse.move(from.x, from.y).catch(() => undefined);
     await page.mouse.down().catch(() => undefined);
+    // A drag stays down for at least a frame first, so a game that reads pointer.down each frame sees the press.
+    if (!swipe) await page.waitForTimeout(50);
     await page.mouse.move(from.x + Math.cos(angle) * reach, from.y + Math.sin(angle) * reach, { steps: swipe ? 4 : 12 }).catch(() => undefined);
     await page.mouse.up().catch(() => undefined);
   }

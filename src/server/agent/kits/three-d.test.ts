@@ -440,6 +440,44 @@ export default function App() {
     }
   });
 
+  it("drops a tap made on the start screen, so it doesn't steer the first frame of play (D119)", async () => {
+    if (!hasWebGL) return;
+    const app = PAGE.replace('import * as THREE from "three";', 'import { useState } from "react";\nimport * as THREE from "three";')
+      .replace("export default function App() {\n  return (", "export default function App() {\n  const [playing, setPlaying] = useState(false);\n  return (")
+      .replace("      <Scene3D\n        orbit\n", "      <button type=\"button\" onClick={() => setPlaying(true)}>Play</button>\n      <Scene3D\n        paused={!playing}\n")
+      .replace("onReady={({ scene, camera }) => {", "onReady={({ scene, camera, input }) => {")
+      .replace("cube.rotation.y += dt;", "cube.rotation.y += dt;\n            const log = ((window as unknown as { taps?: string[] }).taps ??= []);\n            for (const p of input.pointer.presses) log.push(p.x < 0 ? \"left\" : \"right\");");
+    expect(app).toContain("paused={!playing}");
+    expect(app).toContain("input.pointer.presses");
+    const built = await buildPublishedApp({ files: project(app), assets: [], title: "Viewer", hasUndeployedContracts: false, forCheck: true });
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const context = await browser.newContext({ viewport: { width: 400, height: 700 } });
+      const byPath = new Map(built.map((f) => [f.path, f]));
+      await context.route("**/*", (route) => {
+        const url = new URL(route.request().url());
+        const file = byPath.get(url.pathname.replace(/^\//, "") || "index.html");
+        return file && url.host === "app.test" ? route.fulfill({ status: 200, contentType: file.mime, body: Buffer.from(file.bytes) }) : route.abort();
+      });
+      const page = await context.newPage();
+      await page.goto("http://app.test/");
+      await page.waitForSelector("canvas[data-game-canvas]");
+      const canvas = (await page.locator("canvas").boundingBox())!;
+      const tapLeft = () => page.mouse.click(canvas.x + canvas.width * 0.2, canvas.y + canvas.height / 2);
+      const taps = () => page.evaluate(() => (window as unknown as { taps?: string[] }).taps ?? []);
+      await tapLeft();
+      await page.getByRole("button", { name: "Play" }).click();
+      await page.waitForTimeout(300);
+      expect(await taps()).toEqual([]);
+      // During play a tap still counts.
+      await tapLeft();
+      await page.waitForTimeout(300);
+      expect(await taps()).toEqual(["left"]);
+    } finally {
+      await browser.close();
+    }
+  });
+
   it("gives a project that still has the first Scene3D today's, and leaves a changed one alone", () => {
     const first = "x".repeat(10);
     const changed = { ...project(), "src/three/Scene3D.tsx": first };
