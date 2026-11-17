@@ -4,6 +4,7 @@ import * as React from "react";
 import { createPublicClient, formatEther, http, type Address, type Hex } from "viem";
 
 import { useAuth } from "@/lib/auth/context";
+import type { WalletState } from "@/lib/auth/types";
 import { celoChainFor } from "@/lib/auth/wallet-client";
 import { classifyDeployError, errorDetail, type ClassifiedError } from "@/lib/deploy/errors";
 import { loadNonces, loadSent, pendingKey, saveNonces, saveSent } from "@/lib/deploy/pending";
@@ -116,7 +117,7 @@ export function useDeploy({ projectId, chainId, onDeployed }: { projectId: strin
   );
 
   // Wallets restore after the page loads, so estimate once both the plan and the wallet are here.
-  const account = auth.wallet?.address;
+  const account = auth.wallet?.address ?? (auth.user?.wallet as `0x${string}` | undefined);
   const estimating = state.stage === "ready" && !state.feeCelo ? (state.plan as ServerPlan | null) : null;
   React.useEffect(() => {
     if (estimating && account) void estimate(estimating, account, setState, logsRef.current);
@@ -125,13 +126,13 @@ export function useDeploy({ projectId, chainId, onDeployed }: { projectId: strin
   const start = React.useCallback(async () => {
     const plan = planRef.current;
     if (!plan) return;
-    const wallet = auth.wallet;
-    if (!auth.user || !wallet) {
-      setState((s) => ({ ...s, stage: "error", error: { kind: "unknown", message: "Connect your wallet first.", at: "wallet", logs: [], opcodes: [] } }));
-      return;
-    }
-    if (wallet.address.toLowerCase() !== auth.user.wallet.toLowerCase()) {
-      setState((s) => ({ ...s, stage: "error", error: { kind: "wrong_chain", message: "The connected wallet isn't the one you signed in with. Switch accounts in your wallet.", at: "wallet", logs: [], opcodes: [] } }));
+    // The session's wallet, reconnected here if the page lost it (it refuses a different account).
+    let wallet: WalletState;
+    try {
+      wallet = await auth.ensureWallet();
+    } catch (e) {
+      const message = e instanceof Error && e.message ? e.message : "Connect your wallet first.";
+      setState((s) => ({ ...s, stage: "error", error: { kind: "unknown", message, at: "wallet", logs: [], opcodes: [] } }));
       return;
     }
     setState((s) => ({ ...s, stage: "running", error: null }));
@@ -233,28 +234,30 @@ export function useDeploy({ projectId, chainId, onDeployed }: { projectId: strin
         delete progress.sent[key];
         delete progress.nonces?.[key];
       }
-      if (plan && auth.wallet) {
-        const pending = pendingKey(projectId, plan.chainId, plan.sourceHash, auth.wallet.address);
+      const address = auth.wallet?.address ?? auth.user?.wallet;
+      if (plan && address) {
+        const pending = pendingKey(projectId, plan.chainId, plan.sourceHash, address as `0x${string}`);
         saveSent(pending, Object.fromEntries(Object.entries(loadSent(pending)).filter(([, v]) => v.toLowerCase() !== hash.toLowerCase())));
         const keep = new Set(Object.keys(progress.sent));
         saveNonces(pending, Object.fromEntries(Object.entries(loadNonces(pending)).filter(([k]) => keep.has(k))));
       }
       checkAgain();
     },
-    [auth.wallet, projectId, checkAgain],
+    [auth.wallet, auth.user, projectId, checkAgain],
   );
 
   /** Claim 1,000 test G$ from the Celo Sepolia faucet (D23), once a day per wallet. */
   const claimTestGd = React.useCallback(async (): Promise<string> => {
     const plan = planRef.current;
-    if (!plan?.gooddollar || !auth.wallet) throw new Error("Connect your wallet first.");
-    if (auth.wallet.chainId !== plan.chainId) await auth.switchChain(plan.chainId);
+    if (!plan?.gooddollar) throw new Error("Connect your wallet first.");
+    const wallet = await auth.ensureWallet();
+    if (wallet.chainId !== plan.chainId) await auth.switchChain(plan.chainId);
     const client = await auth.getWalletClient();
     const hash = await client.writeContract({
       address: plan.gooddollar,
       abi: [{ type: "function", name: "faucet", stateMutability: "nonpayable", inputs: [], outputs: [] }] as const,
       functionName: "faucet",
-      account: auth.wallet.address,
+      account: wallet.address,
       chain: celoChainFor(plan.chainId),
     });
     await publicClientFor(plan.chainId).waitForTransactionReceipt({ hash });
@@ -283,10 +286,11 @@ export function useDeploy({ projectId, chainId, onDeployed }: { projectId: strin
     async (name: string) => {
       const plan = planRef.current;
       const proxy = plan?.proxies?.[name];
-      if (!plan || !proxy || !auth.wallet) throw new Error("Connect your wallet first.");
-      if (auth.wallet.chainId !== plan.chainId) await auth.switchChain(plan.chainId);
+      if (!plan || !proxy) throw new Error("Connect your wallet first.");
+      const wallet = await auth.ensureWallet();
+      if (wallet.chainId !== plan.chainId) await auth.switchChain(plan.chainId);
       const client = await auth.getWalletClient();
-      const hash = await client.writeContract({ address: proxy.admin, abi: proxyAdminAbi, functionName: "renounceOwnership", account: auth.wallet.address, chain: celoChainFor(plan.chainId) });
+      const hash = await client.writeContract({ address: proxy.admin, abi: proxyAdminAbi, functionName: "renounceOwnership", account: wallet.address, chain: celoChainFor(plan.chainId) });
       await publicClientFor(plan.chainId).waitForTransactionReceipt({ hash });
       setState((s) => (s.plan?.proxies?.[name] ? { ...s, plan: { ...s.plan, proxies: { ...s.plan.proxies, [name]: { ...s.plan.proxies[name], authority: "locked" } } } } : s));
     },
