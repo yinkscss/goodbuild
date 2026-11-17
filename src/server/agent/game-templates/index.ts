@@ -7,6 +7,7 @@ import { catchDodge } from "./catch-dodge";
 import { kartTrack } from "./kart-track";
 import { laneRacer } from "./lane-racer";
 import { matchGrid } from "./match-grid";
+import { mazeEscape } from "./maze-escape";
 import { quickQuiz } from "./quick-quiz";
 import { runner3d } from "./runner-3d";
 import { skyRings } from "./sky-rings";
@@ -38,7 +39,7 @@ export interface GameTemplate {
   brief: string;
 }
 
-export const GAME_TEMPLATES: GameTemplate[] = [laneRacer, catchDodge, caveFlyer, brickBreaker, matchGrid, quickQuiz, runner3d, kartTrack, skyRings];
+export const GAME_TEMPLATES: GameTemplate[] = [laneRacer, catchDodge, caveFlyer, brickBreaker, matchGrid, quickQuiz, runner3d, kartTrack, mazeEscape, skyRings];
 
 /** The app around a template's game inside MiniPay: the game on the home route, the five info pages, the footer. */
 function miniPayApp(template: GameTemplate): string {
