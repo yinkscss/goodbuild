@@ -127,7 +127,7 @@ declareGame({ style: "action", controls: ["swipe", "tap", "keys"], obstacles: ["
 const SIZE = 13;
 const LIVES = 3;
 /** Seconds of torch at the start, the most it can hold, and what a gem adds. */
-const TORCH = { start: 45, max: 60, gem: 6, door: 15 };
+const TORCH = { start: 20, max: 35, gem: 5, door: 12 };
 const GEMS = 4;
 const SPIKES = 3;
 
@@ -249,6 +249,7 @@ export default function Game() {
               g.wall = buildMaze(g.level);
               g.x = 1;
               g.z = 1;
+              player.position.copy(at(1, 1));
               g.hasKey = false;
               g.visited = new Set([g.z * SIZE + g.x]);
               let n = 0;
@@ -339,6 +340,8 @@ export default function Game() {
               g.hurt = 1.2;
               g.x = 1;
               g.z = 1;
+              // Straight back to the start, so only the player's own steps move them.
+              player.position.copy(at(1, 1));
               sfx.hit();
               buzz("hit");
               if (g.lives <= 0) end();

@@ -101,6 +101,30 @@ describe("game templates (D114)", { timeout: 180_000 }, () => {
     const dead = await runCheck(built("quick-quiz", edit("src/play/Game.tsx", "onClick={() => answer(i)}", "onClick={() => undefined}")));
     expect(dead.issues.map((i) => i.message).join(" ")).toMatch(/never accepted a move/);
   });
+
+  // D117: one broken copy per kind of control the new templates add, so the check is shown to catch each.
+  it.skipIf(!hasBrowser)("Match grid: judged as a puzzle by its taps, and a copy whose tiles do nothing is caught", async () => {
+    const ok = await runCheck(built("match-grid"));
+    expect(ok.note).toMatch(/puzzle game, \d+ moves/);
+    const dead = await runCheck(built("match-grid", edit("src/play/Game.tsx", "onClick={() => tap(i)}", "onClick={() => undefined}")));
+    expect(dead.issues.map((i) => i.message).join(" ")).toMatch(/never accepted a move/);
+  });
+
+  it.skipIf(!hasBrowser)("Catch and dodge: a copy whose basket never follows the player is caught", async () => {
+    const stuck = await runCheck(built("catch-dodge", edit("src/play/Game.tsx", "g.x += (g.target - g.x) * Math.min(1, dt * 14);", "")));
+    expect(stuck.issues.map((i) => i.message).join(" ")).toMatch(/never moved the player/);
+  });
+
+  // Not Kart track: with its steering dead, the bends still push the kart off the tyre walls, so it does move.
+  it.skipIf(!hasBrowser || !hasWebGL)("Sky rings: a copy whose steering does nothing is caught", async () => {
+    const stuck = await runCheck(built("sky-rings", edit("src/play/Game.tsx", "g.x += dx;\n              g.y += dy;", "")));
+    expect(stuck.issues.map((i) => i.message).join(" ")).toMatch(/never moved the player/);
+  });
+
+  it.skipIf(!hasBrowser || !hasWebGL)("Maze escape: a copy whose swipes and keys never take a step is caught", async () => {
+    const stuck = await runCheck(built("maze-escape", edit("src/play/Game.tsx", "              g.x = x;\n              g.z = z;\n", "")));
+    expect(stuck.issues.map((i) => i.message).join(" ")).toMatch(/never moved the player/);
+  });
 });
 
 describe("game templates in MiniPay (D114)", { timeout: 180_000 }, () => {
