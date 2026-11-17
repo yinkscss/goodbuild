@@ -2,12 +2,19 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { SignInError } from "@/lib/auth/session-client";
+
 const WALLET = "0x7a3000000000000000000000000000000000e41c";
 const auth = {
   user: { wallet: WALLET },
   wallet: { address: WALLET, chainId: 11142220, kind: "external" } as { address: string; chainId: number; kind: string } | null,
   switchChain: vi.fn(),
   getWalletClient: vi.fn(async () => ({})),
+  /** Like the real one: the live wallet, or a plain message when it can't be reached. */
+  ensureWallet: vi.fn(async () => {
+    if (!auth.wallet) throw new SignInError("wallet_unreachable", "We couldn't reach your wallet. Open or unlock it, then try again.");
+    return auth.wallet;
+  }),
 };
 vi.mock("@/lib/auth/context", () => ({ useAuth: () => auth }));
 const runExit = vi.fn();
@@ -70,12 +77,12 @@ describe("OldFundsCard", () => {
     expect(onAsk).toHaveBeenCalledWith(expect.stringContaining("withdraw"));
   });
 
-  it("asks for a wallet instead of failing", async () => {
+  it("says plainly when the wallet can't be reached, instead of failing", async () => {
     serve([old([WITHDRAW])]);
     auth.wallet = null;
     card();
     await userEvent.click(await screen.findByRole("button", { name: "Move funds out" }));
-    expect(await screen.findByText(/Connect your wallet/)).toBeInTheDocument();
+    expect(await screen.findByText(/couldn't reach your wallet\. Open or unlock it/)).toBeInTheDocument();
     expect(runExit).not.toHaveBeenCalled();
   });
 });

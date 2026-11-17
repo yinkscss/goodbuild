@@ -12,6 +12,20 @@ vi.mock("../session-client", async (importOriginal) => {
   return { ...actual, fetchSession: vi.fn(), signInWithEthereum: vi.fn(), endSession: vi.fn(async () => {}) };
 });
 
+/** Magic, only for the email-wallet tests: logged in as `magicAccount`, or logged out when it is null. */
+const magicState: { account: string | null } = { account: null };
+vi.mock("@magic-ext/evm", () => ({ EVMExtension: class {} }));
+vi.mock("magic-sdk", () => ({
+  Magic: class {
+    user = { isLoggedIn: async () => magicState.account !== null, logout: vi.fn(async () => true) };
+    evm = { switchChain: vi.fn() };
+    rpcProvider = {
+      request: async ({ method }: { method: string }) => (method === "eth_chainId" ? SEPOLIA_HEX : magicState.account ? [magicState.account] : []),
+      on: () => undefined,
+    };
+  },
+}));
+
 /**
  * The sign-in wiring for OKX Wallet (D92): what magic-auth.tsx does with the wallet finders in ./injected.ts.
  * Magic itself is never loaded here: it is imported only for email sign-ins.
@@ -128,5 +142,137 @@ describe("OKX Wallet in sign-in (D92)", () => {
     win.okxwallet = okx;
     await mount();
     expect(auth.detected).toMatchObject({ okx: true, metamask: false });
+  });
+});
+
+/**
+ * Signed in, but the page lost the wallet (it loaded late, was locked, or storage was cleared): paying or deploying
+ * reconnects the session's own wallet instead of saying "connect your wallet" (the credits bug, D120).
+ */
+describe("the signed-in wallet comes back when it's needed (D120)", () => {
+  const OTHER = "0x00000000000000000000000000000000000000d2" as const;
+  /** A wallet that is locked until asked: eth_accounts is empty, eth_requestAccounts returns `account`. */
+  function locked(account: string = ACCOUNT, extra: Record<string, unknown> = {}) {
+    return provider({
+      request: vi.fn(async ({ method }: { method: string }) => {
+        if (method === "eth_accounts") return [];
+        if (method === "eth_requestAccounts") return [account];
+        if (method === "eth_chainId") return SEPOLIA_HEX;
+        return null;
+      }),
+      ...extra,
+    });
+  }
+
+  it("restores a wallet that announces itself after the page loaded", async () => {
+    localStorage.setItem("gb:wallet", "okx");
+    vi.mocked(sessionClient.fetchSession).mockResolvedValue(user);
+    await mount();
+    expect(auth.user).toEqual(user);
+    expect(auth.wallet).toBeNull();
+    win.okxwallet = provider();
+    act(() => {
+      window.dispatchEvent(new CustomEvent("eip6963:announceProvider", { detail: { info: { rdns: "test.late", name: "Late" }, provider: provider() } }));
+    });
+    await waitFor(() => expect(auth.wallet).toMatchObject({ address: ACCOUNT, label: "OKX Wallet" }));
+  });
+
+  it("reconnects a locked wallet when a payment asks for it, and hands back a client", async () => {
+    const okx = locked();
+    win.okxwallet = okx;
+    localStorage.setItem("gb:wallet", "okx");
+    vi.mocked(sessionClient.fetchSession).mockResolvedValue(user);
+    await mount();
+    await waitFor(() => expect(okx.request).toHaveBeenCalledWith({ method: "eth_accounts" }));
+    expect(auth.wallet).toBeNull();
+    let address: string | undefined;
+    await act(async () => {
+      address = (await auth.getWalletClient()).account?.address;
+    });
+    expect(okx.request).toHaveBeenCalledWith({ method: "eth_requestAccounts" });
+    expect(address?.toLowerCase()).toBe(ACCOUNT);
+    expect(auth.wallet).toMatchObject({ address: ACCOUNT, label: "OKX Wallet" });
+  });
+
+  it("finds the one wallet in the browser when none was remembered", async () => {
+    const okx = locked();
+    win.okxwallet = okx;
+    vi.mocked(sessionClient.fetchSession).mockResolvedValue(user);
+    await mount();
+    let wallet: Awaited<ReturnType<AuthApi["ensureWallet"]>> | undefined;
+    await act(async () => {
+      wallet = await auth.ensureWallet();
+    });
+    expect(wallet).toMatchObject({ address: ACCOUNT, label: "OKX Wallet" });
+  });
+
+  it("refuses a different account, with the address to switch to, and never uses it", async () => {
+    win.okxwallet = locked(OTHER);
+    localStorage.setItem("gb:wallet", "okx");
+    vi.mocked(sessionClient.fetchSession).mockResolvedValue(user);
+    await mount();
+    let error: unknown;
+    await act(async () => {
+      await auth.getWalletClient().catch((e: unknown) => (error = e));
+    });
+    expect((error as Error).message).toMatch(/different account selected\. Switch to 0x000…00c1/);
+    expect(auth.wallet).toBeNull();
+  });
+
+  it("doesn't quietly restore a wallet showing a different account", async () => {
+    const okx = provider({ request: vi.fn(async ({ method }: { method: string }) => (method === "eth_chainId" ? SEPOLIA_HEX : [OTHER])) });
+    win.okxwallet = okx;
+    localStorage.setItem("gb:wallet", "okx");
+    vi.mocked(sessionClient.fetchSession).mockResolvedValue(user);
+    await mount();
+    await waitFor(() => expect(okx.request).toHaveBeenCalledWith({ method: "eth_accounts" }));
+    expect(auth.wallet).toBeNull();
+  });
+
+  it("says plainly when no wallet can be reached", async () => {
+    vi.mocked(sessionClient.fetchSession).mockResolvedValue(user);
+    await mount();
+    let error: unknown;
+    await act(async () => {
+      await auth.switchChain(11142220).catch((e: unknown) => (error = e));
+    });
+    expect((error as Error).message).toMatch(/couldn't reach your wallet\. Open or unlock it/);
+  });
+});
+
+describe("email wallets when the page lost them (D120)", () => {
+  const emailUser = { ...user, walletKind: "embedded" as const };
+  afterEach(() => {
+    magicState.account = null;
+  });
+
+  it("brings the email wallet back on reload", async () => {
+    magicState.account = ACCOUNT;
+    vi.mocked(sessionClient.fetchSession).mockResolvedValue(emailUser);
+    await mount();
+    await waitFor(() => expect(auth.wallet).toMatchObject({ address: ACCOUNT, kind: "embedded", label: "Email wallet" }));
+  });
+
+  it("asks to sign in with the email again when Magic's login ended", async () => {
+    vi.mocked(sessionClient.fetchSession).mockResolvedValue(emailUser);
+    await mount();
+    let error: unknown;
+    await act(async () => {
+      await auth.getWalletClient().catch((e: unknown) => (error = e));
+    });
+    expect((error as Error).message).toMatch(/email sign-in has timed out\. Choose Disconnect.*sign in with your email again/);
+  });
+
+  it("never tells an email user to switch accounts: another email is signed in to Magic here", async () => {
+    magicState.account = "0x00000000000000000000000000000000000000e3";
+    vi.mocked(sessionClient.fetchSession).mockResolvedValue(emailUser);
+    await mount();
+    let error: unknown;
+    await act(async () => {
+      await auth.ensureWallet().catch((e: unknown) => (error = e));
+    });
+    expect((error as Error).message).toMatch(/signed in to a different email wallet\. Choose Disconnect/);
+    expect((error as Error).message).not.toMatch(/Switch to/);
+    expect(auth.wallet).toBeNull();
   });
 });

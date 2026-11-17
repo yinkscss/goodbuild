@@ -6,6 +6,7 @@ import { formatUnits, parseUnits } from "viem";
 
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth/context";
+import { SignInError } from "@/lib/auth/session-client";
 import type { ExitFunction, OldContract } from "@/lib/deploy/exit-functions";
 import { chainLabel, explorerAddressUrl, explorerTxUrl } from "@/lib/deploy/explorer";
 import { runExit, withdrawErrorMessage } from "@/lib/deploy/withdraw";
@@ -30,28 +31,20 @@ function ExitButton({ contract, exit, chainId, onDone }: { contract: OldContract
     setBusy(true);
     setError(null);
     try {
-      if (!auth.wallet) throw new Error("no_wallet");
-      if (auth.wallet.address.toLowerCase() !== auth.user?.wallet.toLowerCase()) throw new Error("wrong_wallet");
-      if (auth.wallet.chainId !== chainId) await auth.switchChain(chainId);
+      const wallet = await auth.ensureWallet(); // reconnects the signed-in wallet if the page lost it
+      if (wallet.chainId !== chainId) await auth.switchChain(chainId);
       const hash = await runExit({
         client: await auth.getWalletClient(),
-        account: auth.wallet.address,
+        account: wallet.address,
         chainId,
-        embedded: auth.wallet.kind === "embedded",
+        embedded: wallet.kind === "embedded",
         contract: contract.address,
         exit,
         amount: exit.input === "amount" ? parseUnits(amount || "0", 18) : undefined,
       });
       onDone(hash);
     } catch (e) {
-      const message = e instanceof Error ? e.message : "";
-      setError(
-        message === "no_wallet"
-          ? "Connect your wallet from the top bar first."
-          : message === "wrong_wallet"
-            ? "Switch to the wallet you signed in with, then try again."
-            : withdrawErrorMessage(e),
-      );
+      setError(e instanceof SignInError ? e.message : withdrawErrorMessage(e));
       setBusy(false);
     }
   }

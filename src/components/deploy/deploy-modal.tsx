@@ -148,18 +148,24 @@ function VerifyChip({ status }: { status: StepView["verify"] }) {
 
 const FAUCET_URL = "https://faucet.celo.org/celo-sepolia";
 
+/** The signed-in wallet's address: the live wallet's, or the session's while the page reconnects it. */
+function useSessionAddress(): string | null {
+  const { wallet, user } = useAuth();
+  return wallet?.address ?? user?.wallet ?? null;
+}
+
 /** Step-by-step: copy your wallet address, open the faucet, paste it, come back. Test CELO is free. */
 export function FaucetGuide({ className }: { className?: string }) {
-  const { wallet } = useAuth();
+  const address = useSessionAddress();
   const steps = [
     {
       title: "Copy your wallet address",
       body: (
         <>
-          {wallet ? (
+          {address ? (
             <span className="mt-2 flex items-center gap-2">
-              <code className="min-w-0 flex-1 truncate rounded-full bg-canvas px-3 py-1.5 font-mono text-xs">{wallet.address}</code>
-              <CopyButton value={wallet.address} />
+              <code className="min-w-0 flex-1 truncate rounded-full bg-canvas px-3 py-1.5 font-mono text-xs">{address}</code>
+              <CopyButton value={address} />
             </span>
           ) : (
             <span className="mt-1 block text-grey-600">Connect your wallet from the top bar first.</span>
@@ -196,16 +202,16 @@ export function FaucetGuide({ className }: { className?: string }) {
 
 /** Where to send CELO: email wallets start empty, and their owners may not know the address. */
 function FundWallet({ chainId }: { chainId: number }) {
-  const { wallet } = useAuth();
+  const address = useSessionAddress();
   const [buying, setBuying] = React.useState(false);
-  if (!wallet) return null;
+  if (!address) return null;
   if (chainId !== 42220) return <FaucetGuide className="mt-3" />;
   return (
     <div className="mt-3 rounded-tip bg-surface p-3 text-sm">
       <p className="text-grey-600">Send a little CELO to your wallet, then try again.</p>
       <div className="mt-2 flex items-center gap-2">
-        <code className="min-w-0 flex-1 truncate font-mono text-xs">{wallet.address}</code>
-        <CopyButton value={wallet.address} />
+        <code className="min-w-0 flex-1 truncate font-mono text-xs">{address}</code>
+        <CopyButton value={address} />
       </div>
       <Button variant="secondary" className="mt-3 w-full" onClick={() => setBuying(true)}>
         Buy CELO with naira
@@ -772,7 +778,7 @@ export function DeployModal({
           ) : (
             <Button
               variant="primary"
-              disabled={state.stage !== "ready" || !auth.user || !auth.wallet || wrongAccount || todo === 0}
+              disabled={state.stage !== "ready" || !auth.user || wrongAccount || todo === 0}
               onClick={() => {
                 if (isMainnet && !mainnetAcknowledged) setConfirmMainnet(true);
                 else void deploy.start();
@@ -792,7 +798,7 @@ export function DeployModal({
             </Button>
           )}
         </div>
-        {!auth.wallet && state.stage === "ready" && <p className="mt-3 text-right text-xs text-grey-600">Connect your wallet from the top bar to continue.</p>}
+        {!auth.user && state.stage === "ready" && <p className="mt-3 text-right text-xs text-grey-600">Connect your wallet from the top bar to continue.</p>}
         {!isMainnet && state.plan && state.stage === "ready" && (
           <div className="mt-3 text-right">
             <button type="button" className="text-xs font-medium text-violet hover:underline" aria-expanded={showFaucet} onClick={() => setShowFaucet((v) => !v)}>

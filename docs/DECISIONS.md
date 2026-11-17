@@ -1486,3 +1486,20 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
   - The test for an older probe must have actually run.
 - **Checked:** the kit, template and games-kit tests pass (92). The full suite gives the same two failures as on main (D114).
 - **Still open:** Kart track with dead steering (Q46, D118).
+
+### D120. Paying or deploying reconnects the signed-in wallet instead of asking to connect again
+
+- **Date:** 18 Nov 2026 · **Decided by:** the owner reported it ("when my user tried to buy credit, it says they should connect wallet again to pay") and approved the fix. Design by Claude, reviewed by the advisor.
+- **The bug:** the GoodBuild session (7 days, ours) and the browser's wallet link are separate. After a reload the page quietly tries to get the wallet back once, at load. It missed when the wallet extension announced itself a moment late, was locked, or the email wallet's Magic login had ended. The top bar still showed the account (from the session), the Pay button was on, and the payment then failed with "Connect a wallet first." Deploys, the admin panel and moving old funds had the same gap, and the deploy button stayed greyed out.
+- **The fix (one place, `src/lib/auth/magic/magic-auth.tsx`):**
+  - New `ensureWallet()` on the auth API. `getWalletClient()` and `switchChain()` use it, so every caller gets it. When signed in with no live wallet, it reconnects the wallet the session was signed with: the remembered wallet (or the one wallet in the browser if none was remembered), asked with `eth_requestAccounts` so a locked wallet opens; WalletConnect reopens its QR.
+  - It never uses a different account: the server signed the credit quote for the session's address. It says "Your wallet has a different account selected. Switch to 0x12…34, the one you signed in with, then try again." This also covers a wallet that switched accounts after the page loaded. For an email account the message says another email wallet is signed in here and to Disconnect and sign in with the email again, since an email wallet has no accounts to switch.
+  - WalletConnect's client is made once per page and reused (making it again on every check upsets its relay); the quiet restore tries WalletConnect and email wallets once, and browser wallets again on each late announcement.
+  - An email wallet whose Magic login ended can't be reopened without a code, so it says to choose Disconnect and sign in with the email again, and that the account and apps stay the same.
+  - The quiet restore at load runs again when a wallet announces itself late.
+  - Disconnect now logs out of Magic for an email account even when the page never got the email wallet back.
+  - The deploy button, the faucet guide and the "send CELO" box use the session's address while the wallet reconnects.
+- **Tests:** nine in `magic-auth.test.tsx` (late wallet, locked wallet on Pay, no remembered wallet, a different account refused and never used, no quiet restore of a different account, no wallet at all; email wallet restored, Magic login ended, another email signed in). Full suite passes.
+- **Not covered:** the naira top-up (GoodCash panel) gets the signed-in address and runs in its own window; if that panel itself asks to connect a wallet, this fix doesn't change it.
+- **UNVERIFIED:** on a real phone with WalletConnect, and how long Magic keeps an email login (set in the Magic dashboard; if it is shorter than our 7-day session, email users see the "sign in again" message after it).
+- **Not fixed here: a new address after Disconnect and email sign-in again.** Code can't cause it: Magic gives one fixed wallet per email for one publishable key, and GoodBuild keys accounts by address, so a different address means a different email (a typo, a dot or a `+` in a Gmail address) or a different Magic key on the server. Needs the two addresses and the Magic dashboard to tell which.
