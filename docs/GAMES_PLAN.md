@@ -165,7 +165,7 @@ Each step records its decision in DECISIONS.md, has tests in the repo's usual st
 
 # Part 2: game templates and checks that fit every kind of game (proposal, 17 Nov 2026)
 
-Status: **proposal, level L2 chosen by the owner on 17 Nov 2026** ("L2: genres + 3D parity"). Nothing built yet. Waiting for the owner's go-ahead on this plan.
+Status: **level L2 chosen by the owner on 17 Nov 2026** ("L2: genres + 3D parity"), go-ahead given the same day. Step 1 (H1 to H4) built: D112. H5 and H6 are in step 5.
 
 ## 7. Ten game requests GoodBuild can't handle yet (found 17 Nov 2026, each checked in the code on `main` at c5a7b7cd1)
 

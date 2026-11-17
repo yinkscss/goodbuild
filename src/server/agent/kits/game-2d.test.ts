@@ -105,6 +105,151 @@ export default function App() {
 }
 `;
 
+/** A quiz with no canvas (D112): a turns game, played with answer buttons, that reports its own rounds. */
+const QUIZ = `import { useState } from "react";
+import { declareGame, moved, probe, round } from "./game/probe";
+import { sfx } from "./game/sound";
+
+declareGame({ style: "turns", controls: ["buttons"] });
+
+const QUESTIONS = [
+  { q: "2 + 2", answers: ["3", "4", "5", "6"], right: 1 },
+  { q: "Capital of Ghana", answers: ["Accra", "Kumasi", "Tamale", "Ho"], right: 0 },
+  { q: "10 x 3", answers: ["13", "33", "30", "300"], right: 2 },
+  { q: "Largest ocean", answers: ["Indian", "Arctic", "Atlantic", "Pacific"], right: 3 },
+];
+
+type Screen = "start" | "playing" | "over";
+
+export default function App() {
+  const [screen, setScreen] = useState<Screen>("start");
+  const [score, setScore] = useState(0);
+  const [lives, setLives] = useState(3);
+  const [at, setAt] = useState(0);
+
+  const start = () => {
+    setScore(0);
+    setLives(3);
+    setAt(0);
+    setScreen("playing");
+    round(true);
+    probe(0);
+  };
+
+  const answer = (i: number) => {
+    moved();
+    const question = QUESTIONS[at % QUESTIONS.length];
+    const next = i === question.right ? score + 10 : score;
+    const left = i === question.right ? lives : lives - 1;
+    if (i === question.right) sfx.coin();
+    else sfx.hit();
+    setScore(next);
+    setLives(left);
+    setAt(at + 1);
+    probe(next);
+    if (left <= 0) {
+      round(false);
+      setScreen("over");
+    }
+  };
+
+  const question = QUESTIONS[at % QUESTIONS.length];
+  return (
+    <main className="mx-auto flex min-h-screen max-w-md flex-col gap-4 p-4">
+      <header className="flex items-center justify-between">
+        <h1 className="text-xl font-semibold">Quick Quiz</h1>
+        <p className="tabular-nums">Score {score} · Lives {lives}</p>
+      </header>
+      {screen === "playing" ? (
+        <section data-game-area className="grid gap-3">
+          <p className="text-lg font-medium">{question.q}</p>
+          {question.answers.map((a, i) => (
+            <button key={a} type="button" onClick={() => answer(i)} className="rounded-lg bg-card p-4 text-left">
+              {a}
+            </button>
+          ))}
+        </section>
+      ) : (
+        <section className="rounded-lg bg-card p-6 text-center">
+          <p>{screen === "over" ? "Game over. You scored " + score : "Answer before you run out of lives."}</p>
+          <button type="button" onClick={start} className="mt-4 rounded-lg bg-primary px-6 py-3 text-primary-foreground">
+            {screen === "over" ? "Play again" : "Play"}
+          </button>
+        </section>
+      )}
+    </main>
+  );
+}
+`;
+
+/** A catcher steered by dragging (D112): an action game the old bot, which only tapped and pressed keys, couldn't move. */
+const DRAG_GAME = `import { useRef, useState } from "react";
+import { GameCanvas, type Frame } from "./game/GameCanvas";
+import { declareGame, probe, spawned } from "./game/probe";
+
+declareGame({ style: "action", controls: ["drag"], obstacles: ["rock"] });
+
+type Screen = "start" | "playing" | "over";
+
+export default function App() {
+  const [screen, setScreen] = useState<Screen>("start");
+  const game = useRef({ x: 180, rocks: [] as { x: number; y: number }[], spawn: 0.8, t: 0, hits: 0 });
+
+  const start = () => {
+    game.current = { x: 180, rocks: [], spawn: 0.8, t: 0, hits: 0 };
+    setScreen("playing");
+  };
+
+  const draw = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
+    const g = game.current;
+    ctx.fillStyle = "#fef3c7";
+    ctx.fillRect(0, 0, width, height);
+    ctx.fillStyle = "#78716c";
+    for (const r of g.rocks) ctx.fillRect(r.x - 14, r.y - 14, 28, 28);
+    ctx.fillStyle = "#ea580c";
+    ctx.fillRect(g.x - 30, height - 60, 60, 20);
+  };
+
+  const onFrame = ({ ctx, width, height, dt, input }: Frame) => {
+    const g = game.current;
+    // Only a drag moves the basket: it follows the finger while it is down.
+    if (input.pointer.down) g.x += (input.pointer.x - g.x) * Math.min(1, dt * 12);
+    g.t += dt;
+    const speed = 160 + g.t * 6;
+    g.spawn -= dt;
+    if (g.spawn <= 0) {
+      g.rocks.push({ x: 30 + Math.random() * (width - 60), y: -20 });
+      spawned("rock");
+      g.spawn = 1;
+    }
+    for (const r of g.rocks) {
+      r.y += speed * dt;
+      if (r.y > height - 70 && r.y < height - 40 && Math.abs(r.x - g.x) < 40) g.hits += 1;
+    }
+    g.rocks = g.rocks.filter((r) => r.y < height + 20);
+    probe(Math.floor(g.t * 10), g.x, height - 50, speed);
+    if (g.hits >= 3) setScreen("over");
+    draw(ctx, width, height);
+  };
+
+  return (
+    <main className="mx-auto flex min-h-screen max-w-md flex-col gap-4 p-4">
+      <h1 className="text-xl font-semibold">Rock Dodge</h1>
+      <div className="relative">
+        <GameCanvas onFrame={onFrame} onIdleFrame={({ ctx, width, height }) => draw(ctx, width, height)} paused={screen !== "playing"} label="Rock Dodge game" />
+        {screen !== "playing" && (
+          <div className="absolute inset-x-0 bottom-24 flex justify-center">
+            <button type="button" onClick={start} className="rounded-lg bg-primary px-6 py-3 text-primary-foreground">
+              {screen === "over" ? "Play again" : "Play"}
+            </button>
+          </div>
+        )}
+      </div>
+    </main>
+  );
+}
+`;
+
 /** A game that keeps GameCanvas on the page and pauses it between rounds, with the feel helpers. */
 const PAUSED_GAME = `import { useRef, useState } from "react";
 import { GameCanvas, type Frame } from "./game/GameCanvas";
@@ -657,8 +802,9 @@ describe("the 2D games kit", { timeout: 120_000 }, () => {
   it("gives a project that still has the first GameCanvas today's, and never touches one that was changed", () => {
     const mine = "// my own canvas\n";
     expect(withKit({ ...project(GAME), "src/game/GameCanvas.tsx": mine }, game2d)["src/game/GameCanvas.tsx"]).toBe(mine);
-    // The first (D72) and the one that never drew while paused (D93).
-    expect(game2d.superseded?.["src/game/GameCanvas.tsx"]).toHaveLength(2);
+    // The first (D72), the one that never drew while paused (D93), and the one that didn't mark its frames (D112).
+    expect(game2d.superseded?.["src/game/GameCanvas.tsx"]).toHaveLength(3);
+    expect(game2d.superseded?.["src/game/probe.ts"]).toHaveLength(1);
   });
 
   it.skipIf(!hasBrowser)("catches a game that never draws", async () => {
@@ -718,6 +864,49 @@ describe("the 2D games kit", { timeout: 120_000 }, () => {
     const types = await typeCheck(files);
     expect(types.ran).toBe(true);
     expect(types.issues).toEqual([]);
+  });
+
+  it.skipIf(!hasBrowser)("plays a quiz with no canvas by its answer buttons, as a turns game, with no obstacles asked for (D112)", async () => {
+    expect(checkApp(project(QUIZ)).errors).toEqual([]);
+    const r = await runCheck(project(QUIZ));
+    expect(r.issues).toEqual([]);
+    expect(r.note).toMatch(/turns game, \d+ moves, played \d+ rounds?/);
+  });
+
+  it.skipIf(!hasBrowser)("catches a quiz whose answers do nothing (D112)", async () => {
+    const dead = QUIZ.replace("onClick={() => answer(i)}", "onClick={() => undefined}");
+    expect(dead).not.toEqual(QUIZ);
+    const r = await runCheck(project(dead));
+    expect(r.issues.map((i) => i.message).join(" ")).toMatch(/never accepted a move/);
+  });
+
+  it("asks a quiz with no canvas for round() and moved() (D112)", () => {
+    const noRound = QUIZ.replace(/\n\s*round\((true|false)\);/g, "");
+    expect(checkApp(project(noRound)).errors.map((e) => e.message).join(" ")).toMatch(/no GameCanvas[\s\S]*round\(true\)/);
+    const noMoved = QUIZ.replace("\n    moved();", "");
+    expect(checkApp(project(noMoved)).errors.map((e) => e.message).join(" ")).toMatch(/turns game[\s\S]*moved\(\)/);
+  });
+
+  it.skipIf(!hasBrowser)("steers a drag game by dragging, so the player moves (D112)", async () => {
+    const r = await runCheck(project(DRAG_GAME));
+    expect(r.issues).toEqual([]);
+    expect(r.note).toMatch(/saw rock/);
+  });
+
+  it.skipIf(!hasBrowser)("catches obstacles made on a timer instead of in onFrame (D112)", async () => {
+    const timed = GAME.replace('import { useRef, useState } from "react";', 'import { useEffect, useRef, useState } from "react";')
+      .replace(
+        "    g.spawn -= dt;\n    if (g.spawn <= 0) {\n      g.pipes.push({ x: width + 40, gap: 180 + Math.random() * 280, passed: false });\n      spawned(\"pipe\");\n      g.spawn = 1.5;\n    }\n",
+        "",
+      )
+      .replace(
+        "  const onFrame = ",
+        '  useEffect(() => {\n    if (screen !== "playing") return;\n    const id = setInterval(() => {\n      game.current.pipes.push({ x: 400, gap: 180 + Math.random() * 280, passed: false });\n      spawned("pipe");\n    }, 700);\n    return () => clearInterval(id);\n  }, [screen]);\n\n  const onFrame = ',
+      );
+    expect(timed).toMatch(/setInterval/);
+    expect(timed).not.toMatch(/g\.spawn = 1\.5/);
+    const r = await runCheck(project(timed));
+    expect(r.issues.map((i) => i.message).join(" ")).toMatch(/"pipe" is made on a timer/);
   });
 
   it("asks for declareGame, spawned and probe in a game that has none", () => {

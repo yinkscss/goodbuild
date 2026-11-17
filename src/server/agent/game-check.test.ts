@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 
-import { judgeRounds, standInWalletScript, type ProbeReport, type ProbeRound } from "./game-check";
+import { judgeRounds, standInWalletScript, styleOf, type ProbeReport, type ProbeRound } from "./game-check";
 
 const round = (over: Partial<ProbeRound> = {}): ProbeRound => ({ start: 0, end: 12, frames: 400, score0: 0, scoreMax: 50, speed0: 200, speedMax: 260, xMin: 90, xMax: 270, yMin: 520, yMax: 520, firstHazard: 1.2, kinds: { oncoming: 1, nitro: 4, rival: 6 }, ...over });
 const report = (rounds: ProbeRound[], over: Partial<ProbeReport> = {}): ProbeReport => ({
@@ -73,5 +73,57 @@ describe("judging a played game (D94)", () => {
     expect(standInWalletScript({ miniPay: true, chainId: 11142220 })).toContain("isMiniPay: true");
     expect(standInWalletScript({ miniPay: false, chainId: 11142220 })).not.toContain("isMiniPay");
     expect(standInWalletScript({ miniPay: false, chainId: 11142220 })).toContain('"0xaa044c"');
+  });
+});
+
+describe("judging each kind of game by its own rules (D112)", () => {
+  const still = { firstHazard: undefined, speed0: 0, speedMax: 0, xMin: 0, xMax: 0, yMin: 0, yMax: 0, kinds: {} };
+  const puzzle = (rounds: ProbeRound[], style: "puzzle" | "turns" = "puzzle", over: Partial<ProbeReport> = {}) =>
+    report(rounds, { declared: { style, controls: ["swipe"] }, seen: {}, ...over });
+
+  it("doesn't ask a puzzle for obstacles, speed or a moving player, only for moves and a rising score", () => {
+    const r = judgeRounds(puzzle([round({ ...still, moves: 12, scoreMax: 40 })]));
+    expect(r.issues).toEqual([]);
+    expect(r.note).toMatch(/^puzzle game, 12 moves, played 1 round/);
+  });
+
+  it("reports a puzzle or turns game that never accepted a move", () => {
+    expect(issues(puzzle([round({ ...still, moves: 0, scoreMax: 0 })]))).toMatch(/never accepted a move[\s\S]*moved\(\)/);
+    // Too short to tell: silent.
+    expect(issues(puzzle([round({ ...still, end: 2, moves: 0, scoreMax: 0 })]))).toEqual("");
+  });
+
+  it("reports a score that never rose only after many moves", () => {
+    expect(issues(puzzle([round({ ...still, moves: 20, scoreMax: 0 })], "turns"))).toMatch(/score never went up in 20 moves/);
+    expect(issues(puzzle([round({ ...still, moves: 6, scoreMax: 0 })], "turns"))).toEqual("");
+  });
+
+  it("counts rounds with moves and no frames as played, for a game without a canvas", () => {
+    const r = judgeRounds(puzzle([round({ ...still, frames: 0, moves: 5, scoreMax: 20 })], "turns", { probes: 3 }), { canvas: false });
+    expect(r.issues).toEqual([]);
+    expect(r.note).toMatch(/turns game, 5 moves, played 1 round/);
+  });
+
+  it("still names declared kinds that never appeared, for every kind of game", () => {
+    const r = puzzle([round({ ...still, end: 16, moves: 10, kinds: {} })], "puzzle", { declared: { style: "puzzle", powerups: ["hint"] } });
+    expect(issues(r)).toMatch(/never appeared in the first 15: "hint"/);
+  });
+
+  it("tells a game without a canvas to call round() when Play starts nothing", () => {
+    expect(judgeRounds(report([], { probes: 0 }), { pressedPlay: true, canvas: false }).issues.join()).toMatch(/round\(true\)/);
+  });
+
+  it("reports obstacles made on a timer in an action game whose GameCanvas marks frames, and nowhere else", () => {
+    const timed = report([round()], { frames: 300, offFrame: ["oncoming"] });
+    expect(issues(timed)).toMatch(/"oncoming" is made on a timer/);
+    // An older GameCanvas that doesn't mark frames: can't tell, so silent.
+    expect(issues(report([round()], { offFrame: ["oncoming"] }))).not.toMatch(/timer/);
+    expect(issues(puzzle([round({ ...still, moves: 12 })], "puzzle", { frames: 300, offFrame: ["bomb"] }))).not.toMatch(/timer/);
+  });
+
+  it("judges a game that didn't say its kind as an action game, as before", () => {
+    expect(styleOf(report([round()]))).toBe("action");
+    expect(styleOf(report([round()], { declared: { style: "turns" } }))).toBe("turns");
+    expect(issues(report([round({ speedMax: 200 })]))).toMatch(/didn't get harder/);
   });
 });

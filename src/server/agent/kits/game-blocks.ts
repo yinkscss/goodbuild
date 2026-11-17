@@ -7,18 +7,39 @@ import { STABLECOINS } from "@/config/stablecoins";
  */
 
 export const PROBE = `// GoodBuild's game check. The run check opens the game in a browser and plays it; these calls
-// tell it what happened, so it can test that the score rises, obstacles arrive, every kind of
-// obstacle, power-up and character the plan named shows up, and the controls move the player.
+// tell it what happened, so it can test the game the way its kind of game should be tested.
 // In a published game, and for every real player, each call returns straight away and does nothing.
 //
-//   declareGame({ obstacles: ["oncoming", "oil"], powerups: ["nitro", "shield"], npcs: ["rival"] }); // once, at module level
+// Once, at module level, say what kind of game it is, how it's played, and every kind of thing in it:
+//   declareGame({ style: "action", controls: ["sides", "keys"], obstacles: ["oncoming", "oil"], powerups: ["nitro"], npcs: ["rival"] });
 //   spawned("oil");                          // whenever one is created
 //   probe(score, player.x, player.y, speed); // once per frame in onFrame
+// A puzzle or turn-based game (style "puzzle" or "turns") also calls:
+//   moved();                                 // whenever the player makes a move the game accepts
+// and if it has no GameCanvas (a grid of buttons, a quiz), it marks the rounds itself:
+//   round(true) when play starts, round(false) at game over; probe(score) when a round starts and whenever the score changes.
+
+/**
+ * "action": things come at the player and it gets harder with time (runners, racers, shooters, catchers).
+ * "puzzle": the player makes moves on a board with no rush (match, slide, sort, word grids).
+ * "turns": questions, cards or turns (quizzes, card games, board games against the computer).
+ */
+export type GameStyle = "action" | "puzzle" | "turns";
+/**
+ * How it's played, so the check's bot plays it the same way. "tap": tap anywhere. "sides": tap the
+ * left or right half. "keys": arrows and Space. "swipe": a quick flick. "drag": press and move.
+ * "hold": press and hold. "buttons": tap buttons the game shows (answers, tiles, cards).
+ */
+export type GameControl = "tap" | "sides" | "keys" | "swipe" | "drag" | "hold" | "buttons";
 
 export interface GameCatalogue {
+  /** What kind of game this is. Leave it out for an action game. */
+  style?: GameStyle;
+  /** How the game is played. */
+  controls?: GameControl[];
   /** Things that get in the way: "oncoming", "oil", "gap", "spike". */
   obstacles?: string[];
-  /** Things to pick up: "nitro", "shield", "magnet". */
+  /** Things to pick up: "nitro", "shield", "magnet", "hint". */
   powerups?: string[];
   /** Computer-controlled characters: "rival", "police", "bird". */
   npcs?: string[];
@@ -40,6 +61,8 @@ interface Round {
   firstHazard?: number;
   /** Each kind's first appearance in this round, in seconds since the round started. */
   kinds?: Record<string, number>;
+  /** Moves the game accepted (puzzle and turn-based games). */
+  moves?: number;
 }
 
 interface Check {
@@ -52,6 +75,13 @@ interface Check {
   seen: Record<string, number>;
   declared?: GameCatalogue;
   probes: number;
+  /** How many game frames GameCanvas ran, and whether one is running right now. */
+  frames?: number;
+  inFrame?: boolean;
+  /** Declared kinds that were created outside a game frame (on a timer), while a round was running. */
+  offFrame?: string[];
+  /** The round clock for a game with no GameCanvas is running. */
+  clock?: boolean;
 }
 
 function check(): Check | undefined {
@@ -65,10 +95,18 @@ function playing(c: Check): Round | undefined {
   return r && r.end === undefined ? r : undefined;
 }
 
-/** Name every kind of obstacle, power-up and character the game has. Once, at module level. */
+/** Say what kind of game this is and name every kind of obstacle, power-up and character it has. Once, at module level. */
 export function declareGame(catalogue: GameCatalogue): void {
   const c = check();
-  if (c) c.declared = { obstacles: [...(catalogue.obstacles ?? [])], powerups: [...(catalogue.powerups ?? [])], npcs: [...(catalogue.npcs ?? [])] };
+  if (c) {
+    c.declared = {
+      style: catalogue.style,
+      controls: [...(catalogue.controls ?? [])],
+      obstacles: [...(catalogue.obstacles ?? [])],
+      powerups: [...(catalogue.powerups ?? [])],
+      npcs: [...(catalogue.npcs ?? [])],
+    };
+  }
 }
 
 /** Something was just created: an obstacle, a power-up or a character, by the name declareGame gave it. */
@@ -84,10 +122,19 @@ export function spawned(kind: string): void {
     r.kinds ??= {};
     if (!(kind in r.kinds)) r.kinds[kind] = c.time - r.start;
   }
+  // Made on a timer instead of in the game's frame: it won't pause with the game or keep pace with it.
+  const declared = Boolean(d && (d.obstacles?.includes(kind) || d.powerups?.includes(kind) || d.npcs?.includes(kind)));
+  if (r && declared && c.frames && !c.inFrame) {
+    c.offFrame ??= [];
+    if (!c.offFrame.includes(kind)) c.offFrame.push(kind);
+  }
 }
 
-/** Once per frame while playing: the score, where the player is, and how fast the game is going. */
-export function probe(score: number, x: number, y: number, speed: number): void {
+/**
+ * The score, where the player is, and how fast the game is going. Once per frame while playing; a game
+ * with no GameCanvas calls probe(score) when a round starts and whenever the score changes.
+ */
+export function probe(score: number, x = 0, y = 0, speed = 0): void {
   const c = check();
   const r = c && playing(c);
   if (!c || !r) return;
@@ -108,6 +155,33 @@ export function probe(score: number, x: number, y: number, speed: number): void 
   if (y > r.yMax!) r.yMax = y;
 }
 
+/** The player made a move the game accepted: tiles swapped, an answer picked, a card played. */
+export function moved(): void {
+  const c = check();
+  const r = c && playing(c);
+  if (r) r.moves = (r.moves ?? 0) + 1;
+}
+
+/**
+ * For a game with no GameCanvas (a grid of buttons, a quiz): round(true) when play starts, round(false)
+ * at game over. GameCanvas does this by itself, so a game that has one never calls it.
+ */
+export function round(isPlaying: boolean): void {
+  const c = check();
+  if (!c) return;
+  if (!c.clock && typeof requestAnimationFrame === "function") {
+    c.clock = true;
+    let last = performance.now();
+    const tick = (now: number) => {
+      c.time += Math.min(Math.max(now - last, 0) / 1000, 0.1);
+      last = now;
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }
+  checkRound(isPlaying);
+}
+
 // For GameCanvas only.
 
 /** How many game steps to run per screen frame: 1, or more while GoodBuild checks the game. */
@@ -119,6 +193,14 @@ export function stepsPerFrame(): number {
 export function checkTick(dt: number): void {
   const c = check();
   if (c) c.time += dt;
+}
+
+/** A game frame starts (true) or ends (false), so the check can tell what was made on a timer. */
+export function checkFrame(on: boolean): void {
+  const c = check();
+  if (!c) return;
+  if (on) c.frames = (c.frames ?? 0) + 1;
+  c.inFrame = on;
 }
 
 /** The game started (playing) or stopped (not playing): a round begins or ends. */

@@ -17,7 +17,7 @@ import type { Kit } from "./registry";
  */
 
 const GAME_CANVAS = `import { useEffect, useRef, type CSSProperties } from "react";
-import { checkRound, checkTick, stepsPerFrame } from "./probe";
+import { checkFrame, checkRound, checkTick, stepsPerFrame } from "./probe";
 
 /** What the player is pressing right now. Read it in onFrame; never store it in React state. */
 export interface GameInput {
@@ -235,7 +235,9 @@ export function GameCanvas({
       for (let i = 0; i < steps; i++) {
         time += dt;
         checkTick(dt);
+        checkFrame(true);
         frameRef.current({ ctx, width, height, dt, time, input: state });
+        checkFrame(false);
         state.actionPressed = false;
       }
     };
@@ -583,7 +585,7 @@ The screen
 
 What makes it a game
 - Obstacles, challenges, power-ups and computer-controlled characters (NPCs: traffic, rivals, enemies, chasers) are the game. Build every one the plan names, each with its own look and its own behaviour, and give each a name in the code (type: "oncoming" | "slowCar" | "oil"). If the plan named none, pick at least two kinds of obstacle and one power-up that fit the game.
-- The first obstacle arrives within 3 seconds of Play, after a short grace moment. A player must meet everything the game has within the first 15 seconds of a round: introduce each kind early, then mix them.
+- In an action game the first obstacle arrives within 3 seconds of Play, after a short grace moment. A puzzle or turns game has no rush: its challenge is the board, the question or the computer's turn, with a goal, a limit (moves, time, lives) and a way to win or lose a round. A player must meet everything the game has within the first 15 seconds of a round: introduce each kind early, then mix them.
 - NPCs act like someone: traffic changes lane with a blink first, a chaser speeds up when far and slows when close, a rival tries to block. Signal before acting, so a player can react, and keep it fair: never spawn something the player can't avoid.
 - Power-ups: each one does something you can see (a shield ring, coins flying to you, a speed trail), lasts a few seconds with a shrinking bar in the score panel, and makes a sound when picked up and when it ends.
 - Difficulty rises with time or score (speed, spawn rate, more kinds at once), with a cap so it stays playable.
@@ -598,11 +600,14 @@ Building blocks (src/game/): use them instead of writing your own
 - hud.ts: drawHud(ctx, width, { score, best, distance, lives, combo, effects }) is the score panel, with a shrinking bar for each running power-up. Call it last in onFrame. drawBanner(ctx, width, height, "Shield!") for a moment's message.
 - haptics.ts: buzz("hit"), buzz("collect"), buzz("over") on phones that vibrate, off with mute.
 
-GoodBuild tests the game (src/game/probe.ts). Its check opens the game, presses Play with no wallet and plays it, and these three calls tell it what happened. They do nothing for real players. Write all three:
-- declareGame({ obstacles: [...], powerups: [...], npcs: [...] }) once at module level, naming every kind the game has with the same short names the code uses (the kinds the plan named: "oncoming", "oil", "nitro", "rival").
+GoodBuild tests the game (src/game/probe.ts). Its check opens the game, presses Play with no wallet and plays it with the game's own controls, and these calls tell it what happened. They do nothing for real players. Write them all:
+- declareGame({ style, controls, obstacles: [...], powerups: [...], npcs: [...] }) once at module level. style is "action" (things come at the player and it speeds up: runners, racers, catchers, shooters), "puzzle" (moves on a board with no rush: match, slide, sort, word grids) or "turns" (quizzes, card games, board games against the computer). controls lists how it is really played, so the check's bot plays it the same way: "tap" (anywhere), "sides" (left or right half), "keys", "swipe", "drag", "hold", "buttons" (answer, tile or card buttons). Name every kind the game has with the same short names the code uses (the kinds the plan named: "oncoming", "oil", "nitro", "rival").
 - spawned(kind) every time one of them is created.
 - probe(score, player.x, player.y, speed) once per frame in onFrame while playing, with the current score, the player's position and the game's speed (what rises as it gets harder).
-The check then reports, for the builder to fix: a score that never rises, no obstacle in the first 3 seconds, a declared kind that never appears in the first 15 seconds of a round, controls that don't move the player, a game that doesn't get harder, and a Play again that doesn't start a new round.
+- A puzzle or turns game also calls moved() each time the player makes a move the game accepts (tiles swapped, an answer picked, a card played).
+- A game with no GameCanvas (a quiz or a grid of buttons, which is fine for a turns or puzzle game) calls round(true) when play starts and round(false) at game over, and probe(score) when a round starts and whenever the score changes. Wrap the board or the answers in <div data-game-area> so the bot presses moves there and not the page's own buttons.
+The check then reports, for the builder to fix. For every game: a declared kind that never appears in the first 15 seconds of a round, and a Play again that doesn't start a new round. For an action game: a score that never rises, no obstacle in the first 3 seconds, controls that don't move the player, a game that doesn't get harder, and obstacles made on a timer. For a puzzle or turns game: moves the game never accepts, and a score that never rises over many moves.
+- Make obstacles, power-ups and characters in onFrame (a Spawner, or a counter that adds dt), never with setInterval or setTimeout: a timer keeps firing while the game is paused or over, and the check reports it.
 
 Make people play again (src/game/extras.ts): pick the two or three that fit, and every one the plan's brief names
 - Near misses and combos: nearMiss(playerBox, carBox) passing close scores a bonus ("Close!" popup); new Combo() raises a multiplier for quick successes, shown with drawHud's combo.
@@ -635,7 +640,7 @@ Money in a game (only when the user asks for entry fees, prizes or things to buy
 - Things to buy (cars, skins, level ups, power packs, a season pass): the game shop kit is on for games that sell things: follow its guide (useShop and Store, with the tested GameShop contract). Never write your own shop contract. Keep the game fair and fun without paying: the starter items are free, and anything bought is shown with Sprite exactly as the game draws it.
 - Several people playing together (a room, taking turns, a lobby): load the multiplayer guide. There is no live connection, so it suits turn-based and lobby games, not fast action games.
 
-Before you finish, check: the canvas draws on the start screen (onIdleFrame), Play works with no wallet, the first obstacle comes within 3 seconds, every obstacle, power-up and NPC the plan named is in the game and in declareGame, spawned and probe are called, the score shows on the canvas while playing (drawHud), game over shows Play again, and the leaderboard rule is in dataRules.json if there is a board.`;
+Before you finish, check: declareGame says the game's style and controls, the canvas draws on the start screen (onIdleFrame), Play works with no wallet, in an action game the first obstacle comes within 3 seconds, every obstacle, power-up and NPC the plan named is in the game and in declareGame, spawned and probe are called, the score shows on the canvas while playing (drawHud), game over shows Play again, and the leaderboard rule is in dataRules.json if there is a board.`;
 
 /** The leaderboard's data rule, as the guide writes it (D93). */
 export const SCORES_RULE_JSON = '"scores": {"create": "signed-in", "read": ["anyone"], "fields": {"name": "string", "score": "number", "extra": "string"}}';
@@ -707,6 +712,40 @@ export function gameChecks(files: Record<string, string>): CheckIssue[] {
       });
     }
   }
+  // A game with no GameCanvas (a quiz, a grid of buttons) reports its own rounds (D112). A 3D scene that only
+  // borrows this kit's sound is left to the 3D kit.
+  const authored = authoredFiles(files);
+  const allAuthored = authored.map(([, c]) => c).join("\n");
+  const threeD = /from\s+["'][^"']*three\/Scene3D["']|from\s+["']three["']/.test(allAuthored);
+  // Only once there is a game to test: it calls the probe, or shows a Play or Start button.
+  const isGame = /\bdeclareGame\s*\(|(?<![.\w])probe\s*\(|(?<![.\w])round\s*\(\s*(?:true|false)\b/.test(allAuthored) || />\s*(?:Play|Start)(?:\s+(?:game|now|quiz|round))?\s*!?\s*</i.test(allAuthored);
+  if (!canvas && !threeD && isGame) {
+    const app = own.find(([f]) => f === "src/App.tsx") ?? own[0] ?? authored[0];
+    const missing = [
+      /\bdeclareGame\s*\(/.test(allAuthored) ? "" : 'declareGame({ style: "turns" or "puzzle", controls: ["buttons"] }) once at module level',
+      /(?<![.\w])round\s*\(\s*(?:true|false)\b/.test(allAuthored) ? "" : "round(true) when play starts and round(false) at game over",
+      /\bprobe\s*\(/.test(allAuthored) ? "" : "probe(score) when a round starts and whenever the score changes",
+    ].filter(Boolean);
+    if (missing.length) {
+      issues.push({
+        file: app[0],
+        line: 1,
+        source: "paths",
+        message: `GoodBuild can't test this game yet. It has no GameCanvas, so add, from src/game/probe.ts: ${missing.join("; ")}. They do nothing for real players.`,
+      });
+    }
+  }
+  // A puzzle or turn-based game is judged by its moves, so it must report them.
+  const declaredStyle = /\bdeclareGame\s*\(\s*\{[^}]*\bstyle\s*:\s*["'](puzzle|turns)["']/.exec(allAuthored)?.[1];
+  if (declaredStyle && !/\bmoved\s*\(\s*\)/.test(allAuthored)) {
+    const [file, content] = authored.find(([, c]) => /\bdeclareGame\s*\(/.test(c))!;
+    issues.push({
+      file,
+      line: lineOf(content, /\bdeclareGame\s*\(/),
+      source: "paths",
+      message: `This is a ${declaredStyle} game, so GoodBuild tests it by the moves it accepts. Call moved() from src/game/probe.ts every time the player makes a move the game accepts (tiles swapped, an answer picked, a card played).`,
+    });
+  }
   const usesBoard = own.find(([, c]) => /\buseLeaderboard\s*\(/.test(c));
   if (usesBoard) {
     const [file, content] = usesBoard;
@@ -768,7 +807,10 @@ export const game2d: Kit = {
   },
   // The first GameCanvas (D72): Enter and Space couldn't press Play, and a key held through a lost focus stuck (D85).
   // ...and the second never drew while paused, so every start screen was an empty box (D93).
-  superseded: { "src/game/GameCanvas.tsx": ["b8d7fc83dc5ae09f096f37446f8ba12273a2b502aba2acb827f4a8c541901c08", "f5a2cd6e74f9d834f917de93c6b5ff39dc8accc07f44f2d956eddab47798563c"],
+  // ...and the third didn't mark its frames, so the check couldn't tell a spawn made on a timer (D112).
+  superseded: { "src/game/GameCanvas.tsx": ["b8d7fc83dc5ae09f096f37446f8ba12273a2b502aba2acb827f4a8c541901c08", "f5a2cd6e74f9d834f917de93c6b5ff39dc8accc07f44f2d956eddab47798563c", "7b7835f8d41a38962332ffc5233a60a817c6354c11bcb8f73bf1223ce399a8d7"],
+    // The first probe (D94) knew only action games: no kind of game, no controls, no moves, no rounds without a GameCanvas (D112).
+    "src/game/probe.ts": ["bdb856fa69e21862e92646df0dd7fca97dabbde611edb5dea1c65166f138eeec"],
     // Its comment pointed at useCollection for leaderboards (D93).
     "src/game/storage.ts": ["ad445565329f58a977216f4ed062c26609a13e2afd9e14a96e7b114e6eae65fa"],
   },

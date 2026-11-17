@@ -6,7 +6,10 @@ import { buildPublishedApp, moduleStarts, PublishBuildError, type PublishedFile 
 
 import type { CheckIssue } from "./checks";
 import { GAME_CHECK_SPEED, gameCanvas, gameCheckScript, insideMiniPay, judgeRounds, playRounds, probeReport, standInWalletScript, walletAndBoard } from "./game-check";
-import { kitIdsOf } from "./kits/registry";
+import { KITS, kitIdsOf } from "./kits/registry";
+
+/** Every file a kit ships, so the game's own code can be told apart from GoodBuild's. */
+const KIT_FILES: Record<string, true> = Object.fromEntries(KITS.flatMap((k) => Object.keys(k.files).map((p) => [p, true] as const)));
 
 /**
  * The run check (D67): build the app the way publishing does, open it in a headless browser and
@@ -33,6 +36,8 @@ export interface RunCheckOptions {
   miniPay?: boolean;
   /** The project's GameCanvas reports rounds to the probe, so a Play that starts none is a fault (D95). */
   probeReady?: boolean;
+  /** The game draws in a GameCanvas. A game without one (a quiz, a grid of buttons) reports rounds with round() (D112). */
+  canvas?: boolean;
   /** The project draws a 3D scene from shapes alone: look for one that shows nothing but its background (set from its kits and files). */
   scene?: boolean;
   /** Also return screenshots at phone and desktop width. */
@@ -425,7 +430,7 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
       if (g) g.speed = speed;
     }, GAME_CHECK_SPEED);
     gameIssues.push(...(await playRounds(page)));
-    const judged = judgeRounds(await probeReport(page), { pressedPlay: pressedPlay && Boolean(options.probeReady) });
+    const judged = judgeRounds(await probeReport(page), { pressedPlay: pressedPlay && Boolean(options.probeReady), canvas: options.canvas ?? true });
     gameIssues.push(...judged.issues);
     gameNotes.push(judged.note);
     if (!seen.length && !gameIssues.length) {
@@ -560,11 +565,18 @@ export async function runCheck(files: Record<string, string>, options: RunCheckO
     const game2d = options.game2d ?? kits.includes("game-2d");
     const board = options.board ?? Object.entries(files).some(([p, c]) => p.startsWith("src/") && !p.startsWith("src/game/") && /<PostScore\b/.test(c));
     const miniPay = options.miniPay ?? kits.includes("mini-app");
-    const probeReady = options.probeReady ?? Boolean(files["src/game/GameCanvas.tsx"]?.includes("checkRound"));
+    // The game's own code, so the kit's files (which name GameCanvas and round in comments) don't count.
+    const own = Object.entries(files).filter(([p]) => /^src\/.*\.(tsx?|jsx?)$/.test(p) && !(p in KIT_FILES)).map(([, c]) => c);
+    const canvas = options.canvas ?? own.some((c) => /<GameCanvas\b/.test(c));
+    // Rounds are reported by a GameCanvas that knows how, or by round() in a game without one. A game with neither
+    // (a 3D scene that only borrows the 2D kit's sound) starts no round when Play is pressed, and that isn't a fault.
+    const probeReady =
+      options.probeReady ??
+      ((canvas && Boolean(files["src/game/GameCanvas.tsx"]?.includes("checkRound"))) || (Boolean(files["src/game/probe.ts"]?.includes("export function round")) && own.some((c) => /(?<![.\w])round\s*\(\s*(?:true|false)\b/.test(c))));
     // A scene that waits for an uploaded model or picture is empty here (uploads are blank stand-ins), so only
     // scenes built from shapes are looked at.
     const scene = options.scene ?? (kits.includes("three-d") && !Object.entries(files).some(([p, c]) => p.startsWith("src/") && p !== "src/three/Scene3D.tsx" && /GLTFLoader|TextureLoader/.test(c)));
-    return done(await Promise.race([check(context, built, { ...options, game, game2d, board, miniPay, probeReady, scene }), timeout]));
+    return done(await Promise.race([check(context, built, { ...options, game, game2d, board, miniPay, probeReady, canvas, scene }), timeout]));
   } catch (error) {
     return done({ ran: false, issues: [], note: `skipped: the browser wasn't available (${String((error as Error)?.message ?? error).split("\n")[0].slice(0, 120)})` });
   } finally {
