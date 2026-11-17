@@ -115,7 +115,13 @@ describe("game templates (D114)", { timeout: 180_000 }, () => {
     expect(stuck.issues.map((i) => i.message).join(" ")).toMatch(/never moved the player/);
   });
 
-  // Not Kart track: with its steering dead, the bends still push the kart off the tyre walls, so it does move.
+  it.skipIf(!hasBrowser)("Brick breaker: a copy whose paddle never follows the player is caught", async () => {
+    const stuck = await runCheck(built("brick-breaker", edit("src/play/Game.tsx", "g.x += (g.target - g.x) * Math.min(1, dt * 16);", "")));
+    expect(stuck.issues.map((i) => i.message).join(" ")).toMatch(/never moved the player/);
+  });
+
+  // Not Kart track or Cave flyer: with their controls dead, the bends and gravity still move the player,
+  // and the check only asks whether the player moved (OPEN_QUESTIONS.md, D117).
   it.skipIf(!hasBrowser || !hasWebGL)("Sky rings: a copy whose steering does nothing is caught", async () => {
     const stuck = await runCheck(built("sky-rings", edit("src/play/Game.tsx", "g.x += dx;\n              g.y += dy;", "")));
     expect(stuck.issues.map((i) => i.message).join(" ")).toMatch(/never moved the player/);

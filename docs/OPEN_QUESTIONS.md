@@ -205,3 +205,6 @@ A MiniPay car racer with a leaderboard and G$ store took 7 versions. Claude trac
 
 ## Q45. Game templates and checks for every kind of game (raised 17 Nov 2026)
 The owner asked for 2D and 3D game templates and chose level L2 (templates, checks that judge puzzle and quiz games by their own rules, and 3D games tested like 2D ones). Ten game requests GoodBuild can't handle yet, the plan, the template list and three questions (go-ahead, template list, sideways-only games): [GAMES_PLAN.md](GAMES_PLAN.md) Part 2.
+
+## Q46. The run check can't tell "the player moved" from "the controls moved the player" (raised 17 Nov 2026 by D117)
+A Kart track with dead steering and a Cave flyer whose hold does nothing both pass the run check, because the road's bends and gravity move the player anyway. A builder that breaks the controls while reshaping either would ship a game nobody can steer, and the check would call it fine. **Proposal (not built):** the bot plays a short stretch with no input, then a stretch with input, and compares how far the player moves away from where the game alone would take them. A game whose player moves the same either way gets "the controls don't seem to do anything". Cost: about 2 more seconds of play per check, and a threshold to tune against all ten templates so none is flagged wrongly. Owner's call whether it's worth it now.
