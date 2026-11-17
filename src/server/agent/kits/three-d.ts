@@ -210,7 +210,7 @@ export function Scene3D({
       setLost(true);
     };
     const contextBack = () => {
-      lostNow.current = false;
+      // lostNow stays set until the new scene is built, so the old one never takes another step.
       setLost(false);
       setGeneration((g) => g + 1);
     };

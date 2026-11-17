@@ -364,6 +364,44 @@ export default function App() {
     }
   });
 
+  it("plays again when the browser gives a lost 3D context back by itself, and never steps the old scene meanwhile (D119)", async () => {
+    if (!hasWebGL) return;
+    const counting = PAGE.replace("cube.rotation.y += dt;", "cube.rotation.y += dt;\n            (window as unknown as { cubeFrames: number }).cubeFrames = ((window as unknown as { cubeFrames?: number }).cubeFrames ?? 0) + 1;");
+    const built = await buildPublishedApp({ files: project(counting), assets: [], title: "Viewer", hasUndeployedContracts: false, forCheck: true });
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const context = await browser.newContext({ viewport: { width: 400, height: 700 } });
+      const byPath = new Map(built.map((f) => [f.path, f]));
+      await context.route("**/*", (route) => {
+        const url = new URL(route.request().url());
+        const file = byPath.get(url.pathname.replace(/^\//, "") || "index.html");
+        return file && url.host === "app.test" ? route.fulfill({ status: 200, contentType: file.mime, body: Buffer.from(file.bytes) }) : route.abort();
+      });
+      const page = await context.newPage();
+      await page.goto("http://app.test/");
+      await page.waitForSelector("canvas[data-game-canvas]");
+      const frames = () => page.evaluate(() => (window as unknown as { cubeFrames?: number }).cubeFrames ?? 0);
+      await page.evaluate(() => {
+        const c = document.querySelector("canvas")!;
+        const gl = c.getContext("webgl2") ?? c.getContext("webgl");
+        const ext = gl!.getExtension("WEBGL_lose_context")!;
+        (window as unknown as { giveBack: () => void }).giveBack = () => ext.restoreContext();
+        ext.loseContext();
+      });
+      await page.getByRole("button", { name: /tap to reload/i }).waitFor({ timeout: 3_000 });
+      const lostAt = await frames();
+      await page.waitForTimeout(300);
+      expect(await frames()).toBe(lostAt);
+      await page.evaluate(() => (window as unknown as { giveBack: () => void }).giveBack());
+      await page.waitForFunction(() => !document.body.innerText.includes("Tap to reload"), undefined, { timeout: 3_000 });
+      const backAt = await frames();
+      await page.waitForTimeout(500);
+      expect(await frames()).toBeGreaterThan(backAt);
+    } finally {
+      await browser.close();
+    }
+  });
+
   it("counts two quick taps on one side as two presses there, even when the pointer moves before the frame (D119)", async () => {
     if (!hasWebGL) return;
     const app = PAGE.replace("onReady={({ scene, camera }) => {", "onReady={({ scene, camera, input }) => {").replace(

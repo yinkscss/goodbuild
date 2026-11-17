@@ -1472,6 +1472,7 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
   - Before reporting that the arrow keys do nothing, the controls check also tries a finger held on each side, as a phone plays. A game steered by touch whose keys only jump is no longer flagged. Tested with a windy Catch and dodge whose arrows do nothing: it was flagged before this change and passes after.
 - **Second round of review (3D kit):**
   - A new scene clears the lost-context flag. Before, a person who tapped reload before the browser gave the old context back got a frozen game. Tested: frames resume after a manual reload; they stayed at 5 before the fix.
+  - When the browser restores the context by itself, the flag also stays set until the new scene is built, so the old scene never takes another step. Tested: frames stop while the context is lost and resume after the browser restores it.
   - `pointer.presses` lists every press since the last frame, with where it started. Two quick taps count as two, and a later move doesn't change their side. The 3D runner steers on each press. Tested with two left taps and a move to the right, all in one frame.
   - The slow-phone test keeps a sample only if the same round ran from its start to its end.
 - **The games kit:** a canvas puzzle or turns game isn't asked to call `spawned()`, since it may have nothing that appears. Action games still are. Tested both ways.
