@@ -327,7 +327,8 @@ export async function playAgain(page: Page): Promise<boolean> {
  * then the opposite, in turn, and passes how far they moved each time to judgeControls. Only for a
  * game that declares hold, or keys with sideways steering (sides or drag): a tap or a swipe is one step,
  * which a wall can block, and keys alone may mean only Space (a runner that jumps), so the arrows doing
- * nothing proves nothing. When the arrows seem dead, a finger held on each side is tried before reporting.
+ * nothing proves nothing. When the arrows seem dead, a finger dragged to each side is tried; if that seems
+ * dead too, the controls are left unjudged with a note. Only a dead hold is reported.
  * A game that declares nothing isn't judged either.
  */
 export async function checkControls(page: Page): Promise<{ issues: string[]; note?: string }> {
@@ -338,7 +339,8 @@ export async function checkControls(page: Page): Promise<{ issues: string[]; not
   const sideways = controls.includes("keys") && (controls.includes("sides") || controls.includes("drag"));
   if (!hold && !sideways) return { issues: [] };
   const area = await playArea(page);
-  // What a trial holds: a press against none, the arrows, or a finger on the left or right side.
+  // What a trial holds: a press against none, the arrows, or a finger pressed in the middle and dragged to
+  // the left or right side (so a game that steers toward the finger and one that steers by dragging both see it).
   let mode: "hold" | "keys" | "sides" = hold ? "hold" : "keys";
 
   const press = async (which: "a" | "b") => {
@@ -349,9 +351,16 @@ export async function checkControls(page: Page): Promise<{ issues: string[]; not
     if (mode === "hold" && which === "b") return;
     const box = await area.boundingBox({ timeout: 300 }).catch(() => null);
     if (!box) return;
-    const across = mode === "hold" ? 0.5 : which === "a" ? 0.2 : 0.8;
-    await page.mouse.move(box.x + box.width * across, box.y + box.height * 0.6).catch(() => undefined);
+    const y = box.y + box.height * 0.6;
+    await page.mouse.move(box.x + box.width / 2, y).catch(() => undefined);
     await page.mouse.down().catch(() => undefined);
+    if (mode !== "sides") return;
+    // Over several frames, so a game that reads how far the finger moved since the last frame sees it.
+    const to = which === "a" ? 0.2 : 0.8;
+    for (let i = 1; i <= 6; i++) {
+      await page.waitForTimeout(20);
+      await page.mouse.move(box.x + box.width * (0.5 + ((to - 0.5) * i) / 6), y).catch(() => undefined);
+    }
   };
   const release = async (which: "a" | "b") => {
     if (mode === "keys") await page.keyboard.up(which === "a" ? "ArrowLeft" : "ArrowRight").catch(() => undefined);
@@ -391,18 +400,24 @@ export async function checkControls(page: Page): Promise<{ issues: string[]; not
     }
     return path;
   };
+  // How fast the game runs against the clock. A stalled checker runs it slowly, and then a moment of
+  // drift or a held input proves nothing either way: the controls aren't judged (D119).
+  const clock = async () => ({ game: (await probeReport(page))?.time ?? 0, real: Date.now() });
+  const tooSlow = (from: { game: number; real: number }, to: { game: number; real: number }) => (to.game - from.game) / Math.max(0.001, (to.real - from.real) / 1000) < GAME_CHECK_SPEED / 2;
   // Let the last move settle, then see whether the game moves the player on its own.
   await page.waitForTimeout(250);
+  const started = await clock();
   let drift: { dx: number; dy: number } | null = null;
   for (let i = 0; i < 5 && !drift; i++) drift = await idle();
   const after = await probeReport(page);
   const last = after?.rounds.at(-1);
   const span = last ? Math.max((last.xMax ?? 0) - (last.xMin ?? 0), (last.yMax ?? 0) - (last.yMin ?? 0)) : 0;
-  const unjudged = { issues: [], note: "the controls weren't judged (rounds ended too quickly)" };
-  if (!drift) return unjudged;
+  const unjudged = { issues: [], note: "the controls weren't judged (rounds ended too quickly, or the game ran too slowly here)" };
+  if (!drift || tooSlow(started, await clock())) return unjudged;
   if (Math.hypot(drift.dx, drift.dy) <= span * 0.02) return { issues: [] };
 
   const judge = async () => {
+    const from = await clock();
     const trials: ControlTrial[] = [];
     for (let i = 0; trials.length < TRIALS && i < TRIALS * 2; i++) {
       // One way then the other, then the other way first, so the game's own steady pull cancels out.
@@ -415,21 +430,22 @@ export async function checkControls(page: Page): Promise<{ issues: string[]; not
       }
       if (moved.a && moved.b) trials.push({ a: moved.a, b: moved.b });
     }
-    return judgeControls(trials, drift);
+    return tooSlow(from, await clock()) ? { verdict: "unjudged" as const } : judgeControls(trials, drift);
   };
   let judged = await judge();
   // "keys" may mean only Space (a jump) in a game steered by touch: arrows that do nothing aren't proof.
-  // Before saying the controls do nothing, hold a finger on each side, the way a phone plays it.
+  // Try a finger dragged to each side too, the way a phone plays it: a "works" there settles it.
   if (judged.verdict === "dead" && mode === "keys") {
     mode = "sides";
     judged = await judge();
   }
+  // Only a dead hold is reported. Steering by keys or touch that seems dead isn't: a game that steers by how
+  // far the finger moved sees little of a drag on a busy checker, and a wrong report costs a fix (D119).
+  if (judged.verdict === "dead" && !hold) return { issues: [], note: "the controls weren't judged (the arrows and a dragged finger seemed to do nothing, which a busy checker can't tell from a slow game)" };
   if (judged.verdict === "dead") {
     return {
       issues: [
-        hold
-          ? "Holding down on the game didn't change how the player moves: the game moves them by itself, but the hold does nothing. Read input.pointer.down (or input.action) in the frame function and use it to move the player."
-          : "Holding the left or right arrow, or a finger on the left or right side, didn't change how the player moves: the game moves them by itself, but the controls do nothing. Read input.left and input.right (and input.pointer) in the frame function and use them to move the player.",
+        "Holding down on the game didn't change how the player moves: the game moves them by itself, but the hold does nothing. Read input.pointer.down (or input.action) in the frame function and use it to move the player.",
       ],
     };
   }

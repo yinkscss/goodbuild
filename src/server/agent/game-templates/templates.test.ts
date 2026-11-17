@@ -178,6 +178,31 @@ describe("game templates (D114)", { timeout: 180_000 }, () => {
     expect(r.note).toMatch(/played \d+ rounds?/);
   });
 
+  // The same, steered only by moving the finger while it's pressed (not toward where it rests).
+  it.skipIf(!hasBrowser)("Catch and dodge with wind, steered only by dragging: passes the controls check", async () => {
+    const dragged = (f: Record<string, string>) =>
+      edit(
+        "src/play/Game.tsx",
+        "if (input.pointer.down) g.target = input.pointer.x;",
+        "const held = g as typeof g & { px?: number };\n    if (input.pointer.down && held.px !== undefined) g.target += input.pointer.x - held.px;\n    held.px = input.pointer.down ? input.pointer.x : undefined;",
+      )(edit("src/play/Game.tsx", "    if (keys) g.x = g.target;\n", "")(edit("src/play/Game.tsx", "if (keys) g.target = g.x + keys * 360 * dt;", "g.target += Math.sin(g.t * 3) * 400 * dt;")(f)));
+    const r = await runCheck(built("catch-dodge", dragged));
+    expect(r.ran).toBe(true);
+    expect(r.issues.map((i) => i.message).join(" ")).not.toMatch(/controls do nothing/);
+    expect(r.note).toMatch(/played \d+ rounds?/);
+  });
+
+  // Arrows and touch both dead in a windy game: not reported, since a busy checker can't tell that from a
+  // slow game, but said in the note (D119). Kart track's dead steering is the case this leaves open (Q46).
+  it.skipIf(!hasBrowser)("Catch and dodge with wind and no steering at all: the controls are left unjudged, never reported", async () => {
+    const dead = (f: Record<string, string>) =>
+      edit("src/play/Game.tsx", "if (input.pointer.down) g.target = input.pointer.x;", "")(edit("src/play/Game.tsx", "    if (keys) g.x = g.target;\n", "")(edit("src/play/Game.tsx", "if (keys) g.target = g.x + keys * 360 * dt;", "g.target += Math.sin(g.t * 3) * 400 * dt;")(f)));
+    const r = await runCheck(built("catch-dodge", dead));
+    expect(r.ran).toBe(true);
+    expect(r.issues.map((i) => i.message).join(" ")).not.toMatch(/controls do nothing/);
+    expect(r.note).toMatch(/the controls weren't judged/);
+  });
+
   it.skipIf(!hasBrowser)("Cave flyer: with a probe that doesn't say where the player is (one from before D118), the controls aren't judged", async () => {
     const old = (files: Record<string, string>) => edit("src/game/probe.ts", "  c.at = { x, y, round: c.rounds.length };\n", "")(files);
     const dead = await runCheck(built("cave-flyer", (f) => old(edit("src/play/Game.tsx", "g.vy += (climbing ? -1500 : 900) * dt;", "g.vy += 900 * dt;")(f))));
