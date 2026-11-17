@@ -716,7 +716,9 @@ export function gameChecks(files: Record<string, string>): CheckIssue[] {
   const canvas = own.find(([, c]) => /<GameCanvas\b/.test(c));
   if (canvas) {
     const all = authoredFiles(files).map(([, c]) => c).join("\n");
-    const missing = [/\bdeclareGame\s*\(/.test(all) ? "" : "declareGame({ obstacles, powerups, npcs }) once at module level", /\bspawned\s*\(/.test(all) ? "" : "spawned(kind) whenever an obstacle, power-up or character is created", /\bprobe\s*\(/.test(all) ? "" : "probe(score, player.x, player.y, speed) once per frame in onFrame"].filter(Boolean);
+    // A puzzle or turns game may have nothing that appears (no obstacles, power-ups or characters), so it needn't call spawned.
+    const calm = /\bdeclareGame\s*\(\s*\{[^}]*\bstyle\s*:\s*["'](puzzle|turns)["']/.test(all);
+    const missing = [/\bdeclareGame\s*\(/.test(all) ? "" : "declareGame({ obstacles, powerups, npcs }) once at module level", /\bspawned\s*\(/.test(all) || calm ? "" : "spawned(kind) whenever an obstacle, power-up or character is created", /\bprobe\s*\(/.test(all) ? "" : "probe(score, player.x, player.y, speed) once per frame in onFrame"].filter(Boolean);
     if (missing.length) {
       issues.push({
         file: canvas[0],

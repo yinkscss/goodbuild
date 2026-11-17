@@ -249,11 +249,13 @@ export default function Game() {
     }
 
     // Moving the paddle: drag along the bottom, tap where to go, or hold left or right.
+    // The arrows move the paddle at a steady speed; a finger sets where it glides to.
+    const keys = (input.right ? 1 : 0) - (input.left ? 1 : 0);
     if (input.pointer.down) g.target = input.pointer.x;
-    if (input.left) g.target = g.x - 480 * dt;
-    if (input.right) g.target = g.x + 480 * dt;
+    if (keys) g.target = g.x + keys * 420 * dt;
     const half = paddleW() / 2;
     g.target = Math.max(half, Math.min(width - half, g.target));
+    if (keys) g.x = g.target;
     g.x += (g.target - g.x) * Math.min(1, dt * 16);
     g.hurt = Math.max(0, g.hurt - dt);
 

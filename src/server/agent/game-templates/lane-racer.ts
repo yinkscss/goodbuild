@@ -261,6 +261,8 @@ export default function Game() {
         if (effects.isActive("shield") || effects.isActive("boost")) {
           effects.end("shield");
           c.active = false;
+          // The pool reuses this car: its next life must be able to earn a near miss again.
+          g.passed.delete(c);
           particles.burst(c.x, c.y, { color: COLOURS.shield });
           sfx.hit();
           shake.hit(6);

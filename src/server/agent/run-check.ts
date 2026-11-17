@@ -376,9 +376,17 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
   let pressedPlay = false;
   await open(page);
   // A 3D game on a checker with no WebGL shows Scene3D's plain message: there is nothing to play or judge,
-  // so it is left alone rather than reported (as D85 does for scenes).
+  // so it is left alone rather than reported (as D85 does for scenes). Only when the browser really has no
+  // WebGL: with WebGL, a game that never shows its scene is played and judged like any other.
   let no3d = false;
-  if (options.game3d && !(await page.locator("canvas[data-game-canvas]").count().catch(() => 0))) {
+  const noWebGL = () =>
+    page
+      .evaluate(() => {
+        const c = document.createElement("canvas");
+        return !(c.getContext("webgl2") ?? c.getContext("webgl"));
+      })
+      .catch(() => false);
+  if (options.game3d && !(await page.locator("canvas[data-game-canvas]").count().catch(() => 0)) && (await noWebGL())) {
     no3d = true;
     played = deep = false;
   }
@@ -406,8 +414,9 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
     if (played) {
       // Two frames of the idle loop, so a start screen that draws is seen drawing.
       await settle(page, 200);
-      // A 3D start screen is read from inside the scene's own frame, twice, like the empty-scene check.
-      blankStart = options.game3d ? (await flatScene(page)) && ((await settle(page, 300)), await flatScene(page)) : await flat2dCanvas(page);
+      // A 3D start screen is read from inside the scene's own frame, twice, like the empty-scene check, and
+      // only for a scene of shapes: one waiting for an uploaded model gets a blank stand-in here and looks empty.
+      blankStart = options.game3d ? Boolean(options.scene) && (await flatScene(page)) && ((await settle(page, 300)), await flatScene(page)) : await flat2dCanvas(page);
       noPlay = !hasStart;
       await phoneShot("start");
     }
@@ -425,12 +434,16 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
       }
       await settle(page, 500);
       blankGame = await flat2dCanvas(page);
-      // A short round may already be over: the "playing" picture must show play, so start another first,
-      // and take it only once a round is confirmed running. Otherwise the review gets no "playing" picture.
-      const running = async () => {
-        const last = (await probeReport(page))?.rounds.at(-1);
-        return Boolean(last && last.end === undefined);
-      };
+    }
+    // A short round may already be over: the "playing" picture must show play, so start another first,
+    // and take it only once a round is confirmed running. Otherwise the review gets no "playing" picture.
+    // Also for a game of buttons with no canvas (a quiz, a grid), which reports its rounds with round().
+    const running = async () => {
+      const last = (await probeReport(page))?.rounds.at(-1);
+      return Boolean(last && last.end === undefined);
+    };
+    const showing = (await canvas.isVisible().catch(() => false)) || (played && (await running()));
+    if (showing) {
       if (options.screenshots && played && !(await running())) {
         await page.getByRole("button", { name: /\b(play|again|retry|restart|start|race)\b/i }).first().click({ timeout: 1_000 }).catch(() => undefined);
         await settle(page, 300);

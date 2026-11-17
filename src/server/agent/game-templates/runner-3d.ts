@@ -110,7 +110,7 @@ type Screen = "start" | "playing" | "paused" | "over";
 const spawner = new Spawner({ every: 0.9, fastest: 0.4, grace: 0.5 });
 const effects = new Effects();
 
-const fresh = () => ({ lane: 1, x: 0, y: 0, vy: 0, t: 0, score: 0, coins: 0, spawns: 0, lastPointer: 0, wasLeft: false, wasRight: false, over: false, reset: true });
+const fresh = () => ({ lane: 1, x: 0, y: 0, vy: 0, t: 0, score: 0, coins: 0, spawns: 0, wasLeft: false, wasRight: false, over: false, reset: true });
 
 export default function Game() {
   const [screen, setScreen] = useState<Screen>("start");
@@ -200,9 +200,8 @@ export default function Game() {
               const speed = 14 + level * 16;
 
               // Steering: tap a side of the track or press left or right. Space or the action button jumps.
-              if (input.pointer.x !== g.lastPointer) {
+              if (input.pointer.pressed) {
                 g.lane = input.pointer.x < 0 ? Math.max(0, g.lane - 1) : Math.min(LANES.length - 1, g.lane + 1);
-                g.lastPointer = input.pointer.x;
               }
               if (input.left && !g.wasLeft) g.lane = Math.max(0, g.lane - 1);
               if (input.right && !g.wasRight) g.lane = Math.min(LANES.length - 1, g.lane + 1);

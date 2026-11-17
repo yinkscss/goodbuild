@@ -177,6 +177,8 @@ export default function Game() {
   const board = useLeaderboard();
   const game = useRef(fresh());
   const view = useRef<{ camera?: THREE.PerspectiveCamera }>({});
+  /** Where the guards, spikes and gems are, kept so a rebuilt scene (after the phone drops the drawing context) shows the same maze. */
+  const placed = useRef<{ guards: Guard[]; spikes: Spike[]; gems: Gem[] } | null>(null);
 
   const end = () => {
     const g = game.current;
@@ -242,16 +244,9 @@ export default function Game() {
             camera.position.set(0, 16, 8);
             camera.lookAt(0, 0, 0);
 
-            /** Lay out a fresh maze: walls, door, key, gems, spikes and guards. */
-            const layout = () => {
+            /** Show the maze as the game holds it: walls, door, key, gems, spikes, guards and the player. */
+            const draw = () => {
               const g = game.current;
-              const rand = seededRandom(dailySeed() + g.level * 104729 + 1);
-              g.wall = buildMaze(g.level);
-              g.x = 1;
-              g.z = 1;
-              player.position.copy(at(1, 1));
-              g.hasKey = false;
-              g.visited = new Set([g.z * SIZE + g.x]);
               let n = 0;
               for (let z = 0; z < SIZE; z++) {
                 for (let x = 0; x < SIZE; x++) {
@@ -263,7 +258,40 @@ export default function Game() {
               walls.count = n;
               walls.instanceMatrix.needsUpdate = true;
               door.position.copy(at(SIZE - 2, SIZE - 2)).setY(0.75);
-              (door.material as THREE.MeshLambertMaterial).color.set(COLOURS.door);
+              (door.material as THREE.MeshLambertMaterial).color.set(g.hasKey ? COLOURS.doorOpen : COLOURS.door);
+              key.visible = !g.hasKey;
+              key.position.copy(at(g.keyX, g.keyZ)).setY(0.8);
+              for (const gem of gems) {
+                gem.mesh.visible = gem.active;
+                gem.mesh.position.copy(at(gem.x, gem.z)).setY(0.5);
+              }
+              for (const s of spikes) {
+                s.mesh.visible = s.active;
+                s.mesh.position.copy(at(s.x, s.z));
+              }
+              for (const guard of guards) guard.mesh.visible = guard.active;
+              player.position.copy(at(g.x, g.z));
+            };
+
+            // The scene was rebuilt mid-game: carry the maze over instead of leaving it empty.
+            if (placed.current && game.current.wall.length && !game.current.build) {
+              const before = placed.current;
+              guards.forEach((guard, i) => Object.assign(guard, { ...before.guards[i], mesh: guard.mesh }));
+              spikes.forEach((s, i) => Object.assign(s, { ...before.spikes[i], mesh: s.mesh }));
+              gems.forEach((gem, i) => Object.assign(gem, { ...before.gems[i], mesh: gem.mesh }));
+              draw();
+            }
+            placed.current = { guards, spikes, gems };
+
+            /** Lay out a fresh maze: walls, door, key, gems, spikes and guards. */
+            const layout = () => {
+              const g = game.current;
+              const rand = seededRandom(dailySeed() + g.level * 104729 + 1);
+              g.wall = buildMaze(g.level);
+              g.x = 1;
+              g.z = 1;
+              g.hasKey = false;
+              g.visited = new Set([g.z * SIZE + g.x]);
 
               // Open cells by how far they are from the start, for placing things fairly.
               const far = new Map<number, number>([[1 * SIZE + 1, 0]]);
@@ -291,21 +319,15 @@ export default function Game() {
               const k = take(Math.floor(maxDistance * 0.5));
               g.keyX = k.x;
               g.keyZ = k.z;
-              key.visible = true;
-              key.position.copy(at(k.x, k.z)).setY(0.8);
               spawned("key");
               for (const gem of gems) {
                 const c = take(0);
                 Object.assign(gem, c, { active: true });
-                gem.mesh.visible = true;
-                gem.mesh.position.copy(at(c.x, c.z)).setY(0.5);
               }
               spawned("gem");
               spikes.forEach((s, i) => {
                 const c = take(3);
                 Object.assign(s, c, { active: true, phase: i * 0.8 });
-                s.mesh.visible = true;
-                s.mesh.position.copy(at(c.x, c.z));
               });
               spawned("spikes");
               // Guards walk the longest straight corridors, one more with each maze (up to three).
@@ -323,13 +345,13 @@ export default function Game() {
               runs.sort((a, b) => b.length - a.length);
               guards.forEach((guard, i) => {
                 guard.active = i < Math.min(runs.length, 1 + g.level);
-                guard.mesh.visible = guard.active;
                 if (!guard.active) return;
                 guard.cells = runs[i];
                 guard.at = 0;
                 guard.dir = 1;
               });
               if (guards.some((guard) => guard.active)) spawned("guard");
+              draw();
             };
 
             /** Lose a life: back to the start of this maze, with a moment to recover. */

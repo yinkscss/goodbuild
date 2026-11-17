@@ -919,6 +919,16 @@ describe("the 2D games kit", { timeout: 120_000 }, () => {
     expect(message).toMatch(/declareGame[\s\S]*spawned[\s\S]*probe/);
   });
 
+  it("doesn't ask a canvas puzzle with nothing that appears for spawned, and still asks an action game (D119)", () => {
+    const without = GAME.replace(/\s*spawned\("pipe"\);/, "");
+    expect(without).not.toMatch(/spawned\(/);
+    const puzzle = without.replace(/declareGame\(\{[^}]*\}\);/, 'declareGame({ style: "puzzle", controls: ["tap"] });');
+    expect(puzzle).toMatch(/style: "puzzle"/);
+    const asked = (src: string) => checkApp(project(src)).errors.map((e) => e.message).join(" ");
+    expect(asked(puzzle)).not.toMatch(/spawned\(kind\)/);
+    expect(asked(without)).toMatch(/spawned\(kind\)/);
+  });
+
   it.skipIf(!hasBrowser)("plays a game built from the blocks for real: rounds, Play again, and every kind it declared", async () => {
     const r = await runCheck(project(BLOCKS_GAME));
     expect(r.issues).toEqual([]);

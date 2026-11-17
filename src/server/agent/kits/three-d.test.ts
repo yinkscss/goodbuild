@@ -289,6 +289,15 @@ export default function App() {
     expect(r.issues.map((i) => i.message).join(" ")).toMatch(/never moved the player[\s\S]*x and z/);
   });
 
+  it("reports a 3D game that never shows its scene when the browser has WebGL, instead of saying there's no WebGL (D119)", async () => {
+    const hidden = GAME_3D.replace("        <Scene3D\n", "        {Boolean(0) && <Scene3D\n").replace("        />\n        <Hud3D", "        />}\n        <Hud3D");
+    expect(hidden).toMatch(/Boolean\(0\) && <Scene3D[\s\S]*\/>\}\n {8}<Hud3D/);
+    const r = await runCheck(game3d(hidden));
+    if (!r.ran || !hasWebGL) return;
+    expect(r.note).not.toMatch(/no WebGL/);
+    expect(r.issues.length).toBeGreaterThan(0);
+  });
+
   it("asks a 3D game with no probe calls for them (D113)", () => {
     const bare = GAME_3D.replace('import { declareGame, probe, spawned } from "./game/probe";\n', "")
       .replace(/declareGame\(\{[^}]*\}\);\n/, "")
@@ -308,9 +317,12 @@ export default function App() {
     for (const shot of (r.screenshots ?? []).filter((s) => s.shows)) expect(shot.png.length).toBeGreaterThan(8_000);
   });
 
-  it("comes back from a lost 3D context with a tap, instead of a black box (D113)", async () => {
+  it("holds the game still while the 3D context is lost, and comes back with a tap instead of a black box (D113, D119)", async () => {
     if (!hasWebGL) return;
-    const built = await buildPublishedApp({ files: project(), assets: [], title: "Viewer", hasUndeployedContracts: false, forCheck: true });
+    // The spinning cube, counting its frames.
+    const counting = PAGE.replace("cube.rotation.y += dt;", "cube.rotation.y += dt;\n            (window as unknown as { cubeFrames: number }).cubeFrames = ((window as unknown as { cubeFrames?: number }).cubeFrames ?? 0) + 1;");
+    expect(counting).not.toBe(PAGE);
+    const built = await buildPublishedApp({ files: project(counting), assets: [], title: "Viewer", hasUndeployedContracts: false, forCheck: true });
     const browser = await chromium.launch({ headless: true });
     try {
       const context = await browser.newContext({ viewport: { width: 400, height: 700 } });
@@ -330,6 +342,11 @@ export default function App() {
       });
       const reload = page.getByRole("button", { name: /tap to reload/i });
       await reload.waitFor({ timeout: 3_000 });
+      // Nothing plays on behind the message, so nothing can be hit or scored unseen.
+      const frames = () => page.evaluate(() => (window as unknown as { cubeFrames?: number }).cubeFrames ?? 0);
+      const lostAt = await frames();
+      await page.waitForTimeout(500);
+      expect(await frames()).toBe(lostAt);
       await reload.click();
       await page.waitForFunction(() => document.querySelectorAll("canvas[data-game-canvas]").length === 1 && !document.body.innerText.includes("Tap to reload"));
       const r = await page.evaluate(() => {
@@ -348,7 +365,7 @@ export default function App() {
     const changed = { ...project(), "src/three/Scene3D.tsx": first };
     expect(withKit(changed, threeD)["src/three/Scene3D.tsx"]).toBe(first);
     expect(Object.keys(threeD.superseded ?? {})).toEqual(["src/three/Scene3D.tsx"]);
-    // The first (D77) and the one that didn't report rounds or come back from a lost context (D113).
-    expect(threeD.superseded?.["src/three/Scene3D.tsx"]).toHaveLength(2);
+    // The first (D77), the one that didn't report rounds or come back from a lost context (D113), and the one that kept playing while lost (D119).
+    expect(threeD.superseded?.["src/three/Scene3D.tsx"]).toHaveLength(3);
   });
 });

@@ -254,10 +254,12 @@ export default function Game() {
                 g.target = input.pointer.x * 7;
                 g.lastPointer = input.pointer.x;
               }
-              if (input.left) g.target = g.x - 9 * dt * 4;
-              if (input.right) g.target = g.x + 9 * dt * 4;
+              // The arrows steer at a steady speed; a finger sets where the kart glides to.
+              const keys = (input.right ? 1 : 0) - (input.left ? 1 : 0);
+              if (keys) g.target = g.x + keys * 6 * dt;
               g.target = Math.max(-9, Math.min(9, g.target));
               const before = g.x;
+              if (keys) g.x = g.target;
               g.x += (g.target - g.x) * Math.min(1, dt * 5);
               g.distance += speed * dt;
               g.hurt = Math.max(0, g.hurt - dt);

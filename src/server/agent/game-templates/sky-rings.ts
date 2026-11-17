@@ -244,14 +244,15 @@ export default function Game() {
                 g.lastX = input.pointer.x;
                 g.lastY = input.pointer.y;
               }
-              if (input.left) g.tx = g.x - 8 * dt * 3;
-              if (input.right) g.tx = g.x + 8 * dt * 3;
-              if (input.up) g.ty = g.y + 8 * dt * 3;
-              if (input.down) g.ty = g.y - 8 * dt * 3;
+              // The arrows steer at a steady speed; a finger sets where the plane glides to.
+              const keyX = (input.right ? 1 : 0) - (input.left ? 1 : 0);
+              const keyY = (input.up ? 1 : 0) - (input.down ? 1 : 0);
+              if (keyX) g.tx = g.x + keyX * 5 * dt;
+              if (keyY) g.ty = g.y + keyY * 5 * dt;
               g.tx = Math.max(-REACH.x, Math.min(REACH.x, g.tx));
               g.ty = Math.max(REACH.low, Math.min(REACH.high, g.ty));
-              const dx = (g.tx - g.x) * Math.min(1, dt * 5);
-              const dy = (g.ty - g.y) * Math.min(1, dt * 5);
+              const dx = keyX ? g.tx - g.x : (g.tx - g.x) * Math.min(1, dt * 5);
+              const dy = keyY ? g.ty - g.y : (g.ty - g.y) * Math.min(1, dt * 5);
               g.x += dx;
               g.y += dy;
               g.hurt = Math.max(0, g.hurt - dt);

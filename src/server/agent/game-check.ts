@@ -181,7 +181,8 @@ async function fidget(page: Page, controls: GameControl[] = ["sides", "keys"]): 
     const from = at(rnd(0.2, 0.8), rnd(0.25, 0.8));
     const swipe = control === "swipe";
     const reach = Math.min(box.width, box.height) * (swipe ? 0.18 : rnd(0.2, 0.45));
-    const angle = swipe ? (Math.floor(Math.random() * 4) * Math.PI) / 2 : Math.random() < 0.5 ? 0 : Math.PI;
+    // Any of the four ways: a puzzle may drag tiles between rows as well as along them.
+    const angle = (Math.floor(Math.random() * 4) * Math.PI) / 2;
     if (!(await free(from))) return;
     await page.mouse.move(from.x, from.y).catch(() => undefined);
     await page.mouse.down().catch(() => undefined);
@@ -193,7 +194,8 @@ async function fidget(page: Page, controls: GameControl[] = ["sides", "keys"]): 
 /** Press one of the buttons the game shows as moves (answers, tiles, cards), inside its play area when it marks one. */
 async function pressAMove(page: Page): Promise<void> {
   const area = page.locator("[data-game-area]").first();
-  const scope = (await area.count().catch(() => 0)) > 0 ? area : page.locator("body");
+  const inArea = (await area.count().catch(() => 0)) > 0;
+  const scope = inArea ? area : page.locator("body");
   const names = await scope
     .getByRole("button")
     .evaluateAll((els) =>
@@ -205,7 +207,9 @@ async function pressAMove(page: Page): Promise<void> {
       }),
     )
     .catch(() => [] as { i: number; name: string; ok: boolean }[]);
-  const moves = names.filter((n) => n.ok && !NOT_A_MOVE.test(n.name) && !PLAY_AGAIN.test(n.name));
+  // Inside the game's own area every button is the game's (an answer may well be "Home" or "Sound"); only
+  // without one are the page's own controls (menu, wallet, mute) left alone.
+  const moves = names.filter((n) => n.ok && (inArea || !NOT_A_MOVE.test(n.name)) && !PLAY_AGAIN.test(n.name));
   if (!moves.length) return;
   const pick = moves[Math.floor(Math.random() * moves.length)];
   await scope.getByRole("button").nth(pick.i).click({ timeout: 800 }).catch(() => undefined);
@@ -302,8 +306,8 @@ async function liveAt(page: Page): Promise<{ x: number; y: number; round: number
   return r.at;
 }
 
-/** After a game over, press Play again and wait for the new round. */
-async function playAgain(page: Page): Promise<boolean> {
+/** After a game over, press Play again and wait for the new round. Exported for the slow-phone test. */
+export async function playAgain(page: Page): Promise<boolean> {
   const before = (await probeReport(page))?.rounds.length ?? 0;
   const again = page.getByRole("button", { name: PLAY_AGAIN }).first();
   await again.waitFor({ state: "visible", timeout: 1_500 }).catch(() => undefined);
@@ -321,14 +325,17 @@ async function playAgain(page: Page): Promise<boolean> {
  * Do the game's controls move the player, in a game that also moves the player by itself (D118)?
  * Leaves the player alone for a moment; if they drift (a bending road, gravity), holds one input and
  * then the opposite, in turn, and passes how far they moved each time to judgeControls. Only for a
- * game that declares hold or keys: a tap or a swipe is one step, which a wall can block.
+ * game that declares hold, or keys with sideways steering (sides or drag): a tap or a swipe is one step,
+ * which a wall can block, and keys alone may mean only Space (a runner that jumps), so the arrows doing
+ * nothing proves nothing. A game that declares nothing isn't judged either.
  */
 export async function checkControls(page: Page): Promise<{ issues: string[]; note?: string }> {
   const report = await probeReport(page);
   if (styleOf(report) !== "action" || !report?.at) return { issues: [] };
-  const controls = report.declared?.controls ?? ["sides", "keys"];
+  const controls = report.declared?.controls ?? [];
   const hold = controls.includes("hold");
-  if (!hold && !controls.includes("keys")) return { issues: [] };
+  const sideways = controls.includes("keys") && (controls.includes("sides") || controls.includes("drag"));
+  if (!hold && !sideways) return { issues: [] };
   const area = await playArea(page);
 
   const press = async (which: "a" | "b") => {
@@ -571,9 +578,9 @@ export async function walletAndBoard(page: Page, options: { board: boolean }): P
   // A bot playing at random can lose a round with nothing scored (a quiz answered wrong three times: about
   // 4 in 10 rounds), so it gets up to six rounds, within 12 seconds, to score something worth posting.
   // A puzzle ends when its moves run out, not when the bot crashes: a round of 20 moves takes it about
-  // 8 seconds, so a game with no rush gets longer (D117).
+  // 8 seconds, so a game with no rush gets longer (D117). A long round may use the whole time: stopping it
+  // early only made a slow checker report that no round ended (D119).
   const calm = styleOf(await probeReport(page)) !== "action";
-  const perRound = calm ? 10_000 : 6_000;
   let score = 0;
   const until = Date.now() + (calm ? 16_000 : 12_000);
   for (let attempt = 0; attempt < 6 && score <= 0 && Date.now() < until; attempt++) {
@@ -583,7 +590,7 @@ export async function walletAndBoard(page: Page, options: { board: boolean }): P
       await again.click({ timeout: 1_000 }).catch(() => undefined);
       await page.waitForTimeout(200);
     }
-    if (!(await playUntilOver(page, Math.max(1_500, Math.min(perRound, until - Date.now()))))) return { issues, note: [...notes, "no round ended, so no score was posted"].join(", ") };
+    if (!(await playUntilOver(page, Math.max(1_500, until - Date.now())))) return { issues, note: [...notes, "no round ended, so no score was posted"].join(", ") };
     score = (await probeReport(page))?.rounds.at(-1)?.scoreMax ?? 0;
   }
   if (score <= 0) return { issues, note: [...notes, "the rounds scored 0, so no score was posted"].join(", ") };

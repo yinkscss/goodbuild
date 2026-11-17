@@ -245,10 +245,12 @@ export default function Game() {
     const fall = (170 + level * 260) * pace;
 
     // Moving: drag along the bottom, tap where to go, or hold left or right.
+    // The arrows move the basket at a steady speed; a finger sets where it glides to.
+    const keys = (input.right ? 1 : 0) - (input.left ? 1 : 0);
     if (input.pointer.down) g.target = input.pointer.x;
-    if (input.left) g.target = g.x - 420 * dt;
-    if (input.right) g.target = g.x + 420 * dt;
+    if (keys) g.target = g.x + keys * 360 * dt;
     g.target = Math.max(BASKET_W / 2, Math.min(width - BASKET_W / 2, g.target));
+    if (keys) g.x = g.target;
     g.x += (g.target - g.x) * Math.min(1, dt * 14);
     g.hurt = Math.max(0, g.hurt - dt);
 

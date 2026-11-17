@@ -4,6 +4,7 @@ import { afterAll, describe, expect, it } from "vitest";
 
 import { checkApp, checkContracts } from "../checks";
 import { kitById, kitIdsOf, withKit } from "../kits/index";
+import { playAgain } from "../game-check";
 import { closeRunCheckBrowser, runCheck } from "../run-check";
 import { PLATFORM_DIR, contractModule, contractsIndex, starterFiles } from "../template";
 import { typeCheck } from "../type-check";
@@ -97,6 +98,10 @@ describe("game templates (D114)", { timeout: 180_000 }, () => {
       phone: { cpuSlowdown: 4 },
       initScript: "(() => { const d = []; let last = 0; const f = (t) => { if (last) d.push(t - last); last = t; requestAnimationFrame(f); }; requestAnimationFrame(f); window.__frameTimes = d; })();",
       afterPlay: async (page) => {
+        // Measure a round being played, not the game-over screen: start one if the last has ended.
+        const playing = () => page.evaluate(() => (window as unknown as { __gbGame?: { rounds: { end?: number }[] } }).__gbGame?.rounds.at(-1)?.end === undefined);
+        if (!(await playing()) && !(await playAgain(page))) return;
+        if (!(await playing())) return;
         await page.evaluate(() => { (window as unknown as { __frameTimes: number[] }).__frameTimes.length = 0; });
         await page.waitForTimeout(1_500);
         p95 = await page.evaluate(() => { const d = [...(window as unknown as { __frameTimes: number[] }).__frameTimes].sort((a, b) => a - b); return d[Math.floor(d.length * 0.95)] ?? Infinity; });
@@ -136,12 +141,12 @@ describe("game templates (D114)", { timeout: 180_000 }, () => {
   });
 
   it.skipIf(!hasBrowser)("Catch and dodge: a copy whose basket never follows the player is caught", async () => {
-    const stuck = await runCheck(built("catch-dodge", edit("src/play/Game.tsx", "g.x += (g.target - g.x) * Math.min(1, dt * 14);", "")));
+    const stuck = await runCheck(built("catch-dodge", (f) => edit("src/play/Game.tsx", "    if (keys) g.x = g.target;\n", "")(edit("src/play/Game.tsx", "g.x += (g.target - g.x) * Math.min(1, dt * 14);", "")(f))));
     expect(stuck.issues.map((i) => i.message).join(" ")).toMatch(/never moved the player/);
   });
 
   it.skipIf(!hasBrowser)("Brick breaker: a copy whose paddle never follows the player is caught", async () => {
-    const stuck = await runCheck(built("brick-breaker", edit("src/play/Game.tsx", "g.x += (g.target - g.x) * Math.min(1, dt * 16);", "")));
+    const stuck = await runCheck(built("brick-breaker", (f) => edit("src/play/Game.tsx", "    if (keys) g.x = g.target;\n", "")(edit("src/play/Game.tsx", "g.x += (g.target - g.x) * Math.min(1, dt * 16);", "")(f))));
     expect(stuck.issues.map((i) => i.message).join(" ")).toMatch(/never moved the player/);
   });
 
@@ -157,6 +162,9 @@ describe("game templates (D114)", { timeout: 180_000 }, () => {
   it.skipIf(!hasBrowser)("Cave flyer: with a probe that doesn't say where the player is (one from before D118), the controls aren't judged", async () => {
     const old = (files: Record<string, string>) => edit("src/game/probe.ts", "  c.at = { x, y, round: c.rounds.length };\n", "")(files);
     const dead = await runCheck(built("cave-flyer", (f) => old(edit("src/play/Game.tsx", "g.vy += (climbing ? -1500 : 900) * dt;", "g.vy += 900 * dt;")(f))));
+    // It must have run: a check that didn't run has no issues either.
+    expect(dead.ran).toBe(true);
+    expect(dead.note).toMatch(/played \d+ rounds?/);
     expect(dead.issues).toEqual([]);
   });
 

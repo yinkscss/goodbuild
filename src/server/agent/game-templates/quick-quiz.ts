@@ -155,7 +155,8 @@ export default function Game() {
   }, [screen, picked, at]);
 
   const takeHint = () => {
-    if (hints <= 0 || picked !== null) return;
+    // One hint per question: a second would hide the same two answers again.
+    if (hints <= 0 || picked !== null || hidden.length > 0) return;
     // Take away two wrong answers.
     const wrong = question.answers.map((_, i) => i).filter((i) => i !== question.right);
     setHidden(wrong.slice(0, 2));
@@ -224,7 +225,7 @@ export default function Game() {
                 );
               })}
             </div>
-            <button type="button" onClick={takeHint} disabled={hints <= 0 || picked !== null} className="text-sm underline disabled:opacity-40">
+            <button type="button" onClick={takeHint} disabled={hints <= 0 || picked !== null || hidden.length > 0} className="text-sm underline disabled:opacity-40">
               Use a hint ({hints})
             </button>
           </div>

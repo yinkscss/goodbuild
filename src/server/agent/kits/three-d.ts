@@ -31,9 +31,10 @@ export interface SceneInput {
   /**
    * The finger or mouse on the scene. x and y run from -1 to 1 with y up, which is what
    * THREE.Raycaster.setFromCamera takes. dx and dy are how far it moved since the last frame,
-   * in the same units: use them to steer by dragging.
+   * in the same units: use them to steer by dragging. pressed is true for one frame when a press starts,
+   * even a tap too quick for a frame to see it down: use it for "tap a side to move".
    */
-  pointer: { x: number; y: number; dx: number; dy: number; down: boolean };
+  pointer: { x: number; y: number; dx: number; dy: number; down: boolean; pressed: boolean };
 }
 
 export interface SceneContext {
@@ -154,7 +155,9 @@ export function Scene3D({
   // A cheap phone can drop the 3D context (another app needed the memory). Each new generation builds the scene again.
   const [lost, setLost] = useState(false);
   const [generation, setGeneration] = useState(0);
-  const input = useRef<SceneInput>({ left: false, right: false, up: false, down: false, action: false, actionPressed: false, pointer: { x: 0, y: 0, dx: 0, dy: 0, down: false } });
+  const input = useRef<SceneInput>({ left: false, right: false, up: false, down: false, action: false, actionPressed: false, pointer: { x: 0, y: 0, dx: 0, dy: 0, down: false, pressed: false } });
+  /** The drawing context is lost: the game holds still behind the message until the scene is rebuilt. */
+  const lostNow = useRef(false);
   const held = useRef({ key: false, button: false });
 
   const setAction = () => {
@@ -200,9 +203,11 @@ export function Scene3D({
     canvas.setAttribute("data-game-canvas", "3d");
     const contextLost = (e: Event) => {
       e.preventDefault(); // lets the browser give the context back
+      lostNow.current = true;
       setLost(true);
     };
     const contextBack = () => {
+      lostNow.current = false;
       setLost(false);
       setGeneration((g) => g + 1);
     };
@@ -249,6 +254,7 @@ export function Scene3D({
       state.pointer.down = false;
       place(e);
       state.pointer.down = true;
+      state.pointer.pressed = true;
     };
     const pointerUp = () => {
       state.pointer.down = false;
@@ -284,7 +290,8 @@ export function Scene3D({
     const loop = () => {
       raf = requestAnimationFrame(loop);
       const dt = Math.min(clock.getDelta(), 0.1);
-      if (document.visibilityState !== "visible") return;
+      // Hidden, or the drawing context is gone: nothing moves, so no hit or score happens unseen.
+      if (document.visibilityState !== "visible" || lostNow.current) return;
       orbiting?.update();
       if (!pausedRef.current) {
         // One step per frame. While GoodBuild checks the game it runs a few, so a short check covers a long round.
@@ -299,7 +306,9 @@ export function Scene3D({
           }
           frame?.(dt, time);
           if (check) check.inFrame = false;
-          state.actionPressed = false;
+          // A press and a drag happen once, however many steps a frame runs while GoodBuild checks the game.
+          state.actionPressed = state.pointer.pressed = false;
+          state.pointer.dx = state.pointer.dy = 0;
         }
         state.pointer.dx = state.pointer.dy = 0;
       } else idle.current?.(dt, time);
@@ -478,7 +487,7 @@ const GUIDE = `3D scenes and games, on three.js. The kit's file is src/three/Sce
 - Import three as \`import * as THREE from "three"\`. Helpers come from "three/examples/jsm/..." (OrbitControls is already in Scene3D). Nothing else is installed: no physics engine.
 - Files: only the ones the person uploaded (listed in the context under Uploaded assets). A 3D model is a .glb: load it with GLTFLoader from "three/examples/jsm/loaders/GLTFLoader.js", with the path assets.<key>.src or a literal "/assets/<name>.glb", inside onReady, and add gltf.scene when it arrives (show the scene's lights and a short "Loading" message until then; keep the camera sensible for a model of unknown size by fitting it: compute a Box3, centre it, and set the camera distance from its size). An uploaded image can be a texture with TextureLoader and the same kind of path. Never load from a web address: the page can't reach other sites. No FBX, OBJ or Draco. If the person wants a model they haven't uploaded, build a stand-in from three.js shapes and say they can upload a .glb to replace it. Textures can also be made on a canvas (CanvasTexture).
 - Phones first. Keep the scene to about 100,000 triangles. Use InstancedMesh for many copies of one thing (coins, trees, stars). Prefer MeshStandardMaterial or MeshLambertMaterial with one or two lights; no real-time shadows unless the person asked, and then one light with a 1024 map. Never create objects inside the frame function: make them once in onReady and change their position, rotation and scale. Multiply speeds by dt.
-- Input comes from Scene3D: onReady's context has input, the same shape as the 2D kit's. input.left/right/up/down are held (arrow keys, WASD, or the on-screen buttons from controls={["left","right","action"]}); input.action is held and input.actionPressed is true for one frame (jump, shoot); input.pointer is the finger or mouse, x and y from -1 to 1 (to find what was tapped: raycaster.setFromCamera(new THREE.Vector2(input.pointer.x, input.pointer.y), camera)), with dx and dy for steering by dragging and down while it is pressed. Read input inside the frame function. Never add your own keydown or pointer listeners to window: they outlive the scene and fire twice. For anything else you start yourself (a timer, a listener), hand its undo to onCleanup(() => ...).
+- Input comes from Scene3D: onReady's context has input, the same shape as the 2D kit's. input.left/right/up/down are held (arrow keys, WASD, or the on-screen buttons from controls={["left","right","action"]}); input.action is held and input.actionPressed is true for one frame (jump, shoot); input.pointer is the finger or mouse, x and y from -1 to 1 (to find what was tapped: raycaster.setFromCamera(new THREE.Vector2(input.pointer.x, input.pointer.y), camera)), with dx and dy for steering by dragging, down while it is pressed, and pressed for one frame when a press starts (use it for "tap a side": a quick tap may never be seen down). Read input inside the frame function. Never add your own keydown or pointer listeners to window: they outlive the scene and fire twice. For anything else you start yourself (a timer, a listener), hand its undo to onCleanup(() => ...).
 - Games: keep the game's state in a plain object in a useRef, never in React state that changes every frame. React state is only for the screen (start, playing, over) and for numbers shown outside the canvas, set when they change. Every game must be playable by touch: pass controls for on-screen buttons, or pass touch and steer with input.pointer (touch stops the page scrolling under the finger). Pass paused while the start or game-over screen is up: the scene is still drawn but holds still, time stops, and the keyboard goes back to the page so Enter presses Play. Pass onIdleFrame={(dt) => ...} to give the start screen life (the camera drifting round the parked car); it never moves the game on. Add a Start button and a visible score or goal.
 - A 3D game also has the games kit (src/game/; if it isn't on, call add_kit("game-2d")): follow its guide for everything except the screen. Scene3D is the screen instead of GameCanvas, so ignore GameCanvas, onFrame, drawHud, Sprite and juice's particles (those draw on a 2D canvas). Everything else works the same: the probe (declareGame once with style and controls, spawned(kind), and probe(score, player.position.x, player.position.z, speed) once per frame in the frame function), the building blocks (Pool, Spawner, difficulty, lanes, the NPC behaviours and Effects all work on plain numbers: use x and z for the ground), sound, haptics, storage, extras, the leaderboard with PostScore, GameOver and the shop. Spawn in the frame function, never on a timer.
 - The score panel for a 3D game is Hud3D (src/three/Hud3D.tsx), over the scene: wrap Scene3D in <div className="relative"> and add <Hud3D read={() => ({ score: g.current.score, best, lives: g.current.lives, effects: running })} />. It reads the game every frame without re-rendering React. GameOver from src/game/GameOver.tsx goes inside the same box.
@@ -514,7 +523,9 @@ export const threeD: Kit = {
   files: { "src/three/Scene3D.tsx": SCENE_3D, "src/three/Hud3D.tsx": HUD_3D },
   // The first Scene3D (D77) had no input, no pause and no cleanup hook (D85). Today's takes the same props.
   // ...and the second (D85) didn't report rounds to GoodBuild's game check or come back from a lost 3D context (D113).
-  superseded: { "src/three/Scene3D.tsx": ["aac2febe6c91591ff6e969dea761f67ca6717d1c880fb7a275caf5da9f004f23", "6ff2675bd05b922c178aecc53ec22f506d0c6de05eb2fb135c5acb0f7d7fc2ea"] },
+  superseded: { "src/three/Scene3D.tsx": ["aac2febe6c91591ff6e969dea761f67ca6717d1c880fb7a275caf5da9f004f23", "6ff2675bd05b922c178aecc53ec22f506d0c6de05eb2fb135c5acb0f7d7fc2ea",
+    // ...and the third kept playing behind the lost-context message, and applied a drag once per step while checked (D119).
+    "5db5fdea3ed78ad8ece6778bc1cd2d0a2fa4548fc63728b45392468c72900fab"] },
   guide: GUIDE,
   preview: "own",
   checks: threeDChecks,

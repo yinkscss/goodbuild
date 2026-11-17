@@ -1447,3 +1447,31 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
   - A real phone. Headless Chrome draws 3D in software, and slowing the CPU doesn't slow a graphics chip, so the 3D frame times say nothing about a cheap phone's GPU.
   - A real model picking and reshaping each template (the evals need the owner's provider keys, D70).
   - Whether the production checker has WebGL (D116).
+
+### D119. Fixes from the PR #112 code review
+
+- **Decided by:** the owner turned on Auto-fix for PR #112 (17 Nov 2026); the fixes answer CodeRabbit's review. Design by Claude.
+- **The 3D kit (`Scene3D`, superseded so untouched copies update):**
+  - It now holds the game still while the phone has taken the drawing context away. Before, the game kept playing behind the "Tap to reload" message, so a player could be hit or scored unseen. Tested by counting frames while the context is lost: 31 frames ran before the fix and none after.
+  - A drag is applied once per screen frame. It used to be applied once per step when the check speeds a game up, which multiplied it.
+  - `pointer.pressed` is true for one frame when a press starts. Taps too quick for a frame to see them held are no longer missed.
+- **Templates:**
+  - Lane runner (3D) steers when a press starts. Before, it steered when the pointer moved, so two taps on the same side counted once.
+  - Catch and dodge, Brick breaker, Kart track and Sky rings move at a steady speed with the keys, whatever the frame rate.
+  - Lane racer no longer gives a near-miss for a car that a shield or boost has destroyed.
+  - In Quick quiz, a hint can't be taken twice on the same question.
+  - Maze escape keeps its maze, key, gems, spikes and guards when the scene is rebuilt after a lost context. Before, it showed an empty maze. Not run on a phone; the draw step is shared with a new maze, which the run check plays.
+- **The run check:**
+  - It presses buttons inside the game area even when their names look like menu buttons.
+  - Drags and swipes now go up and down as well as sideways.
+  - A 3D game counts as having a blank start only when it has a scene.
+  - The "playing" screenshot is taken for games drawn without a canvas too.
+  - The 3D game is skipped as "no WebGL" only when the browser really has none. With WebGL, a game that never shows its scene is played and reported. Tested: before the fix, such a game was waved through as "no WebGL".
+  - The controls check (D118) tests the arrow keys only in a game that also declares sideways steering ("sides" or "drag"). "keys" alone may mean only Space, as in a runner that jumps, so arrows that do nothing prove nothing there. A game that declares no controls isn't judged.
+  - When posting a score to the board, a round that is still running can use the whole time the check allows (12 seconds, or 16 for calm games). Before, each round was stopped after 6 seconds (10 for calm games). On GitHub's slower test machine, Brick breaker and the 3D runner then reported "no round ended" and posted nothing.
+- **The games kit:** a canvas puzzle or turns game isn't asked to call `spawned()`, since it may have nothing that appears. Action games still are. Tested both ways.
+- **Tests made stricter:**
+  - The slow-phone test measures frames only during a live round, starting one with Play again if needed.
+  - The test for an older probe must have actually run.
+- **Checked:** the kit, template and games-kit tests pass (92). The full suite gives the same two failures as on main (D114).
+- **Still open:** Kart track with dead steering (Q46, D118).
