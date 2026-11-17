@@ -64,7 +64,7 @@ Two options. Proposed: **B, with a preflight reserve**. Q20. Claude's input: _TB
 - **Overdraft:** allowed only up to the reservation. Any small negative balance from estimation error is absorbed (written off as `adjust`).
 
 ## 5. Free tier and GoodID bonus (optional)
-- **Now decided:** D28 ($0.20 per account), D29 (total budget) and D30 ($0.50 more once per verified person) in [DECISIONS.md](DECISIONS.md) replace the proposal below.
+- **Now decided (Season 5):** D112 in [DECISIONS.md](DECISIONS.md): no free credits without GoodDollar verification, 100 credits once per verified person, and +10 daily refills (1 a day, 3 a week, 5 a month). It supersedes D28 and D30 and makes D29's budget monthly. The text below is history.
 - Proposed: the **free tier** gives $0.50 of credits once per GoodID root, and only to GoodID-verified users (`getWhitelistedRoot` on Celo GoodID `0xC361…2F42`, per [antseed-integration wrangler.toml](https://github.com/GoodDollar/antseed-integration/blob/e8c46a8/backend/wrangler.toml)). This stops sybil farming.
 - Optional deposit bonus for verified users, for example +10% with a monthly cap per root. This mirrors GoodDollar's model, but the amounts are ours. Claude's input: _TBD_
 
