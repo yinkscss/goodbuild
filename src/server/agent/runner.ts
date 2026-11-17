@@ -4,6 +4,7 @@ import { and, asc, eq } from "drizzle-orm";
 
 import { isTestFile } from "@/lib/deploy/test-file";
 import { templateBriefFor } from "@/config/page-template-data";
+import { gameTemplateById, withGameTemplate } from "./game-templates";
 import type { Db } from "@/server/db/client";
 import { messages, projects } from "@/server/db/schema";
 import { checkApp, checkContracts, formatIssues, mentionsGd, mentionsNativeCelo, type CheckIssue, type CheckReport, type ContractCheckOptions } from "./checks";
@@ -887,10 +888,20 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     const shopKit = kitById("game-shop");
     if (input.mode === "build" && shopKit && willHave("game-2d") && !willHave("game-shop") && SHOP_WORDS.test(kitWords)) newKits.push(shopKit);
     // A gallery template is a designed page (D60): it gets the motion kit (D84) whatever its words say.
+    // A game template (D114): on the first build, the plan's pick brings a working game and the kits it needs.
+    const gameTemplate = input.mode === "build" && firstBuild ? gameTemplateById(brief.gameTemplate) : undefined;
+    for (const id of gameTemplate?.kits ?? []) {
+      const kit = kitById(id);
+      if (kit && !willHave(id)) newKits.push(kit);
+    }
     const motionKit = kitById("motion");
     if (input.mode === "build" && firstBuild && motionKit && templateBriefFor(project.templateId) && !newKits.includes(motionKit)) newKits.push(motionKit);
     for (const kit of newKits) files = withKit(files, kit);
     if (newKits.length) log(`kits: turned on ${newKits.map((k) => k.id).join(", ")} for this request`);
+    if (gameTemplate) {
+      files = withGameTemplate(files, gameTemplate);
+      log(`game template: started from ${gameTemplate.id}`);
+    }
     const kitsOn = kitsOf(files);
     const kitsBlock = kitsOn.length
       ? [
@@ -944,7 +955,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       assets: assetManifest(assets),
       memory: memoryBlock(memory),
       deployments: [upgradeable ? upgradeableRules(await liveStorage(db, project)) : "", deploymentsBlock(await loadDeployedAddresses(db, input.projectId), { upgradeable })].filter(Boolean).join("\n\n"),
-      plan: [brief.text, firstBuild ? templateBriefFor(project.templateId) : "", kitsBlock].filter(Boolean).join("\n\n"),
+      plan: [brief.text, firstBuild ? templateBriefFor(project.templateId) : "", gameTemplate?.brief ?? "", kitsBlock].filter(Boolean).join("\n\n"),
       targetChain: project.chainId === 42220 ? "Celo Mainnet (42220)" : project.chainId === 11142220 ? "Celo Sepolia (11142220)" : `Unsupported chain ${project.chainId}`,
     });
     log(`context: ${ctx.picks.length} of ${Object.keys(files).length} files in full (${ctx.picks.map((p) => p.path.split("/").pop()).join(", ")})`);

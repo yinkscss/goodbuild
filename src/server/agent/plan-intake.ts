@@ -1,3 +1,4 @@
+import { GAME_TEMPLATES, gameTemplateById, gameTemplateCatalog } from "./game-templates";
 import { game2d } from "./kits/game-2d";
 import { answerText } from "@/lib/plan";
 import { PALETTES, paletteById } from "@/lib/palettes";
@@ -153,6 +154,11 @@ const GAME_BRIEF_FIELD = {
     lose: { type: "string", description: "How a round ends." },
     harder: { type: "string", description: "How it gets harder as you go." },
     extras: { type: "array", items: { type: "string" }, description: "Two or three small extras that make people play again, fitted to this game: near-miss bonus, combo multiplier, daily missions, a ghost of your best run, coins to unlock things by playing." },
+    template: {
+      type: "string",
+      enum: [...GAME_TEMPLATES.map((t) => t.id), "none"],
+      description: `The working GoodBuild game to start from, when one fits how this game is played (the builder reshapes its look, name and contents to the plan), else "none":\n${gameTemplateCatalog()}`,
+    },
   },
   required: ["name", "pitch", "loop", "lose", "harder"],
 };
@@ -346,6 +352,12 @@ function parseGameBrief(raw: unknown): GameBrief | undefined {
     harder: clean(b.harder, 120),
     extras: (Array.isArray(b.extras) ? b.extras : []).map((e) => clean(e, 100)).filter(Boolean).slice(0, 3),
   };
+  // Only a template GoodBuild has: an id the model made up is dropped, and the build starts from scratch.
+  const template = gameTemplateById(typeof b.template === "string" ? b.template : undefined);
+  if (template) {
+    brief.template = template.id;
+    brief.templateName = template.name;
+  }
   return brief.name && brief.pitch ? brief : undefined;
 }
 
@@ -441,6 +453,8 @@ export interface PlanBrief {
   miniPay?: boolean;
   /** A game with a leaderboard (D93): with MiniPay, the leaderboard contract kit goes on too. */
   leaderboard?: boolean;
+  /** The game template the first build starts from (D114). */
+  gameTemplate?: string;
 }
 
 /**
@@ -492,5 +506,6 @@ export function planBrief(intake: PlanIntake | null, firstBuild: boolean): PlanB
     ...(customColours ? { customColours } : {}),
     ...(miniPay ? { miniPay } : {}),
     ...(leaderboard ? { leaderboard } : {}),
+    ...(intake.game?.template ? { gameTemplate: intake.game.template } : {}),
   };
 }

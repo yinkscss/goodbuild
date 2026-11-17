@@ -410,10 +410,20 @@ export async function walletAndBoard(page: Page, options: { board: boolean }): P
   if (!options.board) return { issues, note: notes.join(", ") };
 
   if (!(await pressPlay(page))) return { issues, note: notes.join(", ") };
-  if (!(await playUntilOver(page, 6_000))) return { issues, note: [...notes, "no round ended, so no score was posted"].join(", ") };
-  const report = await probeReport(page);
-  const score = report?.rounds.at(-1)?.scoreMax ?? 0;
-  if (score <= 0) return { issues, note: [...notes, "the round scored 0, so no score was posted"].join(", ") };
+  // A bot playing at random can lose a round with nothing scored (a quiz answered wrong three times), so it
+  // gets up to three rounds to score something worth posting.
+  let score = 0;
+  for (let attempt = 0; attempt < 3 && score <= 0; attempt++) {
+    if (attempt > 0) {
+      const again = page.getByRole("button", { name: PLAY_AGAIN }).first();
+      if (!(await again.isVisible().catch(() => false))) break;
+      await again.click({ timeout: 1_000 }).catch(() => undefined);
+      await page.waitForTimeout(200);
+    }
+    if (!(await playUntilOver(page, 6_000))) return { issues, note: [...notes, "no round ended, so no score was posted"].join(", ") };
+    score = (await probeReport(page))?.rounds.at(-1)?.scoreMax ?? 0;
+  }
+  if (score <= 0) return { issues, note: [...notes, "the rounds scored 0, so no score was posted"].join(", ") };
   const name = page.locator("#board-name");
   if (!(await name.isVisible({ timeout: 1_500 }).catch(() => false))) {
     await page.waitForTimeout(800);

@@ -209,6 +209,7 @@ function GameIdea({ intake }: { intake: PlanIntake }) {
     <div className="mb-3 rounded-block bg-surface p-3">
       <p className="text-sm font-semibold">{game.name}</p>
       <p className="mt-0.5 text-sm text-grey-600">{game.pitch}</p>
+      {game.templateName && <p className="mt-1 text-xs text-grey-600">Starts from a ready-made {game.templateName.toLowerCase()} we reshape for you.</p>}
       <dl className="mt-2 grid gap-1 text-xs text-grey-600">
         <div className="flex gap-2">
           <dt className="w-20 shrink-0 font-medium text-ink">You</dt>

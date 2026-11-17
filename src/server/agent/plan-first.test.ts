@@ -528,6 +528,18 @@ describe("a game's plan (D93)", () => {
     expect(planBrief(parsed, true).text).toMatch(/"Neon Drift"[\s\S]*Loop: dodge, collect, boost[\s\S]*near-miss bonus/);
   });
 
+  it("keeps a template GoodBuild has, drops one the model made up, and carries it to the build (D114)", () => {
+    const brief = { name: "Night Lanes", pitch: "Weave through traffic.", loop: "dodge", lose: "you crash", harder: "faster", extras: [] };
+    const picked = parseIntake(args([card("How do you steer?", ["Tap", "Tilt"])], { game_brief: { ...brief, template: "lane-racer" } }), racer)!;
+    expect(picked.game).toMatchObject({ template: "lane-racer", templateName: "Lane racer" });
+    expect(planBrief(picked, true).gameTemplate).toBe("lane-racer");
+    const madeUp = parseIntake(args([card("How do you steer?", ["Tap", "Tilt"])], { game_brief: { ...brief, template: "kart-world-9000" } }), racer)!;
+    expect(madeUp.game?.template).toBeUndefined();
+    expect(planBrief(madeUp, true).gameTemplate).toBeUndefined();
+    const none = parseIntake(args([card("How do you steer?", ["Tap", "Tilt"])], { game_brief: { ...brief, template: "none" } }), racer)!;
+    expect(none.game?.template).toBeUndefined();
+  });
+
   it("sends the game rules and the brief field only with a game's request", () => {
     expect(intakeContext(racer, [])).toContain(GAME_RULES);
     expect(intakeContext("A tip jar for my club", [])).not.toContain(GAME_RULES);

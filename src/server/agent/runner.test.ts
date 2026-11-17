@@ -805,6 +805,23 @@ describe("kits in a turn (D71)", { timeout: 120_000 }, () => {
     expect(JSON.parse(viewer["src/goodbuild.json"]).kits).toEqual(["three-d"]);
   });
 
+  it("starts a game's first build from the template the plan picked, with its kits and the board's rule (D114)", async () => {
+    const request = "A racing game where you dodge traffic";
+    await db.update(messages).set({ content: request, status: "done" }).where(eq(messages.id, queuedId));
+    const intake = { ...fallbackIntake(request), game: { name: "Night Lanes", pitch: "Weave through night traffic.", loop: "dodge, pass close", lose: "you crash", harder: "faster traffic", extras: [], template: "lane-racer", templateName: "Lane racer" } };
+    await db.insert(messages).values({ projectId, role: "assistant", content: "A few questions.", status: "done", meta: { intake } });
+    const [start] = await db.insert(messages).values({ projectId, role: "user", content: "Start building", status: "queued", meta: { mode: "build" } }).returning({ id: messages.id });
+    const { client, requests } = scriptedModel([{ text: "Built it." }]);
+    const events: Array<{ type: string; line?: string }> = [];
+    await runTurn({ db, model: client }, { projectId, userId, mode: "build", userMessageId: start.id }, (e) => events.push(e as { type: string; line?: string }));
+    const files = await loadFiles(db, projectId);
+    expect(files["src/play/Game.tsx"]).toContain('declareGame({ style: "action"');
+    expect(JSON.parse(files["src/goodbuild.json"]).kits).toContain("game-2d");
+    expect(JSON.parse(files["src/lib/dataRules.json"]).collections.scores).toBeTruthy();
+    expect(events.some((e) => e.type === "log" && e.line === "game template: started from lane-racer")).toBe(true);
+    expect(JSON.stringify(requests[0].messages)).toContain("Lane racer template");
+  });
+
   it("leaves the contract off for a MiniPay game that says it wants no leaderboard, even naming an onchain one", async () => {
     const files = await buildFromPlan("A snake game for MiniPay without an onchain leaderboard");
     expect(JSON.parse(files["src/goodbuild.json"]).kits).toEqual(expect.arrayContaining(["game-2d", "mini-app"]));
