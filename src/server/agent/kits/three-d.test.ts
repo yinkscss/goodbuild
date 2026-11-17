@@ -349,12 +349,54 @@ export default function App() {
       expect(await frames()).toBe(lostAt);
       await reload.click();
       await page.waitForFunction(() => document.querySelectorAll("canvas[data-game-canvas]").length === 1 && !document.body.innerText.includes("Tap to reload"));
+      // Reloaded before the browser gave the old context back: the new scene plays (D119).
+      const reloadedAt = await frames();
+      await page.waitForTimeout(500);
+      expect(await frames()).toBeGreaterThan(reloadedAt);
       const r = await page.evaluate(() => {
         const c = document.querySelector("canvas")!;
         const gl = c.getContext("webgl2") ?? c.getContext("webgl");
         return Boolean(gl && !gl.isContextLost());
       });
       expect(r).toBe(true);
+    } finally {
+      await browser.close();
+    }
+  });
+
+  it("counts two quick taps on one side as two presses there, even when the pointer moves before the frame (D119)", async () => {
+    if (!hasWebGL) return;
+    const app = PAGE.replace("onReady={({ scene, camera }) => {", "onReady={({ scene, camera, input }) => {").replace(
+      "cube.rotation.y += dt;",
+      "cube.rotation.y += dt;\n            const log = ((window as unknown as { taps?: string[] }).taps ??= []);\n            for (const p of input.pointer.presses) log.push(p.x < 0 ? \"left\" : \"right\");",
+    );
+    expect(app).toContain("input.pointer.presses");
+    const built = await buildPublishedApp({ files: project(app), assets: [], title: "Viewer", hasUndeployedContracts: false, forCheck: true });
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const context = await browser.newContext({ viewport: { width: 400, height: 700 } });
+      const byPath = new Map(built.map((f) => [f.path, f]));
+      await context.route("**/*", (route) => {
+        const url = new URL(route.request().url());
+        const file = byPath.get(url.pathname.replace(/^\//, "") || "index.html");
+        return file && url.host === "app.test" ? route.fulfill({ status: 200, contentType: file.mime, body: Buffer.from(file.bytes) }) : route.abort();
+      });
+      const page = await context.newPage();
+      await page.goto("http://app.test/");
+      await page.waitForSelector("canvas[data-game-canvas]");
+      // Two taps on the left and a move to the right, all between two frames.
+      await page.evaluate(() => {
+        const c = document.querySelector("canvas")!;
+        const r = c.getBoundingClientRect();
+        const at = (type: string, fx: number) => new PointerEvent(type, { clientX: r.left + r.width * fx, clientY: r.top + r.height / 2, bubbles: true });
+        c.dispatchEvent(at("pointerdown", 0.2));
+        window.dispatchEvent(at("pointerup", 0.2));
+        c.dispatchEvent(at("pointerdown", 0.25));
+        c.dispatchEvent(at("pointermove", 0.8));
+        window.dispatchEvent(at("pointerup", 0.8));
+      });
+      await page.waitForTimeout(300);
+      expect(await page.evaluate(() => (window as unknown as { taps?: string[] }).taps ?? [])).toEqual(["left", "left"]);
     } finally {
       await browser.close();
     }

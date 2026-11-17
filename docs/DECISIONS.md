@@ -1469,6 +1469,11 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
   - The 3D game is skipped as "no WebGL" only when the browser really has none. With WebGL, a game that never shows its scene is played and reported. Tested: before the fix, such a game was waved through as "no WebGL".
   - The controls check (D118) tests the arrow keys only in a game that also declares sideways steering ("sides" or "drag"). "keys" alone may mean only Space, as in a runner that jumps, so arrows that do nothing prove nothing there. A game that declares no controls isn't judged.
   - When posting a score to the board, a round that is still running can use the whole time the check allows (12 seconds, or 16 for calm games). Before, each round was stopped after 6 seconds (10 for calm games). On GitHub's slower test machine, Brick breaker and the 3D runner then reported "no round ended" and posted nothing.
+  - Before reporting that the arrow keys do nothing, the controls check also tries a finger held on each side, as a phone plays. A game steered by touch whose keys only jump is no longer flagged. Tested with a windy Catch and dodge whose arrows do nothing: it was flagged before this change and passes after.
+- **Second round of review (3D kit):**
+  - A new scene clears the lost-context flag. Before, a person who tapped reload before the browser gave the old context back got a frozen game. Tested: frames resume after a manual reload; they stayed at 5 before the fix.
+  - `pointer.presses` lists every press since the last frame, with where it started. Two quick taps count as two, and a later move doesn't change their side. The 3D runner steers on each press. Tested with two left taps and a move to the right, all in one frame.
+  - The slow-phone test keeps a sample only if the same round ran from its start to its end.
 - **The games kit:** a canvas puzzle or turns game isn't asked to call `spawned()`, since it may have nothing that appears. Action games still are. Tested both ways.
 - **Tests made stricter:**
   - The slow-phone test measures frames only during a live round, starting one with Play again if needed.

@@ -32,9 +32,10 @@ export interface SceneInput {
    * The finger or mouse on the scene. x and y run from -1 to 1 with y up, which is what
    * THREE.Raycaster.setFromCamera takes. dx and dy are how far it moved since the last frame,
    * in the same units: use them to steer by dragging. pressed is true for one frame when a press starts,
-   * even a tap too quick for a frame to see it down: use it for "tap a side to move".
+   * even a tap too quick for a frame to see it down. presses lists where each press since the last frame
+   * started (two quick taps are two, and a later move doesn't change them): use it for "tap a side to move".
    */
-  pointer: { x: number; y: number; dx: number; dy: number; down: boolean; pressed: boolean };
+  pointer: { x: number; y: number; dx: number; dy: number; down: boolean; pressed: boolean; presses: { x: number; y: number }[] };
 }
 
 export interface SceneContext {
@@ -155,7 +156,7 @@ export function Scene3D({
   // A cheap phone can drop the 3D context (another app needed the memory). Each new generation builds the scene again.
   const [lost, setLost] = useState(false);
   const [generation, setGeneration] = useState(0);
-  const input = useRef<SceneInput>({ left: false, right: false, up: false, down: false, action: false, actionPressed: false, pointer: { x: 0, y: 0, dx: 0, dy: 0, down: false, pressed: false } });
+  const input = useRef<SceneInput>({ left: false, right: false, up: false, down: false, action: false, actionPressed: false, pointer: { x: 0, y: 0, dx: 0, dy: 0, down: false, pressed: false, presses: [] } });
   /** The drawing context is lost: the game holds still behind the message until the scene is rebuilt. */
   const lostNow = useRef(false);
   const held = useRef({ key: false, button: false });
@@ -188,6 +189,8 @@ export function Scene3D({
   useEffect(() => {
     const host = box.current;
     if (!host || !supported) return;
+    // A new scene has a new drawing context, even if the old one was never given back.
+    lostNow.current = false;
     let renderer: THREE.WebGLRenderer;
     try {
       renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
@@ -255,6 +258,7 @@ export function Scene3D({
       place(e);
       state.pointer.down = true;
       state.pointer.pressed = true;
+      state.pointer.presses.push({ x: state.pointer.x, y: state.pointer.y });
     };
     const pointerUp = () => {
       state.pointer.down = false;
@@ -308,6 +312,7 @@ export function Scene3D({
           if (check) check.inFrame = false;
           // A press and a drag happen once, however many steps a frame runs while GoodBuild checks the game.
           state.actionPressed = state.pointer.pressed = false;
+          state.pointer.presses = [];
           state.pointer.dx = state.pointer.dy = 0;
         }
         state.pointer.dx = state.pointer.dy = 0;
@@ -487,7 +492,7 @@ const GUIDE = `3D scenes and games, on three.js. The kit's file is src/three/Sce
 - Import three as \`import * as THREE from "three"\`. Helpers come from "three/examples/jsm/..." (OrbitControls is already in Scene3D). Nothing else is installed: no physics engine.
 - Files: only the ones the person uploaded (listed in the context under Uploaded assets). A 3D model is a .glb: load it with GLTFLoader from "three/examples/jsm/loaders/GLTFLoader.js", with the path assets.<key>.src or a literal "/assets/<name>.glb", inside onReady, and add gltf.scene when it arrives (show the scene's lights and a short "Loading" message until then; keep the camera sensible for a model of unknown size by fitting it: compute a Box3, centre it, and set the camera distance from its size). An uploaded image can be a texture with TextureLoader and the same kind of path. Never load from a web address: the page can't reach other sites. No FBX, OBJ or Draco. If the person wants a model they haven't uploaded, build a stand-in from three.js shapes and say they can upload a .glb to replace it. Textures can also be made on a canvas (CanvasTexture).
 - Phones first. Keep the scene to about 100,000 triangles. Use InstancedMesh for many copies of one thing (coins, trees, stars). Prefer MeshStandardMaterial or MeshLambertMaterial with one or two lights; no real-time shadows unless the person asked, and then one light with a 1024 map. Never create objects inside the frame function: make them once in onReady and change their position, rotation and scale. Multiply speeds by dt.
-- Input comes from Scene3D: onReady's context has input, the same shape as the 2D kit's. input.left/right/up/down are held (arrow keys, WASD, or the on-screen buttons from controls={["left","right","action"]}); input.action is held and input.actionPressed is true for one frame (jump, shoot); input.pointer is the finger or mouse, x and y from -1 to 1 (to find what was tapped: raycaster.setFromCamera(new THREE.Vector2(input.pointer.x, input.pointer.y), camera)), with dx and dy for steering by dragging, down while it is pressed, and pressed for one frame when a press starts (use it for "tap a side": a quick tap may never be seen down). Read input inside the frame function. Never add your own keydown or pointer listeners to window: they outlive the scene and fire twice. For anything else you start yourself (a timer, a listener), hand its undo to onCleanup(() => ...).
+- Input comes from Scene3D: onReady's context has input, the same shape as the 2D kit's. input.left/right/up/down are held (arrow keys, WASD, or the on-screen buttons from controls={["left","right","action"]}); input.action is held and input.actionPressed is true for one frame (jump, shoot); input.pointer is the finger or mouse, x and y from -1 to 1 (to find what was tapped: raycaster.setFromCamera(new THREE.Vector2(input.pointer.x, input.pointer.y), camera)), with dx and dy for steering by dragging, down while it is pressed, pressed for one frame when a press starts, and presses, where each press since the last frame started (for "tap a side", loop over presses: a quick tap may never be seen down, and two taps can land in one frame). Read input inside the frame function. Never add your own keydown or pointer listeners to window: they outlive the scene and fire twice. For anything else you start yourself (a timer, a listener), hand its undo to onCleanup(() => ...).
 - Games: keep the game's state in a plain object in a useRef, never in React state that changes every frame. React state is only for the screen (start, playing, over) and for numbers shown outside the canvas, set when they change. Every game must be playable by touch: pass controls for on-screen buttons, or pass touch and steer with input.pointer (touch stops the page scrolling under the finger). Pass paused while the start or game-over screen is up: the scene is still drawn but holds still, time stops, and the keyboard goes back to the page so Enter presses Play. Pass onIdleFrame={(dt) => ...} to give the start screen life (the camera drifting round the parked car); it never moves the game on. Add a Start button and a visible score or goal.
 - A 3D game also has the games kit (src/game/; if it isn't on, call add_kit("game-2d")): follow its guide for everything except the screen. Scene3D is the screen instead of GameCanvas, so ignore GameCanvas, onFrame, drawHud, Sprite and juice's particles (those draw on a 2D canvas). Everything else works the same: the probe (declareGame once with style and controls, spawned(kind), and probe(score, player.position.x, player.position.z, speed) once per frame in the frame function), the building blocks (Pool, Spawner, difficulty, lanes, the NPC behaviours and Effects all work on plain numbers: use x and z for the ground), sound, haptics, storage, extras, the leaderboard with PostScore, GameOver and the shop. Spawn in the frame function, never on a timer.
 - The score panel for a 3D game is Hud3D (src/three/Hud3D.tsx), over the scene: wrap Scene3D in <div className="relative"> and add <Hud3D read={() => ({ score: g.current.score, best, lives: g.current.lives, effects: running })} />. It reads the game every frame without re-rendering React. GameOver from src/game/GameOver.tsx goes inside the same box.

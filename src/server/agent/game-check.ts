@@ -327,7 +327,8 @@ export async function playAgain(page: Page): Promise<boolean> {
  * then the opposite, in turn, and passes how far they moved each time to judgeControls. Only for a
  * game that declares hold, or keys with sideways steering (sides or drag): a tap or a swipe is one step,
  * which a wall can block, and keys alone may mean only Space (a runner that jumps), so the arrows doing
- * nothing proves nothing. A game that declares nothing isn't judged either.
+ * nothing proves nothing. When the arrows seem dead, a finger held on each side is tried before reporting.
+ * A game that declares nothing isn't judged either.
  */
 export async function checkControls(page: Page): Promise<{ issues: string[]; note?: string }> {
   const report = await probeReport(page);
@@ -337,20 +338,24 @@ export async function checkControls(page: Page): Promise<{ issues: string[]; not
   const sideways = controls.includes("keys") && (controls.includes("sides") || controls.includes("drag"));
   if (!hold && !sideways) return { issues: [] };
   const area = await playArea(page);
+  // What a trial holds: a press against none, the arrows, or a finger on the left or right side.
+  let mode: "hold" | "keys" | "sides" = hold ? "hold" : "keys";
 
   const press = async (which: "a" | "b") => {
-    if (hold) {
-      if (which === "b") return;
-      const box = await area.boundingBox({ timeout: 300 }).catch(() => null);
-      if (!box) return;
-      await page.mouse.move(box.x + box.width / 2, box.y + box.height * 0.6).catch(() => undefined);
-      await page.mouse.down().catch(() => undefined);
-    } else await page.keyboard.down(which === "a" ? "ArrowLeft" : "ArrowRight").catch(() => undefined);
+    if (mode === "keys") {
+      await page.keyboard.down(which === "a" ? "ArrowLeft" : "ArrowRight").catch(() => undefined);
+      return;
+    }
+    if (mode === "hold" && which === "b") return;
+    const box = await area.boundingBox({ timeout: 300 }).catch(() => null);
+    if (!box) return;
+    const across = mode === "hold" ? 0.5 : which === "a" ? 0.2 : 0.8;
+    await page.mouse.move(box.x + box.width * across, box.y + box.height * 0.6).catch(() => undefined);
+    await page.mouse.down().catch(() => undefined);
   };
   const release = async (which: "a" | "b") => {
-    if (hold) {
-      if (which === "a") await page.mouse.up().catch(() => undefined);
-    } else await page.keyboard.up(which === "a" ? "ArrowLeft" : "ArrowRight").catch(() => undefined);
+    if (mode === "keys") await page.keyboard.up(which === "a" ? "ArrowLeft" : "ArrowRight").catch(() => undefined);
+    else if (mode === "sides" || which === "a") await page.mouse.up().catch(() => undefined);
   };
   /** Hold one input for a moment: how far the player moved, or null if the round ended or changed. */
   const window_ = async (which: "a" | "b", ms: number) => {
@@ -397,25 +402,34 @@ export async function checkControls(page: Page): Promise<{ issues: string[]; not
   if (!drift) return unjudged;
   if (Math.hypot(drift.dx, drift.dy) <= span * 0.02) return { issues: [] };
 
-  const trials: ControlTrial[] = [];
-  for (let i = 0; trials.length < TRIALS && i < TRIALS * 2; i++) {
-    // One way then the other, then the other way first, so the game's own steady pull cancels out.
-    const order: ("a" | "b")[] = trials.length % 2 ? ["b", "a"] : ["a", "b"];
-    const moved: Partial<Record<"a" | "b", { dx: number; dy: number }>> = {};
-    for (const which of order) {
-      const m = await window_(which, HOLD_MS);
-      if (!m) break;
-      moved[which] = m;
+  const judge = async () => {
+    const trials: ControlTrial[] = [];
+    for (let i = 0; trials.length < TRIALS && i < TRIALS * 2; i++) {
+      // One way then the other, then the other way first, so the game's own steady pull cancels out.
+      const order: ("a" | "b")[] = trials.length % 2 ? ["b", "a"] : ["a", "b"];
+      const moved: Partial<Record<"a" | "b", { dx: number; dy: number }>> = {};
+      for (const which of order) {
+        const m = await window_(which, HOLD_MS);
+        if (!m) break;
+        moved[which] = m;
+      }
+      if (moved.a && moved.b) trials.push({ a: moved.a, b: moved.b });
     }
-    if (moved.a && moved.b) trials.push({ a: moved.a, b: moved.b });
+    return judgeControls(trials, drift);
+  };
+  let judged = await judge();
+  // "keys" may mean only Space (a jump) in a game steered by touch: arrows that do nothing aren't proof.
+  // Before saying the controls do nothing, hold a finger on each side, the way a phone plays it.
+  if (judged.verdict === "dead" && mode === "keys") {
+    mode = "sides";
+    judged = await judge();
   }
-  const judged = judgeControls(trials, drift);
   if (judged.verdict === "dead") {
     return {
       issues: [
         hold
           ? "Holding down on the game didn't change how the player moves: the game moves them by itself, but the hold does nothing. Read input.pointer.down (or input.action) in the frame function and use it to move the player."
-          : "Holding the left or right arrow didn't change how the player moves: the game moves them by itself, but the controls do nothing. Read input.left and input.right (and input.pointer) in the frame function and use them to move the player.",
+          : "Holding the left or right arrow, or a finger on the left or right side, didn't change how the player moves: the game moves them by itself, but the controls do nothing. Read input.left and input.right (and input.pointer) in the frame function and use them to move the player.",
       ],
     };
   }

@@ -200,8 +200,8 @@ export default function Game() {
               const speed = 14 + level * 16;
 
               // Steering: tap a side of the track or press left or right. Space or the action button jumps.
-              if (input.pointer.pressed) {
-                g.lane = input.pointer.x < 0 ? Math.max(0, g.lane - 1) : Math.min(LANES.length - 1, g.lane + 1);
+              for (const press of input.pointer.presses) {
+                g.lane = press.x < 0 ? Math.max(0, g.lane - 1) : Math.min(LANES.length - 1, g.lane + 1);
               }
               if (input.left && !g.wasLeft) g.lane = Math.max(0, g.lane - 1);
               if (input.right && !g.wasRight) g.lane = Math.min(LANES.length - 1, g.lane + 1);

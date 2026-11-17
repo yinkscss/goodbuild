@@ -98,13 +98,21 @@ describe("game templates (D114)", { timeout: 180_000 }, () => {
       phone: { cpuSlowdown: 4 },
       initScript: "(() => { const d = []; let last = 0; const f = (t) => { if (last) d.push(t - last); last = t; requestAnimationFrame(f); }; requestAnimationFrame(f); window.__frameTimes = d; })();",
       afterPlay: async (page) => {
-        // Measure a round being played, not the game-over screen: start one if the last has ended.
-        const playing = () => page.evaluate(() => (window as unknown as { __gbGame?: { rounds: { end?: number }[] } }).__gbGame?.rounds.at(-1)?.end === undefined);
-        if (!(await playing()) && !(await playAgain(page))) return;
-        if (!(await playing())) return;
-        await page.evaluate(() => { (window as unknown as { __frameTimes: number[] }).__frameTimes.length = 0; });
-        await page.waitForTimeout(1_500);
-        p95 = await page.evaluate(() => { const d = [...(window as unknown as { __frameTimes: number[] }).__frameTimes].sort((a, b) => a - b); return d[Math.floor(d.length * 0.95)] ?? Infinity; });
+        // Measure a round being played, not the game-over screen: the same round must run from start to end
+        // of the sample. Two tries, starting a round with Play again if the last has ended; else p95 stays Infinity.
+        const live = () => page.evaluate(() => { const r = (window as unknown as { __gbGame?: { rounds: { end?: number }[] } }).__gbGame?.rounds ?? []; return r.length && r[r.length - 1].end === undefined ? r.length : 0; });
+        for (let attempt = 0; attempt < 2; attempt++) {
+          if (!(await live()) && !(await playAgain(page))) return;
+          const round = await live();
+          if (!round) return;
+          await page.evaluate(() => { (window as unknown as { __frameTimes: number[] }).__frameTimes.length = 0; });
+          await page.waitForTimeout(1_500);
+          const sampled = await page.evaluate(() => { const d = [...(window as unknown as { __frameTimes: number[] }).__frameTimes].sort((a, b) => a - b); return d[Math.floor(d.length * 0.95)] ?? Infinity; });
+          if ((await live()) === round) {
+            p95 = sampled;
+            return;
+          }
+        }
       },
     });
     expect(r.issues).toEqual([]);
@@ -157,6 +165,17 @@ describe("game templates (D114)", { timeout: 180_000 }, () => {
     const dead = await runCheck(built("cave-flyer", edit("src/play/Game.tsx", "g.vy += (climbing ? -1500 : 900) * dt;", "g.vy += 900 * dt;")));
     // Under heavy load the rounds can end before the check gets a clean stretch: then it says so, never "fine" in silence.
     expect(dead.issues.map((i) => i.message).join(" ") + " " + dead.note).toMatch(/the hold does nothing|the controls weren't judged/);
+  });
+
+  // A game that drifts by itself and is steered by touch, whose keys do nothing sideways (Space only, say):
+  // the arrows doing nothing isn't proof, so the check tries a finger on each side before reporting (D119).
+  it.skipIf(!hasBrowser)("Catch and dodge with wind and no arrow steering: touch steering passes the controls check", async () => {
+    const windy = (f: Record<string, string>) =>
+      edit("src/play/Game.tsx", "    if (keys) g.x = g.target;\n", "")(edit("src/play/Game.tsx", "if (keys) g.target = g.x + keys * 360 * dt;", "g.target += Math.sin(g.t * 3) * 400 * dt;")(f));
+    const r = await runCheck(built("catch-dodge", windy));
+    expect(r.ran).toBe(true);
+    expect(r.issues.map((i) => i.message).join(" ")).not.toMatch(/controls do nothing/);
+    expect(r.note).toMatch(/played \d+ rounds?/);
   });
 
   it.skipIf(!hasBrowser)("Cave flyer: with a probe that doesn't say where the player is (one from before D118), the controls aren't judged", async () => {
