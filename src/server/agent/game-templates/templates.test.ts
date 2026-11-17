@@ -91,7 +91,7 @@ describe("game templates (D114)", { timeout: 180_000 }, () => {
 });
 
 describe("game templates in MiniPay (D114)", { timeout: 180_000 }, () => {
-  for (const id of ["lane-racer", "quick-quiz"]) {
+  for (const id of ["lane-racer", "quick-quiz", "runner-3d"]) {
     it(`${id}: with the MiniPay and board kits, the pages, footer and board contract are wired, and it type-checks`, async () => {
       let files = withKit(withKit(withKit(starterFiles(), kitById("game-2d")!), kitById("mini-app")!), kitById("game-board")!);
       files = withGameTemplate(files, gameTemplateById(id)!);
@@ -107,4 +107,17 @@ describe("game templates in MiniPay (D114)", { timeout: 180_000 }, () => {
       expect(types.issues).toEqual([]);
     });
   }
+});
+
+describe("the 3D runner template (D116)", { timeout: 180_000 }, () => {
+  it.skipIf(!hasBrowser)("is played as a 3D game: every kind seen, and a copy whose steering does nothing is caught", async () => {
+    const ok = await runCheck(built("runner-3d"));
+    for (const kind of ["crate", "barrier", "drone", "coin", "shield"]) expect(ok.note).toContain(kind);
+    const stuck = await runCheck(built("runner-3d", edit("src/play/Game.tsx", "g.x += (LANES[g.lane] - g.x) * Math.min(1, dt * 12);", "")));
+    expect(stuck.issues.map((i) => i.message).join(" ")).toMatch(/never moved the player[\s\S]*x and z/);
+  });
+
+  it("turns on the 3D and games kits", () => {
+    expect(kitIdsOf(built("runner-3d"))).toEqual(expect.arrayContaining(["three-d", "game-2d"]));
+  });
 });

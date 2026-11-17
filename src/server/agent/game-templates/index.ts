@@ -3,6 +3,7 @@ import { kitById, withKit } from "../kits/index";
 
 import { laneRacer } from "./lane-racer";
 import { quickQuiz } from "./quick-quiz";
+import { runner3d } from "./runner-3d";
 
 /**
  * Game templates (D114): working, tested games the builder reshapes to the plan, instead of writing a
@@ -31,7 +32,7 @@ export interface GameTemplate {
   brief: string;
 }
 
-export const GAME_TEMPLATES: GameTemplate[] = [laneRacer, quickQuiz];
+export const GAME_TEMPLATES: GameTemplate[] = [laneRacer, quickQuiz, runner3d];
 
 /** The app around a template's game inside MiniPay: the game on the home route, the five info pages, the footer. */
 function miniPayApp(template: GameTemplate): string {
