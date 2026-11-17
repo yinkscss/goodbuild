@@ -411,6 +411,7 @@ export const laneRacer: GameTemplate = {
   kits: ["game-2d"],
   files: { "src/App.tsx": APP, "src/play/Game.tsx": GAME, "src/play/art.ts": ART },
   leaderboard: true,
+  title: { from: "./play/art", name: "GAME_NAME" },
   brief: `This game starts from GoodBuild's Lane racer template, a working, tested game: src/play/Game.tsx (the game), src/play/art.ts (the name, colours and one drawing function per thing) and src/App.tsx. Reshape it to the plan instead of starting again:
 - Rename it (GAME_NAME, BEST_KEY in art.ts) and restyle every drawing and colour to the plan's look. Keep one drawing function per thing, used in the game and in Sprite.
 - Make the obstacles, power-ups and characters the plan's: change CAR_KINDS, POWER_KINDS, the spawners and what each does, and keep declareGame listing exactly the kinds the game has, with spawned(kind) when one appears. Every kind must show up within the first 15 seconds.

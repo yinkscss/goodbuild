@@ -75,11 +75,13 @@ export default function Game() {
   const [hints, setHints] = useState(1);
   const [hidden, setHidden] = useState<number[]>([]);
   const [picked, setPicked] = useState<number | null>(null);
-  const [left, setLeft] = useState(SECONDS);
   const [best, setBest] = useState(() => bestScore(BEST_KEY));
   const [tip] = useState(() => firstTime("quick-quiz-tip"));
   const board = useLeaderboard();
   const scoreRef = useRef(0);
+  // The clock for each question lives in a ref and draws its bar straight to the page: no re-render every frame.
+  const leftRef = useRef(SECONDS);
+  const bar = useRef<HTMLDivElement>(null);
 
   const question = set[at % set.length];
   const finished = at >= set.length;
@@ -96,7 +98,7 @@ export default function Game() {
     window.setTimeout(() => {
       setPicked(null);
       setHidden([]);
-      setLeft(SECONDS);
+      leftRef.current = SECONDS;
       if (nextLives <= 0 || at + 1 >= set.length) finish(nextScore);
       else setAt((n) => n + 1);
     }, 450);
@@ -109,7 +111,7 @@ export default function Game() {
     setPicked(i);
     if (i === question.right) {
       const run = streak + 1;
-      const points = (10 + Math.ceil(left)) * (run >= STREAK ? 2 : 1);
+      const points = (10 + Math.ceil(leftRef.current)) * (run >= STREAK ? 2 : 1);
       scoreRef.current += points;
       setScore(scoreRef.current);
       setStreak(run);
@@ -139,13 +141,13 @@ export default function Game() {
     let raf = 0;
     let last = performance.now();
     const tick = (now: number) => {
-      const dt = (now - last) / 1000;
+      leftRef.current = Math.max(0, leftRef.current - (now - last) / 1000);
       last = now;
-      setLeft((s) => {
-        const n = Math.max(0, s - dt);
-        if (n === 0 && s > 0) window.setTimeout(() => timeout.current(-1), 0);
-        return n;
-      });
+      if (bar.current) bar.current.style.width = (leftRef.current / SECONDS) * 100 + "%";
+      if (leftRef.current === 0) {
+        timeout.current(-1);
+        return;
+      }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -171,7 +173,7 @@ export default function Game() {
     setHints(1);
     setHidden([]);
     setPicked(null);
-    setLeft(SECONDS);
+    leftRef.current = SECONDS;
     setScreen("playing");
     round(true);
     probe(0);
@@ -203,12 +205,12 @@ export default function Game() {
             <p className="text-3xl font-semibold tabular-nums">{score}</p>
             {streak >= STREAK && <p className="text-sm font-medium text-primary">Streak x2</p>}
             <div className="h-2 overflow-hidden rounded-full bg-muted">
-              <div className="h-full bg-primary" style={{ width: (left / SECONDS) * 100 + "%" }} />
+              <div ref={bar} className="h-full bg-primary" style={{ width: "100%" }} />
             </div>
             <p className="text-lg font-medium">{question.q}</p>
             <div data-game-area className="grid gap-2">
               {question.answers.map((a, i) => {
-                const state = picked === null ? "" : i === question.right ? "bg-emerald-500 text-white" : i === picked ? "bg-rose-500 text-white" : "opacity-60";
+                const state = picked === null ? "" : i === question.right ? "bg-success text-white" : i === picked ? "bg-danger text-white" : "opacity-60";
                 return (
                   <button
                     key={a}
@@ -264,6 +266,7 @@ export const quickQuiz: GameTemplate = {
   kits: ["game-2d"],
   files: { "src/App.tsx": APP, "src/play/Game.tsx": GAME, "src/play/questions.ts": QUESTIONS },
   leaderboard: true,
+  title: { from: "./play/questions", name: "QUIZ_NAME" },
   brief: `This game starts from GoodBuild's Quick quiz template, a working, tested game: src/play/Game.tsx (the quiz), src/play/questions.ts (the name and the questions) and src/App.tsx. Reshape it to the plan instead of starting again:
 - Rename it (QUIZ_NAME, BEST_KEY) and write the questions about the plan's topic in questions.ts: at least 10, four short answers each, facts you are sure of.
 - Restyle it to the plan's look. Change the rules the plan asks for (seconds per question, lives, streaks, hints), and keep declareGame listing the power-ups the game has.

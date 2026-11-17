@@ -822,6 +822,20 @@ describe("kits in a turn (D71)", { timeout: 120_000 }, () => {
     expect(JSON.stringify(requests[0].messages)).toContain("Lane racer template");
   });
 
+  it("a MiniPay game from a template with a leaderboard gets the board contract too, even when its words don't name a game kit (D114)", async () => {
+    const request = "A racing game for MiniPay where you dodge traffic, with a leaderboard";
+    await db.update(messages).set({ content: request, status: "done" }).where(eq(messages.id, queuedId));
+    const base = fallbackIntake(request);
+    const intake = { ...base, leaderboard: true, game: { name: "Night Lanes", pitch: "Weave through traffic.", loop: "dodge", lose: "you crash", harder: "faster", extras: [], template: "lane-racer", templateName: "Lane racer" } };
+    await db.insert(messages).values({ projectId, role: "assistant", content: "A few questions.", status: "done", meta: { intake } });
+    const [start] = await db.insert(messages).values({ projectId, role: "user", content: "Start building", status: "queued", meta: { mode: "build" } }).returning({ id: messages.id });
+    const { client } = scriptedModel([{ text: "Built it." }]);
+    await runTurn({ db, model: client }, { projectId, userId, mode: "build", userMessageId: start.id }, () => {});
+    const files = await loadFiles(db, projectId);
+    expect(JSON.parse(files["src/goodbuild.json"]).kits).toEqual(expect.arrayContaining(["game-2d", "mini-app", "game-board"]));
+    expect(files["contracts/GameBoard.sol"]).toContain("contract GameBoard");
+  });
+
   it("leaves the contract off for a MiniPay game that says it wants no leaderboard, even naming an onchain one", async () => {
     const files = await buildFromPlan("A snake game for MiniPay without an onchain leaderboard");
     expect(JSON.parse(files["src/goodbuild.json"]).kits).toEqual(expect.arrayContaining(["game-2d", "mini-app"]));

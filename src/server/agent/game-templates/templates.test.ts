@@ -2,10 +2,10 @@
 import { chromium } from "playwright-core";
 import { afterAll, describe, expect, it } from "vitest";
 
-import { checkApp } from "../checks";
-import { kitIdsOf } from "../kits/index";
+import { checkApp, checkContracts } from "../checks";
+import { kitById, kitIdsOf, withKit } from "../kits/index";
 import { closeRunCheckBrowser, runCheck } from "../run-check";
-import { starterFiles } from "../template";
+import { PLATFORM_DIR, contractModule, contractsIndex, starterFiles } from "../template";
 import { typeCheck } from "../type-check";
 
 import { GAME_TEMPLATES, gameTemplateById, gameTemplateCatalog, withGameTemplate } from "./index";
@@ -88,4 +88,23 @@ describe("game templates (D114)", { timeout: 180_000 }, () => {
     const dead = await runCheck(built("quick-quiz", edit("src/play/Game.tsx", "onClick={() => answer(i)}", "onClick={() => undefined}")));
     expect(dead.issues.map((i) => i.message).join(" ")).toMatch(/never accepted a move/);
   });
+});
+
+describe("game templates in MiniPay (D114)", { timeout: 180_000 }, () => {
+  for (const id of ["lane-racer", "quick-quiz"]) {
+    it(`${id}: with the MiniPay and board kits, the pages, footer and board contract are wired, and it type-checks`, async () => {
+      let files = withKit(withKit(withKit(starterFiles(), kitById("game-2d")!), kitById("mini-app")!), kitById("game-board")!);
+      files = withGameTemplate(files, gameTemplateById(id)!);
+      const report = await checkContracts(files);
+      expect(report.errors).toEqual([]);
+      for (const c of report.contracts) files[`${PLATFORM_DIR}${c.name}.ts`] = contractModule(c.name, c.abi, { 11142220: "0x00000000000000000000000000000000000000b0" });
+      files[`${PLATFORM_DIR}index.ts`] = contractsIndex(report.contracts.map((c) => c.name));
+      // MINI_APP's wording is the person's, filled in by the builder; everything else passes.
+      expect(checkApp(files).errors.filter((e) => e.file !== "src/minipay/app.ts")).toEqual([]);
+      expect(files["src/play/Game.tsx"]).toContain("useLeaderboard({ chain: miniPayBoard })");
+      const types = await typeCheck(files);
+      expect(types.ran).toBe(true);
+      expect(types.issues).toEqual([]);
+    });
+  }
 });
