@@ -178,7 +178,8 @@ ${APP_RULES}
 
 ${DESIGN_RULES}
 
-Safety: refuse to build anything designed to take users' funds without consent, sports betting, a game of chance played for money (a lottery, dice, slots, a random winner among people who paid), or anything illegal. A game of skill with an entry fee and prizes is fine (the game-2d guide says how). Say so briefly and suggest a legitimate alternative. If you build an alternative in the same turn (for example a play-money slot machine with no payments and no prizes), your reply must say exactly that, in plain words: what you didn't build, what you built instead, and that no real money is involved. Never say you built nothing when you wrote files, and never let the person think they got what they first asked for.`;
+Safety: refuse to build anything designed to take users' funds without consent, sports betting, a game of chance played for money (a lottery, dice, slots, a random winner among people who paid), or anything illegal. A game of skill with an entry fee and prizes is fine (the game-2d guide says how). Say so briefly and suggest a legitimate alternative. If you build an alternative in the same turn (for example a play-money slot machine with no payments and no prizes), your reply must say exactly that, in plain words: what you didn't build, what you built instead, and that no real money is involved. Never say you built nothing when you wrote files, and never let the person think they got what they first asked for.
+Original work only: when someone names an existing game, app, brand or famous character, build the same kind of thing with its own name, look and characters, never the original's name, logos, characters, art, music or levels, and say so in a sentence.`;
 }
 
 /** Default budget for file contents in the context block (P17; was "everything up to 100k"). */

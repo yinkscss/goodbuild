@@ -4,6 +4,7 @@ import { and, asc, eq } from "drizzle-orm";
 
 import { isTestFile } from "@/lib/deploy/test-file";
 import { templateBriefFor } from "@/config/page-template-data";
+import { TEMPLATE_MINIPAY_NOTE, gameTemplateById, withGameTemplate } from "./game-templates";
 import type { Db } from "@/server/db/client";
 import { messages, projects } from "@/server/db/schema";
 import { checkApp, checkContracts, formatIssues, mentionsGd, mentionsNativeCelo, type CheckIssue, type CheckReport, type ContractCheckOptions } from "./checks";
@@ -19,7 +20,7 @@ import { dbAssetStore, type AssetStore } from "./asset-store";
 import { ASSETS_MODULE, assetManifest, assetsModule, reviewImage, visionImage } from "./assets";
 import { HISTORY_WINDOW, memoryBlock, updateMemory, type Memory, type MemoryMessage } from "./memory";
 import { MODEL_IDS, TIER_FOR, ModelUnavailableError, type ChatMessage, type ModelClient, type ModelEvent, type ModelTier, type ToolCall, type UserPart } from "./model";
-import { INTAKE_MAX_TOKENS, INTAKE_PROMPT, PLAN_ASK_TOOL_NAME, askedJustBefore, fallbackIntake, intakeTools, intakeContext, latestIntake, parseIntake, parsePlanQuestions, planBrief } from "./plan-intake";
+import { INTAKE_MAX_TOKENS, INTAKE_PROMPT, PLAN_ASK_TOOL_NAME, askedJustBefore, fallbackIntake, intakeTools, intakeContext, isGameRequest, latestIntake, parseIntake, parsePlanQuestions, planBrief } from "./plan-intake";
 import { BUILD_TOOLS, contextWithPicks, planTools, systemPrompt } from "./prompt";
 import { checkpoint, claimTurn, loadFiles, recordUsage, releaseTurn } from "./store";
 import { decideFunding } from "@/server/credits/cap";
@@ -876,8 +877,19 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     if (input.mode === "build" && brief.miniPay && miniAppKit && !kitsOf(files).includes(miniAppKit) && !newKits.includes(miniAppKit)) newKits.push(miniAppKit);
     // A game with a leaderboard that works in MiniPay (D93): MiniPay allows no sign-in signature, so its
     // players post to the leaderboard contract. That means a deploy, so only these games get it.
-    const boardKit = kitById("game-board");
     const willHave = (id: string) => kitsOf(files).some((k) => k.id === id) || newKits.some((k) => k.id === id);
+    // A game template (D114): on the first build, the plan's pick brings a working game and the kits it needs.
+    // Before the board and shop rules below, which ask whether the games kit will be on.
+    const gameTemplate = input.mode === "build" && firstBuild ? gameTemplateById(brief.gameTemplate) : undefined;
+    for (const id of gameTemplate?.kits ?? []) {
+      const kit = kitById(id);
+      if (kit && !willHave(id)) newKits.push(kit);
+    }
+    // A 3D game (D113) gets the game kit too: its probe, building blocks, sound, leaderboard and shop work in a
+    // Scene3D the same way, so "a 3D maze game" isn't left without them just because its words missed the 2D list.
+    const game2dKit = kitById("game-2d");
+    if (input.mode === "build" && game2dKit && willHave("three-d") && !willHave("game-2d") && isGameRequest(kitWords)) newKits.push(game2dKit);
+    const boardKit = kitById("game-board");
     if (input.mode === "build" && brief.leaderboard && boardKit && willHave("game-2d") && willHave("mini-app") && !willHave("game-board")) newKits.push(boardKit);
     // A game that sells things (D95): the tested G$ shop, by the words of the request or the plan's answers.
     const shopKit = kitById("game-shop");
@@ -887,6 +899,10 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     if (input.mode === "build" && firstBuild && motionKit && templateBriefFor(project.templateId) && !newKits.includes(motionKit)) newKits.push(motionKit);
     for (const kit of newKits) files = withKit(files, kit);
     if (newKits.length) log(`kits: turned on ${newKits.map((k) => k.id).join(", ")} for this request`);
+    if (gameTemplate) {
+      files = withGameTemplate(files, gameTemplate);
+      log(`game template: started from ${gameTemplate.id}`);
+    }
     const kitsOn = kitsOf(files);
     const kitsBlock = kitsOn.length
       ? [
@@ -940,7 +956,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       assets: assetManifest(assets),
       memory: memoryBlock(memory),
       deployments: [upgradeable ? upgradeableRules(await liveStorage(db, project)) : "", deploymentsBlock(await loadDeployedAddresses(db, input.projectId), { upgradeable })].filter(Boolean).join("\n\n"),
-      plan: [brief.text, firstBuild ? templateBriefFor(project.templateId) : "", kitsBlock].filter(Boolean).join("\n\n"),
+      plan: [brief.text, firstBuild ? templateBriefFor(project.templateId) : "", gameTemplate ? `${gameTemplate.brief}\n${TEMPLATE_MINIPAY_NOTE}` : "", kitsBlock].filter(Boolean).join("\n\n"),
       targetChain: project.chainId === 42220 ? "Celo Mainnet (42220)" : project.chainId === 11142220 ? "Celo Sepolia (11142220)" : `Unsupported chain ${project.chainId}`,
     });
     log(`context: ${ctx.picks.length} of ${Object.keys(files).length} files in full (${ctx.picks.map((p) => p.path.split("/").pop()).join(", ")})`);

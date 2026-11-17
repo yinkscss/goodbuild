@@ -56,6 +56,11 @@ export interface GameBrief {
   lose: string;
   harder: string;
   extras: string[];
+  /** What kind of game (D115): things coming at you, moves on a board, or questions and turns. */
+  style?: "action" | "puzzle" | "turns";
+  /** The GoodBuild game template the first build starts from (D114), by id, and its name for the plan card. */
+  template?: string;
+  templateName?: string;
 }
 
 export interface PlanIntake {
