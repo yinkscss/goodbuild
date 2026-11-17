@@ -248,7 +248,8 @@ export function Scene3D({
       const rect = canvas.getBoundingClientRect();
       const x = ((e.clientX - rect.left) / Math.max(rect.width, 1)) * 2 - 1;
       const y = -(((e.clientY - rect.top) / Math.max(rect.height, 1)) * 2 - 1);
-      if (state.pointer.down) {
+      // A drag on the start or game-over screen isn't steering: it would move the player on the first frame of play.
+      if (state.pointer.down && !pausedRef.current) {
         state.pointer.dx += x - state.pointer.x;
         state.pointer.dy += y - state.pointer.y;
       }

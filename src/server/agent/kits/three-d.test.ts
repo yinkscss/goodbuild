@@ -440,13 +440,13 @@ export default function App() {
     }
   });
 
-  it("drops a tap made on the start screen, so it doesn't steer the first frame of play (D119)", async () => {
+  it("drops a tap or a drag made on the start screen, so neither steers the first frame of play (D119)", async () => {
     if (!hasWebGL) return;
     const app = PAGE.replace('import * as THREE from "three";', 'import { useState } from "react";\nimport * as THREE from "three";')
       .replace("export default function App() {\n  return (", "export default function App() {\n  const [playing, setPlaying] = useState(false);\n  return (")
       .replace("      <Scene3D\n        orbit\n", "      <button type=\"button\" onClick={() => setPlaying(true)}>Play</button>\n      <Scene3D\n        paused={!playing}\n")
       .replace("onReady={({ scene, camera }) => {", "onReady={({ scene, camera, input }) => {")
-      .replace("cube.rotation.y += dt;", "cube.rotation.y += dt;\n            const log = ((window as unknown as { taps?: string[] }).taps ??= []);\n            for (const p of input.pointer.presses) log.push(p.x < 0 ? \"left\" : \"right\");");
+      .replace("cube.rotation.y += dt;", "cube.rotation.y += dt;\n            const log = ((window as unknown as { taps?: string[] }).taps ??= []);\n            for (const p of input.pointer.presses) log.push(p.x < 0 ? \"left\" : \"right\");\n            if (input.pointer.dx || input.pointer.dy) log.push(\"drag\");");
     expect(app).toContain("paused={!playing}");
     expect(app).toContain("input.pointer.presses");
     const built = await buildPublishedApp({ files: project(app), assets: [], title: "Viewer", hasUndeployedContracts: false, forCheck: true });
@@ -466,6 +466,11 @@ export default function App() {
       const tapLeft = () => page.mouse.click(canvas.x + canvas.width * 0.2, canvas.y + canvas.height / 2);
       const taps = () => page.evaluate(() => (window as unknown as { taps?: string[] }).taps ?? []);
       await tapLeft();
+      // A drag let go before Play, too.
+      await page.mouse.move(canvas.x + canvas.width * 0.3, canvas.y + canvas.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(canvas.x + canvas.width * 0.7, canvas.y + canvas.height / 2, { steps: 5 });
+      await page.mouse.up();
       await page.getByRole("button", { name: "Play" }).click();
       await page.waitForTimeout(300);
       expect(await taps()).toEqual([]);

@@ -1476,7 +1476,7 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - **Second round of review (3D kit):**
   - A new scene clears the lost-context flag. Before, a person who tapped reload before the browser gave the old context back got a frozen game. Tested: frames resume after a manual reload; they stayed at 5 before the fix.
   - When the browser restores the context by itself, the flag also stays set until the new scene is built, so the old scene never takes another step. Tested: frames stop while the context is lost and resume after the browser restores it.
-  - A tap on the start or game-over screen isn't queued as a press, and pausing clears the queue and any drag. Before, a tap made before Play steered the first frame of play. Tested: such a tap is dropped, and a tap during play still counts.
+  - A tap or drag on the start or game-over screen isn't counted as steering, and pausing clears any queued presses and drag. Before, a tap or drag made before Play moved the player on the first frame of play. Tested: both are dropped, and a tap during play still counts.
   - The check's bot holds a drag down for a frame before moving it, so a game that reads `pointer.down` each frame sees the press.
   - `pointer.presses` lists every press since the last frame, with where it started. Two quick taps count as two, and a later move doesn't change their side. The 3D runner steers on each press. Tested with two left taps and a move to the right, all in one frame.
   - The slow-phone test keeps a sample only if the same round ran from its start to its end.
