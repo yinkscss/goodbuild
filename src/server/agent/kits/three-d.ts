@@ -176,8 +176,9 @@ export function Scene3D({
     // Nothing held when a round ends carries into the next one.
     if (paused) letGo();
     // While GoodBuild checks a game, each stretch of unpaused play is a round. Does nothing for real players.
-    checkRound(!paused);
-  }, [paused]);
+    // A device with no WebGL shows the plain message and plays nothing, so it reports nothing.
+    if (supported) checkRound(!paused);
+  }, [paused, supported]);
   // A scene that leaves the page ends its round.
   useEffect(() => () => checkRound(false), []);
 

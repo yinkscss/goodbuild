@@ -17,6 +17,19 @@ const hasBrowser =
     .then((b) => b.close().then(() => true))
     .catch(() => false));
 
+/** Whether the browser here can draw WebGL: without it a 3D game is left unplayed (and the check says so). */
+const hasWebGL =
+  hasBrowser &&
+  (await chromium
+    .launch({ headless: true })
+    .then(async (b) => {
+      const page = await b.newPage();
+      const ok = await page.evaluate(() => Boolean(document.createElement("canvas").getContext("webgl2") || document.createElement("canvas").getContext("webgl")));
+      await b.close();
+      return ok;
+    })
+    .catch(() => false));
+
 const built = (id: string, change?: (files: Record<string, string>) => Record<string, string>) => {
   const files = withGameTemplate(starterFiles(), gameTemplateById(id)!);
   return change ? change(files) : files;
@@ -57,7 +70,7 @@ describe("game templates (D114)", { timeout: 180_000 }, () => {
       expect(types.issues).toEqual([]);
     });
 
-    it.skipIf(!hasBrowser)(`${t.name}: is played by the run check with no issues, leaderboard posting included`, async () => {
+    it.skipIf(!hasBrowser || (t.dims === "3d" && !hasWebGL))(`${t.name}: is played by the run check with no issues, leaderboard posting included`, async () => {
       const r = await runCheck(built(t.id));
       expect(r.ran).toBe(true);
       expect(r.issues).toEqual([]);
@@ -110,7 +123,7 @@ describe("game templates in MiniPay (D114)", { timeout: 180_000 }, () => {
 });
 
 describe("the 3D runner template (D116)", { timeout: 180_000 }, () => {
-  it.skipIf(!hasBrowser)("is played as a 3D game: every kind seen, and a copy whose steering does nothing is caught", async () => {
+  it.skipIf(!hasWebGL)("is played as a 3D game: every kind seen, and a copy whose steering does nothing is caught", async () => {
     const ok = await runCheck(built("runner-3d"));
     for (const kind of ["crate", "barrier", "drone", "coin", "shield"]) expect(ok.note).toContain(kind);
     const stuck = await runCheck(built("runner-3d", edit("src/play/Game.tsx", "g.x += (LANES[g.lane] - g.x) * Math.min(1, dt * 12);", "")));
@@ -119,5 +132,19 @@ describe("the 3D runner template (D116)", { timeout: 180_000 }, () => {
 
   it("turns on the 3D and games kits", () => {
     expect(kitIdsOf(built("runner-3d"))).toEqual(expect.arrayContaining(["three-d", "game-2d"]));
+  });
+});
+
+describe("a 3D game on a checker with no WebGL (D116)", { timeout: 180_000 }, () => {
+  it.skipIf(!hasBrowser)("is left alone, not sent to be fixed", async () => {
+    const browser = await chromium.launch({ headless: true, args: ["--disable-3d-apis", "--disable-webgl"] });
+    try {
+      const r = await runCheck(built("runner-3d"), { browser });
+      expect(r.ran).toBe(true);
+      expect(r.issues).toEqual([]);
+      expect(r.note).toMatch(/no WebGL on this checker/);
+    } finally {
+      await browser.close();
+    }
   });
 });

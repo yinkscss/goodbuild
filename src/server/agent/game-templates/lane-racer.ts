@@ -32,7 +32,9 @@ export function drawCar(ctx: CanvasRenderingContext2D, x: number, y: number, w: 
   ctx.fillRect(x + w * 0.12, y + h * 0.06, w * 0.8, h * 0.95);
   ctx.fillStyle = colour;
   ctx.beginPath();
-  ctx.roundRect(x + w * 0.1, y, w * 0.8, h, w * 0.22);
+  // roundRect is missing on older phones (iOS 15): a plain box there instead of a crash.
+  if (ctx.roundRect) ctx.roundRect(x + w * 0.1, y, w * 0.8, h, w * 0.22);
+  else ctx.rect(x + w * 0.1, y, w * 0.8, h);
   ctx.fill();
   ctx.fillStyle = "#0f172a";
   ctx.fillRect(x + w * 0.22, y + h * (facingDown ? 0.62 : 0.2), w * 0.56, h * 0.18);

@@ -360,13 +360,20 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
   };
   watch(page);
   // A 2D game is played for real (D94): the kit's probe records what happens. Not for the review's pictures.
-  const played = Boolean(options.game2d || options.game3d);
-  const deep = Boolean(played && !options.screenshots);
+  let played = Boolean(options.game2d || options.game3d);
+  let deep = Boolean(played && !options.screenshots);
   // Normal speed at first, so the first moments of play look as a player sees them; faster once they're checked.
   // The probe is on for every 2D or 3D game at normal speed, so the check knows whether a round is running.
   if (played) await page.addInitScript(gameCheckScript(1));
   let pressedPlay = false;
   await open(page);
+  // A 3D game on a checker with no WebGL shows Scene3D's plain message: there is nothing to play or judge,
+  // so it is left alone rather than reported (as D85 does for scenes).
+  let no3d = false;
+  if (options.game3d && !(await page.locator("canvas[data-game-canvas]").count().catch(() => 0))) {
+    no3d = true;
+    played = deep = false;
+  }
 
   const blank = await page.evaluate(() => {
     const root = document.getElementById("root");
@@ -428,6 +435,7 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
   // score to the board, and MiniPay. Only when the game started cleanly, so one problem is reported once.
   const gameIssues: string[] = [];
   const gameNotes: string[] = [];
+  if (no3d) gameNotes.push("no WebGL on this checker, so the 3D game wasn't played");
   if (deep && !blank && !blankStart && !noPlay && !blankGame && !seen.length) {
     await page.evaluate((speed) => {
       const g = (window as unknown as { __gbGame?: { speed: number } }).__gbGame;
