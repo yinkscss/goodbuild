@@ -1,9 +1,11 @@
 import { SCORES_RULE_JSON } from "../kits/game-2d";
 import { kitById, withKit } from "../kits/index";
 
+import { brickBreaker } from "./brick-breaker";
 import { caveFlyer } from "./cave-flyer";
 import { catchDodge } from "./catch-dodge";
 import { laneRacer } from "./lane-racer";
+import { matchGrid } from "./match-grid";
 import { quickQuiz } from "./quick-quiz";
 import { runner3d } from "./runner-3d";
 
@@ -34,7 +36,7 @@ export interface GameTemplate {
   brief: string;
 }
 
-export const GAME_TEMPLATES: GameTemplate[] = [laneRacer, catchDodge, caveFlyer, quickQuiz, runner3d];
+export const GAME_TEMPLATES: GameTemplate[] = [laneRacer, catchDodge, caveFlyer, brickBreaker, matchGrid, quickQuiz, runner3d];
 
 /** The app around a template's game inside MiniPay: the game on the home route, the five info pages, the footer. */
 function miniPayApp(template: GameTemplate): string {

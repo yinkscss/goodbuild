@@ -412,8 +412,12 @@ export async function walletAndBoard(page: Page, options: { board: boolean }): P
   if (!(await pressPlay(page))) return { issues, note: notes.join(", ") };
   // A bot playing at random can lose a round with nothing scored (a quiz answered wrong three times: about
   // 4 in 10 rounds), so it gets up to six rounds, within 12 seconds, to score something worth posting.
+  // A puzzle ends when its moves run out, not when the bot crashes: a round of 20 moves takes it about
+  // 8 seconds, so a game with no rush gets longer (D117).
+  const calm = styleOf(await probeReport(page)) !== "action";
+  const perRound = calm ? 10_000 : 6_000;
   let score = 0;
-  const until = Date.now() + 12_000;
+  const until = Date.now() + (calm ? 16_000 : 12_000);
   for (let attempt = 0; attempt < 6 && score <= 0 && Date.now() < until; attempt++) {
     if (attempt > 0) {
       const again = page.getByRole("button", { name: PLAY_AGAIN }).first();
@@ -421,7 +425,7 @@ export async function walletAndBoard(page: Page, options: { board: boolean }): P
       await again.click({ timeout: 1_000 }).catch(() => undefined);
       await page.waitForTimeout(200);
     }
-    if (!(await playUntilOver(page, Math.max(1_500, Math.min(6_000, until - Date.now()))))) return { issues, note: [...notes, "no round ended, so no score was posted"].join(", ") };
+    if (!(await playUntilOver(page, Math.max(1_500, Math.min(perRound, until - Date.now()))))) return { issues, note: [...notes, "no round ended, so no score was posted"].join(", ") };
     score = (await probeReport(page))?.rounds.at(-1)?.scoreMax ?? 0;
   }
   if (score <= 0) return { issues, note: [...notes, "the rounds scored 0, so no score was posted"].join(", ") };
