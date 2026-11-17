@@ -90,6 +90,13 @@ describe("game templates (D114)", { timeout: 180_000 }, () => {
     expect(/saw ([^;(]*)/.exec(noOil.note)?.[1] ?? "").not.toMatch(/\boil\b/);
   });
 
+  // Older phones (iOS 15 Safari) have no canvas roundRect: the score panel must not crash the game there.
+  it.skipIf(!hasBrowser)("Catch and dodge: plays with no issues on a browser without canvas roundRect", async () => {
+    const r = await runCheck(built("catch-dodge"), { initScript: "delete CanvasRenderingContext2D.prototype.roundRect;" });
+    expect(r.issues).toEqual([]);
+    expect(r.note).toMatch(/played \d+ rounds?/);
+  });
+
   it.skipIf(!hasBrowser)("Lane racer: a copy whose steering does nothing is caught", async () => {
     const stuck = await runCheck(built("lane-racer", edit("src/play/Game.tsx", "g.x += (LANES[g.lane] - g.x) * Math.min(1, dt * 12);", "")));
     expect(stuck.issues.map((i) => i.message).join(" ")).toMatch(/never moved the player/);

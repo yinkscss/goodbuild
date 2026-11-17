@@ -47,6 +47,8 @@ export interface RunCheckOptions {
   timeoutMs?: number;
   /** Tests: a browser to use instead of the shared one. */
   browser?: Browser;
+  /** Tests: a script run on every page before the app's own, to stand in for an older browser. */
+  initScript?: string;
 }
 
 export interface RunCheckResult {
@@ -328,6 +330,7 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
   const js = files.find((f) => /^app\.[0-9a-f]{12}\.js$/.test(f.path));
   const jsText = js ? new TextDecoder().decode(js.bytes) : "";
   await context.route("**/*", serve(files, new Set(options.assets ?? []), options.chainId ?? 11142220));
+  if (options.initScript) await context.addInitScript(options.initScript);
   // A socket can't be answered from memory; close it so nothing leaves through one.
   await context.routeWebSocket(/.*/, (ws) => ws.close());
 
