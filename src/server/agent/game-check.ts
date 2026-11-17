@@ -261,7 +261,7 @@ const seconds = (r: ProbeRound, now: number) => (r.end ?? now) - r.start;
 const list = (names: string[]) => names.map((n) => `"${n}"`).join(", ");
 
 /** What the probe saw, as problems for the builder. Silent where the bot couldn't tell. */
-export function judgeRounds(report: ProbeReport | null, options: { pressedPlay?: boolean; canvas?: boolean } = {}): { issues: string[]; note: string } {
+export function judgeRounds(report: ProbeReport | null, options: { pressedPlay?: boolean; canvas?: boolean | "3d" } = {}): { issues: string[]; note: string } {
   if (!report) return { issues: [], note: "the game probe wasn't on" };
   const style = styleOf(report);
   const action = style === "action";
@@ -272,7 +272,9 @@ export function judgeRounds(report: ProbeReport | null, options: { pressedPlay?:
     if (options.pressedPlay) {
       return {
         issues: [
-          canvas
+          canvas === "3d"
+            ? "Pressing Play didn't start the game: no round began. Make the Play button set the screen to playing (Scene3D paused={false}), and make sure it isn't disabled."
+            : canvas
             ? "Pressing Play didn't start the game: no round began. Make the Play button set the screen to playing (GameCanvas paused={false}), and make sure it isn't disabled."
             : "Pressing Play didn't start the game: no round began. Call round(true) from src/game/probe.ts when play starts and round(false) at game over, and make sure the Play button isn't disabled.",
         ],
@@ -284,7 +286,9 @@ export function judgeRounds(report: ProbeReport | null, options: { pressedPlay?:
   if (report.probes === 0 && !played.some((r) => (r.moves ?? 0) > 0)) {
     return {
       issues: [
-        canvas
+        canvas === "3d"
+          ? "The game ran but never called probe(score, player.position.x, player.position.z, speed) while playing, so GoodBuild couldn't test it. Call it once per frame in the frame function onReady returns (src/game/probe.ts)."
+          : canvas
           ? "The game ran but never called probe(score, player.x, player.y, speed) while playing, so GoodBuild couldn't test it. Call it once per frame in onFrame (src/game/probe.ts)."
           : "The game ran but never called probe(score) or moved() while playing, so GoodBuild couldn't test it. Call probe(score) when a round starts and whenever the score changes, and moved() for every move the game accepts (src/game/probe.ts).",
       ],
@@ -337,7 +341,11 @@ export function judgeRounds(report: ProbeReport | null, options: { pressedPlay?:
   if (action) {
     const busy = played.filter((r) => r.frames >= 30 && r.xMin !== undefined);
     if (busy.length && busy.every((r) => r.xMin === r.xMax && r.yMin === r.yMax)) {
-      issues.push("Tapping both sides of the game and pressing the arrow keys and Space never moved the player. Read input in onFrame (input.left, input.right, input.actionPressed, input.pointer) and pass the player's position to probe().");
+      issues.push(
+        canvas === "3d"
+          ? "Playing with the game's controls never moved the player. Read input in the frame function (input.left, input.right, input.actionPressed, input.pointer) and pass the player's position (x and z) to probe()."
+          : "Tapping both sides of the game and pressing the arrow keys and Space never moved the player. Read input in onFrame (input.left, input.right, input.actionPressed, input.pointer) and pass the player's position to probe().",
+      );
     }
 
     const longRounds = played.filter((r) => seconds(r, report.time) >= HARDER_S && r.speed0 !== undefined);
@@ -349,7 +357,7 @@ export function judgeRounds(report: ProbeReport | null, options: { pressedPlay?:
     // paused or over, and doesn't speed up with the game. Only seen with a GameCanvas that marks its frames.
     if (report.frames && report.offFrame?.length) {
       issues.push(
-        `${list(report.offFrame)} ${report.offFrame.length === 1 ? "is" : "are"} made on a timer (setInterval or setTimeout) instead of in onFrame, so ${report.offFrame.length === 1 ? "it keeps" : "they keep"} coming while the game is paused or over. Make them in onFrame with a Spawner from src/game/world.ts (or a counter that adds dt), and remove the timer.`,
+        `${list(report.offFrame)} ${report.offFrame.length === 1 ? "is" : "are"} made on a timer (setInterval or setTimeout) instead of in onFrame, so ${report.offFrame.length === 1 ? "it keeps" : "they keep"} coming while the game is paused or over. Make them in ${canvas === "3d" ? "the scene's frame function" : "onFrame"} with a Spawner from src/game/world.ts (or a counter that adds dt), and remove the timer.`,
       );
     }
   }

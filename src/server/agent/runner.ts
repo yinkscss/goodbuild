@@ -19,7 +19,7 @@ import { dbAssetStore, type AssetStore } from "./asset-store";
 import { ASSETS_MODULE, assetManifest, assetsModule, reviewImage, visionImage } from "./assets";
 import { HISTORY_WINDOW, memoryBlock, updateMemory, type Memory, type MemoryMessage } from "./memory";
 import { MODEL_IDS, TIER_FOR, ModelUnavailableError, type ChatMessage, type ModelClient, type ModelEvent, type ModelTier, type ToolCall, type UserPart } from "./model";
-import { INTAKE_MAX_TOKENS, INTAKE_PROMPT, PLAN_ASK_TOOL_NAME, askedJustBefore, fallbackIntake, intakeTools, intakeContext, latestIntake, parseIntake, parsePlanQuestions, planBrief } from "./plan-intake";
+import { INTAKE_MAX_TOKENS, INTAKE_PROMPT, PLAN_ASK_TOOL_NAME, askedJustBefore, fallbackIntake, intakeTools, intakeContext, isGameRequest, latestIntake, parseIntake, parsePlanQuestions, planBrief } from "./plan-intake";
 import { BUILD_TOOLS, contextWithPicks, planTools, systemPrompt } from "./prompt";
 import { checkpoint, claimTurn, loadFiles, recordUsage, releaseTurn } from "./store";
 import { decideFunding } from "@/server/credits/cap";
@@ -876,8 +876,12 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     if (input.mode === "build" && brief.miniPay && miniAppKit && !kitsOf(files).includes(miniAppKit) && !newKits.includes(miniAppKit)) newKits.push(miniAppKit);
     // A game with a leaderboard that works in MiniPay (D93): MiniPay allows no sign-in signature, so its
     // players post to the leaderboard contract. That means a deploy, so only these games get it.
-    const boardKit = kitById("game-board");
     const willHave = (id: string) => kitsOf(files).some((k) => k.id === id) || newKits.some((k) => k.id === id);
+    // A 3D game (D113) gets the game kit too: its probe, building blocks, sound, leaderboard and shop work in a
+    // Scene3D the same way, so "a 3D maze game" isn't left without them just because its words missed the 2D list.
+    const game2dKit = kitById("game-2d");
+    if (input.mode === "build" && game2dKit && willHave("three-d") && !willHave("game-2d") && isGameRequest(kitWords)) newKits.push(game2dKit);
+    const boardKit = kitById("game-board");
     if (input.mode === "build" && brief.leaderboard && boardKit && willHave("game-2d") && willHave("mini-app") && !willHave("game-board")) newKits.push(boardKit);
     // A game that sells things (D95): the tested G$ shop, by the words of the request or the plan's answers.
     const shopKit = kitById("game-shop");

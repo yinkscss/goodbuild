@@ -793,6 +793,18 @@ describe("kits in a turn (D71)", { timeout: 120_000 }, () => {
     expect(files["src/game/GameOver.tsx"]).toContain("export function GameOver");
   });
 
+  it("turns the games kit on with the 3D kit for a 3D game (D113)", async () => {
+    const maze = await buildFromPlan("A 3D maze game where a monster chases you");
+    expect(JSON.parse(maze["src/goodbuild.json"]).kits).toEqual(expect.arrayContaining(["three-d", "game-2d"]));
+    expect(maze["src/game/probe.ts"]).toContain("export function declareGame");
+    expect(maze["src/three/Hud3D.tsx"]).toContain("export function Hud3D");
+  });
+
+  it("leaves the games kit off for a 3D viewer (D113)", async () => {
+    const viewer = await buildFromPlan("A spinning 3D viewer for my NFT art");
+    expect(JSON.parse(viewer["src/goodbuild.json"]).kits).toEqual(["three-d"]);
+  });
+
   it("leaves the contract off for a MiniPay game that says it wants no leaderboard, even naming an onchain one", async () => {
     const files = await buildFromPlan("A snake game for MiniPay without an onchain leaderboard");
     expect(JSON.parse(files["src/goodbuild.json"]).kits).toEqual(expect.arrayContaining(["game-2d", "mini-app"]));

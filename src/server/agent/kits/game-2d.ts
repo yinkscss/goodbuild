@@ -3,7 +3,14 @@ import type { CheckIssue } from "../checks";
 import { CHAIN_TX, HAPTICS, HUD, NPC, POWERUPS, PROBE, WORLD } from "./game-blocks";
 import { EXTRAS, GAME_OVER_TSX, SETTINGS_TSX, TOP_THREE_TSX } from "./game-extras";
 import { LEADERBOARD_TS, LEADERBOARD_TSX, SPRITE } from "./game-files";
+import { daoVault } from "./dao-vault";
+import { dashboard } from "./dashboard";
+import { gameBoard } from "./game-board";
+import { gameShop } from "./game-shop";
+import { miniApp } from "./mini-app";
+import { motion } from "./motion";
 import type { Kit } from "./registry";
+import { threeD } from "./three-d";
 
 /**
  * 2D games (D72). No game engine and no new packages: a canvas, a frame loop, touch and keyboard
@@ -570,6 +577,8 @@ export class Popups {
 
 const GUIDE = `2D games. The kit's files are in src/game/: use them, don't rewrite them.
 
+In a 3D game (the 3D kit is on and the game is drawn in Scene3D) the screen is Scene3D, not GameCanvas: follow the 3D guide for the screen, input and score panel (Hud3D). Everything else here applies as written: free play, the probe, the building blocks, sound, the leaderboard, GameOver and the shop.
+
 Free play first. Anyone can open the game and play straight away: no wallet, no sign-in, no account. The best score is kept on the device (saveBest). A wallet is asked for only when the player chooses to post a score on the leaderboard, buy something, or pay an entry, and the page says so at that moment. Never put Play behind a wallet, and never block the game while a wallet or the leaderboard loads.
 
 The screen
@@ -672,8 +681,11 @@ const KIT_GAME_FILES = new Set(["src/game/chainBoard.ts", "src/game/shop.ts", "s
 
 /** The game's own source files: what the builder wrote, not the kits' files or the starter's library. */
 function authoredFiles(files: Record<string, string>): Array<[string, string]> {
-  return Object.entries(files).filter(([f]) => /^src\/.*\.(tsx?|jsx?)$/.test(f) && !f.startsWith("src/lib/") && !KIT_GAME_FILES.has(f) && !(f in game2d.files));
+  // Every kit's files, so words in a MiniPay page or a dashboard starter aren't read as the game's (D113).
+  otherKitFiles ??= new Set([daoVault, dashboard, gameBoard, gameShop, miniApp, motion, threeD].flatMap((k) => Object.keys(k.files)));
+  return Object.entries(files).filter(([f]) => /^src\/.*\.(tsx?|jsx?)$/.test(f) && !f.startsWith("src/lib/") && !KIT_GAME_FILES.has(f) && !otherKitFiles!.has(f) && !(f in game2d.files));
 }
+let otherKitFiles: Set<string> | undefined;
 
 const lineOf = (content: string, re: RegExp) => content.slice(0, Math.max(0, content.search(re))).split("\n").length;
 
@@ -718,7 +730,7 @@ export function gameChecks(files: Record<string, string>): CheckIssue[] {
   const allAuthored = authored.map(([, c]) => c).join("\n");
   const threeD = /from\s+["'][^"']*three\/Scene3D["']|from\s+["']three["']/.test(allAuthored);
   // Only once there is a game to test: it calls the probe, or shows a Play or Start button.
-  const isGame = /\bdeclareGame\s*\(|(?<![.\w])probe\s*\(|(?<![.\w])round\s*\(\s*(?:true|false)\b/.test(allAuthored) || />\s*(?:Play|Start)(?:\s+(?:game|now|quiz|round))?\s*!?\s*</i.test(allAuthored);
+  const isGame = /\bdeclareGame\s*\(|(?<![.\w])probe\s*\(|(?<![.\w])round\s*\(\s*(?:true|false)\b/.test(allAuthored) || /(?:>|["'`])\s*(?:Play|PLAY|Start|START)(?:\s+(?:[Gg]ame|[Nn]ow|[Qq]uiz|[Rr]ound|[Aa]gain))?\s*!?\s*(?:<|["'`])/.test(allAuthored);
   if (!canvas && !threeD && isGame) {
     const app = own.find(([f]) => f === "src/App.tsx") ?? own[0] ?? authored[0];
     const missing = [
@@ -732,6 +744,23 @@ export function gameChecks(files: Record<string, string>): CheckIssue[] {
         line: 1,
         source: "paths",
         message: `GoodBuild can't test this game yet. It has no GameCanvas, so add, from src/game/probe.ts: ${missing.join("; ")}. They do nothing for real players.`,
+      });
+    }
+  }
+  // A 3D game (D113) is played by the check through Scene3D, so it must report to the probe like a 2D one.
+  const scene3d = own.find(([, c]) => /<Scene3D\b/.test(c));
+  if (scene3d && isGame) {
+    const missing = [
+      /\bdeclareGame\s*\(/.test(allAuthored) ? "" : "declareGame({ style, controls, obstacles, powerups, npcs }) once at module level",
+      /\bspawned\s*\(/.test(allAuthored) || /\bstyle\s*:\s*["'](?:puzzle|turns)["']/.test(allAuthored) ? "" : "spawned(kind) whenever an obstacle, power-up or character is created",
+      /(?<![.\w])probe\s*\(/.test(allAuthored) ? "" : "probe(score, player.position.x, player.position.z, speed) once per frame in the scene's frame function",
+    ].filter(Boolean);
+    if (missing.length) {
+      issues.push({
+        file: scene3d[0],
+        line: lineOf(scene3d[1], /<Scene3D\b/),
+        source: "paths",
+        message: `GoodBuild can't test this 3D game yet. Add, from src/game/probe.ts: ${missing.join("; ")}. They do nothing for real players.`,
       });
     }
   }
