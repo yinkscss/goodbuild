@@ -63,6 +63,8 @@ export interface ProbeReport {
   frames?: number;
   /** Declared kinds made outside a game frame, on a timer, while a round ran. */
   offFrame?: string[];
+  /** Where the player is now, and in which round (a probe from D118 on). */
+  at?: { x: number; y: number; round: number };
 }
 
 /** How the game is judged: what it said it is, or an action game when it didn't say (every game before D112). */
@@ -255,6 +257,162 @@ export async function playRounds(page: Page, ms = PLAY_MS): Promise<string[]> {
     await page.waitForTimeout(110);
   }
   return [];
+}
+
+/** How far the player moved while one input was held (a), then while the opposite one was (b). */
+export interface ControlTrial {
+  a: { dx: number; dy: number };
+  b: { dx: number; dy: number };
+}
+
+/** Fewer trials than this, and the controls aren't judged. */
+const MIN_TRIALS = 4;
+/** How consistently the input must change the player's movement (a t statistic) to count as working. */
+const CONTROLS_T = 3;
+
+/**
+ * Whether a game's controls move the player, judged only for a game that moves the player by itself
+ * (drift: a road that bends, gravity). There, "the player moved" proves nothing, so this asks whether
+ * holding one input instead of the opposite changes the movement the same way every time. "unjudged"
+ * is never held against a game (D118).
+ */
+export function judgeControls(trials: ControlTrial[], drift: { dx: number; dy: number } | null): { verdict: "works" | "dead" | "unjudged"; t: number } {
+  if (!drift || (drift.dx === 0 && drift.dy === 0) || trials.length < MIN_TRIALS) return { verdict: "unjudged", t: 0 };
+  const n = trials.length;
+  const tOf = (d: number[]) => {
+    const mean = d.reduce((s, v) => s + v, 0) / n;
+    const sd = Math.sqrt(d.reduce((s, v) => s + (v - mean) ** 2, 0) / (n - 1));
+    if (sd === 0) return mean === 0 ? 0 : Infinity;
+    return Math.abs(mean) / (sd / Math.sqrt(n));
+  };
+  const t = Math.max(tOf(trials.map((x) => x.a.dx - x.b.dx)), tOf(trials.map((x) => x.a.dy - x.b.dy)));
+  return { verdict: t >= CONTROLS_T ? "works" : "dead", t };
+}
+
+/** How long each input is held when checking the controls, and how long the player is left alone first. */
+const HOLD_MS = 280;
+const IDLE_MS = 1_000;
+const TRIALS = 6;
+
+/** The player's position now, while a round runs; null between rounds or with a probe from before D118. */
+async function liveAt(page: Page): Promise<{ x: number; y: number; round: number } | null> {
+  const r = await probeReport(page);
+  const last = r?.rounds.at(-1);
+  if (!r?.at || !last || last.end !== undefined || r.at.round !== r.rounds.length) return null;
+  return r.at;
+}
+
+/** After a game over, press Play again and wait for the new round. */
+async function playAgain(page: Page): Promise<boolean> {
+  const before = (await probeReport(page))?.rounds.length ?? 0;
+  const again = page.getByRole("button", { name: PLAY_AGAIN }).first();
+  await again.waitFor({ state: "visible", timeout: 1_500 }).catch(() => undefined);
+  await again.click({ timeout: 1_000 }).catch(() => undefined);
+  return page
+    .waitForFunction((n) => {
+      const g = (window as unknown as { __gbGame?: ProbeReport }).__gbGame;
+      return Boolean(g && g.rounds.length > n && g.rounds[g.rounds.length - 1].end === undefined);
+    }, before, { timeout: 1_500 })
+    .then(() => true)
+    .catch(() => false);
+}
+
+/**
+ * Do the game's controls move the player, in a game that also moves the player by itself (D118)?
+ * Leaves the player alone for a moment; if they drift (a bending road, gravity), holds one input and
+ * then the opposite, in turn, and passes how far they moved each time to judgeControls. Only for a
+ * game that declares hold or keys: a tap or a swipe is one step, which a wall can block.
+ */
+export async function checkControls(page: Page): Promise<{ issues: string[]; note?: string }> {
+  const report = await probeReport(page);
+  if (styleOf(report) !== "action" || !report?.at) return { issues: [] };
+  const controls = report.declared?.controls ?? ["sides", "keys"];
+  const hold = controls.includes("hold");
+  if (!hold && !controls.includes("keys")) return { issues: [] };
+  const area = await playArea(page);
+
+  const press = async (which: "a" | "b") => {
+    if (hold) {
+      if (which === "b") return;
+      const box = await area.boundingBox({ timeout: 300 }).catch(() => null);
+      if (!box) return;
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height * 0.6).catch(() => undefined);
+      await page.mouse.down().catch(() => undefined);
+    } else await page.keyboard.down(which === "a" ? "ArrowLeft" : "ArrowRight").catch(() => undefined);
+  };
+  const release = async (which: "a" | "b") => {
+    if (hold) {
+      if (which === "a") await page.mouse.up().catch(() => undefined);
+    } else await page.keyboard.up(which === "a" ? "ArrowLeft" : "ArrowRight").catch(() => undefined);
+  };
+  /** Hold one input for a moment: how far the player moved, or null if the round ended or changed. */
+  const window_ = async (which: "a" | "b", ms: number) => {
+    let from = await liveAt(page);
+    if (!from && (await playAgain(page))) {
+      await page.waitForTimeout(250);
+      from = await liveAt(page);
+    }
+    if (!from) return null;
+    await press(which);
+    await page.waitForTimeout(ms);
+    await release(which);
+    const to = await liveAt(page);
+    return to && to.round === from.round ? { dx: to.x - from.x, dy: to.y - from.y } : null;
+  };
+
+  /** Leave the player alone: how far the game moves them by itself, along each axis, counting every turn. */
+  const idle = async () => {
+    let from = await liveAt(page);
+    if (!from && (await playAgain(page))) {
+      await page.waitForTimeout(250);
+      from = await liveAt(page);
+    }
+    if (!from) return null;
+    const path = { dx: 0, dy: 0 };
+    for (let waited = 0; waited < IDLE_MS; waited += 100) {
+      await page.waitForTimeout(100);
+      const at = await liveAt(page);
+      if (!at || at.round !== from.round) return null;
+      path.dx += Math.abs(at.x - from.x);
+      path.dy += Math.abs(at.y - from.y);
+      from = at;
+    }
+    return path;
+  };
+  // Let the last move settle, then see whether the game moves the player on its own.
+  await page.waitForTimeout(250);
+  let drift: { dx: number; dy: number } | null = null;
+  for (let i = 0; i < 5 && !drift; i++) drift = await idle();
+  const after = await probeReport(page);
+  const last = after?.rounds.at(-1);
+  const span = last ? Math.max((last.xMax ?? 0) - (last.xMin ?? 0), (last.yMax ?? 0) - (last.yMin ?? 0)) : 0;
+  const unjudged = { issues: [], note: "the controls weren't judged (rounds ended too quickly)" };
+  if (!drift) return unjudged;
+  if (Math.hypot(drift.dx, drift.dy) <= span * 0.02) return { issues: [] };
+
+  const trials: ControlTrial[] = [];
+  for (let i = 0; trials.length < TRIALS && i < TRIALS * 2; i++) {
+    // One way then the other, then the other way first, so the game's own steady pull cancels out.
+    const order: ("a" | "b")[] = trials.length % 2 ? ["b", "a"] : ["a", "b"];
+    const moved: Partial<Record<"a" | "b", { dx: number; dy: number }>> = {};
+    for (const which of order) {
+      const m = await window_(which, HOLD_MS);
+      if (!m) break;
+      moved[which] = m;
+    }
+    if (moved.a && moved.b) trials.push({ a: moved.a, b: moved.b });
+  }
+  const judged = judgeControls(trials, drift);
+  if (judged.verdict === "dead") {
+    return {
+      issues: [
+        hold
+          ? "Holding down on the game didn't change how the player moves: the game moves them by itself, but the hold does nothing. Read input.pointer.down (or input.action) in the frame function and use it to move the player."
+          : "Holding the left or right arrow didn't change how the player moves: the game moves them by itself, but the controls do nothing. Read input.left and input.right (and input.pointer) in the frame function and use them to move the player.",
+      ],
+    };
+  }
+  return judged.verdict === "unjudged" ? unjudged : { issues: [] };
 }
 
 const seconds = (r: ProbeRound, now: number) => (r.end ?? now) - r.start;

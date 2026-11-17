@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 
-import { judgeRounds, standInWalletScript, styleOf, type ProbeReport, type ProbeRound } from "./game-check";
+import { judgeControls, judgeRounds, standInWalletScript, styleOf, type ProbeReport, type ProbeRound } from "./game-check";
 
 const round = (over: Partial<ProbeRound> = {}): ProbeRound => ({ start: 0, end: 12, frames: 400, score0: 0, scoreMax: 50, speed0: 200, speedMax: 260, xMin: 90, xMax: 270, yMin: 520, yMax: 520, firstHazard: 1.2, kinds: { oncoming: 1, nitro: 4, rival: 6 }, ...over });
 const report = (rounds: ProbeRound[], over: Partial<ProbeReport> = {}): ProbeReport => ({
@@ -125,5 +125,43 @@ describe("judging each kind of game by its own rules (D112)", () => {
     expect(styleOf(report([round()]))).toBe("action");
     expect(styleOf(report([round()], { declared: { style: "turns" } }))).toBe("turns");
     expect(issues(report([round({ speedMax: 200 })]))).toMatch(/didn't get harder/);
+  });
+});
+
+describe("judging whether the controls move the player, in a game that moves the player by itself (D118)", () => {
+  // Each trial: how far the player moved with one input held (a), then with the opposite (b).
+  const trial = (a: [number, number], b: [number, number]) => ({ a: { dx: a[0], dy: a[1] }, b: { dx: b[0], dy: b[1] } });
+  const drift = { dx: 0, dy: 3 };
+
+  it("passes controls that push the player one way and the other, every time", () => {
+    const t = [trial([4, 1], [-4, 0]), trial([3.5, -1], [-4.2, 1]), trial([4.1, 0], [-3.9, 0]), trial([3.8, 2], [-4, 1]), trial([4.4, 0], [-3.6, -1]), trial([4, 0], [-4, 0])];
+    expect(judgeControls(t, drift).verdict).toBe("works");
+  });
+
+  it("passes controls that work through noise, like a wall bounce in one trial", () => {
+    const t = [trial([4, 0], [-4, 0]), trial([3, 0], [-5, 0]), trial([-1, 0], [-2, 0]), trial([4.5, 0], [-3, 0]), trial([5, 0], [-3.5, 0]), trial([4, 0], [-4, 0])];
+    expect(judgeControls(t, drift).verdict).toBe("works");
+  });
+
+  it("passes a hold that climbs against a pull, on the up-down axis", () => {
+    const t = [trial([0, -2], [0, 3]), trial([0, -1.5], [0, 3.2]), trial([0, -2.2], [0, 2.8]), trial([0, 0], [0, 3]), trial([0, -2], [0, 3]), trial([0, -1.8], [0, 2.9])];
+    expect(judgeControls(t, drift).verdict).toBe("works");
+  });
+
+  it("reports controls whose effect is only the game's own pushing, with no pattern to the input", () => {
+    const t = [trial([3, 2], [-1, 3]), trial([-2, 3], [2.5, 3]), trial([0, 3], [4, 3]), trial([1, 3], [-3, 3]), trial([-4, 3], [0, 3]), trial([2, 3], [1, 3])];
+    expect(judgeControls(t, drift).verdict).toBe("dead");
+  });
+
+  it("reports controls that change nothing at all while the game moves the player", () => {
+    const t = Array.from({ length: 6 }, () => trial([0, 3], [0, 3]));
+    expect(judgeControls(t, drift).verdict).toBe("dead");
+  });
+
+  it("doesn't judge with too few trials, or when the game doesn't move the player by itself", () => {
+    expect(judgeControls([trial([4, 0], [0, 0]), trial([0, 3], [0, 3])], drift).verdict).toBe("unjudged");
+    const still = Array.from({ length: 6 }, () => trial([0, 0], [0, 0]));
+    expect(judgeControls(still, { dx: 0, dy: 0 }).verdict).toBe("unjudged");
+    expect(judgeControls(still, null).verdict).toBe("unjudged");
   });
 });

@@ -5,7 +5,7 @@ import type { Browser, BrowserContext, Page, Route } from "playwright-core";
 import { buildPublishedApp, moduleStarts, PublishBuildError, type PublishedFile } from "@/server/publish/build";
 
 import type { CheckIssue } from "./checks";
-import { GAME_CHECK_SPEED, gameCanvas, gameCheckScript, insideMiniPay, judgeRounds, playRounds, probeReport, standInWalletScript, walletAndBoard } from "./game-check";
+import { checkControls, GAME_CHECK_SPEED, gameCanvas, gameCheckScript, insideMiniPay, judgeRounds, playRounds, probeReport, standInWalletScript, walletAndBoard } from "./game-check";
 import { KITS, kitIdsOf } from "./kits/registry";
 
 /** Every file a kit ships, so the game's own code can be told apart from GoodBuild's. */
@@ -49,6 +49,10 @@ export interface RunCheckOptions {
   browser?: Browser;
   /** Tests: a script run on every page before the app's own, to stand in for an older browser. */
   initScript?: string;
+  /** Tests: stand in for a cheap phone: a touch screen, and the CPU slowed this many times. */
+  phone?: { cpuSlowdown: number };
+  /** Tests: called with the page once a game has been played and judged, before the wallet steps. */
+  afterPlay?: (page: Page) => Promise<void>;
 }
 
 export interface RunCheckResult {
@@ -335,6 +339,7 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
   await context.routeWebSocket(/.*/, (ws) => ws.close());
 
   const page = await context.newPage();
+  if (options.phone) await (await context.newCDPSession(page)).send("Emulation.setCPUThrottlingRate", { rate: options.phone.cpuSlowdown });
   const seen: Seen[] = [];
   // React's development build names the component in a console message next to the error. Both are
   // kept in the order they arrived, and each error takes the first name logged after it.
@@ -448,6 +453,13 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
     const judged = judgeRounds(await probeReport(page), { pressedPlay: pressedPlay && Boolean(options.probeReady), canvas: options.game3d ? "3d" : (options.canvas ?? true) });
     gameIssues.push(...judged.issues);
     gameNotes.push(judged.note);
+    // A game that moves the player by itself (a bending road, gravity): do the controls move them too (D118)?
+    if (!gameIssues.length) {
+      const controls = await checkControls(page);
+      gameIssues.push(...controls.issues);
+      if (controls.note) gameNotes.push(controls.note);
+    }
+    if (options.afterPlay) await options.afterPlay(page);
     if (!seen.length && !gameIssues.length) {
       const chainId = options.chainId ?? 11142220;
       const withWallet = await context.newPage();
@@ -578,7 +590,7 @@ export async function runCheck(files: Record<string, string>, options: RunCheckO
   try {
     const browser = options.browser ?? (await sharedBrowser());
     const kits = kitIdsOf(files);
-    context = await browser.newContext({ viewport: PHONE, serviceWorkers: "block", acceptDownloads: false, permissions: [] });
+    context = await browser.newContext({ viewport: PHONE, hasTouch: Boolean(options.phone), serviceWorkers: "block", acceptDownloads: false, permissions: [] });
     const timeout = new Promise<Omit<RunCheckResult, "ms">>((resolve) => {
       timer = setTimeout(() => resolve({ ran: false, issues: [], note: "skipped: the app took too long to open" }), options.timeoutMs ?? (kits.includes("game-2d") ? GAME_TIMEOUT_MS : DEFAULT_TIMEOUT_MS));
     });

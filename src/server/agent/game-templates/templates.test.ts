@@ -90,6 +90,24 @@ describe("game templates (D114)", { timeout: 180_000 }, () => {
     expect(/saw ([^;(]*)/.exec(noOil.note)?.[1] ?? "").not.toMatch(/\boil\b/);
   });
 
+  // A cheap phone: a touch screen and a CPU four times slower. The game must still play, post and keep up (D118).
+  it.skipIf(!hasBrowser)("Catch and dodge: plays with no issues on a slow touch phone, at full frame rate", async () => {
+    let p95 = Infinity;
+    const r = await runCheck(built("catch-dodge"), {
+      phone: { cpuSlowdown: 4 },
+      initScript: "(() => { const d = []; let last = 0; const f = (t) => { if (last) d.push(t - last); last = t; requestAnimationFrame(f); }; requestAnimationFrame(f); window.__frameTimes = d; })();",
+      afterPlay: async (page) => {
+        await page.evaluate(() => { (window as unknown as { __frameTimes: number[] }).__frameTimes.length = 0; });
+        await page.waitForTimeout(1_500);
+        p95 = await page.evaluate(() => { const d = [...(window as unknown as { __frameTimes: number[] }).__frameTimes].sort((a, b) => a - b); return d[Math.floor(d.length * 0.95)] ?? Infinity; });
+      },
+    });
+    expect(r.issues).toEqual([]);
+    // Not "a score was posted": with the CPU slowed and other tests running, a round may not end in the window.
+    expect(r.note).toMatch(/played \d+ rounds?/);
+    expect(p95).toBeLessThan(34);
+  });
+
   // Older phones (iOS 15 Safari) have no canvas roundRect: the score panel must not crash the game there.
   it.skipIf(!hasBrowser)("Catch and dodge: plays with no issues on a browser without canvas roundRect", async () => {
     const r = await runCheck(built("catch-dodge"), { initScript: "delete CanvasRenderingContext2D.prototype.roundRect;" });
@@ -127,8 +145,21 @@ describe("game templates (D114)", { timeout: 180_000 }, () => {
     expect(stuck.issues.map((i) => i.message).join(" ")).toMatch(/never moved the player/);
   });
 
-  // Not Kart track or Cave flyer: with their controls dead, the bends and gravity still move the player,
-  // and the check only asks whether the player moved (OPEN_QUESTIONS.md, D117).
+  // Cave flyer moves the player by itself (gravity), so "the player moved" proves nothing there: the check holds
+  // one input, then the opposite, and sees whether the movement follows (D118). Not Kart track: its kart moves by
+  // itself only when it hits a tyre wall, too rarely for the check to see in a moment (OPEN_QUESTIONS.md Q46).
+  it.skipIf(!hasBrowser)("Cave flyer: a copy whose hold does nothing is caught, though gravity still moves the craft", async () => {
+    const dead = await runCheck(built("cave-flyer", edit("src/play/Game.tsx", "g.vy += (climbing ? -1500 : 900) * dt;", "g.vy += 900 * dt;")));
+    // Under heavy load the rounds can end before the check gets a clean stretch: then it says so, never "fine" in silence.
+    expect(dead.issues.map((i) => i.message).join(" ") + " " + dead.note).toMatch(/the hold does nothing|the controls weren't judged/);
+  });
+
+  it.skipIf(!hasBrowser)("Cave flyer: with a probe that doesn't say where the player is (one from before D118), the controls aren't judged", async () => {
+    const old = (files: Record<string, string>) => edit("src/game/probe.ts", "  c.at = { x, y, round: c.rounds.length };\n", "")(files);
+    const dead = await runCheck(built("cave-flyer", (f) => old(edit("src/play/Game.tsx", "g.vy += (climbing ? -1500 : 900) * dt;", "g.vy += 900 * dt;")(f))));
+    expect(dead.issues).toEqual([]);
+  });
+
   it.skipIf(!hasBrowser || !hasWebGL)("Sky rings: a copy whose steering does nothing is caught", async () => {
     const stuck = await runCheck(built("sky-rings", edit("src/play/Game.tsx", "g.x += dx;\n              g.y += dy;", "")));
     expect(stuck.issues.map((i) => i.message).join(" ")).toMatch(/never moved the player/);

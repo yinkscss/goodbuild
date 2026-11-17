@@ -804,7 +804,9 @@ describe("the 2D games kit", { timeout: 120_000 }, () => {
     expect(withKit({ ...project(GAME), "src/game/GameCanvas.tsx": mine }, game2d)["src/game/GameCanvas.tsx"]).toBe(mine);
     // The first (D72), the one that never drew while paused (D93), and the one that didn't mark its frames (D112).
     expect(game2d.superseded?.["src/game/GameCanvas.tsx"]).toHaveLength(3);
-    expect(game2d.superseded?.["src/game/probe.ts"]).toHaveLength(1);
+    // The first probe (D94), and the one that didn't say where the player is now (D118).
+    expect(game2d.superseded?.["src/game/probe.ts"]).toHaveLength(2);
+    expect(game2d.superseded?.["src/game/hud.ts"]).toHaveLength(1);
   });
 
   it.skipIf(!hasBrowser)("catches a game that never draws", async () => {

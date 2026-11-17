@@ -82,6 +82,8 @@ interface Check {
   offFrame?: string[];
   /** The round clock for a game with no GameCanvas is running. */
   clock?: boolean;
+  /** Where the player is now, and in which round: the check holds inputs and sees whether this follows (D118). */
+  at?: { x: number; y: number; round: number };
 }
 
 function check(): Check | undefined {
@@ -140,6 +142,7 @@ export function probe(score: number, x = 0, y = 0, speed = 0): void {
   if (!c || !r) return;
   c.probes++;
   r.frames++;
+  c.at = { x, y, round: c.rounds.length };
   if (r.score0 === undefined) {
     r.score0 = r.scoreMax = score;
     r.speed0 = r.speedMax = speed;

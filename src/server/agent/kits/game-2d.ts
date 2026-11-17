@@ -841,7 +841,8 @@ export const game2d: Kit = {
   // ...and the third didn't mark its frames, so the check couldn't tell a spawn made on a timer (D112).
   superseded: { "src/game/GameCanvas.tsx": ["b8d7fc83dc5ae09f096f37446f8ba12273a2b502aba2acb827f4a8c541901c08", "f5a2cd6e74f9d834f917de93c6b5ff39dc8accc07f44f2d956eddab47798563c", "7b7835f8d41a38962332ffc5233a60a817c6354c11bcb8f73bf1223ce399a8d7"],
     // The first probe (D94) knew only action games: no kind of game, no controls, no moves, no rounds without a GameCanvas (D112).
-    "src/game/probe.ts": ["bdb856fa69e21862e92646df0dd7fca97dabbde611edb5dea1c65166f138eeec"],
+    // ...and the second didn't say where the player is now, so the check couldn't tell whether the controls move them (D118).
+    "src/game/probe.ts": ["bdb856fa69e21862e92646df0dd7fca97dabbde611edb5dea1c65166f138eeec", "a63bb387c0b0e570a2568666616ce6e1b2e58d0214db3d3c723edd21fa0ce45e"],
     // Its score panel called roundRect unguarded, which crashes a game's first frame on older phones (D118).
     "src/game/hud.ts": ["5d3eb1ea19c9a7e1b7fd387599ed7c802259096a1ca0ef9b7e5fa3dd9eb09f96"],
     // Its comment pointed at useCollection for leaderboards (D93).
