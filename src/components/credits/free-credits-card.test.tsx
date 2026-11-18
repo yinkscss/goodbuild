@@ -54,17 +54,21 @@ describe("FreeCreditsCard", () => {
     expect(onChange).toHaveBeenCalled();
   });
 
-  it("asks a verified person to vote for GoodBuildIt here, then adds the welcome credits (D125)", async () => {
+  it("asks a verified person who hasn't voted to vote here, then adds the welcome credits (D125)", async () => {
     let voted = false;
+    let welcomed = false;
     api({
-      "/api/credits/free": () => Response.json({ ...base, verified: true, welcomeDone: voted, welcomeNeedsVote: true, refill: { state: "available", leftThisWeek: 5, leftThisMonth: 5, nextAt: null, claimedDays: [] } }),
+      "/api/credits/free": () => Response.json({ ...base, verified: true, welcomeDone: welcomed, welcomeNeedsVote: true, refill: { state: "available", leftThisWeek: 5, leftThisMonth: 5, nextAt: null, claimedDays: [] } }),
       "/api/account/goodid": () => {
-        voted = true;
+        // Before the vote the quiet check finds none; after it, the welcome is posted.
+        if (!voted) return Response.json({ verified: true, welcomeMicro: 0, needsVote: true, welcomeError: "Vote first." });
+        welcomed = true;
         return Response.json({ verified: true, welcomeMicro: 400_000 });
       },
     });
     render(<FreeCreditsCard compact />);
     expect(await screen.findByText("Unlock 40 free credits")).toBeInTheDocument();
+    voted = true;
     await userEvent.click(screen.getByRole("button", { name: /vote here/i }));
     expect(await screen.findByText(/Thank you for voting! 40 free credits added/)).toBeInTheDocument();
   });
@@ -146,5 +150,21 @@ describe("FreeCreditsCard", () => {
     const legacy = render(<FreeCreditsCard />);
     await waitFor(() => expect(fetch).toHaveBeenCalled());
     expect(legacy.container).toBeEmptyDOMElement();
+  });
+});
+
+describe("FreeCreditsCard, someone who already voted elsewhere", () => {
+  it("checks the vote quietly on opening and adds the 40 without asking them to vote", async () => {
+    let welcomed = false;
+    const calls = api({
+      "/api/credits/free": () => Response.json({ ...base, verified: true, welcomeDone: welcomed, welcomeNeedsVote: true, refill: { state: "available", leftThisWeek: 5, leftThisMonth: 5, nextAt: null, claimedDays: [] } }),
+      "/api/account/goodid": () => {
+        welcomed = true;
+        return Response.json({ verified: true, welcomeMicro: 400_000 });
+      },
+    });
+    render(<FreeCreditsCard />);
+    expect(await screen.findByText(/Thank you for voting! 40 free credits added/)).toBeInTheDocument();
+    expect(calls).toHaveBeenCalledWith("/api/account/goodid", expect.objectContaining({ method: "POST" }));
   });
 });

@@ -20,6 +20,8 @@ import { HACKATHON_ID } from "@/server/hackathon/claim";
 import { ensureGas, GasGrantError } from "@/server/gas-grant/grant";
 import { gasGrantDeps } from "@/server/gas-grant/runtime";
 import { SUPPORT_TELEGRAM_URL } from "@/config/site-links";
+import { FreeGrantError, claimWelcome, freePolicy } from "@/server/credits/free-grants";
+import { readGoodIdentityOnCelo } from "@/server/goodid";
 const headers = { "Cache-Control": "no-store" };
 const bodySchema = z.discriminatedUnion("action", [
   z.object({
@@ -176,7 +178,18 @@ export async function POST(request: Request) {
         "Your vote is on-chain, but we couldn’t save its confirmation. Please retry the confirmation.",
         503,
       );
-    return NextResponse.json(confirmed, { headers });
+    // The vote was just confirmed on-chain, so the welcome credits it unlocks (D125) are posted here too:
+    // whoever votes, wherever (the hackathon page, the dashboard, the credits card), gets them at once.
+    let welcomeMicro = 0;
+    if (freePolicy(process.env) === "verified") {
+      try {
+        welcomeMicro = (await claimWelcome(db, s.user, { readIdentity: readGoodIdentityOnCelo, readVoted: async () => true })).grantedMicro;
+      } catch (e) {
+        // Never fails the vote: the credits card retries the welcome and says why.
+        if (!(e instanceof FreeGrantError)) console.error("[flowstate] welcome after vote failed", e instanceof Error ? e.name : "unknown");
+      }
+    }
+    return NextResponse.json({ ...confirmed, welcomeMicro }, { headers });
   } catch (e) {
     return failure(e);
   }

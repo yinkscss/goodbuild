@@ -113,8 +113,21 @@ export function FreeCreditsCard({ compact = false, onChange: onChangeProp }: { c
     let stopped = false;
     void Promise.resolve().then(async () => {
       const s = await refresh();
+      if (stopped || !s || s.policy !== "verified") return;
+      // Verified and maybe already voted (on /hackathon, or on FlowState itself): check the vote on-chain
+      // once, quietly, and post the welcome credits, so a voter is never asked to vote again.
+      if (s.verified) {
+        if (!s.welcomeNeedsVote || s.welcomeDone) return;
+        const res = await fetch("/api/account/goodid", { method: "POST", credentials: "same-origin" }).catch(() => null);
+        const body = res?.ok ? ((await res.json().catch(() => ({}))) as { welcomeMicro?: number; needsVote?: boolean }) : {};
+        if (!stopped && !body.needsVote && body.welcomeMicro) {
+          setNote({ text: `Thank you for voting! ${Math.round(body.welcomeMicro / 10_000)} free credits added.`, tone: "ok" });
+          await refresh();
+          await onChange?.();
+        }
+        return;
+      }
       // Already verified on GoodDollar from before? Check once, quietly, so they never have to ask.
-      if (stopped || !s || s.policy !== "verified" || s.verified) return;
       const res = await fetch("/api/account/goodid", { method: "POST", credentials: "same-origin" }).catch(() => null);
       const body = res?.ok ? ((await res.json().catch(() => ({}))) as { verified?: boolean; welcomeMicro?: number }) : {};
       if (!stopped && body.verified) {
@@ -180,7 +193,7 @@ export function FreeCreditsCard({ compact = false, onChange: onChangeProp }: { c
           Get {status.welcomeCredits} free credits
         </p>
         <p className="mt-1 text-sm text-grey-600">
-          Verify once with GoodDollar, a free face check that takes about a minute{status.welcomeNeedsVote ? ", then vote for GoodBuildIt on FlowState right here (we cover the network fee)" : ""}. Then, when you&apos;re running low, claim {status.refillCredits} more credits on any day you claim your G$ UBI, up to {MONTH_SLOTS} times a month. Unused free credits expire after 30 days. You get 2 free plans a day now, and 5 once verified.
+          Verify once with GoodDollar, a free face check that takes about a minute{status.welcomeNeedsVote ? ", then support our project by voting (we cover the network fee)" : ""}. Then, when you&apos;re running low, claim {status.refillCredits} more credits on any day you claim your G$ UBI, up to {MONTH_SLOTS} times a month. Unused free credits expire after 30 days. You get 2 free plans a day now, and 5 once verified.
         </p>
         {status.budgetFull ? (
           <p className="mt-3 text-sm text-grey-600">This month&apos;s free credits are all gone. Verify now and you can claim refills from the 1st.</p>
@@ -208,7 +221,7 @@ export function FreeCreditsCard({ compact = false, onChange: onChangeProp }: { c
           Unlock {status.welcomeCredits} free credits
         </p>
         <p className="mt-1 text-sm text-grey-600">
-          You&apos;re verified. Last step: vote for GoodBuildIt on FlowState, right here on GoodBuild. It takes a minute, and we cover the network fee.
+          You&apos;re verified. Last step: support our project by voting. It takes a minute, and we cover the network fee.
         </p>
         <div className="mt-3">
           <FlowstateVote onConfirmed={() => void afterVote()} />

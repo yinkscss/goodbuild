@@ -106,13 +106,18 @@ export function AddCredits({ className }: { className?: string }) {
                   We added {formatCredits(recoveredMicro)} from an earlier payment.
                 </p>
               )}
+              {phase.name === "crediting" && (
+                <p role="status" className="text-sm text-grey-600">
+                  <b className="text-ink">Payment sent.</b> We add the credits once the network has confirmed it, usually about 30 seconds. You can keep this open.
+                </p>
+              )}
               {phase.name === "done" && (
                 <p role="status" className="text-sm text-success">
                   Added {formatCredits(phase.addedMicro)}. Your balance is {formatCredits(phase.balanceMicro)}.
                 </p>
               )}
               <Button variant="primary" className="w-full" disabled={busy || !valid || !wallet || phase.name === "done" || phase.name === "paid"} onClick={() => void buy(amountMicro)}>
-                {phase.name === "signing" ? "Confirm in your wallet…" : phase.name === "crediting" ? "Adding credit…" : "Pay with G$"}
+                {phase.name === "signing" ? "Confirm in your wallet…" : phase.name === "crediting" ? "Confirming payment…" : "Pay with G$"}
               </Button>
               <p className="text-center text-xs text-grey-600">Price follows the live G$ market price, quoted for 10 minutes. Keep about 0.1 CELO in your wallet for the network fee.</p>
               <MissingPayment key={phase.name === "paid" ? phase.hash : "form"} info={info} onCredited={reload} initialHash={phase.name === "paid" ? phase.hash : ""} />

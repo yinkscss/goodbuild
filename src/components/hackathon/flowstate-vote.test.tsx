@@ -182,3 +182,29 @@ it("selects ten points after a verified wallet enables its community voting righ
   expect(client.signMessage).toHaveBeenCalledOnce();
   expect(client.writeContract).not.toHaveBeenCalled();
 });
+it("never asks someone who already voted to vote again: it confirms the vote on opening", async () => {
+  const client = { getAddresses: vi.fn(async () => [wallet]), signMessage: vi.fn(), writeContract: vi.fn() };
+  const fetcher = vi.fn(async (_url, init?: RequestInit) => {
+    const body = init?.body ? JSON.parse(String(init.body)) : null;
+    return new Response(JSON.stringify(body?.action === "existing" ? { ...status, support: "10", hash: null } : { ...status, support: "10" }));
+  });
+  vi.stubGlobal("fetch", fetcher);
+  const onConfirmed = vi.fn();
+  render(
+    <AuthContextProvider
+      value={{
+        ...unconfiguredAuth,
+        user: { id: "u", wallet, walletKind: "embedded", verified: true },
+        switchChain: vi.fn(),
+        getWalletClient: vi.fn(async () => client as never),
+      }}
+    >
+      <FlowstateVote onConfirmed={onConfirmed} />
+    </AuthContextProvider>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Vote here with your wallet" }));
+  await screen.findByText("✓ Thank you for voting!");
+  expect(screen.queryByRole("slider")).not.toBeInTheDocument();
+  expect(client.writeContract).not.toHaveBeenCalled();
+  expect(onConfirmed).toHaveBeenCalledOnce();
+});

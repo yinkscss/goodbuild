@@ -33,6 +33,14 @@ export function TopUpPill({ onPaid }: { onPaid?: () => void }) {
       <p className="min-w-0 flex-1">
         {phase.name === "done" ? (
           <b>Added {formatCredits(phase.addedMicro)}. You can keep building.</b>
+        ) : phase.name === "crediting" ? (
+          <>
+            <b>Payment sent.</b> <span className="text-grey-600">Your credits land once the network confirms it, usually about 30 seconds.</span>
+          </>
+        ) : phase.name === "paid" ? (
+          <>
+            <b>Your G$ payment went through.</b> <span className="text-grey-600">The credits are still on their way and usually show within a few minutes.</span>
+          </>
         ) : phase.name === "error" ? (
           <span className="text-warning">{phase.message}</span>
         ) : (
@@ -45,13 +53,13 @@ export function TopUpPill({ onPaid }: { onPaid?: () => void }) {
       <Button
         variant="primary"
         size="sm"
-        disabled={busy || !wallet || !gd}
+        disabled={busy || !wallet || !gd || phase.name === "paid"}
         onClick={() => {
           if (phase.name === "done") return onPaid?.();
           void buy(amountMicro).then((ok) => ok && onPaid?.());
         }}
       >
-        {phase.name === "signing" ? "Confirm in your wallet…" : phase.name === "crediting" ? "Adding credit…" : phase.name === "done" ? "Continue" : "Pay with G$"}
+        {phase.name === "signing" ? "Confirm in your wallet…" : phase.name === "crediting" ? "Confirming payment…" : phase.name === "done" ? "Continue" : "Pay with G$"}
       </Button>
     </div>
   );
