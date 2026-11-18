@@ -72,7 +72,7 @@ describe("game templates (D114)", { timeout: 180_000 }, () => {
 
     it.skipIf(!hasBrowser || (t.dims === "3d" && !hasWebGL))(`${t.name}: is played by the run check with no issues, leaderboard posting included`, async () => {
       const r = await runCheck(built(t.id));
-      expect(r.ran).toBe(true);
+      expect(r.ran, r.note).toBe(true);
       expect(r.issues).toEqual([]);
       expect(r.note).toMatch(/played \d+ rounds?/);
       expect(r.note).toMatch(/a score was posted and shown on the board/);
@@ -142,7 +142,7 @@ describe("game templates (D114)", { timeout: 180_000 }, () => {
     const windy = (f: Record<string, string>) =>
       edit("src/play/Game.tsx", "    if (keys) g.x = g.target;\n", "")(edit("src/play/Game.tsx", "if (keys) g.target = g.x + keys * 360 * dt;", "g.target += Math.sin(g.t * 3) * 400 * dt;")(f));
     const r = await runCheck(built("catch-dodge", windy));
-    expect(r.ran).toBe(true);
+    expect(r.ran, r.note).toBe(true);
     expect(r.issues.map((i) => i.message).join(" ")).not.toMatch(/controls do nothing/);
     expect(r.note).toMatch(/played \d+ rounds?/);
   });
@@ -156,7 +156,7 @@ describe("game templates (D114)", { timeout: 180_000 }, () => {
         "const held = g as typeof g & { px?: number };\n    if (input.pointer.down && held.px !== undefined) g.target += input.pointer.x - held.px;\n    held.px = input.pointer.down ? input.pointer.x : undefined;",
       )(edit("src/play/Game.tsx", "    if (keys) g.x = g.target;\n", "")(edit("src/play/Game.tsx", "if (keys) g.target = g.x + keys * 360 * dt;", "g.target += Math.sin(g.t * 3) * 400 * dt;")(f)));
     const r = await runCheck(built("catch-dodge", dragged));
-    expect(r.ran).toBe(true);
+    expect(r.ran, r.note).toBe(true);
     expect(r.issues.map((i) => i.message).join(" ")).not.toMatch(/controls do nothing/);
     expect(r.note).toMatch(/played \d+ rounds?/);
   });
@@ -167,7 +167,7 @@ describe("game templates (D114)", { timeout: 180_000 }, () => {
     const dead = (f: Record<string, string>) =>
       edit("src/play/Game.tsx", "if (input.pointer.down) g.target = input.pointer.x;", "")(edit("src/play/Game.tsx", "    if (keys) g.x = g.target;\n", "")(edit("src/play/Game.tsx", "if (keys) g.target = g.x + keys * 360 * dt;", "g.target += Math.sin(g.t * 3) * 400 * dt;")(f)));
     const r = await runCheck(built("catch-dodge", dead));
-    expect(r.ran).toBe(true);
+    expect(r.ran, r.note).toBe(true);
     expect(r.issues.map((i) => i.message).join(" ")).not.toMatch(/controls do nothing/);
     expect(r.note).toMatch(/the controls weren't judged/);
   });
@@ -176,7 +176,7 @@ describe("game templates (D114)", { timeout: 180_000 }, () => {
     const old = (files: Record<string, string>) => edit("src/game/probe.ts", "  c.at = { x, y, round: c.rounds.length };\n", "")(files);
     const dead = await runCheck(built("cave-flyer", (f) => old(edit("src/play/Game.tsx", "g.vy += (climbing ? -1500 : 900) * dt;", "g.vy += 900 * dt;")(f))));
     // It must have run: a check that didn't run has no issues either.
-    expect(dead.ran).toBe(true);
+    expect(dead.ran, dead.note).toBe(true);
     expect(dead.note).toMatch(/played \d+ rounds?/);
     expect(dead.issues).toEqual([]);
   });
@@ -229,7 +229,7 @@ describe("a 3D game on a checker with no WebGL (D116)", { timeout: 180_000 }, ()
     const browser = await chromium.launch({ headless: true, args: ["--disable-3d-apis", "--disable-webgl"] });
     try {
       const r = await runCheck(built("runner-3d"), { browser });
-      expect(r.ran).toBe(true);
+      expect(r.ran, r.note).toBe(true);
       expect(r.issues).toEqual([]);
       expect(r.note).toMatch(/no WebGL on this checker/);
     } finally {

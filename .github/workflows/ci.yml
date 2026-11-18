@@ -18,7 +18,7 @@ permissions:
 
 jobs:
   checks:
-    name: Lint, types, tests, build
+    name: Lint, types, functional tests, build
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -68,11 +68,10 @@ jobs:
         run: pnpm typecheck
 
       # PGlite and solc run in-process, so no database service or compiler download is needed.
-      # pnpm test runs the functional suite, then the frame-rate benchmark on its own.
-      # Its <34ms budget must not compete with other workers' databases and compilers.
+      # Games and the frame-rate benchmark run on a separate runner below.
       # Workers and timeouts come from vitest.config.mts.
       - name: Test
-        run: pnpm test
+        run: pnpm test:suite
         timeout-minutes: 20
 
       - name: Build
@@ -95,3 +94,59 @@ jobs:
           rm age.tgz
           bash deploy/test-offsite-backup.sh
         timeout-minutes: 8
+
+  games:
+    name: Game templates and frame rate
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # The browser comes from Playwright's own CDN. The runner's Ubuntu mirrors sometimes fail to
+      # resolve for an hour, so apt (the system libraries) is only used if the browser can't start
+      # without it, and then it retries.
+      - name: Install the headless browser
+        run: |
+          pw="node node_modules/playwright-core/cli.js"
+          $pw install chromium-headless-shell
+          check='require("playwright-core").chromium.launch({headless:true}).then(b=>b.close()).then(()=>process.exit(0),e=>{console.error(e.message);process.exit(1)})'
+          if ! node -e "$check"; then
+            for attempt in 1 2 3; do
+              sudo apt-get -o Acquire::Retries=5 update -qq || true
+              $pw install-deps chromium-headless-shell && break
+              [ "$attempt" = 3 ] && exit 1
+              sleep 30
+            done
+            node -e "$check"
+          fi
+        timeout-minutes: 10
+
+      # Browser checks keep their production deadlines; the slow-phone test keeps p95 <34ms.
+      # Neither shares this runner with the core suite's PGlite, solc or TypeScript workers.
+      - name: Test game templates
+        run: pnpm test:games
+        timeout-minutes: 20
+      - name: Test slow-phone frame rate
+        run: pnpm test:performance
+        timeout-minutes: 3
+
+  required:
+    # Preserve the existing required check so branch protection also gates on the games job.
+    name: Lint, types, tests, build
+    needs: [checks, games]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Require both runners to pass
+        env:
+          CORE_RESULT: ${{ needs.checks.result }}
+          GAMES_RESULT: ${{ needs.games.result }}
+        run: test "$CORE_RESULT" = success && test "$GAMES_RESULT" = success
