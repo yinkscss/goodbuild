@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, eq, gte, max, sql } from "drizzle-orm";
+import { and, eq, gte, sql } from "drizzle-orm";
 import { formatEther, keccak256, type Address, type Hex, type PublicClient } from "viem";
 
 import type { Db } from "@/server/db/client";
@@ -32,6 +32,8 @@ export const GAS_GRANTS_KEY = "gas_grants";
 export const LOW_BALANCE_GRANTS = 5;
 /** Unmined this long after signing: stop and ask the owner instead of guessing. */
 const STUCK_AFTER_MS = 10 * 60_000;
+/** Someone else's transfer unmined this long: pause new grants until it lands. */
+const STALL_AFTER_MS = 2 * 60_000;
 const TRANSFER_GAS = BigInt(21_000);
 const CELO_CHAIN_ID = 42220;
 /** Lock ids for pg_advisory_xact_lock. Arbitrary, but fixed and unique to this module. */
@@ -205,8 +207,39 @@ async function claimAndSign(
     if (mine && mine.status !== "claimed") return mine;
     if (!mine && today >= GRANTS_PER_DAY)
       throw new GasGrantError("Today’s free network fees are used up. Message us on Telegram, or try again tomorrow.", "daily_limit");
-    // Saved nonces may not be on the chain yet (signed, broadcast pending). Never reuse one.
-    const [{ top }] = await tx.select({ top: max(gasGrants.nonce) }).from(gasGrants);
+    // Earlier transfers that are signed but not yet seen mined: settle or resend them first. A transfer that
+    // never reached the chain (a restart between saving and broadcasting) would otherwise block every
+    // later nonce. If one stays unmined for 2 minutes, stop new grants rather than pile nonces on a gap.
+    let top: number | null = null;
+    for (const prev of await tx.select().from(gasGrants).where(eq(gasGrants.status, "signed"))) {
+      if (prev.goodidRoot === a.root || !prev.txHash || !prev.rawTx) continue;
+      const got = await chain.receipt(prev.txHash as Hex);
+      if (got === "success") {
+        await tx.update(gasGrants).set({ status: "confirmed", confirmedAt: now }).where(eq(gasGrants.id, prev.id));
+        continue;
+      }
+      if (got === "reverted") {
+        await tx.update(gasGrants).set({ status: "needs_review", error: "reverted on-chain" }).where(eq(gasGrants.id, prev.id));
+        await deps.alert(`GoodBuild gas grant ${prev.id} to ${prev.wallet} reverted on-chain (tx ${prev.txHash}). Not retried.`).catch(() => {});
+        continue;
+      }
+      await chain.sendRaw(prev.rawTx as Hex).catch((e) => console.error("[gas-grant] rebroadcast failed", (e as Error).name));
+      if ((await chain.receipt(prev.txHash as Hex)) === "success") {
+        await tx.update(gasGrants).set({ status: "confirmed", confirmedAt: now }).where(eq(gasGrants.id, prev.id));
+        continue;
+      }
+      top = Math.max(top ?? -1, prev.nonce ?? -1);
+      if (prev.sentAt && now.getTime() - prev.sentAt.getTime() > STALL_AFTER_MS) {
+        if (!prev.error) {
+          await tx.update(gasGrants).set({ error: "stalled" }).where(eq(gasGrants.id, prev.id));
+          await deps.alert(`GoodBuild gas grants are paused: transfer ${prev.txHash} (nonce ${prev.nonce}) to ${prev.wallet} hasn't been mined for over 2 minutes. New grants wait until it lands.`).catch(() => {});
+        }
+        return null; // commit what was settled above, then tell the person to try again
+      }
+    }
+    // Confirmed transfers used their nonce for sure, even if the chain read above came before they landed.
+    const [{ used }] = await tx.select({ used: sql<number | null>`max(${gasGrants.nonce})` }).from(gasGrants).where(eq(gasGrants.status, "confirmed"));
+    if (used !== null) top = Math.max(top ?? -1, Number(used));
     const nonce = Math.max(chainNonce, top === null ? 0 : top + 1);
     const raw = await signer.signTransaction({
       to: a.wallet,
@@ -233,6 +266,7 @@ async function claimAndSign(
     return winner;
   });
 
+  if (!row) throw new GasGrantError(SLOW, "pending", false);
   if (row.status === "signed" && row.amountWei && BigInt(row.amountWei) === amount) {
     const left = gasBalance - cost;
     if (gasBalance >= GRANT_TARGET_WEI * BigInt(LOW_BALANCE_GRANTS) && left < GRANT_TARGET_WEI * BigInt(LOW_BALANCE_GRANTS))

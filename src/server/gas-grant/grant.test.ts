@@ -45,6 +45,7 @@ function fakeChain(opts: { roots?: Map<string, string | null>; mineOn?: "send" |
       const hash = keccak256(raw);
       if (opts.mineOn === "never" || mined.has(hash)) return;
       const tx = parseTransaction(raw);
+      if ((tx.nonce ?? 0) !== nonce) return; // like Celo: a used nonce is dropped, a future one waits (never mined here)
       mined.set(hash, "success");
       nonce = Math.max(nonce, (tx.nonce ?? 0) + 1);
       const to = tx.to!.toLowerCase();
@@ -184,4 +185,36 @@ it("imports nothing from credits, Paystack or GoodCash", () => {
     for (const line of src.split("\n").filter((l) => /^\s*import|from\s+["']/.test(l)))
       expect(line, `${file}: ${line}`).not.toMatch(/credits|paystack|goodcash/i);
   }
+});
+
+it("resends someone else's lost transfer before signing the next one", async () => {
+  const a = await newUser();
+  const b = await newUser();
+  const f = fakeChain();
+  // A's broadcast never reaches the chain (say, a restart right after saving).
+  const realSend = f.chain.sendRaw;
+  f.chain.sendRaw = vi.fn(async () => {
+    throw new Error("connection reset");
+  });
+  await expect(ensureGas(db, a, NEED, "hackathon_vote", deps(f.chain))).rejects.toMatchObject({ code: "pending" });
+  f.chain.sendRaw = realSend;
+  // B's request first resends A's saved transfer, then sends B's with the next nonce.
+  expect(await ensureGas(db, b, NEED, "hackathon_vote", deps(f.chain))).toMatchObject({ kind: "granted" });
+  const rows = await db.select().from(gasGrants);
+  expect(rows.map((r) => [r.wallet, r.status, r.nonce]).sort()).toEqual(
+    [[a.wallet.toLowerCase(), "confirmed", 0], [b.wallet.toLowerCase(), "confirmed", 1]].sort(),
+  );
+  expect(f.balances.get(a.wallet.toLowerCase())).toBe(GRANT_TARGET_WEI);
+});
+
+it("pauses new grants while an earlier transfer stays unmined, and alerts once", async () => {
+  const a = await newUser();
+  const f = fakeChain({ mineOn: "never" });
+  await expect(ensureGas(db, a, NEED, "hackathon_vote", deps(f.chain))).rejects.toMatchObject({ code: "pending" });
+  const alert = vi.fn(async () => {});
+  const later = () => new Date(Date.now() + 3 * 60_000);
+  for (let i = 0; i < 2; i++)
+    await expect(ensureGas(db, await newUser(), NEED, "hackathon_vote", deps(f.chain, { now: later, alert }))).rejects.toMatchObject({ code: "pending" });
+  expect(alert).toHaveBeenCalledOnce();
+  expect(await db.select().from(gasGrants)).toHaveLength(1);
 });

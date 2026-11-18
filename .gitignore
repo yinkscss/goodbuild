@@ -47,6 +47,3 @@ next-env.d.ts
 # made by scripts/build-publish-runtime.mjs
 /publish-runtime.pack.gz
 /contracts/build
-
-# Gas wallet key file for the gas grant (D123). Never commit.
-/deploy/secrets/
