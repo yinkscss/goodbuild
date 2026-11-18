@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ArrowUp, Loader2, Square } from "lucide-react";
+import { ArrowUp, ChevronDown, FileIcon, Loader2, Square } from "lucide-react";
 
 import { formatCredits } from "@/lib/credits-math";
 import { isDeployableSource } from "@/lib/deploy/test-file";
@@ -14,7 +14,8 @@ import { isNearBottom } from "@/lib/scroll";
 import type { TurnMode, TurnRecord } from "@/lib/turn-types";
 import { cn } from "@/lib/utils";
 import { DeployButton } from "@/components/deploy/deploy-trigger";
-import { AssetBar, AttachMenu, imageFiles } from "./asset-bar";
+import { messageAssetIds } from "@/lib/attachments";
+import { AssetBar, AttachMenu, imageFiles, KIND_LABEL } from "./asset-bar";
 import { hasMiniPayKit } from "@/lib/minipay-checklist";
 import { FirstWait } from "./first-wait";
 import { MiniPayGuide } from "./minipay-guide";
@@ -93,6 +94,7 @@ export function ChatPanel({
             const cancelled = m.status === "cancelled";
             return (
               <div key={m.id} className={cn("flex flex-col items-end gap-1", (waiting || cancelled) && "opacity-60")}>
+                <SentFiles ids={messageAssetIds(m.meta)} assets={state.assets} assetUrls={assetUrls} />
                 <p className="max-w-[90%] rounded-block rounded-br-md break-words bg-tint px-4 py-3 text-sm whitespace-pre-wrap">{m.content}</p>
                 {mode === "plan" && <span className="text-[11px] text-grey-400">Plan mode</span>}
                 {waiting && <span className="text-[11px] text-grey-400">Queued, runs after the current build</span>}
@@ -250,7 +252,8 @@ export function Composer({
   placeholder,
   focusCue = 0,
 }: {
-  assets: AssetInfo[];
+  /** `pending`: uploaded since the last message; shown as chips and sent with the next one. */
+  assets: Array<AssetInfo & { pending?: boolean }>;
   assetUrls: Record<string, string>;
   onUpload: (file: File, kind: AssetKind) => Promise<void>;
   onRemove: (id: string) => Promise<void>;
@@ -293,6 +296,11 @@ export function Composer({
 
   const est = mode === "plan" ? estimate.planMicro : estimate.buildMicro;
   const [dragging, setDragging] = React.useState(false);
+  // Chips are the files going with the next message. Files already sent live in their messages,
+  // and stay reachable under "Project files" to remove or re-classify.
+  const pending = assets.filter((a) => a.pending);
+  const earlier = assets.filter((a) => !a.pending);
+  const [showEarlier, setShowEarlier] = React.useState(false);
   return (
     <form
       className={cn("m-3 mt-0 rounded-block sm:m-4 sm:mt-0 bg-canvas p-3 focus-within:shadow-focus", dragging && "shadow-focus")}
@@ -315,7 +323,13 @@ export function Composer({
         for (const f of files) void onUpload(f, "image");
       }}
     >
-      <AssetBar assets={assets} assetUrls={assetUrls} onRemove={(id) => void onRemove(id)} onChangeKind={(id, k) => void onChangeKind(id, k)} />
+      {showEarlier && earlier.length > 0 && (
+        <div className="mb-3 border-b border-hairline pb-1">
+          <p className="mb-2 px-1 text-[11px] text-grey-600">Already sent. The builder can use these in any change.</p>
+          <AssetBar assets={earlier} assetUrls={assetUrls} onRemove={(id) => void onRemove(id)} onChangeKind={(id, k) => void onChangeKind(id, k)} />
+        </div>
+      )}
+      <AssetBar assets={pending} assetUrls={assetUrls} onRemove={(id) => void onRemove(id)} onChangeKind={(id, k) => void onChangeKind(id, k)} />
       <label htmlFor="composer" className="sr-only">
         Message GoodBuild
       </label>
@@ -343,6 +357,18 @@ export function Composer({
       <div className="mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
         <div className="flex items-center gap-2">
         <AttachMenu onUpload={(f, k) => void onUpload(f, k)} uploading={uploading} />
+        {earlier.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setShowEarlier((v) => !v)}
+            aria-expanded={showEarlier}
+            title="Files you sent earlier in this project"
+            className="inline-flex h-8 items-center gap-1 rounded-full bg-surface px-3 text-xs font-medium text-grey-600 outline-none hover:text-violet focus-visible:shadow-focus"
+          >
+            Files {earlier.length}
+            <ChevronDown className={cn("size-3 transition-transform", showEarlier && "rotate-180")} aria-hidden />
+          </button>
+        )}
         <div className="flex rounded-full bg-surface p-1 text-xs font-medium" role="radiogroup" aria-label="Mode">
           {(["build", "plan"] as const).map((m) => (
             <button
@@ -390,5 +416,29 @@ export function Composer({
         </div>
       </div>
     </form>
+  );
+}
+
+/** The files a message was sent with, above its bubble: image thumbnails, other files by name. */
+function SentFiles({ ids, assets, assetUrls }: { ids: string[]; assets: AssetInfo[]; assetUrls: Record<string, string> }) {
+  const sent = ids.map((id) => assets.find((a) => a.id === id)).filter((a): a is AssetInfo => Boolean(a));
+  if (!sent.length) return null;
+  return (
+    <ul className="flex max-w-[90%] flex-wrap justify-end gap-2" aria-label="Files sent with this message">
+      {sent.map((a) =>
+        a.mime.startsWith("image/") && assetUrls[a.name] ? (
+          <li key={a.id} title={`${a.name} · ${KIND_LABEL[a.kind]}`}>
+            {/* eslint-disable-next-line @next/next/no-img-element -- a data URL thumbnail */}
+            <img src={assetUrls[a.name]} alt={`${KIND_LABEL[a.kind]}: ${a.name}`} className="size-24 rounded-block bg-tint object-cover sm:size-28" />
+          </li>
+        ) : (
+          <li key={a.id} className="flex items-center gap-1.5 rounded-full bg-tint px-3 py-1.5 text-[13px] font-medium text-violet" title={a.description || a.name}>
+            <FileIcon className="size-4" aria-hidden />
+            <span className="max-w-[10rem] truncate">{a.name}</span>
+            <span className="text-[11px] font-normal text-grey-600">{KIND_LABEL[a.kind]}</span>
+          </li>
+        ),
+      )}
+    </ul>
   );
 }

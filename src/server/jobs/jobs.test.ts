@@ -75,6 +75,13 @@ describe("background turn jobs", { timeout: 60_000 }, () => {
     expect(await db.select().from(turnJobCalls).where(eq(turnJobCalls.jobId, job.id))).toHaveLength(SCRIPT.length);
   });
 
+  it("saves the files a message was sent with on that message", async () => {
+    const job = await enqueueTurn(db, { projectId, userId, mode: "build", prompt: "Use my portrait", assetIds: ["00000000-0000-4000-8000-000000000001"] });
+    const [m] = await db.select().from(messages).where(eq(messages.id, job.userMessageId));
+    expect(m.meta).toMatchObject({ mode: "build", assetIds: ["00000000-0000-4000-8000-000000000001"], jobId: job.id });
+    await stopProject(db, projectId);
+  });
+
   it("runs two prompts on one project one after the other, never together", async () => {
     const a = await enqueueTurn(db, { projectId, userId, mode: "build", prompt: "First" });
     const b = await enqueueTurn(db, { projectId, userId, mode: "build", prompt: "Second" });

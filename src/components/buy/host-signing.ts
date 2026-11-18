@@ -1,7 +1,7 @@
 import { isAddress, isHex, type Hex } from "viem";
 
 /**
- * Host signing for GoodCash top-ups (D120). Our page, not GoodCash's widget, holds the customer's wallet (a Magic
+ * Host signing for GoodCash top-ups (D122). Our page, not GoodCash's widget, holds the customer's wallet (a Magic
  * email wallet or a connected external one), so the widget asks our page to sign the one permit a top-up needs: a
  * USDC `ReceiveWithAuthorization` (EIP-3009) on Base that moves at most this order's dollars to one of Relay's
  * approval contracts. Relay then delivers G$ or CELO to the same wallet on Celo. Facts from GoodCash (18 Nov 2026)

@@ -168,14 +168,16 @@ function BuyPanel({ defaultAsset, onClose, onDelivered }: { defaultAsset: Asset;
     setError(null);
     try {
       await loadWidget();
-      setOrder(null);
-      setPanelReady(false);
-      setStage("pay");
-      container.current.replaceChildren();
-      // Host signing (D120): the person is already signed in here (often a Magic email wallet GoodCash can't see), so our
+      // Host signing (D122): the person is already signed in here (often a Magic email wallet GoodCash can't see), so our
       // page signs the one top-up permit and the widget skips its connect screen. Off, or on an older widget, nothing changes.
       const sessionWallet = auth.user?.wallet ?? null;
-      const host = canHostSign({ enabled: config.hostSigning, widgetVersion: window.GoodCash?.version, sessionWallet, connectedWallet: auth.wallet?.address });
+      let connectedWallet = auth.wallet?.address ?? null;
+      if (config.hostSigning && sessionWallet && canHostSign({ enabled: true, widgetVersion: window.GoodCash?.version, sessionWallet, connectedWallet: sessionWallet })) {
+        // Get the session's wallet back first if the page lost it (D120), so a phone isn't sent to GoodCash's connect screen.
+        // A different account, or an email login that ended, stops here with a message saying what to do.
+        connectedWallet = (await auth.ensureWallet()).address;
+      }
+      const host = canHostSign({ enabled: config.hostSigning, widgetVersion: window.GoodCash?.version, sessionWallet, connectedWallet });
       const hostOptions =
         host && sessionWallet
           ? {
@@ -187,6 +189,10 @@ function BuyPanel({ defaultAsset, onClose, onDelivered }: { defaultAsset: Asset;
               }),
             }
           : {};
+      setOrder(null);
+      setPanelReady(false);
+      setStage("pay");
+      container.current.replaceChildren();
       // Embed mode with our own container: the panel is an iframe inside this dialog, so the dialog's focus and click handling
       // never fights an overlay on the page. The wallet is pinned to the signed-in one.
       handle.current = window.GoodCash?.open({

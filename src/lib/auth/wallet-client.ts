@@ -21,7 +21,7 @@ export async function switchWalletChain(client: WalletClient, chainId: number): 
   await switchWalletTo(client, celoChainFor(chainId));
 }
 
-/** Switch a wallet to any chain (Base for the GoodCash top-up permit, D120), adding it first if needed. */
+/** Switch a wallet to any chain (Base for the GoodCash top-up permit, D122), adding it first if needed. */
 export async function switchWalletTo(client: WalletClient, chain: Chain): Promise<void> {
   try {
     await client.switchChain({ id: chain.id });

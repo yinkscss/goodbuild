@@ -66,12 +66,18 @@ export interface AuthApi {
   signOut(): Promise<void>;
   switchChain(chainId: number): Promise<void>;
   /**
+   * The wallet the session was signed with, reconnected if the browser lost it (a wallet that loaded late,
+   * was locked, or an expired WalletConnect link). May open the wallet. Throws a SignInError with a plain
+   * message when it can't: no session, a different account selected, or an email wallet that timed out.
+   */
+  ensureWallet(): Promise<WalletState>;
+  /**
    * A viem wallet client for the connected wallet, the same type for the Magic wallet and
    * every external wallet (D22). Deploy signing goes through this. Throws if no wallet is connected.
    */
   getWalletClient(): Promise<WalletClient>;
   /**
-   * Signs one EIP-712 message for another chain (the GoodCash top-up permit on Base, D120): moves the wallet to
+   * Signs one EIP-712 message for another chain (the GoodCash top-up permit on Base, D122): moves the wallet to
    * `chain` if it can, signs, and always moves it back to the chain it was on. A wallet that can't switch signs
    * without switching. Throws if no wallet is connected, the wallet refuses, or the answer isn't a signature.
    */

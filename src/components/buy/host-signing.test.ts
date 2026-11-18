@@ -45,7 +45,7 @@ const ctx = (over: object = {}) => ({ orderId: "tu_0123456789abcdef01234567", ma
 const check = (typedData: unknown, context: unknown = ctx(), signer: string = WALLET) => checkTopUpPermit({ typedData, context, wallet: WALLET, signer, now: NOW });
 const reason = (r: ReturnType<typeof check>) => (r.ok ? null : r.reason);
 
-describe("top-up permit check (D120)", () => {
+describe("top-up permit check (D122)", () => {
   it("accepts the permit GoodCash sends, for both Relay contracts and up to the order's maximum", () => {
     expect(check(request()).ok).toBe(true);
     expect(check(request({ message: { to: RELAY_APPROVAL_CONTRACTS[1].toUpperCase().replace("0X", "0x") } })).ok).toBe(true);
