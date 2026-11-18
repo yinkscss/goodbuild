@@ -254,6 +254,7 @@ describe("the wallet list", () => {
     const connecting = wallet.connectWallet();
     await until(dialog);
     expect(dialog()?.getAttribute("aria-modal")).toBe("true");
+    await until(() => document.activeElement?.textContent?.includes("MetaMask"));
     expect(document.activeElement?.textContent).toContain("MetaMask"); // focus starts in the list
     button("Rabby")!.click();
     expect(await connecting).toBe("0x00000000000000000000000000000000000000b2");

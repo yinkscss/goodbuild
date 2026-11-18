@@ -580,7 +580,8 @@ export function WalletChooser({
   const attempt = useRef(0);
 
   useEffect(() => {
-    panel.current?.querySelector<HTMLElement>("button, a")?.focus();
+    const firstWallet = view.step === "list" ? panel.current?.querySelector<HTMLElement>(".gbw-row") : null;
+    (firstWallet ?? panel.current?.querySelector<HTMLElement>("button, a"))?.focus();
   }, [view.step]);
 
   async function pick(info: WalletInfo) {

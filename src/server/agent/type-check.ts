@@ -100,6 +100,9 @@ export async function typeCheck(files: Record<string, string>, options: { timeou
           resolve({ fatal: "unreadable output" });
         }
       });
+      // A timeout or early exit can close stdin while input is still being written.
+      // execFile's callback reports the outcome; don't let the stream emit an unhandled EPIPE.
+      child.stdin?.on("error", () => {});
       child.stdin?.end(JSON.stringify({ files: sources, ...dirs }));
     });
     if (raw.fatal || !raw.diagnostics) return done({ ran: false, issues: [], note: `skipped: the type check didn't finish (${(raw.fatal ?? "no result").split("\n")[0].slice(0, 160)})` });
