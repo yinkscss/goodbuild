@@ -1,6 +1,5 @@
 "use client";
 import * as React from "react";
-import { formatEther } from "viem";
 import { celo } from "viem/chains";
 import {
   Dialog,
@@ -17,7 +16,6 @@ import {
   flowstateClaimMessage,
   type FlowstateStatus,
 } from "@/lib/flowstate/config";
-import { shortAddress } from "@/lib/format";
 import { styles } from "./styles";
 // The dialog is also used outside /hackathon (the free-credits card, D125). Every rule here is hk- scoped.
 import "./hackathon.css";
@@ -65,7 +63,6 @@ export function FlowstateVote({ onConfirmed }: { onConfirmed?: () => void }) {
   const auth = useAuth();
   const [open, setOpen] = React.useState(false);
   const [status, setStatus] = React.useState<FlowstateStatus | null>(null);
-  const [review, setReview] = React.useState<Review | null>(null);
   const [quantity, setQuantity] = React.useState("1");
   const [busy, setBusy] = React.useState("");
   const [error, setError] = React.useState("");
@@ -98,7 +95,6 @@ export function FlowstateVote({ onConfirmed }: { onConfirmed?: () => void }) {
     }
     applyStatus(next);
     setConfirmed(true);
-    setReview(null);
     localStorage.removeItem(storageKey);
     onConfirmed?.();
   }
@@ -119,7 +115,6 @@ export function FlowstateVote({ onConfirmed }: { onConfirmed?: () => void }) {
     setOpen(true);
     setConfirmed(false);
     setTxHash(null);
-    setReview(null);
     setError("");
     setDiscardArmed(false);
     await perform("Checking your wallet…", async () => {
@@ -136,7 +131,6 @@ export function FlowstateVote({ onConfirmed }: { onConfirmed?: () => void }) {
       const next = await request({ action: "existing" });
       setStatus(next);
       setConfirmed(true);
-      setReview(null);
       setTxHash(null);
       localStorage.removeItem(storageKey);
       onConfirmed?.();
@@ -164,68 +158,53 @@ export function FlowstateVote({ onConfirmed }: { onConfirmed?: () => void }) {
       );
     });
   }
-  async function prepare(e: React.FormEvent) {
+  /**
+   * One button: switch to Celo, then price the vote (and cover the network fee if the wallet is short),
+   * then the wallet's own confirmation. Pricing runs after every wallet prompt that can move the ballot,
+   * so what the wallet shows is what the server just checked.
+   */
+  async function vote(e: React.FormEvent) {
     e.preventDefault();
-    await perform("Checking your vote and covering the network fee… this can take up to 30 seconds.", async () => {
+    await perform("Getting your vote ready… this can take up to 30 seconds.", async () => {
       if (!/^[1-9]\d{0,28}$/.test(quantity))
-        throw new Error("Enter a whole number of votes, starting at 1.");
-      setReview(await request({ action: "prepare", additional: quantity }));
-    });
-  }
-  async function submit() {
-    if (!review) return;
-    await perform("Confirming your vote…", async () => {
+        throw new Error("Choose at least 1 point.");
       const { client, account } = await signer();
-      // Recheck after any wallet/chain prompts, before asking Magic to send anything.
-      const fresh: Review = await request({
-        action: "prepare",
-        additional: review.additional,
-      });
-      if (
-        fresh.after !== review.after ||
-        BigInt(fresh.feeCapWei) > BigInt(review.feeCapWei)
-      ) {
-        setReview(fresh);
-        throw new Error(
-          "Your ballot or the network fee changed. Review the updated details, then confirm again.",
-        );
-      }
+      const ready: Review = await request({ action: "prepare", additional: quantity });
+      setBusy("Confirm the vote in your wallet…");
       const hash = await client.writeContract({
         account,
         chain: celo,
         address: FLOWSTATE_COUNCIL,
         abi: FLOWSTATE_ABI,
         functionName: "vote",
-        args: [
-          [{ recipient: GOODBUILDIT_RECIPIENT, amount: BigInt(fresh.after) }],
-        ],
-        gas: BigInt(fresh.gas),
-        maxFeePerGas: BigInt(fresh.maxFeePerGas),
-        maxPriorityFeePerGas: BigInt(fresh.maxPriorityFeePerGas),
+        args: [[{ recipient: GOODBUILDIT_RECIPIENT, amount: BigInt(ready.after) }]],
+        gas: BigInt(ready.gas),
+        maxFeePerGas: BigInt(ready.maxFeePerGas),
+        maxPriorityFeePerGas: BigInt(ready.maxPriorityFeePerGas),
       });
       setTxHash(hash);
       localStorage.setItem(storageKey, hash);
-      setReview(null);
+      setBusy("Confirming your vote…");
       // The server confirms sender, target, successful receipt, calldata and live allocation.
       for (let i = 0; i < 12; i++) {
         try {
           await check(hash);
           return;
         } catch (e) {
-          if (
-            e instanceof RequestError &&
-            (e.status === 400 || e.status === 410)
-          )
-            throw e;
+          if (e instanceof RequestError && (e.status === 400 || e.status === 410)) throw e;
           if (i === 11)
-            throw new Error(
-              "Your vote was sent and is still being checked. Use Check confirmation below; you don’t need to vote again.",
-            );
+            throw new Error("Your vote was sent and is still being checked. Press Check again in a moment; don’t vote again.");
         }
         await new Promise((resolve) => setTimeout(resolve, 2500));
       }
     });
   }
+  const max = status ? Math.min(Number.MAX_SAFE_INTEGER, Number(status.available)) : 1;
+  const canVote =
+    status !== null &&
+    BigInt(status.available) > BigInt(0) &&
+    (!status.spreadFull || BigInt(status.support) > BigInt(0));
+  const hasSupport = status !== null && BigInt(status.support) > BigInt(0);
   return (
     <>
       <button
@@ -234,9 +213,7 @@ export function FlowstateVote({ onConfirmed }: { onConfirmed?: () => void }) {
         disabled={!wallet}
         onClick={() => void load()}
       >
-        {confirmed
-          ? "✓ FlowState vote confirmed"
-          : "Vote here with your wallet"}
+        {confirmed ? "✓ Vote confirmed" : "Vote here with your wallet"}
       </button>
       <Dialog
         open={open}
@@ -245,27 +222,19 @@ export function FlowstateVote({ onConfirmed }: { onConfirmed?: () => void }) {
         }}
       >
         <DialogContent
-          className="hk-page hk-flowstate-dialog sm:max-w-[560px] max-h-[90dvh] overflow-y-auto"
+          className="hk-page hk-flowstate-dialog sm:max-w-[480px] max-h-[90dvh] overflow-y-auto"
           onInteractOutside={(e) => {
             if (busy) e.preventDefault();
           }}
         >
           <DialogTitle className="pr-8 text-2xl font-bold">
-            Support GoodBuildIt on FlowState
+            Support our project
           </DialogTitle>
-          <DialogDescription>
-            Use the wallet you&rsquo;re signed in with. You stay on GoodBuild
-            and review everything before voting.
+          <DialogDescription className="sr-only">
+            Vote for GoodBuildIt on FlowState with your signed-in wallet.
           </DialogDescription>
-          <p className="text-sm text-grey-600">
-            Wallet:{" "}
-            <span className="font-mono">{wallet && shortAddress(wallet)}</span>
-          </p>
           {busy && (
-            <p
-              role="status"
-              className="rounded-block bg-tint p-3 text-sm text-violet"
-            >
+            <p role="status" className="rounded-block bg-tint p-3 text-sm text-violet">
               {busy}
             </p>
           )}
@@ -284,289 +253,125 @@ export function FlowstateVote({ onConfirmed }: { onConfirmed?: () => void }) {
               Message us on Telegram
             </a>
           )}
-          {error.includes("CELO") && wallet && (
-            <div className="space-y-2 rounded-block bg-tint p-3 text-sm">
-              <p>Receive CELO on the Celo network at this wallet address:</p>
-              <p className="break-all font-mono text-xs">{wallet}</p>
-              <button
-                type="button"
-                className="text-violet underline"
-                onClick={() => void navigator.clipboard.writeText(wallet)}
-              >
-                Copy wallet address
-              </button>
-            </div>
-          )}
           {confirmed ? (
-            <div className="space-y-3 rounded-block bg-tint p-4">
-              <p className="font-semibold">
-                ✓ Your vote is confirmed on FlowState.
-              </p>
-              <p className="text-sm">
-                Your wallet currently allocates {status?.support} voting points
-                to GoodBuildIt. Thank you for supporting us.
-              </p>
-              <button
-                type="button"
-                className={styles.btnV}
-                onClick={() => setOpen(false)}
-              >
+            <div className="space-y-4 text-center">
+              <p className="text-lg font-semibold">✓ Thank you for voting!</p>
+              <button type="button" className={`${styles.btnV} w-full`} onClick={() => setOpen(false)}>
                 Continue
               </button>
             </div>
           ) : txHash ? (
             <div className="space-y-3">
-              <p className="text-sm">
-                Your transaction has been sent. Check its confirmation before
-                trying another vote.
-              </p>
+              <p className="text-sm">Your vote was sent. Check it before voting again.</p>
               <button
                 type="button"
-                className={styles.btnV}
+                className={`${styles.btnV} w-full`}
                 disabled={Boolean(busy)}
-                onClick={() =>
-                  void perform("Checking confirmation…", () => check(txHash))
-                }
+                onClick={() => void perform("Checking your vote…", () => check(txHash))}
               >
-                Check confirmation
+                Check my vote
               </button>
-              <button
-                type="button"
-                className="block text-sm text-violet underline"
-                disabled={Boolean(busy)}
-                onClick={() => setDiscardArmed(true)}
-              >
-                Recovery options
-              </button>
-              {discardArmed && (
-                <div className="space-y-3 rounded-block bg-tint p-3 text-sm">
-                  <p>
-                    Stopping checks does not cancel a transaction. It may still
-                    confirm. Check the transaction before sending another vote.
-                  </p>
-                  <button
-                    type="button"
-                    className={styles.btnV}
-                    disabled={Boolean(busy)}
-                    onClick={() =>
-                      void perform("Refreshing ballot…", async () => {
-                        applyStatus(await request());
-                        setTxHash(null);
-                        localStorage.removeItem(storageKey);
-                        setDiscardArmed(false);
-                      })
-                    }
-                  >
-                    Stop tracking & refresh ballot
-                  </button>
-                </div>
+              {discardArmed ? (
+                <button
+                  type="button"
+                  className="block text-sm text-violet underline"
+                  disabled={Boolean(busy)}
+                  onClick={() =>
+                    void perform("Refreshing…", async () => {
+                      applyStatus(await request());
+                      setTxHash(null);
+                      localStorage.removeItem(storageKey);
+                      setDiscardArmed(false);
+                    })
+                  }
+                >
+                  Stop checking (the vote may still go through)
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="block text-sm text-violet underline"
+                  disabled={Boolean(busy)}
+                  onClick={() => setDiscardArmed(true)}
+                >
+                  Stuck?
+                </button>
               )}
             </div>
           ) : status ? (
-            <>
-              {!status.verified ? (
-                <p className="text-sm">
-                  Complete{" "}
-                  <a
-                    className="text-violet underline"
-                    href="/hackathon#register"
-                  >
-                    GoodDollar verification
-                  </a>{" "}
-                  first, then return here.
-                </p>
-              ) : !status.registered ? (
-                <div className="space-y-4">
-                  <p className="text-sm">
-                    First, enable this wallet’s voting rights for the
-                    GoodBuilders council. This signs a message authorizing
-                    FlowState to register this wallet; it does not transfer
-                    funds. One wallet per verified person can hold these voting
-                    rights.
-                  </p>
-                  <button
-                    type="button"
-                    className={styles.btnV}
-                    disabled={Boolean(busy)}
-                    onClick={() => void enable()}
-                  >
-                    Enable voting with this wallet
-                  </button>
-                  <p className="text-xs text-grey-600">
-                    Voting has a tiny network fee. The first time, GoodBuild
-                    covers it for you.
-                  </p>
-                </div>
-              ) : review ? (
-                <div className="space-y-4 rounded-block bg-tint p-4">
-                  <p className="font-semibold">Review your vote</p>
-                  {review.gasGrant && (
-                    <p className="rounded-block bg-white p-3 text-sm">
-                      ✓ We added{" "}
-                      {Number(formatEther(BigInt(review.gasGrant.amountWei))).toFixed(2)}{" "}
-                      CELO to your wallet to pay the network fee. It&rsquo;s free,
-                      and what&rsquo;s left helps with your first app deploy.
-                    </p>
-                  )}
-                  <dl className="grid grid-cols-[1fr_auto] gap-3 text-sm">
-                    <dt>Project</dt>
-                    <dd>GoodBuildIt</dd>
-                    <dt>Additional voting points</dt>
-                    <dd>{review.additional}</dd>
-                    <dt>Your total support after voting</dt>
-                    <dd>{review.after}</dd>
-                    <dt>G$ sent from your wallet</dt>
-                    <dd>0 G$</dd>
-                    <dt className="col-span-2">
-                      Network fee cap: {formatEther(BigInt(review.feeCapWei))}{" "}
-                      CELO
-                    </dt>
-                  </dl>
-                  <p className="text-sm">
-                    Your votes for other projects stay unchanged. Only the
-                    reviewed GoodBuildIt allocation is updated.
-                  </p>
-                  <button
-                    type="button"
-                    className={styles.btnV}
-                    disabled={Boolean(busy)}
-                    onClick={() => void submit()}
-                  >
-                    Confirm vote for GoodBuildIt
-                  </button>
-                  <button
-                    type="button"
-                    className="block text-sm text-violet underline"
-                    disabled={Boolean(busy)}
-                    onClick={() => setReview(null)}
-                  >
-                    Change vote amount
-                  </button>
-                </div>
-              ) : (
-                <form
-                  method="post"
-                  action="/api/hackathon/flowstate"
-                  className="space-y-4"
-                  onSubmit={prepare}
-                >
-                  {BigInt(status.support) > BigInt(0) && (
-                    <div className="space-y-3 rounded-block bg-tint p-3">
-                      <p className="text-sm">
-                        You already support GoodBuildIt on FlowState. You don’t
-                        need to send another vote.
-                      </p>
-                      <button
-                        type="button"
-                        className={styles.btnV}
-                        disabled={Boolean(busy)}
-                        onClick={() => void acceptExisting()}
-                      >
-                        Use my existing support
-                      </button>
-                    </div>
-                  )}
-                  <p className="text-sm">
-                    You have <strong>{status.available}</strong> unallocated
-                    voting points. You already support GoodBuildIt with{" "}
-                    {status.support}. Your other allocations stay unchanged.
-                  </p>
-                  {BigInt(status.available) > BigInt(0) &&
-                  (!status.spreadFull || BigInt(status.support) > BigInt(0)) ? (
-                    <>
-                      <label
-                        className="block text-sm"
-                        htmlFor="flowstate-votes"
-                      >
-                        Additional votes for GoodBuildIt
-                      </label>
-                      <div className="hk-vote-allocation" aria-live="polite">
-                        <output
-                          htmlFor="flowstate-votes"
-                          className="hk-vote-number"
-                        >
-                          {quantity}
-                        </output>
-                        <p>voting points for GoodBuildIt</p>
-                      </div>
-                      <input
-                        id="flowstate-votes"
-                        className="hk-vote-range"
-                        type="range"
-                        style={
-                          {
-                            "--slider-fill": `${Number(status.available) <= 1 ? 100 : ((Number(quantity) - 1) / (Math.min(Number.MAX_SAFE_INTEGER, Number(status.available)) - 1)) * 100}%`,
-                          } as React.CSSProperties
-                        }
-                        name="additional"
-                        min="1"
-                        max={Math.min(
-                          Number.MAX_SAFE_INTEGER,
-                          Number(status.available),
-                        )}
-                        step="1"
-                        aria-describedby="flowstate-vote-help"
-                        aria-valuetext={`${quantity} additional voting points for GoodBuildIt`}
-                        value={quantity}
-                        onChange={(e) => {
-                          setQuantity(e.target.value);
-                          setReview(null);
-                        }}
-                      />
-                      <div className="hk-vote-range-labels" aria-hidden="true">
-                        <span>1 point</span>
-                        <span>{status.available} available points</span>
-                      </div>
-                      <p id="flowstate-vote-help" className="text-sm">
-                        We’ve selected all your available points. You can drag
-                        to adjust, then review your vote. Nothing is sent until
-                        you confirm.
-                      </p>
-                      <button className={styles.btnV} disabled={Boolean(busy)}>
-                        Review vote & network fee
-                      </button>
-                    </>
-                  ) : (
-                    <p className="text-sm">
-                      Your available votes or project slots are already
-                      allocated. We will not move votes away from other projects
-                      without your permission.
-                    </p>
-                  )}
-                </form>
-              )}
-            </>
-          ) : (
-            !busy && (
+            !status.verified ? (
+              <a className={`${styles.btnV} w-full`} href="/hackathon#register">
+                Verify with GoodDollar first
+              </a>
+            ) : !status.registered ? (
               <button
                 type="button"
-                className={styles.btnV}
-                onClick={() => void load()}
+                className={`${styles.btnV} w-full`}
+                disabled={Boolean(busy)}
+                onClick={() => void enable()}
               >
-                Retry wallet check
+                Enable voting with this wallet
+              </button>
+            ) : (
+              <form method="post" action="/api/hackathon/flowstate" className="space-y-5" onSubmit={vote}>
+                {canVote && (
+                  <>
+                    <div className="hk-vote-allocation" aria-live="polite">
+                      <output htmlFor="flowstate-votes" className="hk-vote-number">
+                        {quantity}
+                      </output>
+                      <p>of {status.available} points</p>
+                    </div>
+                    <input
+                      id="flowstate-votes"
+                      className="hk-vote-range"
+                      type="range"
+                      aria-label="Votes for GoodBuildIt"
+                      aria-valuetext={`${quantity} points`}
+                      style={{ "--slider-fill": `${max <= 1 ? 100 : ((Number(quantity) - 1) / (max - 1)) * 100}%` } as React.CSSProperties}
+                      name="additional"
+                      min="1"
+                      max={max}
+                      step="1"
+                      value={quantity}
+                      onChange={(e) => setQuantity(e.target.value)}
+                    />
+                    <button className={`${styles.btnV} w-full`} disabled={Boolean(busy)}>
+                      Vote {quantity} {quantity === "1" ? "point" : "points"}
+                    </button>
+                  </>
+                )}
+                {hasSupport && (
+                  <button
+                    type="button"
+                    className={canVote ? "block w-full text-center text-sm text-violet underline" : `${styles.btnV} w-full`}
+                    disabled={Boolean(busy)}
+                    onClick={() => void acceptExisting()}
+                  >
+                    I already voted
+                  </button>
+                )}
+                {!canVote && !hasSupport && (
+                  <p className="text-sm">All your points are already given to other projects.</p>
+                )}
+              </form>
+            )
+          ) : (
+            !busy && (
+              <button type="button" className={`${styles.btnV} w-full`} onClick={() => void load()}>
+                Try again
               </button>
             )
           )}
-          {txHash && (
-            <a
-              className="break-all text-sm text-violet underline"
-              href={`https://celoscan.io/tx/${txHash}`}
-              target="_blank"
-              rel="noreferrer"
+          {error.includes("CELO") && wallet && (
+            <button
+              type="button"
+              className="text-left text-sm text-violet underline"
+              onClick={() => void navigator.clipboard.writeText(wallet)}
             >
-              View transaction ↗
-            </a>
+              Copy my wallet address to add CELO
+            </button>
           )}
-          <details className="text-xs text-grey-600">
-            <summary className="cursor-pointer">Voting details</summary>
-            <p className="mt-2 break-all">
-              Network: Celo (42220)
-              <br />
-              Council: {FLOWSTATE_COUNCIL}
-              <br />
-              GoodBuildIt funding address: {GOODBUILDIT_RECIPIENT}
-            </p>
-          </details>
         </DialogContent>
       </Dialog>
     </>

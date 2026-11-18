@@ -1609,3 +1609,9 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - Decided by: the owner, after a person pressing "Verify with GoodDollar" on /hackathon saw MetaMask ask to add Celo Sepolia. Built by Claude.
 - **Why:** Verify only asks for a signature, but older wallet code treated the testnet as the default, so MetaMask had a leftover "Add Celo Sepolia" request queued in front of it.
 - **What:** MetaMask sign-in asks permission for Celo mainnet only (Ethereum as the fallback when the wallet has no Celo); WalletConnect requires Celo mainnet, with Celo Sepolia optional; `celoChainFor` returns Celo mainnet for any chain other than Celo Sepolia. Picking the testnet in the wallet menu, or deploying a testnet project, still adds and switches to Celo Sepolia.
+
+### D128. One-button vote, locked signup email, and a Hackathon page in the app (18 Nov 2026)
+- Decided by: the owner. Built by Claude.
+- **Vote pop-up:** a big points number, a thick slider, and one "Vote N points" button. The button switches the wallet to Celo, asks the server to price the vote (covering the network fee if needed, D124), then opens the wallet's own confirmation. The review screen, fee table, explanations and contract details are gone. The labelled button plus the wallet's prompt are the consent. Kept: enable voting, "I already voted", not-verified, the pending-vote check and recovery, and the Telegram/CELO help.
+- **Signup email:** once known (the account's email or the first one saved), it's shown masked and blurred and can't be edited. The server keeps the first email saved, so a later request can't change it either. A wallet-only account types it once.
+- **Hackathon in the app:** `/home/hackathon` (sidebar item, plus a wallet-menu link for phones) has progress (verify, vote, credits), submit or update your project, and approve other projects. The public `/hackathon` page's "Submit or update your project" now opens it.

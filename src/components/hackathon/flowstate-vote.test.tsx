@@ -1,6 +1,6 @@
 import * as React from "react";
 import { afterEach, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AuthContextProvider, unconfiguredAuth } from "@/lib/auth/context";
 import { FlowstateVote } from "./flowstate-vote";
@@ -32,8 +32,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   localStorage.clear();
 });
-function setup(changed = false) {
-  let prepared = 0;
+function setup() {
   const client = {
     getAddresses: vi.fn(async () => [wallet]),
     signMessage: vi.fn(),
@@ -45,10 +44,7 @@ function setup(changed = false) {
     vi.fn(async (_url, init?: RequestInit) => {
       const body = init?.body ? JSON.parse(String(init.body)) : null;
       let data = status;
-      if (body?.action === "prepare") {
-        prepared++;
-        data = changed && prepared > 1 ? { ...review, after: "9" } : review;
-      }
+      if (body?.action === "prepare") data = review;
       if (body?.action === "confirm") data = { ...status, support: "10" };
       return new Response(JSON.stringify(data));
     }),
@@ -67,51 +63,46 @@ function setup(changed = false) {
   );
   return { client, onConfirmed };
 }
-it("only sends the pinned vote after an explicit review and confirms it through the server", async () => {
+it("votes with one button: Celo first, then the server's priced vote, then confirms it", async () => {
   const { client, onConfirmed } = setup();
-  expect(client.writeContract).not.toHaveBeenCalled();
   await userEvent.click(
     screen.getByRole("button", { name: "Vote here with your wallet" }),
   );
   const slider = await screen.findByRole("slider", {
-    name: "Additional votes for GoodBuildIt",
+    name: "Votes for GoodBuildIt",
   });
   expect(slider).toHaveValue("10");
-  await userEvent.click(
-    screen.getByRole("button", { name: "Review vote & network fee" }),
-  );
-  await screen.findByText("Review your vote");
   expect(client.writeContract).not.toHaveBeenCalled();
-  expect(client.signMessage).not.toHaveBeenCalled();
-  await userEvent.click(
-    screen.getByRole("button", { name: "Confirm vote for GoodBuildIt" }),
-  );
-  await screen.findByText("✓ Your vote is confirmed on FlowState.");
+  // The fee table, explanations and contract details are gone.
+  expect(screen.queryByText(/Network fee cap/)).not.toBeInTheDocument();
+  expect(screen.queryByText("Voting details")).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Vote 10 points" }));
+  await screen.findByText("✓ Thank you for voting!");
   expect(client.writeContract).toHaveBeenCalledWith(
     expect.objectContaining({
       address: FLOWSTATE_COUNCIL,
       functionName: "vote",
       args: [[{ recipient: GOODBUILDIT_RECIPIENT, amount: BigInt(10) }]],
+      gas: BigInt(100000),
     }),
   );
+  expect(client.signMessage).not.toHaveBeenCalled();
   expect(onConfirmed).toHaveBeenCalledOnce();
 });
-it("requires another review if the ballot changes after a wallet prompt", async () => {
-  const { client, onConfirmed } = setup(true);
+it("sends what the slider says", async () => {
+  const { client } = setup();
   await userEvent.click(
     screen.getByRole("button", { name: "Vote here with your wallet" }),
   );
-  await screen.findByLabelText("Additional votes for GoodBuildIt");
-  await userEvent.click(
-    screen.getByRole("button", { name: "Review vote & network fee" }),
-  );
-  await screen.findByText("Review your vote");
-  await userEvent.click(
-    screen.getByRole("button", { name: "Confirm vote for GoodBuildIt" }),
-  );
-  await screen.findByText(/Your ballot or the network fee changed/);
-  expect(client.writeContract).not.toHaveBeenCalled();
-  expect(onConfirmed).not.toHaveBeenCalled();
+  const slider = await screen.findByRole("slider", { name: "Votes for GoodBuildIt" });
+  fireEvent.change(slider, { target: { value: "4" } });
+  await userEvent.click(screen.getByRole("button", { name: "Vote 4 points" }));
+  await screen.findByText("✓ Thank you for voting!");
+  const prepares = vi.mocked(fetch).mock.calls
+    .map(([, init]) => (init?.body ? JSON.parse(String(init.body)) : null))
+    .filter((b) => b?.action === "prepare");
+  expect(prepares).toEqual([{ action: "prepare", additional: "4" }]);
+  expect(client.writeContract).toHaveBeenCalledOnce();
 });
 it("recovers from a persisted reverted transaction without marking a vote confirmed", async () => {
   localStorage.setItem(`gb:flowstate:pending:${wallet}`, hash);
@@ -185,7 +176,7 @@ it("selects ten points after a verified wallet enables its community voting righ
   );
   expect(
     await screen.findByRole("slider", {
-      name: "Additional votes for GoodBuildIt",
+      name: "Votes for GoodBuildIt",
     }),
   ).toHaveValue("10");
   expect(client.signMessage).toHaveBeenCalledOnce();

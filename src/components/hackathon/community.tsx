@@ -239,6 +239,15 @@ function Gallery() {
   );
 }
 
+/** "olayinka@gmail.com" → "o•••••a@gmail.com": enough to recognise, not to read off a shared screen. */
+export function maskEmail(email: string): string {
+  const at = email.lastIndexOf("@");
+  if (at < 1) return "•••••";
+  const name = email.slice(0, at);
+  const shown = name.length <= 2 ? name[0] + "•••" : name[0] + "•".repeat(Math.min(5, name.length - 2)) + name[name.length - 1];
+  return shown + email.slice(at);
+}
+
 const EMPTY = { alias: "", title: "", pitch: "", liveUrl: "", sourceUrl: "" };
 export function SubmissionForm() {
   const { user } = useAuth();
@@ -249,6 +258,8 @@ function Submission() {
   const { openConnect } = useSendGate();
   const [fields, setFields] = React.useState(EMPTY);
   const [email, setEmail] = React.useState(user?.email ?? "");
+  /** Once we have an email (the account's, or the one saved at signup) it is shown masked and can't be changed. */
+  const [emailLocked, setEmailLocked] = React.useState(Boolean(user?.email));
   const [loading, setLoading] = React.useState(Boolean(user));
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState("");
@@ -263,7 +274,10 @@ function Submission() {
       .then(([entry, participant]) => {
         if (stopped) return;
         if (entry) setFields(entry);
-        if (participant) setEmail(participant.email);
+        if (participant?.email) {
+          setEmail(participant.email);
+          setEmailLocked(true);
+        }
       })
       .catch((e) => {
         if (!stopped) setError(e.message);
@@ -281,7 +295,10 @@ function Submission() {
     setError("");
     setSaved(null);
     try {
-      await jsonRequest("/api/hackathon/participants", { email });
+      if (!emailLocked) {
+        await jsonRequest("/api/hackathon/participants", { email });
+        setEmailLocked(true);
+      }
       const entry = await jsonRequest("/api/hackathon/projects", fields);
       setSaved(entry.id);
     } catch (e) {
@@ -330,20 +347,35 @@ function Submission() {
       </div>
       <div>
         <label htmlFor="builder-email">Email (required · private)</label>
-        <input
-          className="hk-input"
-          id="builder-email"
-          name="email"
-          type="email"
-          autoComplete="email"
-          required
-          maxLength={254}
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          readOnly={Boolean(user.email)}
-        />
-        <p className="mt-2 text-sm text-grey-600">
-          For hackathon updates. Only organizers can export this email.
+        {emailLocked ? (
+          <input
+            className="hk-input hk-input-locked"
+            id="builder-email"
+            type="text"
+            readOnly
+            aria-readonly="true"
+            tabIndex={-1}
+            value={maskEmail(email)}
+            aria-describedby="builder-email-help"
+          />
+        ) : (
+          <input
+            className="hk-input"
+            id="builder-email"
+            name="email"
+            type="email"
+            autoComplete="email"
+            required
+            maxLength={254}
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            aria-describedby="builder-email-help"
+          />
+        )}
+        <p id="builder-email-help" className="mt-2 text-sm text-grey-600">
+          {emailLocked
+            ? "Saved for hackathon updates. Only organizers can see it."
+            : "For hackathon updates. You can't change it after saving. Only organizers can see it."}
         </p>
       </div>
       <div>

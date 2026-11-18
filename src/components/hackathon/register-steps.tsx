@@ -251,11 +251,7 @@ function Registration() {
         >
           <div className={styles.n}>3</div>
           <h3>Support us on FlowState</h3>
-          <p>
-            Vote for GoodBuildIt here with the wallet you already connected.
-            Your available points are selected for you—normally 10. Review,
-            confirm the wallet transaction, then unlock your free build credits.
-          </p>
+          <p>One vote from your wallet. We cover the network fee.</p>
           <div className={styles.act}>
             {verified && participant ? (
               <>
@@ -264,11 +260,9 @@ function Registration() {
                     setParticipant({ ...participant, flowstate: "voted" })
                   }
                 />
-                <p className={styles.status}>
-                  {flowDone
-                    ? "✓ FlowState vote confirmed. Claim your credits below."
-                    : "Complete your vote here to unlock step 4. No need to leave GoodBuild."}
-                </p>
+                {flowDone && (
+                  <p className={styles.status}>✓ Voted. Claim your credits below.</p>
+                )}
               </>
             ) : (
               <p className={styles.status}>Complete steps 1 and 2 first.</p>
@@ -301,7 +295,7 @@ function Registration() {
                 <Link className={styles.cta} href="/">
                   Start building →
                 </Link>
-                <Link className={styles.ghostLight} href="/hackathon/submit">
+                <Link className={styles.ghostLight} href="/home/hackathon#project">
                   Submit or update your project
                 </Link>
                 {claim.status.deployPending && (

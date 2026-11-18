@@ -57,8 +57,9 @@ export async function saveParticipant(
     .values({ hackathon: HACKATHON_ID, userId: user.id, ...data })
     .onConflictDoUpdate({
       target: [hackathonParticipants.hackathon, hackathonParticipants.userId],
+      // The first email saved is kept: the signup form shows it locked, and a later request can't swap it.
       set: {
-        email: data.email,
+        email: sql`${hackathonParticipants.email}`,
         ...(data.flowstate
           ? {
               flowstate: sql`case when ${hackathonParticipants.flowstate} = 'voted' then 'voted' else ${data.flowstate} end`,
