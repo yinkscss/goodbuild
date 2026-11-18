@@ -155,12 +155,12 @@ describe("main host", () => {
   });
 
   it("leaves public pages alone", () => {
-    for (const path of ["/", "/docs"]) expect(proxy(request(`http://localhost:3000${path}`)).status).toBe(200);
+    for (const path of ["/", "/docs", "/templates", "/apps"]) expect(proxy(request(`http://localhost:3000${path}`)).status).toBe(200);
   });
 });
 
 describe("signed-in app pages", () => {
-  it.each(["/home", "/templates", "/deployments", "/credits", "/p/abc"])("sends %s to the landing page without a session cookie", (path) => {
+  it.each(["/home", "/deployments", "/credits", "/p/abc"])("sends %s to the landing page without a session cookie", (path) => {
     const res = proxy(request(`https://goodbuildit.xyz${path}`));
     expect(res.status).toBe(307);
     expect(res.headers.get("location")).toBe("https://goodbuildit.xyz/");
