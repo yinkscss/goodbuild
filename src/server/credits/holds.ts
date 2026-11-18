@@ -23,11 +23,13 @@ import { postLedgerEntry } from "./ledger";
  */
 
 /**
- * The least a paid build needs free to start: about one worst-case call to the strong model on a
- * large project, so it can afford at least one fix (D49). Below $1 on purpose: the smallest top-up
- * (MAINNET_PLAN decision 7, about N1,000) may buy less than $1, and it must be able to build.
+ * The least a paid build needs free to start: 10 credits, one daily refill (D112, owner 18 Nov 2026).
+ * It was 35 credits (D49), one worst-case call to the strong model on a large project. At 10, a
+ * build on the fast model runs (its worst-case call is about 5 credits), but a strong-model fix on
+ * a small balance can fail the check before that call, and the build then stops with "your credits
+ * ran out". The checks before each call keep spending safe at any size. PAID_MIN_START_MICRO overrides.
  */
-export const PAID_MIN_START_MICRO = 350_000;
+export const PAID_MIN_START_MICRO = 100_000;
 
 /**
  * The most set aside when a paid build is queued: plan section 5 item 5's $1, twice the dearest

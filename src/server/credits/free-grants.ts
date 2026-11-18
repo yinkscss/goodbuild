@@ -26,10 +26,7 @@ import { postLedgerEntry } from "./ledger";
 
 type Env = Record<string, string | undefined>;
 
-/**
- * Enough for a few small builds (live builds cost about 2 to 35 credits, D28), and above the 35
- * credits a paid build needs free to start (PAID_MIN_START_MICRO, D49), so the first build can run.
- */
+/** Enough for a few small builds: live builds cost about 2 to 35 credits (D28). */
 export const WELCOME_CREDITS = 40;
 export const REFILL_CREDITS = 10;
 export const REFILLS_PER_WEEK = 5;

@@ -225,6 +225,13 @@ describe.each(testBackends())("free grants on $name", (backend) => {
       expect("job" in started && started.job.holdMicro).toBe(40 * MICRO_PER_CREDIT);
     });
 
+    it("starts a build on one refill alone: the minimum to start is one refill (10 credits)", async () => {
+      const a = await withProject();
+      await claimRefill(db, a, verifiedAs(address()));
+      const started = await startTurn(db, { projectId: a.projectId, userId: a.id, mode: "build", prompt: "Build it" }, ENV);
+      expect("job" in started && [started.job.funding, started.job.holdMicro]).toEqual(["paid", 10 * MICRO_PER_CREDIT]);
+    });
+
     it("plans for free, unverified too, up to the daily limit", async () => {
       const a = await withProject();
       const env = { ...ENV, FREE_PLAN_TURNS_PER_DAY: "2" };

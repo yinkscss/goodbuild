@@ -174,7 +174,7 @@ describe.each(testBackends())("holds and charging on $name", (backend) => {
       await expectBooksBalance(a.userId);
     });
 
-    it("with less than $1 it sets aside what there is, down to the $0.35 minimum, and refuses below that", async () => {
+    it("with less than $1 it sets aside what there is, down to the minimum (PAID_MIN_START_MICRO), and refuses below that", async () => {
       const a = await payer(PAID_MIN_START_MICRO);
       expect(queued(await start(a.userId, a.projectId)).holdMicro).toBe(PAID_MIN_START_MICRO);
 
@@ -196,17 +196,17 @@ describe.each(testBackends())("holds and charging on $name", (backend) => {
     });
 
     it("someone who has paid never sees a free-limit message at build start, in any of the three limits", async () => {
-      const a = await payer(100_000);
+      const a = await payer(PAID_MIN_START_MICRO - 1);
       expect(refusal(await start(a.userId, a.projectId)).message).toBe(OUT_OF_CREDITS_MESSAGE);
 
       const b = await newUser();
       await db.update(users).set({ verifiedAt: new Date() }).where(eq(users.id, b.userId));
       await spendFree(b.userId, 700_000);
-      await deposit(b.userId, 100_000);
+      await deposit(b.userId, PAID_MIN_START_MICRO - 1);
       expect(refusal(await start(b.userId, b.projectId)).message).toBe(OUT_OF_CREDITS_MESSAGE);
 
       const c = await newUser();
-      await deposit(c.userId, 100_000);
+      await deposit(c.userId, PAID_MIN_START_MICRO - 1);
       expect(refusal(await start(c.userId, c.projectId, { ...LEGACY, FREE_AI_BUDGET_MICRO: "0" })).message).toBe(OUT_OF_CREDITS_MESSAGE);
     });
 
@@ -222,7 +222,8 @@ describe.each(testBackends())("holds and charging on $name", (backend) => {
     });
 
     it("credit that's all set aside says so, rather than saying the credit is gone", async () => {
-      const a = await payer(1_200_000);
+      // A full hold set aside, and less than the minimum left over.
+      const a = await payer(PAID_HOLD_MICRO + PAID_MIN_START_MICRO - 1);
       queued(await start(a.userId, a.projectId));
       expect(refusal(await start(a.userId, await project(a.userId)))).toEqual({ allowed: false, reason: "credit_held", message: CREDIT_HELD_MESSAGE });
     });
@@ -908,15 +909,16 @@ describe.each(testBackends())("holds and charging on $name", (backend) => {
   describe.runIf(backend.realConcurrency)("races", () => {
     it("simultaneous starts on different projects can't set aside more than the balance", async () => {
       for (let round = 0; round < 6; round++) {
-        const a = await payer(3_200_000);
+        const total = 3 * PAID_HOLD_MICRO + PAID_MIN_START_MICRO - 1;
+        const a = await payer(total);
         const projectIds = await Promise.all(Array.from({ length: 16 }, () => project(a.userId)));
         const results = await Promise.all(projectIds.map((projectId) => start(a.userId, projectId)));
         const jobs = results.filter((r) => "job" in r).map((r) => r.job);
-        expect(jobs.reduce((n, j) => n + j.holdMicro, 0)).toBeLessThanOrEqual(3_200_000);
-        // Three at $1, then one with the $0.20 left is under the minimum.
+        expect(jobs.reduce((n, j) => n + j.holdMicro, 0)).toBeLessThanOrEqual(total);
+        // Three full holds, then what's left is just under the minimum.
         expect(jobs).toHaveLength(3);
         const m = await money(a.userId);
-        expect(m).toMatchObject({ balance: 3_200_000, reserved: 3_000_000, available: 200_000 });
+        expect(m).toMatchObject({ balance: total, reserved: 3 * PAID_HOLD_MICRO, available: PAID_MIN_START_MICRO - 1 });
         await expectBooksBalance(a.userId);
       }
     }, 120_000);
