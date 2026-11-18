@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { PAGE_TEMPLATES } from "@/config/page-template-data";
@@ -15,7 +15,7 @@ describe("TemplateGallery", () => {
     expect(screen.getAllByRole("img").length).toBe(9);
     await userEvent.click(screen.getByRole("button", { name: /show all/i }));
     expect(screen.getAllByRole("img").length).toBe(PAGE_TEMPLATES.length);
-    expect(screen.getAllByRole("img")[0]).toHaveAttribute("src", expect.stringContaining("flowdesk.png"));
+    expect(screen.getAllByRole("img")[0]).toHaveAttribute("src", expect.stringContaining("classic-halo.png"));
   });
 
   it("filters by category", async () => {
@@ -30,6 +30,7 @@ describe("TemplateGallery", () => {
     window.addEventListener("gb:fill-prompt", listener);
     const fetchSpy = vi.spyOn(globalThis, "fetch");
     render(<TemplateGallery />);
+    await userEvent.click(screen.getByRole("button", { name: "SaaS" }));
     await userEvent.click(screen.getByRole("button", { name: "Use the Flowdesk template" }));
     window.removeEventListener("gb:fill-prompt", listener);
     expect(heard).toEqual(["flowdesk"]);
@@ -38,6 +39,7 @@ describe("TemplateGallery", () => {
 
   it("lists the pages of a multi-page template", () => {
     render(<TemplateGallery />);
+    fireEvent.click(screen.getByRole("button", { name: "SaaS" }));
     expect(screen.getByText(/3 pages: Home, Customers, Security/)).toBeInTheDocument();
   });
 });

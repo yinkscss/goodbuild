@@ -60,6 +60,37 @@ describe("projects started from a gallery template", () => {
     expect(context).toContain("started from the \\\"Flowdesk\\\" template");
   });
 
+  it("seeds classic photography into the real build workspace", async () => {
+    const p = await fromTemplate("classic-stillhouse");
+    const { client, requests } = scriptedModel([
+      { tools: [{ name: "read_file", args: { path: "src/lib/templateImage.ts" } }] },
+      { tools: [{ name: "create_file", args: { path: "src/App.tsx", content: 'import { templateImage } from "./lib/templateImage";\nexport default function App() { return <main><h1>Stillhouse</h1><img src={templateImage.src} alt={templateImage.alt} /></main>; }\n' } }] },
+      { text: "Built it." },
+    ]);
+    const result = await runTurn({ db, model: client }, { projectId: p.id, userId, mode: "build", prompt: "Build my boutique stay" }, () => undefined);
+    expect(result.status).toBe("ready");
+    const context = JSON.stringify(requests);
+    expect(context.includes("Bundled photograph:")).toBe(true);
+    expect(context).not.toContain("data:image/webp;base64,");
+    expect(context).toContain("classic-web-design");
+    expect(context).not.toContain("Unknown file");
+  });
+
+  it("starts from the art-directed code and preserves it while changing the user's copy", async () => {
+    const p = await fromTemplate("classic-halo");
+    const { client, requests } = scriptedModel([
+      { tools: [{ name: "edit_file", args: { path: "src/lib/templateContent.ts", edits: [{ search: "Halo Objects", replace: "Ada Objects" }] } }] },
+      { text: "Personalized the collection." },
+    ]);
+    const result = await runTurn({ db, model: client }, { projectId: p.id, userId, mode: "build", prompt: "Call my brand Ada Objects" }, () => undefined);
+    expect(result.status).toBe("ready");
+    const context = JSON.stringify(requests[0].messages);
+    expect(context.includes("already seeded")).toBe(true);
+    expect(context.includes("halo-stage")).toBe(true);
+    expect(context.includes("Choose finish")).toBe(true);
+    expect(context.includes("art-directed-web")).toBe(true);
+  });
+
   it("every template has a brief the agent can use", () => {
     for (const t of PAGE_TEMPLATES) expect(getPageTemplate(t.id)).toBe(t);
   });

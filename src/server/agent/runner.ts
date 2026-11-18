@@ -4,6 +4,8 @@ import { and, asc, eq } from "drizzle-orm";
 
 import { isTestFile } from "@/lib/deploy/test-file";
 import { templateBriefFor } from "@/config/page-template-data";
+import { designTemplateFiles } from "./design-templates";
+import { templateImageFiles } from "./template-images";
 import { TEMPLATE_MINIPAY_NOTE, gameTemplateById, withGameTemplate } from "./game-templates";
 import type { Db } from "@/server/db/client";
 import { messages, projects } from "@/server/db/schema";
@@ -822,6 +824,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     let files = await loadFiles(db, input.projectId);
     const firstBuild = Object.keys(files).length === 0;
     files = withKitHelpers(firstBuild ? starterFiles(project.chainId) : withStarterHelpers(files, project.chainId));
+    if (firstBuild && !isIntake) Object.assign(files, templateImageFiles(project.templateId));
     // Uploaded assets: the platform-owned module is refreshed before the workspace snapshot,
     // so a new upload alone doesn't count as an edit.
     const assetStore = deps.assets ?? dbAssetStore(db);
@@ -903,6 +906,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       files = withGameTemplate(files, gameTemplate);
       log(`game template: started from ${gameTemplate.id}`);
     }
+    if (firstBuild) Object.assign(files, designTemplateFiles(project.templateId));
     const kitsOn = kitsOf(files);
     const kitsBlock = kitsOn.length
       ? [

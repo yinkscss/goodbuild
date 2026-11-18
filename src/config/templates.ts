@@ -1,5 +1,6 @@
 /**
- * Starter templates surfaced in the prompt box (template picker and example chips).
+ * Text starter briefs retained for example chips and existing project IDs.
+ * The template picker uses the visual PAGE_TEMPLATES catalogue only.
  * Each chip fills the prompt with a specific, real-sounding brief (DESIGN_SYSTEM §7).
  * The ids line up with the v1 catalog in docs/CONTRACTS_AND_DEPLOYMENT.md §4.
  */
@@ -69,7 +70,7 @@ export const TEMPLATES: StarterTemplate[] = [
 export const LANDING_CHIP_IDS = ["savings-circle", "tip-jar", "event-tickets"] as const;
 
 /**
- * A starter brief by id: the six dApp starters above, or one of the landing-page templates in
+ * A starter brief by id: the dApp starters above, or one of the landing-page templates in
  * the gallery (src/config/page-templates.ts), shown with its short request as the prompt.
  */
 export function getTemplate(id: string): StarterTemplate | undefined {

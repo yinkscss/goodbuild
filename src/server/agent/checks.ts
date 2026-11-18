@@ -1,3 +1,4 @@
+import { TEMPLATE_IMAGE_MODULE } from "@/config/page-templates";
 import "server-only";
 
 import { execFile } from "node:child_process";
@@ -80,6 +81,7 @@ export function pathProblem(p: string, kits: Kit[] = []): string | null {
   if (!p || p.startsWith("/") || p.includes("\\") || p.split("/").some((seg) => seg === ".." || seg === "." || seg === "")) {
     return `Invalid path "${p}". Use a relative path like src/App.tsx or contracts/TipJar.sol.`;
   }
+  if (p === TEMPLATE_IMAGE_MODULE) return `${TEMPLATE_IMAGE_MODULE} is GoodBuild's bundled photograph. Import { templateImage } from it instead of editing the encoded image.`;
   if (p === "package.json") return "package.json is managed by GoodBuild. Use add_dependency.";
   if (p === KIT_MARKER) return `${KIT_MARKER} is written by GoodBuild: it records the project's kits. Use add_kit to turn one on.`;
   if (p.startsWith(PLATFORM_DIR)) return `${PLATFORM_DIR} is written by GoodBuild from the compiled contracts. Import from it instead.`;

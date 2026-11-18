@@ -16,6 +16,16 @@ function strings(value: unknown, out: string[] = []): string[] {
 }
 
 describe("page template gallery data", () => {
+  it("places at least eight classic designs before every other design", () => {
+    const classics = PAGE_TEMPLATES.filter((t) => t.category === "Classic");
+    expect(classics.length).toBeGreaterThanOrEqual(8);
+    expect(PAGE_TEMPLATES.slice(0, classics.length)).toEqual(classics);
+    for (const t of classics) {
+      expect(templateBrief(t)).toContain(t.designSeed ? "art-directed-web" : "classic-web-design");
+      expect(t.kind).toBe("site");
+    }
+  });
+
   it("has at least 20 templates across several categories", () => {
     expect(PAGE_TEMPLATES.length).toBeGreaterThanOrEqual(20);
     const used = new Set(PAGE_TEMPLATES.map((t) => t.category));
@@ -52,8 +62,8 @@ describe("page template gallery data", () => {
   it("states a source and licence for every template, never an unlicensed one", () => {
     for (const t of PAGE_TEMPLATES) {
       expect(t.inspiration.length).toBeGreaterThan(0);
-      for (const i of t.inspiration) expect(i.licence).toMatch(/^(MIT|Apache-2\.0|CC0|Not reused)/);
-      expect(t.inspiration.some((i) => i.licence === "MIT")).toBe(true);
+      for (const i of t.inspiration) expect(i.licence).toMatch(/^(MIT|Apache-2\.0|CC0|Original|Not reused)/);
+      expect(t.inspiration.some((i) => i.licence === "MIT" || (i.source === "GoodBuild original" && i.licence === "Original"))).toBe(true);
     }
     const all = JSON.stringify(PAGE_TEMPLATES);
     expect(all).not.toMatch(/Preline|Cruip|Tailwind UI/i);

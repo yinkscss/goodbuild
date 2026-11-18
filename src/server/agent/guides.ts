@@ -7,6 +7,7 @@
  * and true for the starter template in template.ts.
  */
 
+import { CLASSIC_GUIDES } from "./classic-guides";
 import { KITS, kitGuideName } from "./kits/registry";
 import { UI_GUIDE } from "./ui-primitives";
 
@@ -18,6 +19,7 @@ export interface Guide {
 }
 
 export const GUIDES: Guide[] = [
+  ...CLASSIC_GUIDES,
   {
     name: "pages-and-routing",
     when: "the app needs more than one page or screen (landing, about, signup, dashboard, detail pages), or the user asks to add a page",

@@ -1,0 +1,30 @@
+import { useState } from "react";
+import { templateImage } from "./lib/templateImage";
+import { content } from "./lib/templateContent";
+import "./showcase.css";
+
+const journeys = [
+  { name: "Alpine water", place: "A quieter kind of altitude", note: "Glacial lakes, mountain paths and time to stop.", days: ["Arrive beside the lake", "Walk the high trail", "Follow the water home"] },
+  { name: "Desert light", place: "Where the horizon opens", note: "Sculpted dunes, long shadows and nights under the stars.", days: ["Meet the desert", "Follow the evening light", "Wake before the sun"] },
+  { name: "Northern coast", place: "A different rhythm", note: "Coastal paths, open skies and the sound of the tide.", days: ["Settle by the shore", "Take the long coastal path", "A morning with the tide"] },
+];
+export default function App() {
+  const [destination, setDestination] = useState(0);
+  const [duration, setDuration] = useState("3 days");
+  const [planned, setPlanned] = useState(false);
+  const journey = journeys[destination];
+  function explore() { setPlanned(true); document.getElementById("journeys")?.scrollIntoView({ behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" }); }
+  return <div className="showcase elsewhere">
+    <a className="skip-link" href="#planner">Skip to journey planner</a>
+    <section className="elsewhere-hero" aria-labelledby="elsewhere-title">
+      <img className="elsewhere-landscape" src={templateImage.src} alt={templateImage.alt} width={1200} height={675} fetchPriority="high" />
+      <header className="site-nav"><a href="#" className="wordmark">{content.brand.toLowerCase()}<span>®</span></a><nav className="nav-links" aria-label="Primary"><a href="#journeys">Our journeys</a><a href="#philosophy" className="nav-optional">A different way</a><a className="quiet-button" href="#planner">Find your elsewhere <span aria-hidden="true">↗</span></a></nav></header>
+      <main className="elsewhere-headline enter"><p>Go beyond the familiar.</p><h1 id="elsewhere-title">{content.headline}</h1><p className="elsewhere-sub">{content.sub}</p></main>
+      <div className="elsewhere-caption"><span>Imagined landscapes. Real possibilities.</span><span>↓ Follow your curiosity</span></div>
+      <form className="journey-planner" id="planner" onSubmit={(e) => { e.preventDefault(); explore(); }}><label><span>I want to discover</span><select value={destination} onChange={(e) => { setDestination(Number(e.target.value)); setPlanned(false); }}>{journeys.map((j, i) => <option key={j.name} value={i}>{j.name}</option>)}</select></label><label><span>Time to wander</span><select value={duration} onChange={(e) => { setDuration(e.target.value); setPlanned(false); }}><option>3 days</option><option>5 days</option><option>7 days</option></select></label><button className="solid-button" type="submit">Explore the journey <span aria-hidden="true">↗</span></button></form>
+    </section>
+    <section className="journey-section" id="journeys" aria-labelledby="journey-heading"><div className="journey-intro"><p className="fine">Consider this an invitation.</p><h2 className="section-heading" id="journey-heading">The world feels<br />different from here.</h2><p>Less ticking boxes. More being there. Journeys that leave room for the unexpected.</p></div><div className="journey-preview" aria-live="polite"><div className="journey-preview-top"><span>{planned ? "Your sample itinerary" : "A journey to imagine"}</span><span>{duration}</span></div><h3>{journey.name}</h3><p>{journey.note}</p><ol>{journey.days.map((day) => <li key={day}>{day}</li>)}</ol>{duration !== "3 days" && <p className="fine">Plus {duration === "5 days" ? "two" : "four"} unplanned days to explore at your own pace.</p>}<p className="fine muted">A concept itinerary, not a confirmed booking or travel offer.</p></div></section>
+    <section id="philosophy" className="elsewhere-philosophy"><span className="elsewhere-mark" aria-hidden="true">✳</span><p>Some places stay with you.<br />We make room for those.</p><a className="quiet-button" href="#planner">Start imagining</a></section>
+    <footer className="site-footer"><span>{content.brand} / Take the long way.</span><span>Original travel concept. No reservations are made.</span></footer>
+  </div>;
+}

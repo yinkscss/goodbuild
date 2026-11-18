@@ -1,3 +1,4 @@
+import { TEMPLATE_IMAGE_MODULE } from "@/config/page-templates";
 /**
  * Codebase awareness for the agent (P17): a one-line manifest per file, a symbol index, code
  * search and per-request context selection. All lexical and computed from the files
@@ -295,7 +296,7 @@ export function selectContext(
   // And the ten further UI pieces (D89): about 25k chars that the ui-components guide documents. Sent
   // with every turn they would cost more than most small edits do.
   files = Object.fromEntries(
-    Object.entries(files).filter(([p]) => p !== "src/lib/db.ts" && p !== "src/lib/useDb.ts" && p !== "src/fx/fx.css" && !p.startsWith("src/lib/goodbuild/") && !(p in UI_PRIMITIVES)),
+    Object.entries(files).filter(([p]) => p !== TEMPLATE_IMAGE_MODULE && p !== "src/lib/db.ts" && p !== "src/lib/useDb.ts" && p !== "src/fx/fx.css" && !p.startsWith("src/lib/goodbuild/") && !(p in UI_PRIMITIVES)),
   );
   const want = requestTerms(request);
   const soft = terms(opts.history ?? "").filter((t) => !want.includes(t));

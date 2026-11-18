@@ -9,6 +9,26 @@ import { TEMPLATES } from "@/config/templates";
 const chips = TEMPLATES.slice(0, 3);
 
 describe("PromptBox", () => {
+  it("offers only visual templates, with classics first, and attaches a choice without submitting", async () => {
+    const { PAGE_TEMPLATES } = await import("@/config/page-template-data");
+    const onSubmit = vi.fn();
+    render(<PromptBox onSubmit={onSubmit} />);
+    await userEvent.click(screen.getByRole("button", { name: /choose a template/i }));
+    const options = screen.getAllByRole("menuitemradio");
+    expect(options).toHaveLength(PAGE_TEMPLATES.length);
+    expect(screen.queryByText("dApp starters")).not.toBeInTheDocument();
+    for (const starter of TEMPLATES) {
+      expect(options.some((option) => option.querySelector(".font-medium")?.textContent === starter.label)).toBe(false);
+    }
+    const classics = PAGE_TEMPLATES.filter((t) => t.category === "Classic");
+    expect(classics.length).toBeGreaterThanOrEqual(8);
+    for (const [i, t] of classics.entries()) expect(options[i]).toHaveTextContent(t.label);
+    for (const option of options) expect(option.querySelector("img")).not.toBeNull();
+    await userEvent.click(options[0]);
+    expect(screen.getByRole("img", { name: /template preview/i })).toBeInTheDocument();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
   it("disables Build it until there is text", async () => {
     render(<PromptBox chips={chips} onSubmit={vi.fn()} />);
     const send = screen.getByRole("button", { name: /build it/i });

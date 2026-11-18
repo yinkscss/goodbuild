@@ -94,6 +94,21 @@ h2{font-size:30px;letter-spacing:-.02em;margin-bottom:18px}
 .phone i{display:block;height:100%;border-radius:25px;background:var(--bg);padding:18px 14px}
 .code{font:13px/1.8 ui-monospace,Menlo,monospace;padding:22px;color:var(--fg)}
 .code .k{color:var(--a)}.code .c{color:var(--muted)}
+${t.category === "Classic" ? `
+.nav{border-bottom:1px solid color-mix(in srgb,var(--fg) 18%,transparent);margin:0 64px;padding:24px 0}
+.brand{font-size:24px;font-weight:500;letter-spacing:.02em}
+h1{font-size:62px;font-weight:400;line-height:1.03;letter-spacing:-.04em}
+h2{font-weight:400;font-size:32px}
+.btn,.btn.ghost{border-radius:3px;font-weight:500;padding:12px 20px}
+.hero{padding:48px 0;gap:44px;grid-template-columns:1fr 1.08fr}
+.hero.center{grid-template-columns:1fr;padding:54px 0 44px}
+.hero.center h1{font-size:68px;max-width:800px}
+.hero-photo{width:100%;height:390px;object-fit:cover;border-radius:3px}
+.card{border-radius:3px;box-shadow:none;border-top:1px solid color-mix(in srgb,var(--fg) 20%,transparent);background:transparent;padding:20px 0}
+.ico{background:transparent;border-radius:0;width:24px;height:24px}
+.list .r{border-radius:0;background:transparent;border-bottom:1px solid color-mix(in srgb,var(--fg) 20%,transparent);padding:18px 0}
+.field{border-radius:3px}.eyebrow{letter-spacing:.17em;font-size:10px}.sub{font-size:16px}
+` : ""}
 `;
 }
 
@@ -158,7 +173,8 @@ function Block({ s, t }: { s: Section; t: PageTemplate }) {
         h("p", { className: "sub" }, s.sub),
         h("div", { className: "row" }, h("span", { className: "btn" }, s.cta), s.cta2 ? h("span", { className: "btn ghost" }, s.cta2) : null),
         s.note ? h("div", { className: "note" }, s.note) : null);
-      return h("div", { className: `hero ${s.variant}` }, text, s.variant === "split" && s.art && s.art !== "none" ? h(Art, { kind: s.art, t }) : null,
+      const photo = s.image ? h("img", { className: "hero-photo", src: `data:image/webp;base64,${readFileSync(path.join(process.cwd(), "public", s.image.src)).toString("base64")}`, alt: s.image.alt, width: 1200, height: 675 }) : null;
+      return h("div", { className: `hero ${s.variant}` }, text, photo, s.variant === "split" && s.art && s.art !== "none" ? h(Art, { kind: s.art, t }) : null,
         s.variant === "center" && s.art && s.art !== "none" ? h("div", { style: { width: 360, marginTop: 8 } }, h(Art, { kind: s.art, t })) : null);
     }
     case "logos": return h("div", { className: "logos" }, h("small", null, s.label), s.items.map((i) => h("span", { key: i }, i)));
@@ -201,7 +217,13 @@ async function main() {
   mkdirSync(out, { recursive: true });
   const slidesFile = path.join(process.cwd(), "src", "config", "page-template-data", "slides.json");
   const slides: Record<string, number> = existsSync(slidesFile) ? JSON.parse(readFileSync(slidesFile, "utf8")) : {};
-  for (const t of PAGE_TEMPLATES.filter((x) => !only || only.includes(x.id))) {
+  const seeded = PAGE_TEMPLATES.filter((t) => t.designSeed && (!only || only.includes(t.id)));
+  if (seeded.length) {
+    execFileSync(process.execPath, ["--require", "./scripts/worker-preload.cjs", "--import", "tsx", "scripts/render-design-templates.ts", "--only", seeded.map((t) => t.id).join(","), ...(htmlOnly ? ["--html-only"] : [])], { stdio: "inherit" });
+    // The seeded renderer updates this same manifest; retain its slide counts.
+    Object.assign(slides, JSON.parse(readFileSync(slidesFile, "utf8")));
+  }
+  for (const t of PAGE_TEMPLATES.filter((x) => !x.designSeed && (!only || only.includes(x.id)))) {
     // Slide order: Home, Home scrolled (only when the page is long), then each extra page.
     const shots: Array<{ page: number; lower: boolean }> = [{ page: 0, lower: false }];
     let n = 0;

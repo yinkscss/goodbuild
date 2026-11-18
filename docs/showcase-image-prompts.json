@@ -1,0 +1,27 @@
+{
+  "provider": "Built-in image_gen",
+  "date": "2026-11-18",
+  "prompts": {
+    "halo": "Use case: product-mockup. Original premium jewelry campaign hero photograph, landscape 1536x1024. A monumental sculptural polished silver open cuff bracelet with one small cobalt-blue gemstone, dramatic macro perspective, floating above a cobalt blue polished surface, clean deep electric blue seamless background, hard studio light, reflective chrome highlights, subtle caustics and shadow, extraordinary luxury art direction. Single object centered slightly right, fills 70 percent of frame, leave left 25 percent dark blue empty for interface typography. No text, no logos, no watermark.",
+    "elsewhere": "Use case: stylized-concept. Original cinematic surreal travel editorial hero, landscape 1536x1024. A huge circular pale stone portal standing in shallow glassy water, framing a distant rugged snow-covered alpine mountain beneath peach dusk clouds. Foreground dark emerald water, tiny stone walkway reaching portal, soft moss, dreamlike but photoreal materials. Monumental composition, portal centered, horizon at 55 percent height, generous atmospheric sky in top third for website typography. Muted lavender, jade, peach and ice blue. No people, text, logos, watermark.",
+    "archive": "Use case: illustration-story. Original cinematic independent film poster artwork, portrait composition within a landscape 1536x1024 image, red-orange sun over an empty desert at dusk, a small distant figure walking toward a glowing rectangular doorway set into a freestanding deep red monolith, dramatic analog film grain, moody burgundy and burnt orange, painterly surreal cinema poster, severe elegant composition with dark edges, no text, no typography, no logos or watermark. This artwork will be cropped onto imaginary film-case covers in a 3D website archive.",
+    "signal": "Use case: stylized-concept. Original experimental design studio campaign still life, landscape 1536x1024. A sculptural glossy vermilion-red inflated looping ribbon intersects an oversized frosted glass sphere, on a pale blush pink seamless studio floor. Strong side light, beautiful physical reflections and translucent refraction, highly tactile editorial 3D rendering, playful but sophisticated, objects occupy center, no text, logos, typography or watermark.",
+    "nocturne": "Use case: product-mockup. Original premium audio product campaign, landscape 1536x1024. A pair of beautiful unbranded over-ear headphones with black sculptural oval shells and brushed titanium hinges, floating diagonally in black space, dramatic violet and ice-blue rim lighting, subtle iridescent titanium edge, black leather cushions, realistic studio product photograph, soft sparse atmospheric haze, object centered right of frame with empty charcoal space to left for website type. No text, logos, symbols, branding or watermark."
+  },
+  "assets": {
+    "halo": "public/templates/assets/showcase-halo.webp",
+    "elsewhere": "public/templates/assets/showcase-elsewhere.webp",
+    "archive": "public/templates/assets/showcase-frame-archive.webp",
+    "signal": "public/templates/assets/showcase-signal-form.webp",
+    "nocturne": "public/templates/assets/showcase-nocturne.webp"
+  },
+  "referenceStudy": {
+    "url": "https://motionsites.ai/",
+    "visuals": [
+      "VHS Archive",
+      "OYLA",
+      "Golden Portal"
+    ],
+    "notes": "Studied public visual composition. Prompt copy control was available for VHS Archive, but the browser clipboard returned no text. No prompt text or source copied."
+  }
+}
