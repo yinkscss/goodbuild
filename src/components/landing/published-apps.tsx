@@ -1,19 +1,19 @@
 import { connection } from "next/server";
 import { headers } from "next/headers";
 import Link from "next/link";
-import { ArrowUpRight } from "lucide-react";
+import { ArrowRight, ArrowUpRight } from "lucide-react";
 
 import { SectionHeading } from "@/components/landing/section-heading";
 import { publishedAppUrl, publishedAppsDomain } from "@/lib/published-host";
 import { getDb } from "@/server/db/client";
-import { latestPublishedApps } from "@/server/publish/showcase";
+import { allPublishedApps, latestPublishedApps } from "@/server/publish/showcase";
 
 type ShowcaseApps = Awaited<ReturnType<typeof latestPublishedApps>>;
 
-async function loadShowcaseData(): Promise<{ apps: ShowcaseApps; requestHost: string | null } | null> {
+async function loadShowcaseData(all = false): Promise<{ apps: ShowcaseApps; requestHost: string | null } | null> {
   try {
     const db = await getDb();
-    const [apps, requestHeaders] = await Promise.all([latestPublishedApps(db), headers()]);
+    const [apps, requestHeaders] = await Promise.all([all ? allPublishedApps(db) : latestPublishedApps(db), headers()]);
     return { apps, requestHost: requestHeaders.get("host") };
   } catch (error) {
     console.error("published app showcase unavailable", error);
@@ -21,11 +21,11 @@ async function loadShowcaseData(): Promise<{ apps: ShowcaseApps; requestHost: st
   }
 }
 
-function ShowcaseContent({ apps, requestHost }: { apps: ShowcaseApps; requestHost: string | null }) {
+function ShowcaseContent({ apps, requestHost, fullPage = false }: { apps: ShowcaseApps; requestHost: string | null; fullPage?: boolean }) {
   const domain = publishedAppsDomain();
 
   return (
-    <section id="apps" aria-labelledby="apps-heading" className="mt-24 scroll-mt-24">
+    <section id="apps" aria-labelledby="apps-heading" className={fullPage ? "" : "mt-24 scroll-mt-24"}>
       <SectionHeading id="apps-heading" eyebrow="Made by builders" title="Live apps, built with GoodBuild">
         Visit real projects published by the community. Each app is created by its builder, not by GoodBuild.
       </SectionHeading>
@@ -70,6 +70,15 @@ function ShowcaseContent({ apps, requestHost }: { apps: ShowcaseApps; requestHos
         </div>
       )}
 
+      {!fullPage && (
+        <div className="mt-6 flex justify-center">
+          <Link href="/apps" className="inline-flex items-center gap-2 rounded-full px-5 py-3 text-sm font-medium text-violet transition-colors hover:bg-tint focus-visible:outline-none focus-visible:shadow-focus">
+            Browse all live apps
+            <ArrowRight className="size-4" aria-hidden="true" />
+          </Link>
+        </div>
+      )}
+
       <p className="mt-4 text-xs text-grey-600">
         Apps are made by users and aren&apos;t reviewed or endorsed by GoodBuild. <Link href="/report" className="text-violet underline-offset-4 hover:underline">Report an app</Link> that looks harmful or breaks the terms.
       </p>
@@ -82,6 +91,13 @@ export async function PublishedApps() {
   await connection();
   const data = await loadShowcaseData();
   return data ? <ShowcaseContent apps={data.apps} requestHost={data.requestHost} /> : <ShowcaseUnavailable />;
+}
+
+/** Full public directory of community apps that are currently published. */
+export async function PublishedAppsDirectory() {
+  await connection();
+  const data = await loadShowcaseData(true);
+  return data ? <ShowcaseContent apps={data.apps} requestHost={data.requestHost} fullPage /> : <ShowcaseUnavailable />;
 }
 
 function ShowcaseUnavailable() {

@@ -36,7 +36,7 @@ function toBackend(request: NextRequest, backend: string, path: string) {
 }
 
 /** Signed-in pages that redirect to the landing page without a session cookie. */
-const APP_PAGES = new Set(["/home", "/templates", "/deployments", "/credits", "/hackathon/admin"]);
+const APP_PAGES = new Set(["/home", "/deployments", "/credits", "/hackathon/admin"]);
 
 /**
  * - Backend behind an edge (EDGE_SECRET, no BACKEND_ORIGIN): only the edge may call it. The edge has
@@ -47,7 +47,7 @@ const APP_PAGES = new Set(["/home", "/templates", "/deployments", "/credits", "/
  * - Preview hosts (pv-<token>, D69): a project's own-build preview, served the same way, read-only.
  * - The routes that serve those files and that data don't exist on the main host.
  * - API: region gate (D10). Sign-in, building and credits return 451 from blocked regions.
- * - App pages (/home, /templates, /deployments, /credits, /p/*): without a session cookie, go to the landing page before
+ * - App pages (/home, /deployments, /credits, /p/*): without a session cookie, go to the landing page before
  *   rendering anything. The page itself still verifies the session properly.
  */
 export function proxy(request: NextRequest) {

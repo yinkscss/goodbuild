@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -50,12 +51,12 @@ function TemplateTile({ t, onPick }: { t: PageTemplate; onPick: (id: string) => 
  * hover). Clicking attaches the template to the prompt box above: its thumbnail shows there, the
  * design brief stays out of sight, and the person writes what they want before anything is sent.
  */
-export function TemplateGallery() {
+export function TemplateGallery({ fullPage = false }: { fullPage?: boolean }) {
   const [category, setCategory] = React.useState<TemplateCategory | "All">("All");
   const [showAll, setShowAll] = React.useState(false);
 
   const filtered = category === "All" ? PAGE_TEMPLATES : PAGE_TEMPLATES.filter((t) => t.category === category);
-  const visible = category === "All" && !showAll ? filtered.slice(0, FIRST_PAGE) : filtered;
+  const visible = fullPage || category !== "All" || showAll ? filtered : filtered.slice(0, FIRST_PAGE);
 
   function pick(id: string) {
     fillLandingPrompt(id);
@@ -84,11 +85,18 @@ export function TemplateGallery() {
         ))}
       </ul>
 
-      {category === "All" && !showAll && filtered.length > FIRST_PAGE && (
+      {!fullPage && category === "All" && !showAll && filtered.length > FIRST_PAGE && (
         <div className="mt-6 flex justify-center">
           <Button type="button" variant="secondary" onClick={() => setShowAll(true)}>
             Show all {filtered.length} templates
           </Button>
+        </div>
+      )}
+      {!fullPage && (
+        <div className="mt-6 flex justify-center">
+          <Link href="/templates" className="rounded-full px-5 py-3 text-sm font-medium text-violet transition-colors hover:bg-tint focus-visible:outline-none focus-visible:shadow-focus">
+            Browse all templates
+          </Link>
         </div>
       )}
     </section>
