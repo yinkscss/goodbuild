@@ -19,6 +19,8 @@ import {
 } from "@/lib/flowstate/config";
 import { shortAddress } from "@/lib/format";
 import { styles } from "./styles";
+// The dialog is also used outside /hackathon (the free-credits card, D125). Every rule here is hk- scoped.
+import "./hackathon.css";
 
 type Review = FlowstateStatus & {
   additional: string;

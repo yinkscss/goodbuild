@@ -212,3 +212,14 @@ export async function confirmExistingFlowstateSupport(
     );
   return { ...current, hash: null };
 }
+
+/** For the welcome credits (D125): does this wallet's settled support for GoodBuildIt sit on-chain? */
+export async function hasVotedForGoodBuild(client: PublicClient, wallet: Address): Promise<boolean> {
+  try {
+    await confirmExistingFlowstateSupport(client, wallet);
+    return true;
+  } catch (e) {
+    if (e instanceof FlowstateError) return false;
+    throw e;
+  }
+}

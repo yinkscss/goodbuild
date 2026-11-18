@@ -7,6 +7,7 @@ import { BadgeCheck, Gift, Loader2 } from "lucide-react";
 import { useGoodIdVerify } from "@/components/auth/use-goodid-verify";
 import { Button } from "@/components/ui/button";
 import { LINK_WALLET_GUIDE } from "@/lib/goodid";
+import { FlowstateVote } from "@/components/hackathon/flowstate-vote";
 import { UbiClaimError, useClaimUbi } from "./use-claim-ubi";
 import { cn } from "@/lib/utils";
 
@@ -15,6 +16,8 @@ export interface FreeStatusJson {
   policy: "verified" | "legacy";
   verified: boolean;
   welcomeDone: boolean;
+  /** The welcome waits for a FlowState vote (D125). */
+  welcomeNeedsVote?: boolean;
   welcomeCredits: number;
   refillCredits: number;
   refill: {
@@ -83,8 +86,23 @@ export function FreeCreditsCard({ compact = false, onChange: onChangeProp }: { c
     // The hook's check already posted the welcome credits. Asking again is a safe replay that also
     // retries a grant that failed, and says why if it still can't be paid.
     const res = await fetch("/api/account/goodid", { method: "POST", credentials: "same-origin" }).catch(() => null);
-    const body = res ? ((await res.json().catch(() => ({}))) as { welcomeError?: string }) : {};
-    setNote(body.welcomeError ? { text: body.welcomeError, tone: "error" } : { text: "You're verified. Your free credits are in your balance.", tone: "ok" });
+    const body = res ? ((await res.json().catch(() => ({}))) as { welcomeError?: string; needsVote?: boolean }) : {};
+    // Still waiting for the FlowState vote (D125): the card itself shows that step next.
+    if (body.needsVote) setNote(null);
+    else setNote(body.welcomeError ? { text: body.welcomeError, tone: "error" } : { text: "You're verified. Your free credits are in your balance.", tone: "ok" });
+    await refresh();
+    await onChange?.();
+  }, [onChange, refresh]);
+
+  /** The vote landed on-chain: claim the welcome credits it unlocks (D125). */
+  const afterVote = React.useCallback(async () => {
+    const res = await fetch("/api/account/goodid", { method: "POST", credentials: "same-origin" }).catch(() => null);
+    const body = res ? ((await res.json().catch(() => ({}))) as { welcomeError?: string; welcomeMicro?: number }) : {};
+    setNote(
+      body.welcomeError
+        ? { text: body.welcomeError, tone: "error" }
+        : { text: `Thank you for voting! ${Math.round((body.welcomeMicro ?? 0) / 10_000)} free credits added.`, tone: "ok" },
+    );
     await refresh();
     await onChange?.();
   }, [onChange, refresh]);
@@ -148,7 +166,8 @@ export function FreeCreditsCard({ compact = false, onChange: onChangeProp }: { c
 
   if (!status || status.policy !== "verified") return null;
   const refill = status.refill;
-  if (compact && status.verified && (refill?.state !== "available" || status.refillBlocked) && !note) return null;
+  const votePending = status.verified && status.welcomeNeedsVote && !status.welcomeDone;
+  if (compact && status.verified && !votePending && (refill?.state !== "available" || status.refillBlocked) && !note) return null;
 
   const shell = compact ? "rounded-block bg-tint p-4 text-sm" : "rounded-card bg-surface p-6 shadow-card";
   const message = note ?? (verifyNote ? { text: verifyNote, tone: "error" as const } : null);
@@ -161,7 +180,7 @@ export function FreeCreditsCard({ compact = false, onChange: onChangeProp }: { c
           Get {status.welcomeCredits} free credits
         </p>
         <p className="mt-1 text-sm text-grey-600">
-          Verify once with GoodDollar, a free face check that takes about a minute. Then, when you&apos;re running low, claim {status.refillCredits} more credits on any day you claim your G$ UBI, up to {MONTH_SLOTS} times a month. Unused free credits expire after 30 days. You get 2 free plans a day now, and 5 once verified.
+          Verify once with GoodDollar, a free face check that takes about a minute{status.welcomeNeedsVote ? ", then vote for GoodBuildIt on FlowState right here (we cover the network fee)" : ""}. Then, when you&apos;re running low, claim {status.refillCredits} more credits on any day you claim your G$ UBI, up to {MONTH_SLOTS} times a month. Unused free credits expire after 30 days. You get 2 free plans a day now, and 5 once verified.
         </p>
         {status.budgetFull ? (
           <p className="mt-3 text-sm text-grey-600">This month&apos;s free credits are all gone. Verify now and you can claim refills from the 1st.</p>
@@ -177,6 +196,24 @@ export function FreeCreditsCard({ compact = false, onChange: onChangeProp }: { c
         </div>
         {message && <Note {...message} />}
         {showLinkGuide && <p className="mt-1 text-xs text-grey-600">If you verified on another wallet, link this one to it, then press Verify.</p>}
+      </section>
+    );
+  }
+
+  if (votePending) {
+    return (
+      <section className={shell} aria-label="Unlock free credits">
+        <p className="flex items-center gap-2 font-semibold text-violet-ink">
+          <Gift className="size-4 shrink-0 text-violet" aria-hidden />
+          Unlock {status.welcomeCredits} free credits
+        </p>
+        <p className="mt-1 text-sm text-grey-600">
+          You&apos;re verified. Last step: vote for GoodBuildIt on FlowState, right here on GoodBuild. It takes a minute, and we cover the network fee.
+        </p>
+        <div className="mt-3">
+          <FlowstateVote onConfirmed={() => void afterVote()} />
+        </div>
+        {message && <Note {...message} />}
       </section>
     );
   }

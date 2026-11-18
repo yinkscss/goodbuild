@@ -96,6 +96,7 @@ describe.each(testBackends())("free grants on $name", (backend) => {
   const verifiedAs = (root: Address | null, expiresAt: Date | null = null, env: Record<string, string> = ENV, now = NOW, ubiClaimedAt: Date | null = now) => ({
     readIdentity: async (): Promise<GoodIdentity> => ({ root, expiresAt }),
     readUbiClaimedAt: async () => ubiClaimedAt,
+    readVoted: async () => true,
     env,
     now,
   });
@@ -114,6 +115,20 @@ describe.each(testBackends())("free grants on $name", (backend) => {
     const r = address();
     expect(await claimWelcome(db, u, verifiedAs(r))).toEqual({ grantedMicro: 40 * MICRO_PER_CREDIT, done: true });
     expect(await claimWelcome(db, u, verifiedAs(r))).toEqual({ grantedMicro: 0, done: true });
+  });
+
+  it("waits for a FlowState vote before the welcome, and doesn't ask again after (D125)", async () => {
+    const u = await newUser();
+    const r = address();
+    await expect(claimWelcome(db, u, { ...verifiedAs(r), readVoted: async () => false })).rejects.toMatchObject({ code: "not_voted" });
+    await expect(claimWelcome(db, u, { ...verifiedAs(r), readVoted: undefined })).rejects.toMatchObject({ code: "not_voted" });
+    expect((await freeStatus(db, u.id, NOW, ENV)).welcomeNeedsVote).toBe(true);
+    expect(await claimWelcome(db, u, verifiedAs(r))).toEqual({ grantedMicro: 40 * MICRO_PER_CREDIT, done: true });
+    // Already granted: no second vote check.
+    expect(await claimWelcome(db, u, { ...verifiedAs(r), readVoted: async () => false })).toEqual({ grantedMicro: 0, done: true });
+    // The switch turns the vote step off.
+    const v = await newUser();
+    expect((await claimWelcome(db, v, { ...verifiedAs(address(), null, { ...ENV, WELCOME_REQUIRES_VOTE: "off" }), readVoted: async () => false })).grantedMicro).toBe(40 * MICRO_PER_CREDIT);
     expect(credits(await getBalanceMicro(db, u.id))).toBe(40);
     const [row] = await db.select({ root: users.goodidRoot, verifiedAt: users.verifiedAt }).from(users).where(eq(users.id, u.id));
     expect(row.root).toBe(r.toLowerCase());
