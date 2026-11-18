@@ -42,10 +42,7 @@ export function Ladder({ mode }: { mode: "web" | "app" }) {
   }, []);
 
   React.useEffect(() => {
-    if (mode !== "app" || !user) {
-      setMyId(null);
-      return;
-    }
+    if (mode !== "app" || !user) return;
     let stopped = false;
     void fetch("/api/hackathon/projects?mine", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
@@ -59,7 +56,7 @@ export function Ladder({ mode }: { mode: "web" | "app" }) {
   if (failed && !entries) return <p role="status" className="text-sm text-grey-600">The leaderboard couldn’t load. Reload to try again.</p>;
   if (!entries) return <p role="status" className="text-sm text-grey-600">Loading the leaderboard…</p>;
 
-  const { rows, mine, gapToPrizeZone } = buildLadder(entries, myId);
+  const { rows, mine, gapToPrizeZone } = buildLadder(entries, user ? myId : null);
   if (rows.length === 0)
     return (
       <p className="text-sm text-grey-600">

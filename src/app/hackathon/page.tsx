@@ -9,6 +9,7 @@ import "@/components/hackathon/hackathon.css";
 import { styles } from "@/components/hackathon/styles";
 import { OnView, SpotlightCard } from "@/components/hackathon/on-view";
 import { Ladder } from "@/components/hackathon/ladder";
+import { VoteList } from "@/components/hackathon/vote-list";
 import { PosterTiles } from "@/components/hackathon/poster-tiles";
 import { RegisterSteps } from "@/components/hackathon/register-steps";
 import { SITE_URL } from "@/config/site-url";
@@ -26,6 +27,7 @@ const TRACK_ICONS: Record<TrackIcon, LucideIcon> = { card: CreditCard, clock: Cl
 const NAV = [
   { href: "#prizes", label: "Prizes" },
   { href: "#register", label: "Register" },
+  { href: "#vote", label: "Vote" },
   { href: "/hackathon/projects", label: "Projects & leaderboard" },
   { href: "#tracks", label: "Tracks" },
   { href: "#timeline", label: "Timeline" },
@@ -136,6 +138,14 @@ export default function HackathonPage() {
           <div className={cn(styles.card, styles.pad32)}>
             <Ladder mode="web" />
           </div>
+        </section>
+
+        <section id="vote" className={styles.section}>
+          <div className={styles.shead}>
+            <h2 className={styles.disp}>Vote for a project</h2>
+            <p>Each verified person gets 3 approvals. Pick a project and we’ll walk you through the three steps: connect your email, verify with GoodDollar, support us on FlowState.</p>
+          </div>
+          <VoteList />
         </section>
 
         <section id="timeline" className={styles.section}>
