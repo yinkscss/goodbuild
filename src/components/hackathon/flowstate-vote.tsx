@@ -122,19 +122,25 @@ export function FlowstateVote({ onConfirmed }: { onConfirmed?: () => void }) {
       if (saved && /^0x[0-9a-fA-F]{64}$/.test(saved)) {
         setTxHash(saved);
         await check(saved);
+        return;
       }
-      applyStatus(await request());
+      const next: FlowstateStatus = await request();
+      applyStatus(next);
+      // Already voted for us (here, on /hackathon, or on FlowState itself)? Don't ask again: confirm it.
+      if (next.verified && BigInt(next.support) > BigInt(0)) await confirmExisting();
     });
   }
+  /** Confirms the vote already on-chain and marks it done. Throws if it isn't settled yet. */
+  async function confirmExisting() {
+    const next = await request({ action: "existing" });
+    setStatus(next);
+    setConfirmed(true);
+    setTxHash(null);
+    localStorage.removeItem(storageKey);
+    onConfirmed?.();
+  }
   async function acceptExisting() {
-    await perform("Checking existing support…", async () => {
-      const next = await request({ action: "existing" });
-      setStatus(next);
-      setConfirmed(true);
-      setTxHash(null);
-      localStorage.removeItem(storageKey);
-      onConfirmed?.();
-    });
+    await perform("Checking your vote…", confirmExisting);
   }
   async function signer() {
     if (!wallet) throw new Error("Connect with your email first.");

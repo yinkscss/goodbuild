@@ -1615,3 +1615,13 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - **Vote pop-up:** a big points number, a thick slider, and one "Vote N points" button. The button switches the wallet to Celo, asks the server to price the vote (covering the network fee if needed, D124), then opens the wallet's own confirmation. The review screen, fee table, explanations and contract details are gone. The labelled button plus the wallet's prompt are the consent. Kept: enable voting, "I already voted", not-verified, the pending-vote check and recovery, and the Telegram/CELO help.
 - **Signup email:** once known (the account's email or the first one saved), it's shown masked and blurred and can't be edited. The server keeps the first email saved, so a later request can't change it either. A wallet-only account types it once.
 - **Hackathon in the app:** `/home/hackathon` (sidebar item, plus a wallet-menu link for phones) has progress (verify, vote, credits), submit or update your project, and approve other projects. The public `/hackathon` page's "Submit or update your project" now opens it.
+
+### D129. Voters get their 40 without asking; the vote button always shows; an out-of-credits pop-up (18 Nov 2026)
+- Decided by: the owner, after hackathon people who had verified and voted still saw "vote first", never got the 40, and a G$ top-up looked stuck. Built by Claude.
+- **Why:** nobody had received the welcome credits (0 `welcome` rows in production). The free-credits card never re-checked a verified person's vote, and voting on /hackathon never claimed the welcome. The vote button used a colour defined only on the /hackathon page, so it was invisible elsewhere. The G$ payment was credited; the screen just waited for the 30-block confirmation (GB-13) with no explanation.
+- **What:**
+  - A confirmed vote (`/api/hackathon/flowstate` confirm) claims the welcome straight away, once per GoodID, and returns the amount. Opening the free-credits card also checks the vote quietly for a verified person and adds the 40 if they've voted.
+  - Hackathon people get the 40 on top of their 20 hackathon credits (60 total).
+  - The vote pop-up checks for an existing vote on opening and never asks someone who voted to vote again. The vote button has a fallback colour.
+  - While a G$ payment confirms, the button reads "Confirming payment…" with "usually about 30 seconds". The 30-block wait stays.
+  - When a build stops for lack of credits, a pop-up opens: pay in G$ (exact amount, one click) or get free credits (only the step that person still needs), then "Continue building" retries. Closing it leaves the inline pill.

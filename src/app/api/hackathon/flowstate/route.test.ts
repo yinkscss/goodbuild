@@ -2,7 +2,8 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import { createTestDb, type Db } from "@/server/db/client";
 import { users } from "@/server/db/schema";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
+import { ledgerEntries } from "@/server/db/schema";
 import { flowstateVoters } from "@/server/db/hackathon-schema";
 import { getParticipant, saveParticipant } from "@/server/hackathon/community";
 const mocks = vi.hoisted(() => ({
@@ -38,6 +39,9 @@ vi.mock("@/server/flowstate/service", async (original) => ({
   prepareFlowstateVote: mocks.prepare,
   confirmFlowstateVote: mocks.confirm,
   confirmExistingFlowstateSupport: mocks.existing,
+}));
+vi.mock("@/server/goodid", () => ({
+  readGoodIdentityOnCelo: async () => ({ root: "0x" + "ab".repeat(20) }),
 }));
 vi.mock("@/server/flowstate/eligibility", () => ({
   claimFlowstateEligibility: mocks.claim,
@@ -132,4 +136,16 @@ it("only accepts existing support after a fresh on-chain positive check", async 
   expect((await post({ action: "existing" })).status).toBe(200);
   expect(await voter()).toMatchObject({ txHash: null });
   expect((await voter())?.votedAt).toBeInstanceOf(Date);
+});
+
+it("posts the 40 welcome credits as soon as the vote is confirmed, once", async () => {
+  const first = await (await post({ action: "confirm", hash })).json();
+  expect(first.welcomeMicro).toBe(400_000);
+  const again = await (await post({ action: "confirm", hash })).json();
+  expect(again.welcomeMicro).toBe(0);
+  const rows = await db
+    .select()
+    .from(ledgerEntries)
+    .where(and(eq(ledgerEntries.userId, session!.user.id), eq(ledgerEntries.refType, "welcome")));
+  expect(rows).toHaveLength(1);
 });

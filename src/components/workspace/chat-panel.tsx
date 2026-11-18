@@ -7,7 +7,7 @@ import { formatCredits } from "@/lib/credits-math";
 import { isDeployableSource } from "@/lib/deploy/test-file";
 import type { AssetInfo, AssetKind } from "@/server/agent/assets";
 import { DRAFT_PLAN_TEXT, nextQuestion, PLAN_OTHER_MAX, planBuildPrompt, START_BUILDING_TEXT } from "@/lib/plan";
-import { TopUpPill } from "@/components/credits/top-up-pill";
+import { OutOfCredits } from "./out-of-credits";
 import { FIX_PROMPT } from "@/lib/preview-errors";
 import { isSubmitShortcut } from "@/lib/prompt";
 import { isNearBottom } from "@/lib/scroll";
@@ -83,6 +83,10 @@ export function ChatPanel({
   const draftOpen = Boolean(lastRecord?.mode === "plan" && lastRecord.plan && !lastRecord.intake && !running);
   // The prompt the newest turn answered, for "Try again" on a failed or interrupted build.
   const lastUserPrompt = [...state.messages].reverse().find((m) => m.role === "user" && m.status !== "queued" && m.status !== "cancelled")?.content;
+  const continueAfterCredits = () => {
+    ws.clearNeedsCredits();
+    if (lastUserPrompt) send(lastUserPrompt, "build");
+  };
   return (
     <section aria-label="Chat" className="flex min-h-0 flex-col rounded-card bg-surface shadow-card">
       <div ref={listRef} onScroll={onListScroll} className="min-h-0 flex-1 space-y-5 overflow-x-hidden overflow-y-auto overscroll-contain p-3 sm:p-5" aria-live="polite">
@@ -176,14 +180,7 @@ export function ChatPanel({
             {ws.error}
           </p>
         )}
-        {ws.needsCredits && (
-          <TopUpPill
-            onPaid={() => {
-              ws.clearNeedsCredits();
-              if (lastUserPrompt) send(lastUserPrompt, "build");
-            }}
-          />
-        )}
+        <OutOfCredits open={ws.needsCredits} freeCredits={state.freePolicy === "verified"} onContinue={continueAfterCredits} onRefresh={ws.refresh} />
         {state.outdatedContracts.length > 0 && !running && (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-block bg-warning/10 p-4 text-sm" role="status">
             <p className="min-w-0 flex-1">

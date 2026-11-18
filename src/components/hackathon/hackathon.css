@@ -580,7 +580,9 @@
   color: var(--pink);
 }
 .hk-btnV {
-  background: var(--violet);
+  /* The vote button also sits outside .hk-page (the credits card), where --violet isn't set: without the
+     fallback it was white text on no background, an invisible button. */
+  background: var(--violet, #592e81);
   color: #fff;
   border-radius: 9999px;
   padding: 10px 10px 10px 20px;
