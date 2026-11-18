@@ -1,0 +1,36 @@
+import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { templateImage } from "./lib/templateImage";
+import { content } from "./lib/templateContent";
+import "./showcase.css";
+
+const films = [
+  { title: "Blue Hours", year: "1984", kind: "Short film", by: "An imagined film by Nia Cole", note: "A city after everyone has gone home.", color: "#294d91" },
+  { title: "The Quiet Sea", year: "1987", kind: "Documentary", by: "An imagined film by Imani Vale", note: "A coastal town listens to the changing tide.", color: "#45685c" },
+  { title: "Soft Machine", year: "1991", kind: "Short film", by: "An imagined film by Leon Park", note: "A small machine learns the meaning of a pause.", color: "#b49354" },
+  { title: "The Other Side", year: "1994", kind: "Feature film", by: "An imagined film by Ada Rivers", note: "One doorway. An impossible horizon. A story about choosing to begin.", color: "#923d2e" },
+  { title: "After the Rain", year: "1998", kind: "Feature film", by: "An imagined film by Jules Noor", note: "Strangers find a shared language in a rain-soaked city.", color: "#665c7a" },
+  { title: "Paper Moon", year: "2001", kind: "Animation", by: "An imagined film by Sam Ellis", note: "A handmade world unfolds one night at a time.", color: "#a17e59" },
+  { title: "First Light", year: "2005", kind: "Documentary", by: "An imagined film by Tayo Grey", note: "The quiet rituals that happen before sunrise.", color: "#345d74" },
+];
+export default function App() {
+  const [selected, setSelected] = useState(3);
+  const shelf = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (shelf.current?.contains(document.activeElement)) shelf.current.querySelector<HTMLButtonElement>('[aria-pressed="true"]')?.focus();
+  }, [selected]);
+  const film = films[selected];
+  function shift(delta: number) { setSelected((n) => (n + delta + films.length) % films.length); }
+  return <div className="showcase frame-archive">
+    <a className="skip-link" href="#archive-selector">Skip to film selector</a>
+    <header className="site-nav"><a href="#" className="frame-brand">{content.brand.split(" ")[0].toUpperCase()}<br /><span>{content.brand.split(" ").slice(1).join(" ").toUpperCase()}</span></a><span className="frame-nav-note">An independent cinema collection</span><nav className="nav-links" aria-label="Primary"><a href="#collection">The collection</a><a className="nav-optional" href="#about">About the archive</a></nav></header>
+    <main>
+      <section className="archive-exhibition" aria-labelledby="archive-title"><div className="archive-heading"><p className="fine">Selected editions / A fictional collection</p><h1 id="archive-title">{content.headline}</h1></div><span className="archive-vertical left" aria-hidden="true">Cinema</span><span className="archive-vertical right" aria-hidden="true">remembered.</span>
+        <div className="film-stage" role="group" aria-label="Film case collection"><div className="film-shelf" ref={shelf} onKeyDown={(e) => { if (e.key === "ArrowRight" || e.key === "ArrowLeft") { e.preventDefault(); shift(e.key === "ArrowRight" ? 1 : -1); } }}>{films.map((f, i) => { const distance = i - selected; return <button key={f.title} className={`film-case ${i === selected ? "selected" : ""}`} aria-label={`Select ${f.title}`} aria-pressed={selected === i} tabIndex={selected === i ? 0 : -1} onClick={() => setSelected(i)} style={{ "--distance": distance, "--cover": f.color, zIndex: 10 - Math.abs(distance) } as CSSProperties}><span className="case-spine">FRAME / {f.year}</span><span className="case-front"><img src={templateImage.src} alt="" width={1200} height={675} style={{ filter: `hue-rotate(${i * 39 - 117}deg) saturate(${i === 3 ? 1 : .55})` }} /><span className="case-number">FRAME / {String(i + 1).padStart(2, "0")}</span><strong>{f.title}</strong><small>{f.kind}</small></span></button>; })}</div></div>
+        <div className="film-information" aria-live="polite"><div className="film-title-row"><button className="round-button" aria-label="Previous film" onClick={() => shift(-1)}>←</button><div><p className="fine">{film.year} / {film.kind}</p><h2>{film.title}</h2><p className="fine">{film.by}</p></div><button className="round-button" aria-label="Next film" onClick={() => shift(1)}>→</button></div><p className="film-synopsis">{film.note}</p></div>
+        <div className="archive-timeline" id="archive-selector"><label htmlFor="film-range">Explore the archive<span>{film.year}</span></label><input id="film-range" aria-label="Select film on the timeline" type="range" min="0" max="6" value={selected} onChange={(e) => setSelected(Number(e.target.value))} /><div className="timeline-years"><span>1984</span><span>1994</span><span>2005</span></div></div>
+      </section>
+      <section className="archive-lower" id="collection"><div id="about"><p className="fine">Not a feed. A collection.</p><h2 className="section-heading">Take something<br />off the shelf.</h2><p>{content.sub}</p><p className="fine muted">All titles, directors and films here are original fictional examples.</p></div><div className="archive-index">{films.map((f, i) => <button key={f.title} onClick={() => { setSelected(i); document.getElementById("archive-title")?.scrollIntoView(); }}><span>{f.title}</span><span>{f.year} <span aria-hidden="true">↗</span></span></button>)}</div></section>
+    </main>
+    <footer className="site-footer"><span>{content.brand} / Keep the stories close.</span><span>Original fictional film collection.</span></footer>
+  </div>;
+}

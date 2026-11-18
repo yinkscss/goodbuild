@@ -1,0 +1,26 @@
+import { useRef, useState } from "react";
+import { templateImage } from "./lib/templateImage";
+import { content } from "./lib/templateContent";
+import "./showcase.css";
+
+export default function App() {
+  const [finish, setFinish] = useState("Mirror silver");
+  const [bag, setBag] = useState<string[]>([]);
+  const drawer = useRef<HTMLDialogElement>(null);
+  function add() { setBag((items) => [...items, finish]); drawer.current?.showModal(); }
+  return <div className="showcase halo">
+    <a className="skip-link" href="#collection">Skip to collection</a>
+    <header className="site-nav"><a className="wordmark" href="#">{content.brand.split(" ")[0].toLowerCase()}<span>{content.brand.split(" ").slice(1).join(" ").toLowerCase()}</span></a><nav className="nav-links" aria-label="Primary"><a href="#collection">Collection 001</a><a className="nav-optional" href="#craft">Our point of view</a><button className="quiet-button" onClick={() => drawer.current?.showModal()}>Bag ({bag.length})</button></nav></header>
+    <main>
+      <section className="halo-stage" id="collection" aria-labelledby="halo-title">
+        <div className="halo-image"><img src={templateImage.src} alt={templateImage.alt} width={1200} height={675} fetchPriority="high" style={{ filter: finish === "Satin silver" ? "saturate(.45) contrast(.85)" : "none" }} /></div>
+        <div className="halo-copy enter"><p className="halo-issue">A study in silver / Collection 001</p><h1 id="halo-title">{content.headline}</h1><p className="halo-sub">{content.sub}</p><a className="halo-discover" href="#craft"><span className="round-button" aria-hidden="true">↘</span>Discover the collection</a></div>
+        <span className="halo-side" aria-hidden="true">Objects of a different nature</span>
+        <div className="halo-product"><div><span className="fine muted">The first edition</span><h2>Orbit cuff</h2><p className="fine">Sculptural form. Uncomplicated expression.</p></div><div className="halo-finishes" role="group" aria-label="Choose finish">{["Mirror silver", "Satin silver"].map((f) => <button key={f} aria-pressed={finish === f} onClick={() => setFinish(f)}><span className={f === "Mirror silver" ? "metal mirror" : "metal satin"} aria-hidden="true" />{f}</button>)}</div><button className="solid-button" onClick={add}>Add to demo bag <span aria-hidden="true">↗</span></button></div>
+      </section>
+      <section className="halo-story" id="craft"><div className="halo-story-heading"><p className="fine">The idea behind the object</p><h2 className="section-heading">Not another accessory.<br />Another perspective.</h2></div><div className="halo-story-body"><span className="halo-symbol" aria-hidden="true">◉</span><p>Fluid lines meet a precise point of blue. A small interruption to the familiar, designed to become part of your everyday.</p><p className="fine muted">Original concept product. This demo bag does not take payment or place an order.</p></div></section>
+    </main>
+    <footer className="site-footer"><span>{content.brand} / Objects with a point of view.</span><span>Original concept collection. No checkout or payment.</span></footer>
+    <dialog ref={drawer} aria-labelledby="bag-title"><div className="dialog-top"><h2 id="bag-title">Your demo bag</h2><button className="round-button" aria-label="Close bag" onClick={() => drawer.current?.close()}>×</button></div><p className="dialog-note">Try the collection. Nothing is purchased and no payment is taken.</p>{bag.length ? <><ul>{bag.map((f, i) => <li key={i}>Orbit cuff / {f}</li>)}</ul><button className="quiet-button" onClick={() => setBag([])}>Clear bag</button></> : <p className="status">Your bag is empty. Find an object you love.</p>}</dialog>
+  </div>;
+}

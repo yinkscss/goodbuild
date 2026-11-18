@@ -12,6 +12,7 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ["@electric-sql/pglite", "solc", "jsdom", "dompurify", "esbuild", "tailwindcss", "@tailwindcss/oxide", "playwright-core"],
   // Read from disk when publishing, so file tracing can't see them on its own.
   outputFileTracingIncludes: {
+    "/api/projects/**/*": ["./public/templates/assets/*.webp", "./src/server/agent/design-templates/files/*.txt"],
     "/api/projects/[id]/publish": ["./publish-runtime.pack.gz"],
   },
   partialPrefetching: true,

@@ -19,7 +19,7 @@ import { PAGE_TEMPLATES, getPageTemplate } from "@/config/page-template-data";
 import { TEMPLATE_CATEGORIES, thumbnailFor } from "@/config/page-templates";
 import { TEMPLATE_EXAMPLE } from "@/config/page-templates";
 import { TemplateSlides } from "@/components/landing/template-slides";
-import { TEMPLATES, getTemplate, type StarterTemplate } from "@/config/templates";
+import { getTemplate, type StarterTemplate } from "@/config/templates";
 import {
   PROMPT_MAX_LENGTH,
   PROMPT_MIN_ROWS,
@@ -305,15 +305,6 @@ export function PromptBox({
                   if (t) fillFromTemplate(t);
                 }}
               >
-                <DropdownMenuLabel>dApp starters</DropdownMenuLabel>
-                {TEMPLATES.map((t) => (
-                  <DropdownMenuRadioItem key={t.id} value={t.id}>
-                    <span>
-                      <span className="block font-medium">{t.label}</span>
-                      <span className="block text-xs text-grey-600">{t.description}</span>
-                    </span>
-                  </DropdownMenuRadioItem>
-                ))}
                 {TEMPLATE_CATEGORIES.map((cat) => {
                   const items = PAGE_TEMPLATES.filter((t) => t.category === cat);
                   if (items.length === 0) return null;

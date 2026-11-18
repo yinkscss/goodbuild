@@ -1,0 +1,37 @@
+import { useRef, useState, type FormEvent } from "react";
+import { templateImage } from "./lib/templateImage";
+import { content } from "./lib/templateContent";
+import "./showcase.css";
+
+const projects = [
+  { name: "Other Matter", kind: "Identity", detail: "A new perspective on everyday objects.", year: "2026" },
+  { name: "Soft Systems", kind: "Digital", detail: "An expressive home for a different kind of technology.", year: "2026" },
+  { name: "Open Season", kind: "Identity", detail: "A cultural programme with room for unexpected encounters.", year: "2025" },
+];
+export default function App() {
+  const [filter, setFilter] = useState("All work");
+  const [draft, setDraft] = useState(() => {
+    try { const saved = JSON.parse(localStorage.getItem("signal-form-project-note") ?? "{}"); return { email: typeof saved.email === "string" ? saved.email : "", brief: typeof saved.brief === "string" ? saved.brief : "" }; }
+    catch { return { email: "", brief: "" }; }
+  });
+  const [saved, setSaved] = useState(Boolean(draft.email || draft.brief));
+  const [saveError, setSaveError] = useState("");
+  const dialog = useRef<HTMLDialogElement>(null);
+  const visible = projects.filter((p) => filter === "All work" || p.kind === filter);
+  function save(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault(); const data = new FormData(e.currentTarget);
+    try { localStorage.setItem("signal-form-project-note", JSON.stringify({ email: data.get("email"), brief: data.get("brief") })); setSaved(true); setSaveError(""); }
+    catch { setSaveError("Your browser couldn't save the note. Keep a copy before closing this window."); }
+  }
+  return <div className="showcase signal-form">
+    <a className="skip-link" href="#work">Skip to selected work</a>
+    <header className="site-nav"><a className="signal-brand" href="#">{content.brand.split(" ")[0].toLowerCase()}<span aria-hidden="true">✳</span>{content.brand.split(" ").slice(1).join(" ").toLowerCase()}</a><nav className="nav-links" aria-label="Primary"><a href="#work">Work</a><a href="#studio" className="nav-optional">Studio</a><button className="quiet-button" onClick={() => dialog.current?.showModal()}>Have a project?</button></nav></header>
+    <main>
+      <section className="signal-hero" aria-labelledby="signal-title"><div className="signal-headline enter"><p className="signal-intro">An independent design practice.<br />A different kind of energy.</p><h1 id="signal-title">{content.headline}</h1></div><figure className="signal-sculpture"><img src={templateImage.src} alt={templateImage.alt} width={1200} height={675} fetchPriority="high" /><figcaption>Form study / Other Matter / Original concept</figcaption></figure><button className="signal-orbit" onClick={() => dialog.current?.showModal()}><span>Let's make<br />something move.</span><b aria-hidden="true">↗</b></button><p className="signal-hero-note">{content.sub}</p><span className="signal-star" aria-hidden="true">✳</span></section>
+      <div className="signal-strip" aria-label="Strategy, identity and digital design"><span>Good ideas.</span><span aria-hidden="true">✳</span><span>Unexpected forms.</span><span aria-hidden="true">✳</span><span>Real impact.</span></div>
+      <section id="work" className="signal-work"><div className="signal-work-head"><h2 className="section-heading">A few things<br />we've put into motion.</h2><div role="group" aria-label="Filter selected work" className="signal-filters">{["All work", "Identity", "Digital"].map((f) => <button key={f} aria-pressed={filter === f} onClick={() => setFilter(f)}>{f}</button>)}</div></div><div className="signal-projects" aria-live="polite">{visible.map((p, i) => <article key={p.name} className="signal-project"><div className={`signal-project-art art-${i}`}><img src={templateImage.src} alt={`Original sculpture artwork for the fictional ${p.name} project`} width={1200} height={675} loading="lazy" /><span>{p.kind}</span></div><div className="signal-project-label"><h3>{p.name}</h3><span>{p.year}</span></div><p>{p.detail}</p></article>)}</div><p className="fine muted signal-disclaimer">Original sample projects for a fictional studio. Replace with your own case studies.</p></section>
+      <section id="studio" className="signal-studio"><p>Small by choice.<br />Expansive by nature.</p><div><span className="signal-studio-mark" aria-hidden="true">✳</span><p>We connect clear thinking with expressive form. The result should feel like you, and make people feel something.</p><button className="quiet-button" onClick={() => dialog.current?.showModal()}>Start a project note <span aria-hidden="true">↗</span></button></div></section>
+    </main><footer className="site-footer"><span>{content.brand} / Good ideas take shape.</span><span>Independent by design.</span></footer>
+    <dialog ref={dialog} aria-labelledby="project-title"><form onSubmit={save}><div className="dialog-top"><h2 id="project-title">What's on your mind?</h2><button type="button" className="round-button" aria-label="Close project note" onClick={() => dialog.current?.close()}>×</button></div><p className="dialog-note">Draft a project note. This demo saves it on this device; it does not send an email.</p><label>Your email<input type="email" name="email" autoComplete="email" value={draft.email} onChange={(e) => { setDraft({ ...draft, email: e.target.value }); setSaved(false); }} required /></label><label>A little about your project<textarea name="brief" value={draft.brief} onChange={(e) => { setDraft({ ...draft, brief: e.target.value }); setSaved(false); }} required /></label><button className="solid-button" type="submit">Save project note</button><p className="status" role="status">{saved ? "Project note saved on this device." : saveError}</p></form></dialog>
+  </div>;
+}

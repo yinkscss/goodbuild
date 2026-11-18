@@ -13,15 +13,15 @@
 
 import SLIDES from "./page-template-data/slides.json";
 
-export type TemplateCategory = "SaaS" | "Portfolio" | "Web3" | "Store" | "Events" | "Community";
+export type TemplateCategory = "Classic" | "SaaS" | "Portfolio" | "Web3" | "Store" | "Events" | "Community";
 
-export const TEMPLATE_CATEGORIES: TemplateCategory[] = ["SaaS", "Portfolio", "Web3", "Store", "Events", "Community"];
+export const TEMPLATE_CATEGORIES: TemplateCategory[] = ["Classic", "SaaS", "Portfolio", "Web3", "Store", "Events", "Community"];
 
 /** Picture drawn beside or under a hero headline. */
 export type HeroArt = "dashboard" | "code" | "phone" | "mint" | "orb" | "chart" | "portrait" | "tiles" | "none";
 
 export type Section =
-  | { type: "hero"; variant: "center" | "split"; eyebrow?: string; title: string; sub: string; cta: string; cta2?: string; art?: HeroArt; note?: string }
+  | { type: "hero"; variant: "center" | "split"; eyebrow?: string; title: string; sub: string; cta: string; cta2?: string; art?: HeroArt; image?: { src: string; alt: string }; note?: string }
   | { type: "logos"; label: string; items: string[] }
   | { type: "features"; title: string; sub?: string; items: { icon: string; title: string; text: string }[] }
   | { type: "stats"; items: { value: string; label: string }[] }
@@ -59,6 +59,8 @@ export interface TemplateSource {
 
 export interface PageTemplate {
   id: string;
+  designSeed?: "halo" | "elsewhere" | "frame-archive" | "signal-form" | "nocturne";
+  designDirection?: string;
   label: string;
   category: TemplateCategory;
   /** "dapp" templates also need a contract or on-chain action; "site" ones are plain pages. */
@@ -79,6 +81,8 @@ export interface PageTemplate {
   inspiration: TemplateSource[];
 }
 
+export const TEMPLATE_IMAGE_MODULE = "src/lib/templateImage.ts";
+
 export const TEMPLATE_THUMB_DIR = "/templates";
 
 export function thumbnailFor(template: Pick<PageTemplate, "id">, slide = 1): string {
@@ -96,6 +100,7 @@ export function thumbnailsFor(template: Pick<PageTemplate, "id">): string[] {
 
 /** Placeholder help in the prompt box once a template is attached: what a person might type next. */
 export const TEMPLATE_EXAMPLE: Record<TemplateCategory, string> = {
+  Classic: "e.g. A timeless website for my studio, with my own name, work and contact details",
   SaaS: "e.g. A landing page for my invoicing app, with my own name and pricing",
   Portfolio: "e.g. A portfolio for me, a photographer in Accra, with my own projects",
   Web3: "e.g. My own collection: 500 pieces at 10 G$ each",
@@ -119,7 +124,7 @@ function describe(s: Section, n: number): string {
   const head = `${n}. `;
   switch (s.type) {
     case "hero":
-      return `${head}Hero (${s.variant === "split" ? "text on the left, picture on the right" : "centred"}${s.art && s.art !== "none" ? `, with a ${s.art} illustration drawn in CSS and SVG` : ""}): ${s.eyebrow ? `small label "${s.eyebrow}", ` : ""}headline "${s.title}", line "${s.sub}", primary button "${s.cta}"${s.cta2 ? `, secondary button "${s.cta2}"` : ""}${s.note ? `, small note "${s.note}"` : ""}.`;
+      return `${head}Hero (${s.variant === "split" ? "text on the left, picture on the right" : "centred"}${s.image ? `, with the supplied photograph: ${s.image.alt}; import { templateImage } from src/lib/templateImage.ts and use its src and alt, never the preview screenshot` : s.art && s.art !== "none" ? `, with a ${s.art} illustration drawn in CSS and SVG` : ""}): ${s.eyebrow ? `small label "${s.eyebrow}", ` : ""}headline "${s.title}", line "${s.sub}", primary button "${s.cta}"${s.cta2 ? `, secondary button "${s.cta2}"` : ""}${s.note ? `, small note "${s.note}"` : ""}.`;
     case "logos":
       return `${head}Logo strip, caption "${s.label}": ${s.items.join(", ")} (plain text wordmarks).`;
     case "features":
@@ -150,8 +155,22 @@ function describe(s: Section, n: number): string {
  * copy and colours the thumbnail shows, so the result matches what the user clicked.
  */
 export function templateBrief(t: PageTemplate): string {
+  if (t.designSeed) {
+    const hero = t.sections.find((section) => section.type === "hero");
+    return [
+      `The person started from the "${t.label}" template. Its complete working React composition, CSS and editable content are already seeded in the workspace. Follow the person's changes to brand, copy, colours and features while preserving the selected visual identity. Do not ask questions, adapt the supplied code now.`,
+      "Load art-directed-web. Read src/App.tsx, src/showcase.css and src/lib/templateContent.ts before editing. Their actual navigation, layout, interactions and image treatment are authoritative. Keep those instead of reconstructing the design from generic section patterns.",
+      `Art direction: ${t.designDirection}`,
+      `Palette: background ${t.theme.bg}, text ${t.theme.fg}, secondary ${t.theme.muted}, surfaces ${t.theme.card}, accent ${t.theme.accent} with ${t.theme.accentFg} text. These are already expressed by the seed's CSS.`,
+      hero?.type === "hero" ? `Editable headline: "${hero.title}". Supporting copy: "${hero.sub}". Replace example copy with the user's words.` : "",
+      "The original generated artwork is supplied through templateImage in src/lib/templateImage.ts. Import and use that module; do not replace the live page with a screenshot or recreate the photograph with gradients.",
+      "Keep mobile layouts, labelled controls, visible keyboard focus, reduced-motion behavior and truthful demo states. A demo bag is not a purchase, an itinerary is not a booking and a saved local note is not a delivered enquiry. Load the appropriate existing data/form/payment guides if the user asks to connect a real workflow.",
+      "No contract is needed for this website. Keep the existing controls functional and adapt the seeded composition rather than replacing src/App.tsx with the default starter.",
+    ].filter(Boolean).join("\n");
+  }
   const lines = [
     `The person started from the "${t.label}" template (${t.category}, ${t.kind === "dapp" ? "an app with an on-chain part" : "a plain website, no contract"}). They picked it from the gallery and saw its thumbnail, then wrote their own request. Keep the layout, sections and look of the template, and follow their message wherever it differs (their name, business, copy, colours, extra or missing sections). Replace the template's example names and copy with theirs. Do not ask questions, build it now.`,
+    ...(t.category === "Classic" ? ["Load classic-web-design and restrained-motion guides. Use the classic composition: fine dividers, squared or subtly rounded frames, generous whitespace and typography-led hierarchy. Sample content and generated photos are illustrative; do not imply verified locations, testimonials or credentials."] : []),
     `Feel: ${t.mood}. Type: ${FONT_NOTE[t.font]}.`,
     `Colours (set them as the --color-* tokens in public/index.html, and keep text easy to read): page background ${t.theme.bg}, text ${t.theme.fg}, secondary text ${t.theme.muted}, cards ${t.theme.card}, accent ${t.theme.accent} with ${t.theme.accentFg} text on it. ${isDark(t.theme.bg) ? "It is a dark design." : "It is a light design."}`,
     `Top bar: brand "${t.nav.brand}", links ${t.nav.links.map((l) => `"${l}"`).join(", ")}, and a button "${t.nav.cta}"${t.kind === "dapp" ? " (use ConnectButton as the wallet control on the right)" : ""}.`,
@@ -163,7 +182,7 @@ export function templateBrief(t: PageTemplate): string {
     ...(t.pages ?? []).flatMap((pg) => [`Page "${pg.name}": a short page title, then:`, ...pg.sections.map((s, i) => describe(s, i + 1))]),
     `Footer: ${t.footer}`,
     t.onchain ? `On-chain part: ${t.onchain}` : "No contract is needed: make every button do something sensible (scroll to a section, open a form, or save to app data when it collects entries).",
-    "Make it responsive (stacked on phones, with a compact menu), keep the copy as written, and keep the whole page in a few small files. Placeholder pictures are CSS gradients and inline SVG, not remote images.",
+    "Make it responsive (stacked on phones, with a compact menu), keep the copy as written, and keep the whole page in a few small files. Use the supplied templateImage module when a photograph is specified. Other placeholder pictures are CSS gradients and inline SVG, not remote images.",
   ];
   return lines.join("\n");
 }

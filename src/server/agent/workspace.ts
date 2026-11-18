@@ -1,3 +1,4 @@
+import { TEMPLATE_IMAGE_MODULE } from "@/config/page-templates";
 import { ASSET_EXTENSIONS } from "./assets";
 import { MAX_FILES, MAX_FILE_BYTES, namingProblem, pathProblem } from "./checks";
 import { findSymbol, manifest, readRange, searchCode } from "./codebase";
@@ -109,6 +110,13 @@ export class Workspace {
           };
         }
         if (!(path in this.files)) return { ok: false, result: `Error: ${path} doesn't exist. Use list_files or find_symbol.`, access: `read_file ${path} (missing)` };
+        if (path === TEMPLATE_IMAGE_MODULE) {
+          return {
+            ok: true,
+            result: "Bundled photograph: import { templateImage } from this module and use src, alt, width and height. Encoded pixels are omitted here; the real module already contains them. Do not rewrite it.\n" + this.files[path].replace(/data:image\/webp;base64,[A-Za-z0-9+/=]+/g, "[embedded photograph]"),
+            access: `read_file ${path} (image metadata)`,
+          };
+        }
         const start = num(args.start_line);
         const end = num(args.end_line);
         const ranged = start !== undefined || end !== undefined;

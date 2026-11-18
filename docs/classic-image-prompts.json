@@ -1,0 +1,30 @@
+{
+  "provider": "Built-in image_gen",
+  "date": "2026-11-18",
+  "prompts": {
+    "interior": "Use case: photorealistic-natural. Original landscape editorial architecture photograph for a classic boutique hotel and interiors studio website hero. A serene sunlit room with warm limewash walls, arched wooden doorway, linen armchair, low oak table and an olive branch in a clay vase. Understated, lived-in craftsmanship, restrained cream, oak and olive palette. Natural afternoon light and soft detailed shadows. Wide horizontal composition, no people, no text, no logos or watermark. Save the finished image to a local file and report the absolute path.",
+    "ceramics": "Use case: product-mockup. Original landscape editorial still life for a classic artisan shop and slow living journal website hero: three handmade ivory ceramic vessels with natural irregular edges, linen cloth, a small olive branch on a warm travertine tabletop. Soft side daylight, tactile glaze and stone texture, subtle film grain, earthy cream and umber palette, elegant quiet art direction. Wide horizontal composition, no text, labels, logos, people or watermark. Save the finished image to a local file and report the absolute path.",
+    "garden": "Use case: photorealistic-natural. Original landscape editorial photograph for a classic garden designer and countryside retreat website hero. A graceful gravel path through an abundant walled garden of white cosmos, rosemary, grasses and olive trees, leading to a small pale stone pavilion. Early morning dappled light, quiet natural English country garden feeling, soft forest green and warm ivory palette, premium magazine photography. Wide horizontal composition, no people, text, logos or watermark. Save the finished image to a local file and report the absolute path."
+  },
+  "reference_review": {
+    "url": "https://motionsites.ai/",
+    "reviewed": "2026-11-18",
+    "public_previews": [
+      "Zenith Realty",
+      "OYLA",
+      "Golden Portal",
+      "3D Portfolio"
+    ],
+    "concepts": [
+      "Generous image areas and concise navigation",
+      "Editorial contrast between display typography and quiet supporting copy",
+      "Clear hierarchy from hero to catalogue to enquiry"
+    ],
+    "reuse": "Public visual study only. No third-party prompt text, source code or imagery included."
+  },
+  "assets": {
+    "interior": "public/templates/assets/classic-interior.webp",
+    "ceramics": "public/templates/assets/classic-ceramics.webp",
+    "garden": "public/templates/assets/classic-garden.webp"
+  }
+}
