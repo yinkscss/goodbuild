@@ -4,7 +4,6 @@ import { afterAll, describe, expect, it } from "vitest";
 
 import { checkApp, checkContracts } from "../checks";
 import { kitById, kitIdsOf, withKit } from "../kits/index";
-import { playAgain } from "../game-check";
 import { closeRunCheckBrowser, runCheck } from "../run-check";
 import { PLATFORM_DIR, contractModule, contractsIndex, starterFiles } from "../template";
 import { typeCheck } from "../type-check";
@@ -89,36 +88,6 @@ describe("game templates (D114)", { timeout: 180_000 }, () => {
     const said = noOil.issues.map((i) => i.message).join(" ") + " " + noOil.note;
     expect(said).toMatch(/never appeared in the first 15: "oil"|not long enough to judge oil/);
     expect(/saw ([^;(]*)/.exec(noOil.note)?.[1] ?? "").not.toMatch(/\boil\b/);
-  });
-
-  // A cheap phone: a touch screen and a CPU four times slower. The game must still play, post and keep up (D118).
-  it.skipIf(!hasBrowser)("Catch and dodge: plays with no issues on a slow touch phone, at full frame rate", async () => {
-    let p95 = Infinity;
-    const r = await runCheck(built("catch-dodge"), {
-      phone: { cpuSlowdown: 4 },
-      initScript: "(() => { const d = []; let last = 0; const f = (t) => { if (last) d.push(t - last); last = t; requestAnimationFrame(f); }; requestAnimationFrame(f); window.__frameTimes = d; })();",
-      afterPlay: async (page) => {
-        // Measure a round being played, not the game-over screen: the same round must run from start to end
-        // of the sample. Two tries, starting a round with Play again if the last has ended; else p95 stays Infinity.
-        const live = () => page.evaluate(() => { const r = (window as unknown as { __gbGame?: { rounds: { end?: number }[] } }).__gbGame?.rounds ?? []; return r.length && r[r.length - 1].end === undefined ? r.length : 0; });
-        for (let attempt = 0; attempt < 2; attempt++) {
-          if (!(await live()) && !(await playAgain(page))) return;
-          const round = await live();
-          if (!round) return;
-          await page.evaluate(() => { (window as unknown as { __frameTimes: number[] }).__frameTimes.length = 0; });
-          await page.waitForTimeout(1_500);
-          const sampled = await page.evaluate(() => { const d = [...(window as unknown as { __frameTimes: number[] }).__frameTimes].sort((a, b) => a - b); return d[Math.floor(d.length * 0.95)] ?? Infinity; });
-          if ((await live()) === round) {
-            p95 = sampled;
-            return;
-          }
-        }
-      },
-    });
-    expect(r.issues).toEqual([]);
-    // Not "a score was posted": with the CPU slowed and other tests running, a round may not end in the window.
-    expect(r.note).toMatch(/played \d+ rounds?/);
-    expect(p95).toBeLessThan(34);
   });
 
   // Older phones (iOS 15 Safari) have no canvas roundRect: the score panel must not crash the game there.

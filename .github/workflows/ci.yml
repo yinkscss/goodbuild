@@ -68,6 +68,8 @@ jobs:
         run: pnpm typecheck
 
       # PGlite and solc run in-process, so no database service or compiler download is needed.
+      # pnpm test runs the functional suite, then the frame-rate benchmark on its own.
+      # Its <34ms budget must not compete with other workers' databases and compilers.
       # Workers and timeouts come from vitest.config.mts.
       - name: Test
         run: pnpm test

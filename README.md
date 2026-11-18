@@ -36,6 +36,8 @@ node scripts/demo-session.mjs --seed   # throwaway signed-in session with sample
 - AI builds run from the Next.js server through the Vercel AI SDK: set `ANTHROPIC_API_KEY` and `DEEPSEEK_API_KEY` in `.env.local`. To try the workspace without keys, set `GOODBUILD_DEMO_MODEL=1` (development only).
 - A separate worker runs builds: `pnpm worker`.
 
+`pnpm test` runs the regular suite first, then the slow-phone frame-rate benchmark in a separate process with one worker. This keeps compiler, database and browser workloads out of the frame-rate measurement without relaxing its 34 ms limit. Use `pnpm test:suite` or `pnpm test:performance` to run either phase directly.
+
 **Stack:** Next.js 16 (App Router), React 19, TypeScript, Tailwind v4 + shadcn/ui, Drizzle + Postgres, viem, Vitest. Design tokens are in `src/app/globals.css`.
 
 ## Production
