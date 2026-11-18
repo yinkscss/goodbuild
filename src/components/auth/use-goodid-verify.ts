@@ -7,9 +7,34 @@ import { faceVerificationLink, faceVerificationMessage } from "@/lib/goodid";
 
 const CHECKS_AFTER_RETURN = 6;
 const CHECK_INTERVAL_MS = 3000;
+/** A slow connection or a wallet pop-up that never opened must not leave the button spinning forever. */
+const CHECK_TIMEOUT_MS = 15_000;
+const WALLET_TIMEOUT_MS = 90_000;
+
+const NO_ANSWER = "That's taking too long. Check your connection and press Verify to try again.";
+const WALLET_NO_ANSWER = "We didn't hear back from your wallet. Open it, then press Verify to try again.";
+
+/** Rejects with `message` if `promise` hasn't settled in `ms`. */
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), ms);
+  });
+  return Promise.race([promise, deadline]).finally(() => clearTimeout(timer));
+}
 
 async function checkOnChain(): Promise<boolean> {
-  const res = await fetch("/api/account/goodid", { method: "POST" });
+  const controller = new AbortController();
+  const abortTimer = setTimeout(() => controller.abort(), CHECK_TIMEOUT_MS);
+  try {
+    return await withTimeout(checkOnChainRequest(controller.signal), CHECK_TIMEOUT_MS, NO_ANSWER);
+  } finally {
+    clearTimeout(abortTimer);
+  }
+}
+
+async function checkOnChainRequest(signal: AbortSignal): Promise<boolean> {
+  const res = await fetch("/api/account/goodid", { method: "POST", signal });
   const body = (await res.json().catch(() => ({}))) as { verified?: boolean; message?: string };
   if (!res.ok) throw new Error(body.message ?? "We couldn't check that. Try again.");
   return Boolean(body.verified);
@@ -83,12 +108,12 @@ export function useGoodIdVerify(onVerified: () => unknown, returnTo?: () => stri
         await onVerified();
         return;
       }
-      const client = await auth.getWalletClient();
-      const [address] = await client.getAddresses();
+      const client = await withTimeout(auth.getWalletClient(), WALLET_TIMEOUT_MS, WALLET_NO_ANSWER);
+      const [address] = await withTimeout(client.getAddresses(), WALLET_TIMEOUT_MS, WALLET_NO_ANSWER);
       if (!address || address.toLowerCase() !== auth.user?.wallet.toLowerCase()) {
         throw new Error("Switch to the wallet you signed in with, then try again.");
       }
-      const signature = await client.signMessage({ account: address, message: faceVerificationMessage(address) });
+      const signature = await withTimeout(client.signMessage({ account: address, message: faceVerificationMessage(address) }), WALLET_TIMEOUT_MS, WALLET_NO_ANSWER);
       window.location.assign(faceVerificationLink(address, signature, returnTo ? returnTo() : window.location.href));
     } catch (error) {
       setNote(error instanceof Error && !/reject|denied/i.test(error.message) ? error.message : "Verification was cancelled. Press Verify to try again.");

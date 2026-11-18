@@ -54,6 +54,6 @@ describe("VerifyCard", () => {
     const onVerified = vi.fn();
     render(<VerifyCard onVerified={onVerified} />);
     await waitFor(() => expect(onVerified).toHaveBeenCalled());
-    expect(fetcher).toHaveBeenCalledWith("/api/account/goodid", { method: "POST" });
+    expect(fetcher).toHaveBeenCalledWith("/api/account/goodid", { method: "POST", signal: expect.any(AbortSignal) });
   });
 });
