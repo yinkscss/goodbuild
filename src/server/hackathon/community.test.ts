@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { createTestDb, type Db } from "@/server/db/client";
 import { eq } from "drizzle-orm";
 import { users } from "@/server/db/schema";
-import { hackathonParticipants } from "@/server/db/hackathon-schema";
+import { flowstateVoters, hackathonParticipants } from "@/server/db/hackathon-schema";
 import {
   approveEntry,
   listEntries,
@@ -217,4 +217,14 @@ it("keeps the first signup email: a later save can't change it", async () => {
   const u = await user(); // saved with builder@example.com
   const row = await saveParticipant(db, u, { email: "second@example.com" });
   expect(row.email).toBe("builder@example.com");
+});
+it("carries a vote made before signing up, so the builder isn't told to vote again (D131)", async () => {
+  const u = (await db.insert(users).values({ wallet: wallet() }).returning())[0];
+  const votedAt = new Date();
+  await db.insert(flowstateVoters).values({ userId: u.id, txHash: "0xabc", votedAt });
+  const row = await saveParticipant(db, u, { email: "late@example.com" });
+  expect(row.flowstate).toBe("voted");
+  await expect(
+    saveEntry(db, u, { alias: "A", title: "B", pitch: "C", liveUrl: "", sourceUrl: "" }),
+  ).resolves.toMatchObject({ title: "B" });
 });

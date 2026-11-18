@@ -3,7 +3,6 @@ import { afterEach, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock("./add-credits", () => ({ AddCredits: () => <button type="button">Add credits</button> }));
 vi.mock("./free-credits-card", () => ({ FreeCreditsCard: () => <p>Free credits card</p> }));
 
@@ -11,7 +10,10 @@ import { StartCredits } from "./start-credits";
 
 afterEach(() => sessionStorage.clear());
 
-it("offers Add credits and free credits once per session", async () => {
+it("comes back until closed (verify leaves for GoodDollar and returns), then stays closed for the session", async () => {
+  const first = render(<StartCredits freeCredits />);
+  await screen.findByRole("dialog");
+  first.unmount(); // the GoodDollar round trip
   const { unmount } = render(<StartCredits freeCredits />);
   expect(await screen.findByRole("dialog", { name: "Get credits to start building" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Add credits" })).toBeInTheDocument();
