@@ -1,6 +1,10 @@
 import "server-only";
 
+import { eq } from "drizzle-orm";
+
 import type { Db } from "@/server/db/client";
+import { projectAssets } from "@/server/db/schema";
+import { pendingAssetIds } from "@/lib/attachments";
 import { estimateTurnMicro } from "@/lib/pricing";
 import { dbAssetStore } from "@/server/agent/asset-store";
 import { publicAssetOrigin, publicAssetUrl } from "@/server/agent/asset-url";
@@ -34,9 +38,10 @@ export interface WorkspaceState {
   /**
    * Uploaded logos, images and design references (metadata; bytes via the assets API). `url`
    * is a public signed URL when GoodBuild runs on a public https origin; otherwise the preview
-   * inlines data URLs.
+   * inlines data URLs. `pending`: uploaded since the last message, so it shows above the composer
+   * and goes with the next one (a sent file shows in its message instead).
    */
-  assets: Array<AssetInfo & { url?: string }>;
+  assets: Array<AssetInfo & { url?: string; pending?: boolean }>;
   /** The running turn and queued follow-ups, oldest first (P18). A reload attaches to the first. */
   /** Deployed contracts whose saved code has changed since, so the chain doesn't have the changes. */
   outdatedContracts: string[];
@@ -60,6 +65,11 @@ export async function workspaceState(db: Db, projectId: string, ownerId: string)
   const versions = await listVersions(db, projectId);
   const contextChars = Object.values(files).reduce((n, c) => n + c.length, 0) + systemPrompt("build").length + 2_000;
   const contracts = await contractState(db, project, files);
+  const uploaded = await db.select({ id: projectAssets.id, createdAt: projectAssets.createdAt }).from(projectAssets).where(eq(projectAssets.projectId, projectId));
+  const pending = pendingAssetIds(
+    owned.messages.map((m) => ({ role: m.role, meta: (m.meta as Record<string, unknown> | null) ?? null, createdAt: m.createdAt.toISOString() })),
+    uploaded.map((a) => ({ id: a.id, createdAt: a.createdAt.toISOString() })),
+  );
   return {
     project: {
       id: project.id,
@@ -91,7 +101,7 @@ export async function workspaceState(db: Db, projectId: string, ownerId: string)
     },
     assets: (await dbAssetStore(db).list(projectId)).map((a) => {
       const origin = publicAssetOrigin();
-      return origin ? { ...a, url: publicAssetUrl(origin, projectId, a.id) } : a;
+      return { ...a, ...(origin ? { url: publicAssetUrl(origin, projectId, a.id) } : {}), pending: pending.has(a.id) };
     }),
     jobs: (await activeJobs(db, projectId)).map((j) => ({
       id: j.id,

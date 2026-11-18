@@ -131,15 +131,20 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
    * queue behind a running turn on the server, so they survive a reload or a closed tab.
    */
   const enqueue = React.useCallback(
-    async (body: { mode: TurnMode; prompt?: string; userMessageId?: string; skipPlan?: boolean }) => {
+    async (body: { mode: TurnMode; prompt?: string; userMessageId?: string; skipPlan?: boolean; assetIds?: string[] }) => {
       setError(null);
       setCheckFailed(null);
       if (body.prompt) {
         const prompt = body.prompt;
-        // Show the prompt at once; the refresh below replaces it with the saved message.
+        const sent = new Set(body.assetIds ?? []);
+        // Show the prompt (and the files going with it) at once; the refresh below replaces it with the saved message.
         setState((s) => ({
           ...s,
-          messages: [...s.messages, { id: `local-${Date.now()}`, role: "user", content: prompt, status: "queued", meta: { mode: body.mode }, createdAt: new Date().toISOString() }],
+          messages: [
+            ...s.messages,
+            { id: `local-${Date.now()}`, role: "user", content: prompt, status: "queued", meta: { mode: body.mode, assetIds: body.assetIds ?? [] }, createdAt: new Date().toISOString() },
+          ],
+          assets: s.assets.map((a) => (sent.has(a.id) ? { ...a, pending: false } : a)),
         }));
       }
       try {
@@ -166,10 +171,18 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
   // Sends go out one at a time, so the server queues prompts in the order they were sent
   // (measured: three quick sends raced and were queued out of order).
   const sending = React.useRef<Promise<void>>(Promise.resolve());
+  // The files waiting above the composer go with the next message sent (read at send time).
+  const pendingAssets = React.useRef<string[]>([]);
+  React.useLayoutEffect(() => {
+    pendingAssets.current = state.assets.filter((a) => a.pending).map((a) => a.id);
+  }, [state.assets]);
   const send = React.useCallback(
     (prompt: string, mode: TurnMode, opts?: { skipPlan?: boolean }) => {
       const trimmed = prompt.trim();
-      if (trimmed) sending.current = sending.current.then(() => enqueue({ mode, prompt: trimmed, ...(opts?.skipPlan ? { skipPlan: true } : {}) }));
+      if (!trimmed) return;
+      const assetIds = pendingAssets.current;
+      pendingAssets.current = [];
+      sending.current = sending.current.then(() => enqueue({ mode, prompt: trimmed, assetIds, ...(opts?.skipPlan ? { skipPlan: true } : {}) }));
     },
     [enqueue],
   );
