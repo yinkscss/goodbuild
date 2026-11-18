@@ -1,24 +1,24 @@
-# GoodBuild Million Hackathon
+# GoodBuild Hackathon
 
-Status: page built (D98). Credit claims built (D99): 20 credits on registering, 30 after the first Celo deploy, one grant per GoodDollar root. Expiry of unspent credits and the admin page at `/hackathon/admin` are built too (D100).
+Status: email onboarding, required in-app FlowState support, public submissions, verified approvals, leaderboard and admin CSV built (18 Nov 2026). The top 10 published projects receive 100,000 G$ base each from a 1,000,000 G$ reserve; every verified approval adds 50,000 G$ outside that reserve. Earnings are estimates until settlement. Page built (D98). Credit claims built (D99): 20 credits on registering, 30 after the first Celo deploy, one grant per GoodDollar root. Expiry of unspent credits and the admin page at `/hackathon/admin` are built too (D100).
 
 ## 1. The page (`/hackathon`)
-- Code: `src/app/hackathon/page.tsx`, pieces in `src/components/hackathon/`. All copy and numbers live in `content.ts`. Prize split, dates, tracks, team size and partner links there are **DRAFT** until the owner confirms. A test checks the prizes add up to 1,000,000 G$.
+- Code: `src/app/hackathon/page.tsx`, pieces in `src/components/hackathon/`. All copy and numbers live in `content.ts`. Prize split, dates, tracks, team size and partner links there are **DRAFT** until the owner confirms. The confirmed total pool is 1,000,000 G$. Podium prizes have been replaced with a top-10 shared reserve and separately funded approval top-ups.
 - Styles: `hackathon.css`, plain global CSS with every class prefixed `hk-`, mapped in `styles.ts`. CSS modules don't work in this repo because the Turbopack rule in `next.config.ts` renames every `*.css` file.
-- Registration uses what already exists: the sign-in modal (with its 18+ and not-a-US-person attestation), then GoodDollar face verification through `useGoodIdVerify` (shared with the workspace's `VerifyCard`). The server re-reads the Identity contract (`/api/account/goodid`). Step 3 claims credits through `POST /api/hackathon` (`src/server/hackathon/claim.ts`).
+- Registration uses what already exists: the sign-in modal (with its 18+ and not-a-US-person attestation), then GoodDollar face verification through `useGoodIdVerify` (shared with the workspace's `VerifyCard`). The server re-reads the Identity contract (`/api/account/goodid`). Step 3 requires confirmed support for GoodBuildIt through the in-page FlowState popup. Step 4 explicitly claims credits through `POST /api/hackathon` (`src/server/hackathon/claim.ts`).
 - Partner links: set `href` on each entry in `PARTNERS` (GoodCash and GoodBuild are linked; Jara is not yet).
-- Entries must start on GoodBuild, whose first commit they carry; builders may then continue through GitHub sync (D101). Not checked in code until submissions exist.
+- Entries must start on GoodBuild, whose first commit they carry; builders may then continue through GitHub sync (D101). Submissions currently collect an editable live/source link; GoodBuild provenance and Celo deployment are not automatically validated for reward eligibility.
 
 ## 2. Granting hackathon credits without being gamed (D99)
 What stops abuse is that **every grant is keyed to a GoodDollar identity root, not a wallet or an account**, and the chain decides what that root is.
 
-1. **Claim, don't auto-grant.** A `POST /api/hackathon/claim` route. Signed-in session required. It is region-gated like the rest of the API (D10), and the attestation was already taken at sign-in.
+1. **Claim, don't auto-grant.** A `POST /api/hackathon` route. Signed-in session required. It is region-gated like the rest of the API (D10), and the attestation was already taken at sign-in.
 2. **Re-read the chain at claim time.** Call `readGoodIdRoot` fresh. Don't trust the stored `verifiedAt` (it never expires) or GoodDollar's redirect. No root means no credits. If GoodDollar's verification has expired, the person re-verifies first.
 3. **One grant per human.** Post one ledger entry with `idempotencyKey = hackathon-2027:<root>`. The ledger already refuses a reused key: a replay changes nothing, and a second account linked to the same root gets `IdempotencyConflictError`. Add a `hackathon_registrations` table with a unique index on `goodid_root` as a second lock, and to list who registered.
 4. **Credits only buy AI on GoodBuild.** They can't be withdrawn, sent or swapped (true of the ledger today). That leaves farming accounts worth little.
 5. **Give it in two parts.** A first tranche at registration, the rest after the first real build or first Celo deploy from that account. Someone who verifies only to collect gets the small part.
 6. **Expire them.** Unused hackathon credits lapse when submissions close (a dated `adjust` entry), so they aren't a standing liability.
-7. **Budget kill switch.** A total cap for the whole hackathon (`HACKATHON_BUDGET_MICRO`). Claims stop with a clear message once it's spent, in the same way as D29.
+7. **Budget kill switch.** A total cap for the whole hackathon (`HACKATHON_BUDGET_CREDITS`). Claims stop with a clear message once it's spent, in the same way as D29.
 8. **Watch it.** An admin view of claims per day, with duplicate-root attempts and claims from wallets created minutes earlier. Blocking stays manual.
 
 **What this does not stop (honest limits):**
@@ -50,9 +50,27 @@ The owner puts 1,000,000 G$ at about ₦150,000 (12 Nov 2026). So the page and a
   - every builder, flagged when the account was made under 10 minutes before claiming, or the wallet is linked to another GoodDollar identity
   - refused claims, which are logged in `hackathon_refusals`
 
-## 5. Needs the owner
+## 5. Community flow and exports (18 Nov 2026)
+- Run migration `0022_hackathon_community` (`pnpm db:migrate`) before deploying. Embedded development databases migrate automatically.
+- Email login reads Magic metadata on the server only after validating the DID token bound to the wallet sign-in. `users.email` is returned only in that account's session response. External wallets can supply a contact email; the CSV distinguishes contact-only addresses from email logins.
+- `hackathon_participants` records signup and FlowState progress before verification. Legacy `visited` / `skipped` states are not proof. Initial free credits require `voted` plus a fresh, settled on-chain support check.
+- `/hackathon/submit`: any signed-in person with a saved email can post one idea and later edit it. Alias, title and a 160-character pitch are required; HTTPS live/source links are optional. The actor's account determines ownership; no browser-supplied payout wallet is accepted.
+- `/hackathon/projects`: public showcase ordered by approval count, then submission time. Email and internal user/identity data are excluded. Approvals open after a live link is added.
+- `POST /api/hackathon/projects` re-reads the voter and owner's GoodDollar identities. A database unique index allows one approval per identity per project, even across linked wallets or retries. Self-approvals are rejected. Approvals close at `CLAIMS_CLOSE`. They are free; they do not debit build credits or pay out G$.
+- `/hackathon/admin` links to `GET /api/hackathon/export`. The CSV requires a wallet listed in `ADMIN_WALLETS`, includes every signup (including unverified people and people who never claim), progress, project links, approval counts and credit grants. It is not limited by the claim report's 500-row preview. Fields are quoted and spreadsheet formulas neutralized.
+- `pnpm test -- src/server/hackathon src/components/hackathon src/app/api/hackathon/export/route.test.ts src/server/auth` covers signup, ownership, duplicate roots, fresh owner verification, required vote/explicit claim, private export access and email persistence. Browser verification uses controlled identity/chain responses; real Magic OTP and GoodDollar face checks require configured services and a human.
+
+## 6. Needs the owner
 - Split 20 + 30: Claude's choice. Change `START_CREDITS` and `DEPLOY_CREDITS` in `claim.ts`; a test keeps the page's copy in step.
-- Prize split, dates, tracks and team size (all DRAFT in `content.ts`).
+- Dates, tracks and team size (DRAFT in `content.ts`).
 - Partner links, and whether GoodCash, GoodBuild and Jara have logos to use.
-- Who judges, and whether the community vote happens on GoodBuild.
+- Final eligibility and payout schedule. Approvals and estimated earnings are implemented on GoodBuild; automated prize payments are not.
 - Whether GoodDollar must approve this use of face verification (also open from M6).
+
+## 7. Reward policy (owner update, 18 Nov 2026)
+
+`src/lib/hackathon-rewards.ts` defines a 1,000,000 G$ shared reserve, ten fixed base slots of 100,000 G$ each, and 50,000 G$ per verified approval funded outside that reserve. Top-ups apply to every published entry, including those beyond the top 10. They are not capped by, deducted from, or funded by the reserve. Fewer than ten eligible projects leave unused base slots rather than redistributing them. Published projects rank by approval count, then original submission time/id; ideas do not occupy reward slots. The public cards and private CSV show the same estimated base, top-up and total amounts. The estimates are not wallet balances, ledger build credits or confirmed payments.
+
+## 8. In-app FlowState support (18 Nov 2026)
+
+The required FlowState step supports direct voting with the existing Magic email wallet. See [FLOWSTATE.md](./FLOWSTATE.md) for verified protocol targets, review/signature/confirmation rules, gas requirements and remaining live checks. Migration `0023_flowstate_vote_proof` adds durable claim throttling and confirmation evidence. CSV export now distinguishes an external link visit from a server-confirmed vote, and includes its transaction hash/confirmation time. Existing supporters can confirm their actual ballot without spending another network fee.

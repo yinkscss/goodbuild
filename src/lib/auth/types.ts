@@ -16,6 +16,7 @@ export interface Attestation {
 }
 
 export interface SessionUser {
+  email?: string | null;
   id: string;
   wallet: string;
   walletKind: WalletKind;

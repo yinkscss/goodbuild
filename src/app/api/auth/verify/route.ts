@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { verifyBody } from "@/lib/api-schemas";
 import { errorResponse, requestDomain, setSessionCookie, takeNonceCookie } from "@/server/auth/http";
 import { AuthError } from "@/server/auth/errors";
-import { assertMagicLogin } from "@/server/auth/magic";
+import { assertMagicLogin, magicAdmin } from "@/server/auth/magic";
 import { issueSession, publicUser, signInUser } from "@/server/auth/service";
 import { verifySignIn } from "@/server/auth/siwe";
 import { readNonceToken } from "@/server/auth/tokens";
@@ -31,8 +31,11 @@ export async function POST(request: Request) {
     // Email wallets (Magic, D22) must also present a DID token for this exact sign-in.
     if (body.walletKind === "embedded") assertMagicLogin({ didToken: body.didToken, message: body.message, address });
 
+    const email = body.walletKind === "embedded" && body.didToken
+      ? (await magicAdmin().users.getMetadataByToken(body.didToken)).email ?? undefined
+      : undefined;
     const db = await getDb();
-    const user = await signInUser(db, { wallet: address, walletKind: body.walletKind, attestation: body.attestation });
+    const user = await signInUser(db, { wallet: address, walletKind: body.walletKind, email, attestation: body.attestation });
     // Credits redeemed on-chain before this wallet had an account land now. Never blocks sign-in.
     await creditPendingForWallet(db, user.wallet).catch((e) => console.error("[credits] pending credit failed", e));
     await setSessionCookie(await issueSession(db, user, chainId));

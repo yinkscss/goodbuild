@@ -23,7 +23,7 @@ export type WalletKind = "embedded" | "external";
  */
 export async function signInUser(
   db: Db,
-  input: { wallet: string; walletKind: WalletKind; attestation?: Attestation },
+  input: { wallet: string; walletKind: WalletKind; email?: string; attestation?: Attestation },
   now = new Date(),
 ): Promise<User> {
   const wallet = input.wallet.toLowerCase();
@@ -37,6 +37,7 @@ export async function signInUser(
       .update(users)
       .set({
         lastSeenAt: now,
+        ...(input.email ? { email: input.email } : {}),
         walletKind: input.walletKind,
         ...(alreadyAttested ? {} : { ageOk: true, countryOk: true, attestedAt: now }),
       })
@@ -46,7 +47,7 @@ export async function signInUser(
   }
   const [created] = await db
     .insert(users)
-    .values({ wallet, walletKind: input.walletKind, ageOk: true, countryOk: true, attestedAt: now, lastSeenAt: now })
+    .values({ wallet, email: input.email, walletKind: input.walletKind, ageOk: true, countryOk: true, attestedAt: now, lastSeenAt: now })
     .onConflictDoUpdate({ target: users.wallet, set: { lastSeenAt: now } })
     .returning();
   return created;
@@ -119,6 +120,7 @@ export async function revokeSession(db: Db, token: string | undefined, now = new
 export function publicUser(user: User) {
   return {
     id: user.id,
+    email: user.email,
     wallet: user.wallet,
     walletKind: user.walletKind as WalletKind,
     verified: Boolean(user.verifiedAt),
