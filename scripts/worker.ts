@@ -5,6 +5,7 @@ import { getDb } from "../src/server/db/client";
 import { modelClient, visionClient } from "../src/server/agent";
 import { TurnWorker } from "../src/server/jobs/worker";
 import { sweepHackathonExpiry } from "../src/server/hackathon/admin";
+import { sweepFreeExpiry } from "../src/server/credits/free-expiry";
 
 if (!process.env.DATABASE_URL) {
   console.error("pnpm worker needs DATABASE_URL (Postgres). PGlite can't be shared with the web server.");
@@ -18,6 +19,11 @@ console.log(`[worker] ${worker.id} waiting for turn jobs`);
 const sweep = () => void sweepHackathonExpiry(getDb).catch((e) => console.warn(`[worker] hackathon expiry: ${(e as Error).message}`));
 setInterval(sweep, 60 * 60 * 1000).unref();
 sweep();
+
+// Hourly: take back free credits not spent within FREE_CREDITS_EXPIRE_DAYS (D123). Safe to repeat.
+const sweepFree = () => void sweepFreeExpiry(getDb).catch((e) => console.warn(`[worker] free credit expiry: ${(e as Error).message}`));
+setInterval(sweepFree, 60 * 60 * 1000).unref();
+sweepFree();
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, () => {

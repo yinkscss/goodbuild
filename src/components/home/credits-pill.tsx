@@ -39,7 +39,7 @@ export function CreditsPill({
 
   if (state === "preview" && balanceMicro !== null && balanceMicro > 0) {
     return (
-      <div className={cn("flex items-center gap-2 rounded-full bg-surface py-1.5 pr-4 pl-1.5 text-sm shadow-card", className)} title="Your paid credit plus the free AI you have left. Free AI is used first.">
+      <div className={cn("flex items-center gap-2 rounded-full bg-surface py-1.5 pr-4 pl-1.5 text-sm shadow-card", className)} title="Your credits, bought and free together.">
         <span className="grid size-6 place-items-center rounded-full bg-violet text-[10px] font-bold text-white" aria-hidden>C</span>
         <b className="font-semibold">{formatCredits(balanceMicro)}</b>
         <span className="text-grey-400">available</span>
@@ -51,11 +51,11 @@ export function CreditsPill({
     return (
       <div
         className={cn("flex items-center gap-2 rounded-full bg-surface py-1.5 pr-4 pl-1.5 text-sm shadow-card", className)}
-        title="Each new account gets 20 credits of AI free. After that, add credits with G$."
+        title="Planning is free. Verify with GoodDollar for 40 free credits, then claim a daily refill."
       >
         {glyph}
         <b className="font-semibold">Free AI</b>
-        <span className="text-grey-400">· 20 credits free</span>
+        <span className="text-grey-400">· 40 credits when verified</span>
       </div>
     );
   }

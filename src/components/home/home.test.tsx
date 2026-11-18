@@ -96,7 +96,7 @@ describe("home prompt and empty state", () => {
 
   it("shows the free-credit hint before credits exist", () => {
     render(<Home />);
-    expect(screen.getByText("20 credits of AI free")).toBeInTheDocument();
+    expect(screen.getByText("Planning is free")).toBeInTheDocument();
   });
 
   it("disables Build it at zero credits with the top-up message", async () => {

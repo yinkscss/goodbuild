@@ -12,6 +12,11 @@ import * as before from "./cap-before-m2";
 import { getBalanceMicro, postLedgerEntry } from "./ledger";
 import { MIGRATIONS, testBackends, type TestDatabase } from "./test-backends";
 
+/** These tests pin the D28/D30 free allowances, kept as the FREE_POLICY=legacy off switch (D123). */
+const LEGACY = { FREE_POLICY: "legacy" };
+process.env.FREE_POLICY = "legacy";
+
+
 /**
  * M2 (D48): free AI is counted only from free usage, each job keeps one funding source for life,
  * and for everyone using GoodBuild today nothing changes.
@@ -128,7 +133,7 @@ describe.each(testBackends())("free and paid kept apart on $name", (backend) => 
         const budgets = [0, total, total + 1, ...Array.from({ length: active + 1 }, (_, n) => [total + n * 350_000, total + n * 350_000 + 1]).flat()];
 
         for (const budget of budgets) {
-          const env = { FREE_AI_BUDGET_MICRO: String(budget), UNCAPPED_WALLETS: `0xsomeone, ${EXEMPT_WALLET}` };
+          const env = { ...LEGACY, FREE_AI_BUDGET_MICRO: String(budget), UNCAPPED_WALLETS: `0xsomeone, ${EXEMPT_WALLET}` };
           for (const person of people) {
             const ask = async (inputs: { projectId?: string }) => {
               const old = await before.checkAiAllowance(db, { userId: person.userId, ...inputs }, env);
@@ -177,9 +182,9 @@ describe.each(testBackends())("free and paid kept apart on $name", (backend) => 
       await job(other.userId, other.otherProjectId, "queued", "platform");
 
       expect(await spentMicro(db, a.userId)).toBe(199_999);
-      const env = { FREE_AI_BUDGET_MICRO: "150001" };
+      const env = { ...LEGACY, FREE_AI_BUDGET_MICRO: "150001" };
       expect(await checkAiAllowance(db, { userId: a.userId, projectId: a.projectId }, env)).toEqual({ allowed: true });
-      expect(await hasPlanHeadroom(db, a.userId, { UNVERIFIED_CAP_MICRO: "210000" })).toBe(true);
+      expect(await hasPlanHeadroom(db, a.userId, { ...LEGACY, UNVERIFIED_CAP_MICRO: "210000" })).toBe(true);
       // The code before M2 would have shut free AI for everyone here.
       expect(await before.checkAiAllowance(db, { userId: a.userId, projectId: a.projectId }, env)).toMatchObject({ reason: "free_limit" });
     });
@@ -190,9 +195,9 @@ describe.each(testBackends())("free and paid kept apart on $name", (backend) => 
       await db.update(users).set({ verifiedAt: new Date(), goodidRoot: ROOT }).where(sql`${users.id} IN (${a.userId}, ${b.userId})`);
       await usage(a.userId, a.projectId, { provider: 0, charged: 699_999 }, "free");
       await usage(b.userId, b.projectId, { provider: 0, charged: 1_000_000 }, "paid");
-      expect(await checkAiAllowance(db, { userId: b.userId }, {})).toEqual({ allowed: true });
+      expect(await checkAiAllowance(db, { userId: b.userId }, LEGACY)).toEqual({ allowed: true });
       await usage(b.userId, b.projectId, { provider: 0, charged: 1 }, "free");
-      expect(await checkAiAllowance(db, { userId: b.userId }, {})).toEqual({ allowed: false, reason: "verified_limit", message: VERIFIED_CAP_MESSAGE });
+      expect(await checkAiAllowance(db, { userId: b.userId }, LEGACY)).toEqual({ allowed: false, reason: "verified_limit", message: VERIFIED_CAP_MESSAGE });
     });
 
     it("exempt usage uses no one's allowance, but still counts towards the $4, as D29 says", async () => {
@@ -200,13 +205,13 @@ describe.each(testBackends())("free and paid kept apart on $name", (backend) => 
       const a = await newUser();
       await usage(owner.userId, owner.projectId, { provider: 999_999, charged: 1_250_000 }, "exempt");
       expect(await spentMicro(db, owner.userId)).toBe(0);
-      expect(await checkAiAllowance(db, { userId: a.userId }, { FREE_AI_BUDGET_MICRO: "1000000" })).toEqual({ allowed: true });
+      expect(await checkAiAllowance(db, { userId: a.userId }, { ...LEGACY, FREE_AI_BUDGET_MICRO: "1000000" })).toEqual({ allowed: true });
       await usage(owner.userId, owner.projectId, { provider: 1, charged: 1 }, "exempt");
-      expect(await checkAiAllowance(db, { userId: a.userId }, { FREE_AI_BUDGET_MICRO: "1000000" })).toEqual({ allowed: false, reason: "budget_full", message: BUDGET_MESSAGE });
+      expect(await checkAiAllowance(db, { userId: a.userId }, { ...LEGACY, FREE_AI_BUDGET_MICRO: "1000000" })).toEqual({ allowed: false, reason: "budget_full", message: BUDGET_MESSAGE });
       // An exempt build in progress holds back room too.
       await job(owner.userId, owner.projectId, "running", "exempt");
-      expect(await checkAiAllowance(db, { userId: a.userId }, { FREE_AI_BUDGET_MICRO: "1350000" })).toMatchObject({ reason: "budget_full" });
-      expect(await checkAiAllowance(db, { userId: a.userId }, { FREE_AI_BUDGET_MICRO: "1350001" })).toEqual({ allowed: true });
+      expect(await checkAiAllowance(db, { userId: a.userId }, { ...LEGACY, FREE_AI_BUDGET_MICRO: "1350000" })).toMatchObject({ reason: "budget_full" });
+      expect(await checkAiAllowance(db, { userId: a.userId }, { ...LEGACY, FREE_AI_BUDGET_MICRO: "1350001" })).toEqual({ allowed: true });
     });
   });
 
@@ -217,10 +222,10 @@ describe.each(testBackends())("free and paid kept apart on $name", (backend) => 
       await postLedgerEntry(db, { userId: a.userId, kind: "deposit", amountMicro: 20_000_000, idempotencyKey: `topup:${randomUUID()}` });
       expect(await getBalanceMicro(db, a.userId)).toBe(20_000_000);
 
-      expect(await checkAiAllowance(db, { userId: a.userId, projectId: a.projectId }, {})).toEqual({ allowed: true });
-      expect(await hasPlanHeadroom(db, a.userId, {})).toBe(false);
-      expect(await decideFunding(db, a.userId, {})).toBe("free");
-      const queued = await enqueueTurn(db, { projectId: a.projectId, userId: a.userId, mode: "build", prompt: "x" }, {});
+      expect(await checkAiAllowance(db, { userId: a.userId, projectId: a.projectId }, LEGACY)).toEqual({ allowed: true });
+      expect(await hasPlanHeadroom(db, a.userId, LEGACY)).toBe(false);
+      expect(await decideFunding(db, a.userId, LEGACY)).toBe("free");
+      const queued = await enqueueTurn(db, { projectId: a.projectId, userId: a.userId, mode: "build", prompt: "x" }, LEGACY);
       expect(queued.funding).toBe("free");
     });
 
@@ -229,19 +234,19 @@ describe.each(testBackends())("free and paid kept apart on $name", (backend) => 
       await db.update(users).set({ verifiedAt: new Date(), goodidRoot: ROOT }).where(eq(users.id, a.userId));
       await usage(a.userId, a.projectId, { provider: 0, charged: 700_000 }, "free");
       await postLedgerEntry(db, { userId: a.userId, kind: "deposit", amountMicro: 5_000_000, idempotencyKey: `topup:${randomUUID()}` });
-      expect(await checkAiAllowance(db, { userId: a.userId }, {})).toEqual({ allowed: true });
+      expect(await checkAiAllowance(db, { userId: a.userId }, LEGACY)).toEqual({ allowed: true });
 
       const b = await newUser();
       await postLedgerEntry(db, { userId: b.userId, kind: "deposit", amountMicro: 5_000_000, idempotencyKey: `topup:${randomUUID()}` });
-      expect(await checkAiAllowance(db, { userId: b.userId }, { FREE_AI_BUDGET_MICRO: "0" })).toEqual({ allowed: true });
+      expect(await checkAiAllowance(db, { userId: b.userId }, { ...LEGACY, FREE_AI_BUDGET_MICRO: "0" })).toEqual({ allowed: true });
     });
 
     it("a platform job never starts, since nothing creates them yet, and a paid one does", async () => {
       const a = await newUser();
       const paid = await job(a.userId, a.projectId, "running", "paid");
       const platform = await job(a.userId, a.otherProjectId, "running", "platform");
-      expect(await checkAiAllowance(db, { userId: a.userId, startingJobId: paid.id, funding: paid.funding }, { UNCAPPED_WALLETS: "" })).toEqual({ allowed: true });
-      expect(await checkAiAllowance(db, { userId: a.userId, startingJobId: platform.id, funding: platform.funding }, { UNCAPPED_WALLETS: "" })).toMatchObject({ allowed: false, reason: "funding_unavailable" });
+      expect(await checkAiAllowance(db, { userId: a.userId, startingJobId: paid.id, funding: paid.funding }, { ...LEGACY, UNCAPPED_WALLETS: "" })).toEqual({ allowed: true });
+      expect(await checkAiAllowance(db, { userId: a.userId, startingJobId: platform.id, funding: platform.funding }, { ...LEGACY, UNCAPPED_WALLETS: "" })).toMatchObject({ allowed: false, reason: "funding_unavailable" });
     });
   });
 
@@ -249,19 +254,19 @@ describe.each(testBackends())("free and paid kept apart on $name", (backend) => 
     it("exempt wallets get exempt jobs, everyone else free", async () => {
       const owner = await newUser(EXEMPT_WALLET);
       const a = await newUser();
-      const env = { UNCAPPED_WALLETS: EXEMPT_WALLET.toUpperCase().replace("0X", "0x") };
+      const env = { ...LEGACY, UNCAPPED_WALLETS: EXEMPT_WALLET.toUpperCase().replace("0X", "0x") };
       expect((await enqueueTurn(db, { projectId: owner.projectId, userId: owner.userId, mode: "build", prompt: "x" }, env)).funding).toBe("exempt");
       expect((await enqueueTurn(db, { projectId: a.projectId, userId: a.userId, mode: "build", prompt: "x" }, env)).funding).toBe("free");
-      expect((await enqueueTurn(db, { projectId: owner.otherProjectId, userId: owner.userId, mode: "build", prompt: "x" }, {})).funding).toBe("free");
+      expect((await enqueueTurn(db, { projectId: owner.otherProjectId, userId: owner.userId, mode: "build", prompt: "x" }, LEGACY)).funding).toBe("free");
     });
 
     it("the stored funding decides at start, whatever the worker's own settings say", async () => {
       const owner = await newUser(EXEMPT_WALLET);
       await usage(owner.userId, owner.projectId, { provider: 0, charged: 5_000_000 }, "free");
-      const j = await enqueueTurn(db, { projectId: owner.projectId, userId: owner.userId, mode: "build", prompt: "x" }, { UNCAPPED_WALLETS: EXEMPT_WALLET });
+      const j = await enqueueTurn(db, { projectId: owner.projectId, userId: owner.userId, mode: "build", prompt: "x" }, { ...LEGACY, UNCAPPED_WALLETS: EXEMPT_WALLET });
       await db.update(turnJobs).set({ status: "running" }).where(eq(turnJobs.id, j.id));
       // A worker started without UNCAPPED_WALLETS still runs the exempt job it was given.
-      expect(await checkAiAllowance(db, { userId: owner.userId, startingJobId: j.id, funding: j.funding }, {})).toEqual({ allowed: true });
+      expect(await checkAiAllowance(db, { userId: owner.userId, startingJobId: j.id, funding: j.funding }, LEGACY)).toEqual({ allowed: true });
     });
   });
 
@@ -319,7 +324,7 @@ describe.each(testBackends())("free and paid kept apart on $name", (backend) => 
       const a = await newUser();
       const owner = await newUser(EXEMPT_WALLET);
       await usage(a.userId, a.projectId, { provider: 0, charged: 199_999 }, "free");
-      const env = { UNCAPPED_WALLETS: EXEMPT_WALLET };
+      const env = { ...LEGACY, UNCAPPED_WALLETS: EXEMPT_WALLET };
       // One project each, so they can all be running at once.
       const theirs = await Promise.all(Array.from({ length: 6 }, () => project(a.userId)));
       const ours = await Promise.all(Array.from({ length: 6 }, () => project(owner.userId)));

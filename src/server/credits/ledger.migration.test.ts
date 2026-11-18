@@ -59,8 +59,8 @@ async function rows<T>(db: Db, query: ReturnType<typeof sql>): Promise<T[]> {
 async function freeCounters(db: Db, cap: Pick<typeof capNow, "checkAiAllowance" | "spentMicro">) {
   const { checkAiAllowance, spentMicro } = cap;
   const [total] = await rows<{ provider: string; charged: string; count: string }>(db, sql`SELECT sum(provider_cost_micro) AS provider, sum(charged_micro) AS charged, count(*) AS count FROM usage_events`);
-  const tight = { FREE_AI_BUDGET_MICRO: "1000000", VERIFIED_CAP_MICRO: "5000000" };
-  const room = { FREE_AI_BUDGET_MICRO: "4000000", VERIFIED_CAP_MICRO: "5000000" };
+  const tight = { FREE_POLICY: "legacy", FREE_AI_BUDGET_MICRO: "1000000", VERIFIED_CAP_MICRO: "5000000" };
+  const room = { FREE_POLICY: "legacy", FREE_AI_BUDGET_MICRO: "4000000", VERIFIED_CAP_MICRO: "5000000" };
   return {
     provider: Number(total.provider),
     charged: Number(total.charged),

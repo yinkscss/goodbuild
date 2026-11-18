@@ -16,6 +16,11 @@ import type { TurnEvent, TurnRecord } from "@/lib/turn-types";
 import { activeJobs, appendEvents, claimJob, enqueueTurn, jobContext, readEvents, stopProject } from "./jobs";
 import { EventSink, TurnWorker } from "./worker";
 
+/** These tests pin the D28/D30 free allowances, kept as the FREE_POLICY=legacy off switch (D123). */
+const LEGACY = { FREE_POLICY: "legacy" };
+process.env.FREE_POLICY = "legacy";
+
+
 let db: Db;
 let userId: string;
 let projectId: string;
@@ -253,7 +258,7 @@ describe("background turn jobs", { timeout: 60_000 }, () => {
 
   it("every usage row of a job takes the job's funding, even on a worker without the exempt setting (D48)", async () => {
     const { client } = scriptedModel(SCRIPT);
-    const job = await enqueueTurn(db, { projectId, userId, mode: "build", prompt: "Build the club page" }, { UNCAPPED_WALLETS: "0xABC" });
+    const job = await enqueueTurn(db, { projectId, userId, mode: "build", prompt: "Build the club page" }, { ...LEGACY, UNCAPPED_WALLETS: "0xABC" });
     expect(job.funding).toBe("exempt");
     const w = worker(() => client);
     await w.tick();
@@ -263,7 +268,7 @@ describe("background turn jobs", { timeout: 60_000 }, () => {
     expect(rows.length).toBeGreaterThan(0);
     expect(new Set(rows.map((r) => r.funding))).toEqual(new Set(["exempt"]));
 
-    const free = await enqueueTurn(db, { projectId, userId, mode: "build", prompt: "Again" }, {});
+    const free = await enqueueTurn(db, { projectId, userId, mode: "build", prompt: "Again" }, LEGACY);
     expect(free.funding).toBe("free");
   });
 
