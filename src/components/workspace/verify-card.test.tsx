@@ -15,6 +15,7 @@ import { VerifyCard } from "./verify-card";
 const respond = (verified: boolean) => vi.fn(async () => Response.json({ verified }));
 
 beforeEach(() => {
+  window.sessionStorage.clear();
   signMessage.mockClear();
   window.history.replaceState(null, "", "/p/1");
 });
@@ -55,5 +56,14 @@ describe("VerifyCard", () => {
     render(<VerifyCard onVerified={onVerified} />);
     await waitFor(() => expect(onVerified).toHaveBeenCalled());
     expect(fetcher).toHaveBeenCalledWith("/api/account/goodid", { method: "POST", signal: expect.any(AbortSignal) });
+  });
+
+  it("still confirms on return when the address lost its ?isVerified", async () => {
+    vi.stubGlobal("fetch", respond(true));
+    window.sessionStorage.setItem("goodbuild:goodid-pending", "1");
+    const onVerified = vi.fn();
+    render(<VerifyCard onVerified={onVerified} />);
+    await waitFor(() => expect(onVerified).toHaveBeenCalled());
+    expect(window.sessionStorage.getItem("goodbuild:goodid-pending")).toBeNull();
   });
 });
