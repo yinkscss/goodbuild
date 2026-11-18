@@ -28,3 +28,15 @@ it("reports 0 when already in the zone and null without a project", () => {
   expect(buildLadder(many(5)).gapToPrizeZone).toBeNull();
   expect(buildLadder(many(5), "nobody").mine).toBeNull();
 });
+
+it("works out places moved from the previous snapshot, and treats a missing one as no move", () => {
+  const entries = [
+    { ...live("climber", 50), prevRank: 3 },
+    { ...live("slider", 40), prevRank: 1 },
+    { ...live("steady", 30), prevRank: 3 },
+    live("fresh", 10),
+  ];
+  const { rows } = buildLadder(entries);
+  const moved = Object.fromEntries(rows.map((r) => [r.entry.id, r.moved]));
+  expect(moved).toEqual({ climber: 2, slider: -1, steady: 0, fresh: 0 });
+});

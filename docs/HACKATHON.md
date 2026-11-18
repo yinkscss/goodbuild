@@ -84,3 +84,6 @@ The required FlowState step supports direct voting with the existing Magic email
 ## 11. Quests and badges (19 Nov 2026, D133)
 `src/lib/hackathon-quests.ts` turns what the app already knows into six quests and seven badges; `quests.tsx` shows them on Get started for registered builders. Credits come only from the existing 20 + 30 claims; badges never carry G$. Weekly Rising Star, referral and rank-movement arrows are still not built.
 
+## 12. Rank arrows (19 Nov 2026, D134)
+`hackathon_rank_snapshots` (migration 0026) holds each published project's rank once per WAT day, written by `sweepRankSnapshot` in the worker (`src/server/hackathon/ranks.ts`). The leaderboard shows places moved since the previous day's snapshot. Weekly Rising Star can read the same table.
+

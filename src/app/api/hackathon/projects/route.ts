@@ -13,6 +13,7 @@ import {
   ownEntry,
   saveEntry,
 } from "@/server/hackathon/community";
+import { withRankMoves } from "@/server/hackathon/ranks";
 const headers = { "Cache-Control": "no-store" };
 export async function GET(request: Request) {
   try {
@@ -22,7 +23,8 @@ export async function GET(request: Request) {
         headers,
       });
     }
-    return NextResponse.json(await listEntries(await getDb()), { headers });
+    const db = await getDb();
+    return NextResponse.json(await withRankMoves(db, await listEntries(db)), { headers });
   } catch (e) {
     return errorResponse(e);
   }
