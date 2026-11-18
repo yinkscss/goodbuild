@@ -66,6 +66,12 @@ function refillLine(refill: NonNullable<FreeStatusJson["refill"]>) {
  * with this month's claims shown as five slots. `compact` is the workspace version: it shows only
  * when there's something to do.
  */
+/** The quiet vote check runs once per page load; pressing a button always checks again. */
+let quietVoteChecked = false;
+export function resetQuietVoteCheck() {
+  quietVoteChecked = false;
+}
+
 export function FreeCreditsCard({ compact = false, onChange: onChangeProp }: { compact?: boolean; onChange?: () => unknown }) {
   const router = useRouter();
   // Without a handler (the Credits page), re-render the server parts so the balance shows the new credits.
@@ -117,7 +123,8 @@ export function FreeCreditsCard({ compact = false, onChange: onChangeProp }: { c
       // Verified and maybe already voted (on /hackathon, or on FlowState itself): check the vote on-chain
       // once, quietly, and post the welcome credits, so a voter is never asked to vote again.
       if (s.verified) {
-        if (!s.welcomeNeedsVote || s.welcomeDone) return;
+        if (!s.welcomeNeedsVote || s.welcomeDone || quietVoteChecked) return;
+        quietVoteChecked = true; // once per page load: the card remounts after every build
         const res = await fetch("/api/account/goodid", { method: "POST", credentials: "same-origin" }).catch(() => null);
         const body = res?.ok ? ((await res.json().catch(() => ({}))) as { welcomeMicro?: number; needsVote?: boolean }) : {};
         if (!stopped && !body.needsVote && body.welcomeMicro) {

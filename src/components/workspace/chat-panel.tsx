@@ -7,7 +7,6 @@ import { formatCredits } from "@/lib/credits-math";
 import { isDeployableSource } from "@/lib/deploy/test-file";
 import type { AssetInfo, AssetKind } from "@/server/agent/assets";
 import { DRAFT_PLAN_TEXT, nextQuestion, PLAN_OTHER_MAX, planBuildPrompt, START_BUILDING_TEXT } from "@/lib/plan";
-import { TopUpPill } from "@/components/credits/top-up-pill";
 import { OutOfCredits } from "./out-of-credits";
 import { FIX_PROMPT } from "@/lib/preview-errors";
 import { isSubmitShortcut } from "@/lib/prompt";
@@ -181,7 +180,6 @@ export function ChatPanel({
             {ws.error}
           </p>
         )}
-        {ws.needsCredits && <TopUpPill onPaid={continueAfterCredits} />}
         <OutOfCredits open={ws.needsCredits} freeCredits={state.freePolicy === "verified"} onContinue={continueAfterCredits} onRefresh={ws.refresh} />
         {state.outdatedContracts.length > 0 && !running && (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-block bg-warning/10 p-4 text-sm" role="status">

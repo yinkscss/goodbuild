@@ -15,7 +15,7 @@ vi.mock("@/components/hackathon/flowstate-vote", () => ({
 }));
 vi.mock("./use-claim-ubi", () => ({ useClaimUbi: () => claimUbi, UbiClaimError: class extends Error {} }));
 
-import { FreeCreditsCard, type FreeStatusJson } from "./free-credits-card";
+import { FreeCreditsCard, resetQuietVoteCheck, type FreeStatusJson } from "./free-credits-card";
 
 const base: FreeStatusJson = { policy: "verified", verified: false, welcomeDone: false, welcomeCredits: 40, refillCredits: 10, refill: null, budgetFull: false, refillNeedsUbi: false, ubiClaimedToday: null, refillBlocked: null, refillBelowCredits: 10 };
 const today = new Date(Date.now() - 12 * 3_600_000).toISOString().slice(0, 10);
@@ -27,7 +27,10 @@ function api(routes: Record<string, () => Response>) {
   return fetchMock;
 }
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  resetQuietVoteCheck();
+});
 
 describe("FreeCreditsCard", () => {
   it("asks an unverified person to verify for 40 credits, after checking quietly that they aren't already", async () => {
