@@ -92,6 +92,8 @@ export function freeSettings(env: Env) {
     policyStart: Number.isNaN(start.getTime()) ? new Date(FREE_POLICY_START) : start,
     /** The refill needs today's G$ UBI claimed first (on unless REFILL_REQUIRES_UBI=off). */
     requiresUbi: env.REFILL_REQUIRES_UBI?.trim().toLowerCase() !== "off",
+    /** The welcome waits for a FlowState vote for GoodBuildIt (D125; on unless WELCOME_REQUIRES_VOTE=off). */
+    welcomeNeedsVote: env.WELCOME_REQUIRES_VOTE?.trim().toLowerCase() !== "off",
   };
 }
 
@@ -218,7 +220,9 @@ export async function freeBudgetLeftMicro(db: Db, now: Date, env: Env, startingJ
 
 // ---------------------------------------------------------------- claims
 
-export type FreeGrantErrorCode = "not_verified" | "expired" | "ubi_not_claimed" | "claimed_today" | "week_full" | "month_full" | "budget_full" | "not_low" | "inactive" | "off";
+export type FreeGrantErrorCode = "not_verified" | "expired" | "ubi_not_claimed" | "claimed_today" | "week_full" | "month_full" | "budget_full" | "not_low" | "inactive" | "off" | "not_voted";
+
+export const NOT_VOTED_MESSAGE = "One last step: vote for GoodBuildIt on FlowState, right here on GoodBuild, to unlock your free credits. We cover the network fee.";
 
 export class FreeGrantError extends Error {
   constructor(
@@ -250,6 +254,8 @@ export interface FreeDeps {
   readIdentity: (wallet: Address) => Promise<GoodIdentity>;
   /** When this root last claimed its G$ UBI (UBIScheme lastClaimed), read fresh. Needed by refills. */
   readUbiClaimedAt?: (root: Address) => Promise<Date | null>;
+  /** Has this wallet's FlowState vote for GoodBuildIt landed on-chain? Read fresh. Needed by the welcome (D125). */
+  readVoted?: (wallet: Address) => Promise<boolean>;
   now?: Date;
   env?: Env;
 }
@@ -305,6 +311,12 @@ export async function claimWelcome(db: Db, user: { id: string; wallet: string },
   if (!identity.root) throw new FreeGrantError("not_verified", NOT_VERIFIED_MESSAGE);
   const root = identity.root.toLowerCase();
   const settings = freeSettings(env);
+  // D125: the welcome also needs a vote for GoodBuildIt on FlowState, cast in GoodBuild's own dialog.
+  // Someone already granted isn't asked again. No vote reader means no proof, so no welcome.
+  if (settings.welcomeNeedsVote && !(await welcomeFor(db, root))) {
+    const voted = deps.readVoted ? await deps.readVoted(user.wallet as Address) : false;
+    if (!voted) throw new FreeGrantError("not_voted", NOT_VOTED_MESSAGE);
+  }
 
   return db.transaction(async (raw) => {
     const tx = raw as unknown as Db;
@@ -437,6 +449,8 @@ export interface FreeStatus {
   refillBelowCredits: number;
   /** Has this person claimed G$ UBI since GoodDollar's day began? Null when not asked or unreadable. */
   ubiClaimedToday: boolean | null;
+  /** The welcome waits for a FlowState vote (D125). The card shows the vote step while it's not done. */
+  welcomeNeedsVote: boolean;
 }
 
 /**
@@ -456,6 +470,7 @@ export async function freeStatus(db: Db, userId: string, now = new Date(), env: 
     ubiClaimedToday: null as boolean | null,
     refillBlocked: null as "not_low" | "inactive" | null,
     refillBelowCredits: settings.refillBelowMicro / MICRO_PER_CREDIT,
+    welcomeNeedsVote: settings.welcomeNeedsVote,
   };
   if (!root) return { ...base, verified: false, welcomeDone: false, refill: null };
   // Nothing is posted when earlier free AI used the whole welcome, so that counts as done too.

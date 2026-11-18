@@ -5,6 +5,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/lib/auth/context", () => ({ useAuth: () => ({ user: { wallet: "0x7a3000000000000000000000000000000000e41c" }, getWalletClient: vi.fn() }) }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 const claimUbi = vi.fn(async () => undefined);
+// The vote dialog has its own tests; here a button stands in that reports a confirmed vote.
+vi.mock("@/components/hackathon/flowstate-vote", () => ({
+  FlowstateVote: ({ onConfirmed }: { onConfirmed?: () => void }) => (
+    <button type="button" onClick={() => onConfirmed?.()}>
+      Vote here with your wallet
+    </button>
+  ),
+}));
 vi.mock("./use-claim-ubi", () => ({ useClaimUbi: () => claimUbi, UbiClaimError: class extends Error {} }));
 
 import { FreeCreditsCard, type FreeStatusJson } from "./free-credits-card";
@@ -44,6 +52,21 @@ describe("FreeCreditsCard", () => {
     expect(await screen.findByText(/already verified with GoodDollar\. 40 free credits added/)).toBeInTheDocument();
     expect(screen.getByText("Daily refill")).toBeInTheDocument();
     expect(onChange).toHaveBeenCalled();
+  });
+
+  it("asks a verified person to vote for GoodBuildIt here, then adds the welcome credits (D125)", async () => {
+    let voted = false;
+    api({
+      "/api/credits/free": () => Response.json({ ...base, verified: true, welcomeDone: voted, welcomeNeedsVote: true, refill: { state: "available", leftThisWeek: 5, leftThisMonth: 5, nextAt: null, claimedDays: [] } }),
+      "/api/account/goodid": () => {
+        voted = true;
+        return Response.json({ verified: true, welcomeMicro: 400_000 });
+      },
+    });
+    render(<FreeCreditsCard compact />);
+    expect(await screen.findByText("Unlock 40 free credits")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /vote here/i }));
+    expect(await screen.findByText(/Thank you for voting! 40 free credits added/)).toBeInTheDocument();
   });
 
   it("claims a refill and shows it in the month meter", async () => {

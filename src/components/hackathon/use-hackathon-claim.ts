@@ -27,7 +27,7 @@ export function useHackathonClaim(userId: string | null, onNewCredits: () => voi
   const total = React.useRef(0);
 
   React.useEffect(() => {
-    if (!userId) return;
+    if (!userId) { total.current = 0; return; }
     let stopped = false;
     void fetch("/api/hackathon", { cache: "no-store" })
       .then(async (res) => (res.ok ? ((await res.json()) as ClaimStatus) : EMPTY))

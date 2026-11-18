@@ -45,6 +45,12 @@ services:
     environment:
       <<: *database
       GOODBUILD_INLINE_WORKER: "0"
+      # Gas grant (D41, D124): the gas wallet key as a file, readable only by the web app, never an env var.
+      GAS_WALLET_KEY_FILE: /run/secrets/gas_wallet_key
+    volumes:
+      # deploy/install-gas-key.sh writes /opt/goodbuild-secrets/gas_wallet_key (uid 1000, mode 0400). Outside
+      # /opt/goodbuild on purpose: deploy.sh wipes that tree on every release. Missing file: grants stay off.
+      - /opt/goodbuild-secrets:/run/secrets:ro
     depends_on:
       migrate:
         condition: service_completed_successfully

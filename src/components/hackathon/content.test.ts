@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { HACKATHON, PRIZES } from "./content";
+import { PRIZES } from "./content";
 
 describe("hackathon content", () => {
-  it("splits exactly the advertised pool", () => {
-    expect(PRIZES.reduce((sum, p) => sum + p.amountGd, 0)).toBe(HACKATHON.poolGd);
+  it("offers base rewards and approval top-ups without podium positions", () => {
+    expect(PRIZES.map(p => p.id)).toEqual(["reserve", "base", "approvals"]);
   });
 });
 

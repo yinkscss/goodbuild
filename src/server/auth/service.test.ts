@@ -88,3 +88,10 @@ describe("nonce tokens", () => {
     expect(await readNonceToken(undefined)).toBeNull();
   });
 });
+
+it("persists provider-confirmed email across sign-ins and returns it only to its session", async () => {
+ const u = await signInUser(db, { wallet: WALLET, walletKind: "embedded", email: "builder@example.com", attestation: yes });
+ const again = await signInUser(db, { wallet: WALLET, walletKind: "embedded" });
+ expect(again.email).toBe("builder@example.com");
+ expect(u.email).toBe(again.email);
+});

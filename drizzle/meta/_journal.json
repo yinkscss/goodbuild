@@ -155,6 +155,34 @@
       "when": 1794649312531,
       "tag": "0021_onchain_credit_ref",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1795009895128,
+      "tag": "0022_hackathon_community",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1795013138299,
+      "tag": "0023_flowstate_vote_proof",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1795017827116,
+      "tag": "0024_gas_grants",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1795031383229,
+      "tag": "0025_flowstate_voters",
+      "breakpoints": true
     }
   ]
 }

@@ -1148,3 +1148,44 @@
   border: 0;
   cursor: pointer;
 }
+
+.hk-registration { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.hk-input { display: block; width: 100%; min-height: 48px; border: 1px solid #767676; border-radius: 12px; padding: 12px; margin-top: 6px; background: white; color: #171717; font: inherit; font-size: 16px; }
+.hk-input:focus-visible { outline: 3px solid #592e81; outline-offset: 3px; }
+.hk-form { max-width: 640px; display: grid; gap: 24px; }
+.hk-gallery { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+.hk-entry { padding: 28px; display: flex; flex-direction: column; gap: 16px; overflow-wrap: anywhere; }
+.hk-entry h2 { font-size: 26px; font-weight: 800; line-height: 1.15; }
+.hk-entry small { color: #592e81; }
+.hk-entry-links { display: flex; flex-wrap: wrap; gap: 16px; }
+@media (max-width: 700px) { .hk-registration, .hk-gallery { grid-template-columns: 1fr; } }
+.hk-shead h1.hk-disp { font-size: clamp(36px, 5.3vw, 72px); }
+
+/* The showcase has its own grid so display type and actions keep a shared edge. */
+.hk-community-header { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, .8fr); align-items: end; gap: clamp(24px, 4vw, 64px); margin-block: 40px 36px; }
+.hk-community-header > * { min-inline-size: 0; }
+.hk-community-header h1 { font-size: clamp(32px, 4.3vw, 62px); line-height: 1.02; text-wrap: balance; margin-block-start: 14px; }
+.hk-community-intro { display: flex; flex-direction: column; align-items: start; gap: 20px; }
+.hk-community-intro > p { margin: 0; max-inline-size: 40ch; color: var(--g6); }
+.hk-approval-guide { display: flex; flex-direction: column; align-items: start; gap: 20px; padding: clamp(24px, 3vw, 36px); margin-block-end: 32px; border-radius: 24px; background: var(--tint); }
+.hk-approval-guide > p { margin: 0; max-inline-size: 72ch; }
+.hk-community-empty { display: flex; flex-direction: column; align-items: start; gap: 20px; padding: clamp(24px, 3vw, 36px); }
+.hk-community-empty > p { margin: 0; max-inline-size: 60ch; }
+.hk-community-header .hk-btnV, .hk-approval-guide .hk-btnV, .hk-community-empty .hk-btnV { min-block-size: 48px; justify-content: center; text-align: center; }
+@media (max-width: 960px) { .hk-community-header { grid-template-columns: minmax(0, 1fr); align-items: start; } }
+@media (max-width: 480px) { .hk-community-header .hk-btnV, .hk-approval-guide > .hk-btnV, .hk-community-empty > .hk-btnV { inline-size: 100%; } }
+.hk-flowstate-invite { display: flex; flex-direction: column; align-items: start; gap: 16px; inline-size: 100%; }
+
+.hk-flowstate-dialog.hk-page { background: var(--surface); }
+.hk-flowstate-dialog .hk-btnV { min-block-size: 48px; padding-inline: 20px; justify-content: center; text-align: center; }
+.hk-vote-allocation { display: grid; justify-items: center; gap: 8px; padding-block: 20px; border-radius: 20px; background: var(--tint); }
+.hk-vote-number { font-family: var(--display); font-size: 64px; font-weight: 800; line-height: 1; color: var(--violet); }
+.hk-vote-allocation > p { margin: 0; font-size: 14px; }
+.hk-vote-range { appearance: none; display: block; inline-size: 100%; min-block-size: 48px; margin: 0; border: 0; background: transparent; cursor: pointer; touch-action: pan-y; }
+.hk-vote-range::-webkit-slider-runnable-track { block-size: 12px; border-radius: 999px; background: linear-gradient(to right, var(--violet) var(--slider-fill, 100%), #9470ab var(--slider-fill, 100%)); }
+.hk-vote-range::-webkit-slider-thumb { appearance: none; inline-size: 32px; block-size: 32px; margin-block-start: -10px; border: 4px solid var(--violet); border-radius: 50%; background: white; box-shadow: 0 2px 8px #592e8133; }
+.hk-vote-range::-moz-range-track { block-size: 12px; border-radius: 999px; background: #9470ab; }
+.hk-vote-range::-moz-range-progress { block-size: 12px; border-radius: 999px; background: var(--violet); }
+.hk-vote-range::-moz-range-thumb { inline-size: 24px; block-size: 24px; border: 4px solid var(--violet); border-radius: 50%; background: white; }
+.hk-vote-range:focus-visible { outline: 3px solid var(--violet); outline-offset: 4px; border-radius: 8px; }
+.hk-vote-range-labels { display: flex; justify-content: space-between; gap: 16px; font-size: 12px; color: var(--g6); }

@@ -4,10 +4,14 @@ import { errorResponse, requireSession } from "@/server/auth/http";
 import { FreeGrantError, claimWelcome, freePolicy } from "@/server/credits/free-grants";
 import { getDb } from "@/server/db/client";
 import { readGoodIdentityOnCelo, syncGoodId } from "@/server/goodid";
+import { publicClientFor } from "@/server/deploy/service";
+import { hasVotedForGoodBuild } from "@/server/flowstate/service";
+import { FLOWSTATE_CHAIN_ID } from "@/lib/flowstate/config";
 
 /**
  * Check the signed-in wallet against GoodDollar's Identity contract. Once it's verified, the welcome
- * credits are posted (D123), once per GoodDollar identity, so verifying is all a person has to do.
+ * credits are posted (D123) once they've also voted for GoodBuildIt on FlowState (D125), once per
+ * GoodDollar identity. The vote happens in GoodBuild's own dialog.
  * A failed grant never hides the verification: it's reported beside it.
  */
 export async function POST() {
@@ -23,18 +27,25 @@ export async function POST() {
     }
     let welcomeMicro = 0;
     let welcomeError: string | undefined;
+    let needsVote = false;
     if (verified && freePolicy(process.env) === "verified") {
       try {
-        welcomeMicro = (await claimWelcome(db, session.user, { readIdentity: readGoodIdentityOnCelo })).grantedMicro;
+        welcomeMicro = (await claimWelcome(db, session.user, {
+          readIdentity: readGoodIdentityOnCelo,
+          readVoted: (wallet) => hasVotedForGoodBuild(publicClientFor(FLOWSTATE_CHAIN_ID), wallet),
+        })).grantedMicro;
       } catch (error) {
-        if (error instanceof FreeGrantError) welcomeError = error.message;
+        if (error instanceof FreeGrantError) {
+          welcomeError = error.message;
+          if (error.code === "not_voted") needsVote = true;
+        }
         else {
           console.error("welcome grant failed", error);
           welcomeError = "You're verified, but we couldn't add your free credits yet. Try again in a moment.";
         }
       }
     }
-    return NextResponse.json({ verified, welcomeMicro, ...(welcomeError ? { welcomeError } : {}) }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ verified, welcomeMicro, ...(welcomeError ? { welcomeError } : {}), ...(needsVote ? { needsVote } : {}) }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return errorResponse(error);
   }

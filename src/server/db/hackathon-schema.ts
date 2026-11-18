@@ -56,3 +56,48 @@ export const hackathonRefusals = pgTable(
 );
 
 export type HackathonRefusal = typeof hackathonRefusals.$inferSelect;
+
+/** Contact and onboarding progress are saved before verification or a credit claim. */
+export const hackathonParticipants = pgTable("hackathon_participants", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  hackathon: text("hackathon").notNull(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  email: text("email").notNull(),
+  flowstate: text("flowstate").notNull().default("pending"),
+  flowstateClaimAt: timestamp("flowstate_claim_at", { withTimezone: true }),
+  flowstateTxHash: text("flowstate_tx_hash"),
+  flowstateVotedAt: timestamp("flowstate_voted_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, t => [uniqueIndex("hackathon_participants_user_unique").on(t.hackathon, t.userId)]);
+
+export const hackathonEntries = pgTable("hackathon_entries", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  hackathon: text("hackathon").notNull(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  alias: text("alias").notNull(),
+  title: text("title").notNull(),
+  pitch: text("pitch").notNull(),
+  liveUrl: text("live_url").notNull().default(""),
+  sourceUrl: text("source_url").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, t => [uniqueIndex("hackathon_entries_user_unique").on(t.hackathon, t.userId)]);
+
+export const hackathonApprovals = pgTable("hackathon_approvals", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  entryId: uuid("entry_id").notNull().references(() => hackathonEntries.id, { onDelete: "cascade" }),
+  goodidRoot: text("goodid_root").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, t => [uniqueIndex("hackathon_approvals_human_unique").on(t.entryId, t.goodidRoot)]);
+
+/**
+ * FlowState vote state per account (D126), for everyone who votes through GoodBuild's dialog, with or
+ * without an email or a hackathon signup. Holds the eligibility-claim rate limit and the confirmed vote.
+ * A hackathon participant row, when there is one, gets the same vote copied onto it for the CSV and claims.
+ */
+export const flowstateVoters = pgTable("flowstate_voters", {
+  userId: uuid("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  claimAt: timestamp("claim_at", { withTimezone: true }),
+  txHash: text("tx_hash"),
+  votedAt: timestamp("voted_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});

@@ -19,6 +19,7 @@ export const users = pgTable("users", {
   countryOk: boolean("country_ok").notNull().default(false),
   attestedAt: timestamp("attested_at", { withTimezone: true }),
   /** "embedded" (email login) or "external". */
+  email: text("email"),
   walletKind: text("wallet_kind").notNull().default("external"),
   /** GoodID root, filled when face verification lands (CREDITS.md §5). */
   goodidRoot: text("goodid_root"),

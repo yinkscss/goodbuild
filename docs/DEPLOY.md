@@ -293,3 +293,13 @@ The throwaway wallet in `.data/throwaway-wallet.key` (Celo Sepolia only) can sig
 
 ## Status of this setup
 See "Hosting" in `HANDOFF.md`. It has one server and no failover, which suits the one-month testnet beta. Before M6 takes real money, set up the off-site backups (D47) and record a restore drill. Moving the database off the box is challenged in MAINNET_PLAN.md section 10.
+
+## Gas grant key (D124)
+
+The hackathon vote's network fee is paid from the gas wallet. The web app reads its key from a file, not from the environment.
+
+1. Deploy this release so the image has the new code and migration 0024 runs.
+2. On the server, in `/opt/goodbuild/deploy`: `./install-gas-key.sh` (dry run, prints the gas wallet address, which should be `0x26b0c612e2073c368557929861d1eb665c5924cb`), then `./install-gas-key.sh --write`, then `docker compose up -d web`.
+3. Check the hackathon admin page: the "Network-fee fund" tile shows the balance and no "Off" note.
+4. Remove `GAS_WALLET_PRIVATE_KEY` from `.env.production` and restart web and worker, so the key stops being an environment variable.
+5. To pause grants at once: `insert into app_settings (key, value) values ('gas_grants', 'off') on conflict (key) do update set value = 'off';` Set `'on'` to resume.
