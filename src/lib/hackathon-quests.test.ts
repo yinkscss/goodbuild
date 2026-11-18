@@ -21,11 +21,11 @@ it("marks quests as the person gets through them", () => {
 });
 
 it("awards leagues by approvals received and the prize zone by rank", () => {
-  expect(buildQuests({ ...base, approvalsReceived: 9 }).league).toBeNull();
-  expect(buildQuests({ ...base, approvalsReceived: 10 }).league).toBe("Bronze");
-  const gold = buildQuests({ ...base, approvalsReceived: 100, rank: 20 });
+  expect(buildQuests({ ...base, approvalsReceived: 4 }).league).toBeNull();
+  expect(buildQuests({ ...base, approvalsReceived: 5 }).league).toBe("Bronze");
+  const gold = buildQuests({ ...base, approvalsReceived: 30, rank: 20 });
   expect(gold.league).toBe("Gold");
-  expect(ids(gold.quests)).toEqual(["ten", "zone"]);
+  expect(ids(gold.quests)).toEqual(["bronze-quest", "zone"]);
   expect(ids(gold.badges)).toEqual(["bronze", "silver", "gold", "prize-zone"]);
   expect(ids(buildQuests({ ...base, rank: 21 }).quests)).toEqual([]);
 });

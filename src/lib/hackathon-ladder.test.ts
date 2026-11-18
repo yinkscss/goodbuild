@@ -5,7 +5,7 @@ const live = (id: string, approvals: number) => ({ id, liveUrl: "https://example
 const many = (n: number) => Array.from({ length: n }, (_, i) => live(`p${i}`, 100 - i));
 
 it("assigns leagues by approvals", () => {
-  expect([9, 10, 39, 40, 99, 100].map(leagueFor)).toEqual([null, "Bronze", "Bronze", "Silver", "Silver", "Gold"]);
+  expect([4, 5, 14, 15, 29, 30].map(leagueFor)).toEqual([null, "Bronze", "Bronze", "Silver", "Silver", "Gold"]);
 });
 
 it("ranks only published projects and marks the top 20 as the prize zone", () => {

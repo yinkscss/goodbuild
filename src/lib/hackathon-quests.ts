@@ -1,4 +1,4 @@
-import { leagueFor, type League } from "./hackathon-ladder";
+import { LEAGUE_AT, leagueFor, type League } from "./hackathon-ladder";
 
 export interface QuestInput {
   registered: boolean;
@@ -43,16 +43,16 @@ export function buildQuests(i: QuestInput): { quests: Quest[]; badges: Badge[]; 
     { id: "deploy", title: "Deploy to Celo", hint: "Deploy your first app, then claim your credits.", reward: "+30 credits", done: i.deployClaimed },
     { id: "publish", title: "Publish your project", hint: "Add your live app link so people can approve it.", reward: "Badge", done: i.published },
     { id: "vote", title: "Use your approvals", hint: `Approve ${i.maxApprovals} projects you’d actually use.`, reward: "Badge", done: i.approvalsGiven >= i.maxApprovals },
-    { id: "ten", title: "Get 10 approvals", hint: "Share your project link with people who’d use it.", reward: "Bronze league", done: i.approvalsReceived >= 10 },
+    { id: "bronze-quest", title: `Get ${LEAGUE_AT.Bronze} approvals`, hint: "Share your project link with people who’d use it.", reward: "Bronze league", done: i.approvalsReceived >= LEAGUE_AT.Bronze },
     { id: "zone", title: "Reach the prize zone", hint: `Finish in the top ${i.prizeSlots} by approvals.`, reward: "Badge", done: inZone },
   ];
   const badges: Badge[] = [
     { id: "first-approval", label: "First approval", earned: i.approvalsGiven >= 1 },
     { id: "full-ballot", label: "Full ballot", earned: i.approvalsGiven >= i.maxApprovals },
     { id: "published", label: "Published", earned: i.published },
-    { id: "bronze", label: "Bronze", earned: i.approvalsReceived >= 10 },
-    { id: "silver", label: "Silver", earned: i.approvalsReceived >= 40 },
-    { id: "gold", label: "Gold", earned: i.approvalsReceived >= 100 },
+    { id: "bronze", label: "Bronze", earned: i.approvalsReceived >= LEAGUE_AT.Bronze },
+    { id: "silver", label: "Silver", earned: i.approvalsReceived >= LEAGUE_AT.Silver },
+    { id: "gold", label: "Gold", earned: i.approvalsReceived >= LEAGUE_AT.Gold },
     { id: "prize-zone", label: "Prize zone", earned: inZone },
   ];
   return { quests, badges, league, done: quests.filter((q) => q.done).length };

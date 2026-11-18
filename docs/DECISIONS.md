@@ -1650,8 +1650,9 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 
 ### D133. Quests and badges on Get started (19 Nov 2026)
 - Decided by: the owner (asked for quests next). Built by Claude.
-- **What:** a quest list and badge row for registered builders on `/home/hackathon` (`quests.tsx`, rules in `src/lib/hackathon-quests.ts`). Six quests: register (+20 credits), deploy (+30 credits), publish, use your 3 approvals, get 10 approvals (Bronze), reach the top 20. Badges: First approval, Full ballot, Published, Bronze, Silver, Gold, Prize zone.
+- **What:** a quest list and badge row for registered builders on `/home/hackathon` (`quests.tsx`, rules in `src/lib/hackathon-quests.ts`). Six quests: register (+20 credits), deploy (+30 credits), publish, use your 3 approvals, get 5 approvals (Bronze), reach the top 20. Badges: First approval, Full ballot, Published, Bronze, Silver, Gold, Prize zone.
 - **No new tables, no new money.** Everything is read from what exists: the registration claim, `GET /api/hackathon/votes`, and the public entry list. The only credits are the 20 + 30 the existing claims already pay. Badges never pay G$ (no incentive to farm votes).
 - **Changed from the preview:** the "Talent spotter (5 approvals)" badge is gone, because D132 caps approvals at 3. "Scout" (approved a project that finished top 20) needs final rankings, so it is not built.
+- **League levels (owner, 19 Nov):** Bronze 5, Silver 15, Gold 30 approvals received, lowered from 10/40/100 because each person has only 3 approvals (about 300 in total at 100 builders). One constant, `LEAGUE_AT` in `src/lib/hackathon-ladder.ts`, also drives the leaderboard chips.
 - **Not built:** weekly Rising Star (needs a snapshot job), referral credits (new rules and tables), rank-movement arrows (need a daily rank snapshot).
 
