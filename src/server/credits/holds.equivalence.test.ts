@@ -14,6 +14,11 @@ import { BUDGET_MESSAGE, CAP_MESSAGE, VERIFIED_CAP_MESSAGE, checkAiAllowance, de
 import * as before from "./cap-before-m3";
 import { MIGRATIONS, testBackends, type TestDatabase } from "./test-backends";
 
+/** These tests pin the D28/D30 free allowances, kept as the FREE_POLICY=legacy off switch (D112). */
+const LEGACY = { FREE_POLICY: "legacy" };
+process.env.FREE_POLICY = "legacy";
+
+
 /**
  * Nobody can buy credits yet, so M3 must change nothing for anyone using GoodBuild today (D49). The
  * code as it was on main (`cap-before-m3.ts`) runs beside the new code on the same rows: every start,
@@ -116,7 +121,7 @@ describe.each(testBackends())("free-only users notice no change on $name", (back
       const budgets = [0, total, total + 1, total + active * 350_000, total + active * 350_000 + 1, total + (active + 1) * 350_000 + 1];
 
       for (const budget of budgets) {
-        const env = { FREE_AI_BUDGET_MICRO: String(budget), UNCAPPED_WALLETS: `0xsomeone, ${EXEMPT_WALLET}` };
+        const env = { ...LEGACY, FREE_AI_BUDGET_MICRO: String(budget), UNCAPPED_WALLETS: `0xsomeone, ${EXEMPT_WALLET}` };
         for (const person of people) {
           for (const projectId of [person.projectId, person.otherProjectId]) {
             const args = { projectId, userId: person.userId, mode: "build" as const, prompt: "Build it" };
@@ -175,7 +180,7 @@ describe.each(testBackends())("free-only users notice no change on $name", (back
 
   it("a whole free build costs what it did: no holds, no ledger, and the model sees the same requests", async () => {
     const a = await newUser();
-    const started = await startTurn(db, { projectId: a.projectId, userId: a.userId, mode: "build", prompt: "Build it" }, {});
+    const started = await startTurn(db, { projectId: a.projectId, userId: a.userId, mode: "build", prompt: "Build it" }, LEGACY);
     if ("refused" in started) throw new Error("refused");
     expect([started.job.funding, started.job.holdMicro]).toEqual(["free", 0]);
     const claimed = (await claimJob(db, "w"))!;
@@ -212,7 +217,7 @@ describe.each(testBackends())("free-only users notice no change on $name", (back
 
   it.runIf(backend.realConcurrency)("the one difference: simultaneous free starts no longer slip past one-project-at-a-time", async () => {
     const a = await newUser();
-    const env = { FREE_AI_BUDGET_MICRO: "100000000" };
+    const env = { ...LEGACY, FREE_AI_BUDGET_MICRO: "100000000" };
     // The row exists already: a first insert would queue them by itself, even with no lock.
     await db.insert(balances).values({ userId: a.userId });
     const results = await Promise.all([a.projectId, a.otherProjectId].map((projectId) => startTurn(db, { projectId, userId: a.userId, mode: "build", prompt: "x" }, env)));

@@ -32,6 +32,11 @@ import {
 import { balanceFromEntriesMicro, findBalanceMismatches, postLedgerEntry } from "./ledger";
 import { MIGRATIONS, testBackends, type TestDatabase } from "./test-backends";
 
+/** These tests pin the D28/D30 free allowances, kept as the FREE_POLICY=legacy off switch (D112). */
+const LEGACY = { FREE_POLICY: "legacy" };
+process.env.FREE_POLICY = "legacy";
+
+
 /**
  * M3 (D49): holds and charging for paid credit. These try to break it: every test ends by checking
  * the money still adds up, and the race tests only mean anything on real Postgres.
@@ -103,7 +108,7 @@ describe.each(testBackends())("holds and charging on $name", (backend) => {
     return user;
   }
 
-  const start = (userId: string, projectId: string, env: Record<string, string | undefined> = {}) => startTurn(db, { projectId, userId, mode: "build", prompt: "Build it" }, env);
+  const start = (userId: string, projectId: string, env: Record<string, string | undefined> = LEGACY) => startTurn(db, { projectId, userId, mode: "build", prompt: "Build it" }, env);
 
   async function money(userId: string) {
     const [b] = await db.select().from(balances).where(eq(balances.userId, userId));
@@ -187,7 +192,7 @@ describe.each(testBackends())("holds and charging on $name", (backend) => {
 
       const b = await newUser();
       await deposit(b.userId, 2_000_000);
-      expect(queued(await start(b.userId, b.projectId, { FREE_AI_BUDGET_MICRO: "0" })).funding).toBe("paid");
+      expect(queued(await start(b.userId, b.projectId, { ...LEGACY, FREE_AI_BUDGET_MICRO: "0" })).funding).toBe("paid");
     });
 
     it("someone who has paid never sees a free-limit message at build start, in any of the three limits", async () => {
@@ -202,7 +207,7 @@ describe.each(testBackends())("holds and charging on $name", (backend) => {
 
       const c = await newUser();
       await deposit(c.userId, 100_000);
-      expect(refusal(await start(c.userId, c.projectId, { FREE_AI_BUDGET_MICRO: "0" })).message).toBe(OUT_OF_CREDITS_MESSAGE);
+      expect(refusal(await start(c.userId, c.projectId, { ...LEGACY, FREE_AI_BUDGET_MICRO: "0" })).message).toBe(OUT_OF_CREDITS_MESSAGE);
     });
 
     it("a user who never paid keeps the existing messages", async () => {
@@ -213,7 +218,7 @@ describe.each(testBackends())("holds and charging on $name", (backend) => {
       await spendFree(b.userId, 700_000);
       expect(refusal(await start(b.userId, b.projectId))).toEqual({ allowed: false, reason: "verified_limit", message: VERIFIED_CAP_MESSAGE });
       const c = await newUser();
-      expect(refusal(await start(c.userId, c.projectId, { FREE_AI_BUDGET_MICRO: "0" }))).toEqual({ allowed: false, reason: "budget_full", message: BUDGET_MESSAGE });
+      expect(refusal(await start(c.userId, c.projectId, { ...LEGACY, FREE_AI_BUDGET_MICRO: "0" }))).toEqual({ allowed: false, reason: "budget_full", message: BUDGET_MESSAGE });
     });
 
     it("credit that's all set aside says so, rather than saying the credit is gone", async () => {
@@ -233,7 +238,7 @@ describe.each(testBackends())("holds and charging on $name", (backend) => {
       const a = await newUser(wallet);
       await spendFree(a.userId);
       await deposit(a.userId, 5_000_000);
-      const job = queued(await start(a.userId, a.projectId, { UNCAPPED_WALLETS: wallet }));
+      const job = queued(await start(a.userId, a.projectId, { ...LEGACY, UNCAPPED_WALLETS: wallet }));
       expect([job.funding, job.holdMicro]).toEqual(["exempt", 0]);
       expect((await money(a.userId)).reserved).toBe(0);
     });
@@ -241,7 +246,7 @@ describe.each(testBackends())("holds and charging on $name", (backend) => {
     it("a double submit of one message takes one hold, even when the second can't afford another", async () => {
       const a = await payer(1_000_000);
       const first = queued(await start(a.userId, a.projectId));
-      const again = queued(await startTurn(db, { projectId: a.projectId, userId: a.userId, mode: "build", userMessageId: first.userMessageId }, {}));
+      const again = queued(await startTurn(db, { projectId: a.projectId, userId: a.userId, mode: "build", userMessageId: first.userMessageId }, LEGACY));
       expect(again.id).toBe(first.id);
       expect(await money(a.userId)).toMatchObject({ reserved: 1_000_000 });
     });
@@ -263,9 +268,9 @@ describe.each(testBackends())("holds and charging on $name", (backend) => {
 
     it("the settings can't make a hold smaller than the minimum, or be nonsense", async () => {
       const a = await payer(5_000_000);
-      expect(queued(await start(a.userId, a.projectId, { PAID_HOLD_MICRO: "1", PAID_MIN_START_MICRO: "500000" })).holdMicro).toBe(500_000);
+      expect(queued(await start(a.userId, a.projectId, { ...LEGACY, PAID_HOLD_MICRO: "1", PAID_MIN_START_MICRO: "500000" })).holdMicro).toBe(500_000);
       const b = await payer(5_000_000);
-      expect(queued(await start(b.userId, b.projectId, { PAID_HOLD_MICRO: "-5", PAID_MIN_START_MICRO: "1.5" })).holdMicro).toBe(PAID_HOLD_MICRO);
+      expect(queued(await start(b.userId, b.projectId, { ...LEGACY, PAID_HOLD_MICRO: "-5", PAID_MIN_START_MICRO: "1.5" })).holdMicro).toBe(PAID_HOLD_MICRO);
     });
   });
 
@@ -361,20 +366,20 @@ describe.each(testBackends())("holds and charging on $name", (backend) => {
     it("free AI pays first, then credit if there's enough for one call, and otherwise they're refused as before", async () => {
       const a = await newUser();
       await deposit(a.userId, 5_000_000);
-      expect(await decideDirectFunding(db, a.userId, {})).toBe("free");
-      expect(await checkAiAllowance(db, { userId: a.userId }, {})).toEqual({ allowed: true });
+      expect(await decideDirectFunding(db, a.userId, LEGACY)).toBe("free");
+      expect(await checkAiAllowance(db, { userId: a.userId }, LEGACY)).toEqual({ allowed: true });
 
       const b = await payer(PAID_MIN_DIRECT_MICRO);
-      expect(await decideDirectFunding(db, b.userId, {})).toBe("paid");
-      expect(await checkAiAllowance(db, { userId: b.userId }, {})).toEqual({ allowed: true });
+      expect(await decideDirectFunding(db, b.userId, LEGACY)).toBe("paid");
+      expect(await checkAiAllowance(db, { userId: b.userId }, LEGACY)).toEqual({ allowed: true });
 
       const c = await payer(PAID_MIN_DIRECT_MICRO - 1);
-      expect(await decideDirectFunding(db, c.userId, {})).toBe("free");
-      expect(await checkAiAllowance(db, { userId: c.userId }, {})).toEqual({ allowed: false, reason: "out_of_credits", message: OUT_OF_CREDITS_MESSAGE });
+      expect(await decideDirectFunding(db, c.userId, LEGACY)).toBe("free");
+      expect(await checkAiAllowance(db, { userId: c.userId }, LEGACY)).toEqual({ allowed: false, reason: "out_of_credits", message: OUT_OF_CREDITS_MESSAGE });
 
       const d = await payer(0);
-      expect(await decideDirectFunding(db, d.userId, {})).toBe("free");
-      expect(await checkAiAllowance(db, { userId: d.userId }, {})).toEqual({ allowed: false, reason: "free_limit", message: CAP_MESSAGE });
+      expect(await decideDirectFunding(db, d.userId, LEGACY)).toBe("free");
+      expect(await checkAiAllowance(db, { userId: d.userId }, LEGACY)).toEqual({ allowed: false, reason: "free_limit", message: CAP_MESSAGE });
     });
 
     it("the minimum covers the largest upload or visual check, at the strong model's price", () => {
@@ -385,8 +390,8 @@ describe.each(testBackends())("holds and charging on $name", (backend) => {
     it("credit set aside for a build isn't spent on them", async () => {
       const a = await payer(1_000_000);
       queued(await start(a.userId, a.projectId));
-      expect(await decideDirectFunding(db, a.userId, {})).toBe("free");
-      expect((await checkAiAllowance(db, { userId: a.userId }, {})).allowed).toBe(false);
+      expect(await decideDirectFunding(db, a.userId, LEGACY)).toBe("free");
+      expect((await checkAiAllowance(db, { userId: a.userId }, LEGACY)).allowed).toBe(false);
     });
 
     it("a paid call outside a build debits directly, once", async () => {
@@ -531,7 +536,7 @@ describe.each(testBackends())("holds and charging on $name", (backend) => {
 
     it("a hold that runs out is extended from the rest of the balance", async () => {
       const a = await payer(2_500_000);
-      const job = queued(await start(a.userId, a.projectId, { PAID_HOLD_MICRO: "350000" }));
+      const job = queued(await start(a.userId, a.projectId, { ...LEGACY, PAID_HOLD_MICRO: "350000" }));
       expect(job.holdMicro).toBe(350_000);
       // Twelve calls cost more than $0.35, and the rest of the balance covers them.
       const record = await runJob(job.id, scriptedModel([...costly(15), { text: "Done." }]).client);
@@ -634,8 +639,8 @@ describe.each(testBackends())("holds and charging on $name", (backend) => {
     it("lets a paid job start, and still refuses a platform job", async () => {
       const a = await payer(5_000_000);
       const job = queued(await start(a.userId, a.projectId));
-      expect(await checkAiAllowance(db, { userId: a.userId, startingJobId: job.id, funding: "paid" }, {})).toEqual({ allowed: true });
-      expect(await checkAiAllowance(db, { userId: a.userId, startingJobId: job.id, funding: "platform" }, {})).toMatchObject({ allowed: false, reason: "funding_unavailable" });
+      expect(await checkAiAllowance(db, { userId: a.userId, startingJobId: job.id, funding: "paid" }, LEGACY)).toEqual({ allowed: true });
+      expect(await checkAiAllowance(db, { userId: a.userId, startingJobId: job.id, funding: "platform" }, LEGACY)).toMatchObject({ allowed: false, reason: "funding_unavailable" });
     });
 
     it("a free job overtaken by the free limit tells someone with credit to retry, not to verify", async () => {
@@ -644,7 +649,7 @@ describe.each(testBackends())("holds and charging on $name", (backend) => {
       const job = queued(await start(a.userId, a.projectId));
       expect(job.funding).toBe("free");
       await spendFree(a.userId);
-      const refused = await checkAiAllowance(db, { userId: a.userId, startingJobId: job.id, funding: "free" }, {});
+      const refused = await checkAiAllowance(db, { userId: a.userId, startingJobId: job.id, funding: "free" }, LEGACY);
       expect(refused).toEqual({ allowed: false, reason: "free_limit", message: FREE_RAN_OUT_MESSAGE });
       // The retry then runs on credit.
       await failJob(db, job, FREE_RAN_OUT_MESSAGE);
@@ -655,7 +660,7 @@ describe.each(testBackends())("holds and charging on $name", (backend) => {
       const a = await newUser();
       const job = queued(await start(a.userId, a.projectId));
       await spendFree(a.userId);
-      expect(await checkAiAllowance(db, { userId: a.userId, startingJobId: job.id, funding: "free" }, {})).toEqual({ allowed: false, reason: "free_limit", message: CAP_MESSAGE });
+      expect(await checkAiAllowance(db, { userId: a.userId, startingJobId: job.id, funding: "free" }, LEGACY)).toEqual({ allowed: false, reason: "free_limit", message: CAP_MESSAGE });
     });
   });
 
@@ -922,7 +927,7 @@ describe.each(testBackends())("holds and charging on $name", (backend) => {
         // The row exists already, as for anyone who has built before. A first insert would queue them by itself.
         if (round % 2) await db.insert(balances).values({ userId: a.userId });
         const projectIds = await Promise.all(Array.from({ length: 10 }, () => project(a.userId)));
-        const results = await Promise.all(projectIds.map((projectId) => start(a.userId, projectId, { FREE_AI_BUDGET_MICRO: "1000000000" })));
+        const results = await Promise.all(projectIds.map((projectId) => start(a.userId, projectId, { ...LEGACY, FREE_AI_BUDGET_MICRO: "1000000000" })));
         expect(results.filter((r) => "job" in r)).toHaveLength(1);
         expect(new Set(results.filter((r) => "refused" in r).map((r) => r.refused.reason))).toEqual(new Set(["one_build_at_a_time"]));
       }

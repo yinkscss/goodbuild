@@ -1,49 +1,35 @@
 // @vitest-environment node
-import { eq } from "drizzle-orm";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { zeroAddress } from "viem";
+import { describe, expect, it } from "vitest";
+import { zeroAddress, type Address } from "viem";
 
-import { signInUser } from "@/server/auth/service";
-import { createTestDb, type Db } from "@/server/db/client";
-import { users } from "@/server/db/schema";
-import { GOODDOLLAR_IDENTITY, syncGoodId } from "./goodid";
+import { readGoodIdentity } from "./goodid";
 
-const WALLET = "0x7a3000000000000000000000000000000000e41c";
-const ROOT = "0x7A3000000000000000000000000000000000AAAA";
+const ROOT = "0x00000000000000000000000000000000000000aa" as Address;
+const WALLET = "0x00000000000000000000000000000000000000bb" as Address;
 
-let db: Db;
-let user: { id: string; wallet: string; verifiedAt: Date | null };
-const clientReturning = (root: string) => ({ readContract: vi.fn(async () => root) }) as never;
-const saved = async () => (await db.select().from(users).where(eq(users.id, user.id)))[0];
+function client(answers: Record<string, unknown | Error>) {
+  return {
+    readContract: (async ({ functionName }: { functionName: string }) => {
+      const a = answers[functionName];
+      if (a instanceof Error) throw a;
+      return a;
+    }) as never,
+  };
+}
 
-beforeEach(async () => {
-  db = await createTestDb();
-  user = await signInUser(db, { wallet: WALLET, walletKind: "embedded", attestation: { ageOk: true, notUsPerson: true } });
-});
-
-describe("syncGoodId", () => {
-  it("records nothing when the contract says the wallet isn't verified", async () => {
-    expect(await syncGoodId(db, user, clientReturning(zeroAddress))).toBe(false);
-    expect((await saved()).verifiedAt).toBeNull();
+describe("readGoodIdentity", () => {
+  it("adds the authentication period (days) to lastAuthenticated (seconds)", async () => {
+    const id = await readGoodIdentity(client({ getWhitelistedRoot: ROOT, lastAuthenticated: BigInt(1_700_000_000), authenticationPeriod: BigInt(180) }), WALLET);
+    expect(id.root).toBe(ROOT);
+    expect(id.expiresAt?.toISOString()).toBe(new Date((1_700_000_000 + 180 * 86_400) * 1000).toISOString());
   });
 
-  it("records the verified root, lowercased, asking the production contract about this wallet", async () => {
-    const client = clientReturning(ROOT) as unknown as { readContract: ReturnType<typeof vi.fn> };
-    expect(await syncGoodId(db, user, client as never)).toBe(true);
-    expect(client.readContract).toHaveBeenCalledWith(expect.objectContaining({ address: GOODDOLLAR_IDENTITY, args: [WALLET] }));
-    expect(await saved()).toMatchObject({ goodidRoot: ROOT.toLowerCase() });
-    expect((await saved()).verifiedAt).toBeInstanceOf(Date);
+  it("has no root and no expiry for an unverified wallet", async () => {
+    expect(await readGoodIdentity(client({ getWhitelistedRoot: zeroAddress }), WALLET)).toEqual({ root: null, expiresAt: null });
   });
 
-  it("doesn't ask again once verified", async () => {
-    const client = clientReturning(zeroAddress) as unknown as { readContract: ReturnType<typeof vi.fn> };
-    expect(await syncGoodId(db, { ...user, verifiedAt: new Date() }, client as never)).toBe(true);
-    expect(client.readContract).not.toHaveBeenCalled();
-  });
-
-  it("passes a chain failure up rather than guessing", async () => {
-    const client = { readContract: vi.fn(async () => { throw new Error("rpc down"); }) } as never;
-    await expect(syncGoodId(db, user, client)).rejects.toThrow("rpc down");
-    expect((await saved()).verifiedAt).toBeNull();
+  it("leaves the expiry unknown when the contract can't say, so the root still decides", async () => {
+    expect(await readGoodIdentity(client({ getWhitelistedRoot: ROOT, lastAuthenticated: new Error("reverted"), authenticationPeriod: BigInt(180) }), WALLET)).toEqual({ root: ROOT, expiresAt: null });
+    expect(await readGoodIdentity(client({ getWhitelistedRoot: ROOT, lastAuthenticated: BigInt(0), authenticationPeriod: BigInt(180) }), WALLET)).toEqual({ root: ROOT, expiresAt: null });
   });
 });

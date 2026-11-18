@@ -26,6 +26,10 @@ import { savePlanAnswer, shouldPlanFirst } from "./plan-first";
 import { runTurn } from "./runner";
 import { loadFiles } from "./store";
 
+/** Uses the D28/D30 free allowances, kept as the FREE_POLICY=legacy off switch (D112). */
+process.env.FREE_POLICY = "legacy";
+
+
 const TOOL_ARGS = {
   summary: "A tip jar for our football club.",
   recommended_palette: "forest",

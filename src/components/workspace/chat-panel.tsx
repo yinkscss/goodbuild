@@ -22,6 +22,7 @@ import { OldFundsCard } from "./old-funds-card";
 import { TurnView } from "./turn-view";
 import type { PublishInfo } from "./use-publish";
 import type { UseWorkspace } from "./use-workspace";
+import { FreeCreditsCard } from "@/components/credits/free-credits-card";
 import { VerifyCard } from "./verify-card";
 import { TemplateBanner } from "@/components/landing/template-slides";
 
@@ -191,7 +192,7 @@ export function ChatPanel({
           </div>
         )}
         <OldFundsCard projectId={state.project.id} chainId={state.project.chainId} refreshKey={state.project.currentVersion} busy={running} onAsk={suggest} />
-        {state.offerVerification && !running && <VerifyCard onVerified={ws.refresh} />}
+        {state.freePolicy === "verified" ? !running && <FreeCreditsCard compact onChange={ws.refresh} /> : state.offerVerification && !running && <VerifyCard onVerified={ws.refresh} />}
         {/* A MiniPay app (D88): deploy, publish, then the steps to open it in MiniPay. */}
         {hasMiniPayKit(state.files) && state.project.currentVersion > 0 && !running && onPublish && (
           <MiniPayGuide
@@ -363,7 +364,7 @@ export function Composer({
         </div>
         </div>
         <div className="ml-auto flex items-center gap-2 sm:gap-3">
-          <span className="text-xs text-grey-400" title="Estimated charge for this request: AI cost + 25%. Each new account gets 20 credits of AI free.">
+          <span className="text-xs text-grey-400" title="Estimated charge for this request: AI cost + 25%. Planning is free. Verify with GoodDollar for 100 free credits.">
             ≈ {formatCredits(est)} {running ? "· runs after this build" : ""}
           </span>
           {running && onStop && (

@@ -10,6 +10,7 @@ import { listVersions, loadFiles } from "@/server/agent/store";
 import { starterFiles, withStarterHelpers } from "@/server/agent/template";
 import { activeJobs } from "@/server/jobs/jobs";
 import { shouldOfferVerification } from "@/server/credits/cap";
+import { freePolicy } from "@/server/credits/free-grants";
 import { availableMicro } from "@/server/credits/available";
 import { getCredits } from "@/server/credits";
 import { contractState } from "@/server/deploy/contract-state";
@@ -42,8 +43,10 @@ export interface WorkspaceState {
   outdatedContracts: string[];
   /** Of those, the ones behind a proxy: they get the changes at the same address (D33). */
   upgradableContracts: string[];
-  /** Used the free AI and verification would unlock more (D30). */
+  /** Used the free AI and verification would unlock more (D30). Under D112: not verified yet. */
   offerVerification: boolean;
+  /** D112 ("verified": free credits are grants, shown by FreeCreditsCard) or the D28/D30 allowances ("legacy"). */
+  freePolicy: "verified" | "legacy";
   /** Paid credit plus free AI left, in micro-USD (null when the ledger is unreadable). Shown in the header chip. */
   availableMicro: number | null;
   jobs: Array<{ id: string; status: "queued" | "running"; userMessageId: string; assistantMessageId: string | null; mode: string }>;
@@ -84,6 +87,7 @@ export async function workspaceState(db: Db, projectId: string, ownerId: string)
     outdatedContracts: contracts.outdated,
     upgradableContracts: contracts.upgradable,
     offerVerification: await shouldOfferVerification(db, ownerId),
+    freePolicy: freePolicy(process.env),
     availableMicro: await availableMicro(db, ownerId, (await getCredits(ownerId, db)).balanceMicro),
     estimate: {
       buildMicro: estimateTurnMicro({ mode: "build", contextChars, firstBuild }),

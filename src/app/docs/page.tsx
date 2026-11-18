@@ -101,11 +101,11 @@ const SECTIONS: Array<{ id: string; title: string; body: ReactNode }> = [
       <>
         <p>Each build shows an estimate of what it costs. A build that starts under that amount can finish, then building pauses for that account.</p>
         <p>
-          Every account starts with 20 credits of free AI. When it runs out, verify with GoodDollar, a quick face check, to get 50 more credits, once per person. The free trial
-          has a total limit, so it can fill up.
+          Planning is free for everyone, up to 5 plans a day. To get free build credits, verify with GoodDollar, a quick face check: you get 100 credits, once per
+          person. After that you can claim 10 more credits a day, up to 5 times a month. Free credits have a monthly total, so they can run out before the month ends.
         </p>
         <p>
-          Beyond the free amount, you pay the actual AI cost of each build plus 25%, shown in credits with G$ alongside. Network fees are separate
+          Beyond the free credits, you pay the actual AI cost of each build plus 25%, shown in credits with G$ alongside. Network fees are separate
           and are paid from your own wallet.
         </p>
       </>

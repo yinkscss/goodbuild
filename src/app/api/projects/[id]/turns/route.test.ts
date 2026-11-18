@@ -27,6 +27,10 @@ import { CAP_MESSAGE } from "@/server/credits/cap";
 import { postLedgerEntry } from "@/server/credits/ledger";
 import { POST } from "./route";
 
+/** Uses the D28/D30 free allowances, kept as the FREE_POLICY=legacy off switch (D112). */
+process.env.FREE_POLICY = "legacy";
+
+
 const send = (id: string, body: object) => POST(new Request(`http://localhost:3000/api/projects/${id}/turns`, { method: "POST", body: JSON.stringify(body) }), { params: Promise.resolve({ id }) } as never);
 
 describe("POST turns", () => {
