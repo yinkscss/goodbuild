@@ -1152,6 +1152,9 @@
 .hk-registration { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .hk-input { display: block; width: 100%; min-height: 48px; border: 1px solid #767676; border-radius: 12px; padding: 12px; margin-top: 6px; background: white; color: #171717; font: inherit; font-size: 16px; }
 .hk-input:focus-visible { outline: 3px solid #592e81; outline-offset: 3px; }
+/* The saved email: masked, its text blurred (only the text, not the box), clear while hovered. Not editable. */
+.hk-input-locked { border-color: rgba(17, 17, 17, 0.08); background: #f3eef8; color: transparent; text-shadow: 0 0 7px rgba(17, 17, 17, 0.6); cursor: not-allowed; user-select: none; transition: color 0.2s ease, text-shadow 0.2s ease; }
+.hk-input-locked:hover { color: rgba(17, 17, 17, 0.7); text-shadow: none; }
 .hk-form { max-width: 640px; display: grid; gap: 24px; }
 .hk-gallery { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
 .hk-entry { padding: 28px; display: flex; flex-direction: column; gap: 16px; overflow-wrap: anywhere; }
@@ -1178,14 +1181,18 @@
 
 .hk-flowstate-dialog.hk-page { background: var(--surface); }
 .hk-flowstate-dialog .hk-btnV { min-block-size: 48px; padding-inline: 20px; justify-content: center; text-align: center; }
-.hk-vote-allocation { display: grid; justify-items: center; gap: 8px; padding-block: 20px; border-radius: 20px; background: var(--tint); }
-.hk-vote-number { font-family: var(--display); font-size: 64px; font-weight: 800; line-height: 1; color: var(--violet); }
-.hk-vote-allocation > p { margin: 0; font-size: 14px; }
-.hk-vote-range { appearance: none; display: block; inline-size: 100%; min-block-size: 48px; margin: 0; border: 0; background: transparent; cursor: pointer; touch-action: pan-y; }
-.hk-vote-range::-webkit-slider-runnable-track { block-size: 12px; border-radius: 999px; background: linear-gradient(to right, var(--violet) var(--slider-fill, 100%), #9470ab var(--slider-fill, 100%)); }
-.hk-vote-range::-webkit-slider-thumb { appearance: none; inline-size: 32px; block-size: 32px; margin-block-start: -10px; border: 4px solid var(--violet); border-radius: 50%; background: white; box-shadow: 0 2px 8px #592e8133; }
-.hk-vote-range::-moz-range-track { block-size: 12px; border-radius: 999px; background: #9470ab; }
-.hk-vote-range::-moz-range-progress { block-size: 12px; border-radius: 999px; background: var(--violet); }
-.hk-vote-range::-moz-range-thumb { inline-size: 24px; block-size: 24px; border: 4px solid var(--violet); border-radius: 50%; background: white; }
-.hk-vote-range:focus-visible { outline: 3px solid var(--violet); outline-offset: 4px; border-radius: 8px; }
-.hk-vote-range-labels { display: flex; justify-content: space-between; gap: 16px; font-size: 12px; color: var(--g6); }
+.hk-vote-allocation { display: grid; justify-items: center; gap: 4px; padding-block: 24px 20px; border-radius: 24px; background: linear-gradient(160deg, var(--soft), var(--tint)); }
+.hk-vote-number { font-family: var(--display); font-size: 80px; font-weight: 800; line-height: 1; letter-spacing: -0.03em; color: var(--violet); font-variant-numeric: tabular-nums; }
+.hk-vote-allocation > p { margin: 0; font-size: 14px; font-weight: 600; color: var(--g6); }
+/* A thick pill track (24px) with a 44px thumb: easy to grab on a phone. Filled part violet to pink. */
+.hk-vote-range { --track: 24px; --thumb: 44px; appearance: none; display: block; inline-size: 100%; min-block-size: var(--thumb); margin: 0; border: 0; background: transparent; cursor: pointer; touch-action: pan-y; }
+.hk-vote-range::-webkit-slider-runnable-track { block-size: var(--track); border-radius: 999px; background: linear-gradient(to right, var(--violet), var(--pink)) 0 0 / var(--slider-fill, 100%) 100% no-repeat, var(--mist); box-shadow: inset 0 1px 2px rgba(17, 17, 17, 0.08); }
+.hk-vote-range::-webkit-slider-thumb { appearance: none; inline-size: var(--thumb); block-size: var(--thumb); margin-block-start: calc((var(--track) - var(--thumb)) / 2); border: 6px solid var(--violet); border-radius: 50%; background: white; box-shadow: 0 6px 16px rgba(89, 46, 129, 0.3); transition: transform 0.15s ease; }
+.hk-vote-range:active::-webkit-slider-thumb { transform: scale(1.08); }
+.hk-vote-range::-moz-range-track { block-size: var(--track); border-radius: 999px; background: var(--mist); box-shadow: inset 0 1px 2px rgba(17, 17, 17, 0.08); }
+.hk-vote-range::-moz-range-progress { block-size: var(--track); border-radius: 999px; background: linear-gradient(to right, var(--violet), var(--pink)); }
+.hk-vote-range::-moz-range-thumb { box-sizing: border-box; inline-size: var(--thumb); block-size: var(--thumb); border: 6px solid var(--violet); border-radius: 50%; background: white; box-shadow: 0 6px 16px rgba(89, 46, 129, 0.3); }
+.hk-vote-range:focus-visible { outline: 3px solid var(--violet); outline-offset: 6px; border-radius: 999px; }
+
+/* Hackathon blocks shown inside the app (the /home/hackathon dashboard): the app's canvas, not the poster's. */
+.hk-page.hk-embed { background: transparent; }

@@ -191,3 +191,9 @@ it("does not let a link visit or skip erase a server-confirmed FlowState vote", 
     }).success,
   ).toBe(false);
 });
+
+it("keeps the first signup email: a later save can't change it", async () => {
+  const u = await user(); // saved with builder@example.com
+  const row = await saveParticipant(db, u, { email: "second@example.com" });
+  expect(row.email).toBe("builder@example.com");
+});
