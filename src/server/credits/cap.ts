@@ -4,7 +4,7 @@ import { and, eq, gte, inArray, ne, sql } from "drizzle-orm";
 
 import type { Db } from "@/server/db/client";
 import { turnJobs, usageEvents, users, type FundingSource } from "@/server/db/schema";
-import { dayStart, freeBudgetLeftMicro, freePolicy, freeSettings, RESERVED_PER_PLAN_MICRO } from "./free-grants";
+import { dayStart, freeBudget, freeBudgetLeftMicro, freePolicy, freeSettings, RESERVED_PER_PLAN_MICRO } from "./free-grants";
 import { CREDIT_HELD_MESSAGE, OUT_OF_CREDITS_MESSAGE, PAID_MIN_DIRECT_MICRO, hasPaid, holdMicro, lockBalance, minStartMicro, readBalance } from "./holds";
 
 /**
@@ -49,8 +49,11 @@ export const NEEDS_VERIFICATION_MESSAGE = "Verify with GoodDollar to get 40 free
 export const OUT_OF_FREE_CREDITS_MESSAGE = "You're out of credits. Claim your daily refill or add credits to keep building.";
 /** D123: today's free plans are used up. */
 export const PLAN_LIMIT_MESSAGE = "You've used today's free plans. Add credits, or come back tomorrow.";
+/** D123: an unverified account's free plans for today are used up. */
+export const PLAN_LIMIT_UNVERIFIED_MESSAGE = "You've used today's 2 free plans. Verify with GoodDollar for more plans and 40 free credits.";
 /** D123: the month's free budget is spent. */
 export const FREE_BUDGET_FULL_MESSAGE = "This month's free AI is all used up. It comes back on the 1st. Credits you buy still work.";
+export const FREE_BUDGET_WEEK_FULL_MESSAGE = "This week's free AI is all used up. It comes back on Monday. Credits you buy still work.";
 
 export type CapRefusal = {
   allowed: false;
@@ -175,8 +178,14 @@ async function freePlanAllowance(db: Db, user: { verifiedAt: Date | null }, inpu
     .select({ id: turnJobs.id })
     .from(turnJobs)
     .where(and(eq(turnJobs.userId, input.userId), eq(turnJobs.mode, "plan"), eq(turnJobs.funding, "free"), gte(turnJobs.createdAt, dayStart(now))));
-  if (today.filter((j) => j.id !== input.startingJobId).length >= freeSettings(env).planTurnsPerDay) return { allowed: false, reason: "plan_limit", message: PLAN_LIMIT_MESSAGE };
-  if ((await freeBudgetLeftMicro(db, now, env, input.startingJobId)) < RESERVED_PER_PLAN_MICRO) return { allowed: false, reason: "budget_full", message: FREE_BUDGET_FULL_MESSAGE };
+  const settings = freeSettings(env);
+  // Fewer before verifying: a new wallet costs nothing, so this is all a fake account can farm.
+  const limit = user.verifiedAt ? settings.planTurnsPerDay : settings.planTurnsPerDayUnverified;
+  if (today.filter((j) => j.id !== input.startingJobId).length >= limit) {
+    return { allowed: false, reason: "plan_limit", message: user.verifiedAt ? PLAN_LIMIT_MESSAGE : PLAN_LIMIT_UNVERIFIED_MESSAGE };
+  }
+  const budget = await freeBudget(db, now, env, input.startingJobId);
+  if (budget.leftMicro < RESERVED_PER_PLAN_MICRO) return { allowed: false, reason: "budget_full", message: budget.limit === "week" ? FREE_BUDGET_WEEK_FULL_MESSAGE : FREE_BUDGET_FULL_MESSAGE };
   return oneBuildAtATime(db, input);
 }
 

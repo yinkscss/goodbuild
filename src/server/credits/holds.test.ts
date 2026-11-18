@@ -634,6 +634,15 @@ describe.each(testBackends())("holds and charging on $name", (backend) => {
       expect(await money(a.userId)).toMatchObject({ reserved: 5_000_000, available: 0 });
       await expectBooksBalance(a.userId);
     });
+
+    it("ensureHold says no for a job that ended while it waited, instead of the database refusing it", async () => {
+      const a = await payer(5_000_000);
+      const job = queued(await start(a.userId, a.projectId));
+      await db.update(turnJobs).set({ status: "error" }).where(eq(turnJobs.id, job.id));
+      expect(await db.transaction((tx) => ensureHold(tx as unknown as Db, job.id, 1_200_000))).toBe(false);
+      expect(await money(a.userId)).toMatchObject({ reserved: 0 });
+      await expectBooksBalance(a.userId);
+    });
   });
 
   describe("the worker's start check", () => {

@@ -101,8 +101,8 @@ const SECTIONS: Array<{ id: string; title: string; body: ReactNode }> = [
       <>
         <p>Each build shows an estimate of what it costs. A build that starts under that amount can finish, then building pauses for that account.</p>
         <p>
-          Planning is free for everyone, up to 5 plans a day. To get free build credits, verify with GoodDollar, a quick face check: you get 40 credits, once per
-          person. After that, on any day you claim your G$ UBI from GoodDollar, you can claim 10 more credits, up to 5 times a month. GoodDollar&apos;s day runs noon to noon UTC. Free credits have a monthly total, so they can run out before the month ends.
+          Planning is free: 2 plans a day before you verify, 5 after. To get free build credits, verify with GoodDollar, a quick face check: you get 40 credits, once per
+          person. After that, when you have under 10 credits and have built or deployed something in the last 30 days, you can claim 10 more credits on any day you claim your G$ UBI from GoodDollar, up to 5 times a month. Free credits you don&apos;t use within 30 days expire. GoodDollar&apos;s day runs noon to noon UTC. Free credits have a weekly and a monthly total, so they can run out early.
         </p>
         <p>
           Beyond the free credits, you pay the actual AI cost of each build plus 25%, shown in credits with G$ alongside. Network fees are separate

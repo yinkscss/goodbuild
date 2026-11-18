@@ -160,9 +160,12 @@ export function worstCaseCallMicro(model: string, request: { messages: readonly 
  */
 export async function ensureHold(tx: Db, jobId: string, worstMicro: number): Promise<boolean> {
   // Lock order: job row, then balances row. The fence has usually locked this row already.
-  const [job] = await tx.select({ userId: turnJobs.userId, holdMicro: turnJobs.holdMicro, funding: turnJobs.funding }).from(turnJobs).where(eq(turnJobs.id, jobId)).for("update");
+  const [job] = await tx.select({ userId: turnJobs.userId, holdMicro: turnJobs.holdMicro, funding: turnJobs.funding, status: turnJobs.status }).from(turnJobs).where(eq(turnJobs.id, jobId)).for("update");
   if (!job || job.funding !== "paid") return true;
   if (job.holdMicro >= worstMicro) return true;
+  // Stopped or ended while this call waited for the lock: its hold has gone back and can't change
+  // (the database refuses it), so no more spending on it.
+  if (job.status !== "queued" && job.status !== "running") return false;
   const need = worstMicro - job.holdMicro;
   const balance = await lockBalance(tx, job.userId);
   if (balance.availableMicro < need) return false;

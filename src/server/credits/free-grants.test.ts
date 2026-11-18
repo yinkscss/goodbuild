@@ -7,12 +7,14 @@ import type { Address } from "viem";
 
 import { MICRO_PER_CREDIT } from "@/lib/credits-math";
 import type { Db } from "@/server/db/client";
-import { turnJobs, usageEvents, users } from "@/server/db/schema";
+import { deployments } from "@/server/db/deploy-schema";
+import { projects, turnJobs, usageEvents, users } from "@/server/db/schema";
 import { startTurn } from "@/server/jobs/jobs";
 import { createProjectFromPrompt } from "@/server/projects";
-import { NEEDS_VERIFICATION_MESSAGE, OUT_OF_FREE_CREDITS_MESSAGE, checkAiAllowance, freeRemainingMicro, shouldOfferVerification } from "./cap";
+import { NEEDS_VERIFICATION_MESSAGE, PLAN_LIMIT_UNVERIFIED_MESSAGE, OUT_OF_FREE_CREDITS_MESSAGE, checkAiAllowance, freeRemainingMicro, shouldOfferVerification } from "./cap";
 import { claimRefill, claimWelcome, dayKey, freeStatus, gdDayKey, gdDayStart, refillStatus, refillStatusGd, weekStart, type GoodIdentity } from "./free-grants";
-import { getBalanceMicro } from "./ledger";
+import { expireFreeCredits } from "./free-expiry";
+import { getBalanceMicro, postLedgerEntry } from "./ledger";
 import { MIGRATIONS, testBackends, type TestDatabase } from "./test-backends";
 
 const credits = (micro: number) => micro / MICRO_PER_CREDIT;
@@ -71,7 +73,8 @@ describe("refillStatus (pure)", () => {
 describe.each(testBackends())("free grants on $name", (backend) => {
   let database: TestDatabase;
   let db: Db;
-  const ENV = { FREE_POLICY: "verified", FREE_BUDGET_CREDITS_PER_MONTH: "100000" };
+  // The conservative limits are off here and tested on their own below, so these tests keep to one rule each.
+  const ENV = { FREE_POLICY: "verified", FREE_BUDGET_CREDITS_PER_MONTH: "100000", FREE_BUDGET_CREDITS_PER_WEEK: "100000", REFILL_BELOW_CREDITS: "0", REFILL_ACTIVE_DAYS: "0", FREE_PLAN_TURNS_PER_DAY_UNVERIFIED: "5" };
   const NOW = new Date();
 
   beforeAll(async () => {
@@ -271,7 +274,7 @@ describe.each(testBackends())("free grants on $name", (backend) => {
 
     it("plans for free, unverified too, up to the daily limit", async () => {
       const a = await withProject();
-      const env = { ...ENV, FREE_PLAN_TURNS_PER_DAY: "2" };
+      const env = { ...ENV, FREE_PLAN_TURNS_PER_DAY_UNVERIFIED: "2" };
       const plan = () => startTurn(db, { projectId: a.projectId, userId: a.id, mode: "plan", prompt: "Plan it" }, env);
       const first = await plan();
       expect("job" in first && first.job.funding).toBe("free");
@@ -290,5 +293,98 @@ describe.each(testBackends())("free grants on $name", (backend) => {
 
   it("keys a refill to the day it was made for", () => {
     expect(dayKey(new Date("2026-11-18T23:59:59Z"))).toBe("2026-11-18");
+  });
+  describe("conservative limits", () => {
+    const STRICT = { FREE_POLICY: "verified", FREE_BUDGET_CREDITS_PER_MONTH: "100000", FREE_BUDGET_CREDITS_PER_WEEK: "100000" };
+
+    async function deployFor(userId: string) {
+      const [p] = await db.insert(projects).values({ ownerId: userId, name: "P", chainId: 42220 }).returning({ id: projects.id });
+      await db.insert(deployments).values({ projectId: p.id, userId, version: 1, runId: "r", chainId: 42220, contractName: "C", address: address(), deployer: address(), txHash: `0x${randomUUID()}`, blockNumber: 1, compilerVersion: "0.8.28", evmVersion: "cancun", sourceHash: "h", abi: [] });
+    }
+
+    it("refills only someone running low: under 10 credits", async () => {
+      const r = address();
+      const u = await newUser();
+      const env = { ...STRICT, REFILL_ACTIVE_DAYS: "0" };
+      await claimWelcome(db, u, verifiedAs(r, null, env));
+      await expect(claimRefill(db, u, verifiedAs(r, null, env))).rejects.toMatchObject({ code: "not_low" });
+      expect((await freeStatus(db, u.id, NOW, env)).refillBlocked).toBe("not_low");
+      // Spend down to 9 credits, then it's allowed.
+      await postLedgerEntry(db, { userId: u.id, kind: "usage", amountMicro: -31 * MICRO_PER_CREDIT, idempotencyKey: `usage:${randomUUID()}` });
+      expect(credits((await claimRefill(db, u, verifiedAs(r, null, env))).grantedMicro)).toBe(10);
+    });
+
+    it("checks the balance before the UBI, so nobody pays a network fee for a refill they can't have", async () => {
+      const r = address();
+      const u = await newUser();
+      const env = { ...STRICT, REFILL_ACTIVE_DAYS: "0" };
+      await claimWelcome(db, u, verifiedAs(r, null, env));
+      let asked = false;
+      const deps = { ...verifiedAs(r, null, env), readUbiClaimedAt: async () => ((asked = true), null) };
+      await expect(claimRefill(db, u, deps)).rejects.toMatchObject({ code: "not_low" });
+      expect(asked).toBe(false);
+    });
+
+    it("refills only people who finished a build or deployed in the last 30 days, on any linked account", async () => {
+      const r = address();
+      const u = await newUser();
+      const linked = await newUser();
+      const env = { ...STRICT, REFILL_BELOW_CREDITS: "0" };
+      await expect(claimRefill(db, u, verifiedAs(r, null, env))).rejects.toMatchObject({ code: "inactive" });
+      await db.update(users).set({ goodidRoot: r.toLowerCase(), verifiedAt: new Date() }).where(eq(users.id, linked.id));
+      await deployFor(linked.id);
+      expect(credits((await claimRefill(db, u, verifiedAs(r, null, env))).grantedMicro)).toBe(10);
+      // Forty days later the deploy is too old.
+      const later = new Date(NOW.getTime() + 40 * 86_400_000);
+      await expect(claimRefill(db, u, verifiedAs(r, null, env, later))).rejects.toMatchObject({ code: "inactive" });
+    });
+
+    it("stops grants once the week's share of the budget is spent, and says it comes back on Monday", async () => {
+      const u = await newUser();
+      await expect(claimWelcome(db, u, verifiedAs(address(), null, { ...STRICT, FREE_BUDGET_CREDITS_PER_WEEK: "0" }))).rejects.toMatchObject({ code: "budget_full", message: expect.stringMatching(/Monday/) });
+    });
+
+    it("gives unverified accounts 2 free plans a day, verified ones 5", async () => {
+      const u = await newUser();
+      const project = await createProjectFromPrompt(db, u.id, { prompt: "Plan", network: "celo-sepolia" });
+      const plan = async () => {
+        const started = await startTurn(db, { projectId: project.id, userId: u.id, mode: "plan", prompt: "Plan it" }, STRICT);
+        if ("job" in started) await db.update(turnJobs).set({ status: "done" }).where(eq(turnJobs.id, started.job.id));
+        return started;
+      };
+      expect("job" in (await plan())).toBe(true);
+      expect("job" in (await plan())).toBe(true);
+      expect(await plan()).toEqual({ refused: { allowed: false, reason: "plan_limit", message: PLAN_LIMIT_UNVERIFIED_MESSAGE } });
+      await db.update(users).set({ verifiedAt: new Date(), goodidRoot: address().toLowerCase() }).where(eq(users.id, u.id));
+      expect("job" in (await plan())).toBe(true);
+    });
+
+    it("takes back free credits not spent in 30 days, newest kept, bought credits untouched", async () => {
+      const r = address();
+      const u = await newUser();
+      const env = { ...STRICT, REFILL_BELOW_CREDITS: "0", REFILL_ACTIVE_DAYS: "0" };
+      await claimWelcome(db, u, verifiedAs(r, null, env)); // 40 free
+      await postLedgerEntry(db, { userId: u.id, kind: "deposit", amountMicro: 50 * MICRO_PER_CREDIT, idempotencyKey: `topup:${randomUUID()}` }); // 50 bought
+      await postLedgerEntry(db, { userId: u.id, kind: "usage", amountMicro: -15 * MICRO_PER_CREDIT, idempotencyKey: `usage:${randomUUID()}` }); // free spent first
+      // Within 30 days nothing goes.
+      await expireFreeCredits(db, new Date(NOW.getTime() + 29 * 86_400_000), env);
+      // After 31 days the 25 unspent free credits go; the 50 bought stay.
+      const later = new Date(NOW.getTime() + 31 * 86_400_000);
+      // (The sweep covers every account in this test database, so check this one's balance.)
+      expect(credits(await getBalanceMicro(db, u.id))).toBe(75);
+      await expireFreeCredits(db, later, env);
+      expect(credits(await getBalanceMicro(db, u.id))).toBe(50);
+      // Running again takes nothing more.
+      await expireFreeCredits(db, new Date(later.getTime() + 3_600_000), env);
+      expect(credits(await getBalanceMicro(db, u.id))).toBe(50);
+    });
+
+    it("keeps credits granted inside the window, and is off under FREE_CREDITS_EXPIRE_DAYS=0", async () => {
+      const u = await newUser();
+      const env = { ...STRICT, REFILL_BELOW_CREDITS: "0", REFILL_ACTIVE_DAYS: "0" };
+      await claimWelcome(db, u, verifiedAs(address(), null, env));
+      expect((await expireFreeCredits(db, new Date(NOW.getTime() + 31 * 86_400_000), { ...env, FREE_CREDITS_EXPIRE_DAYS: "0" })).checked).toBe(0);
+      expect(credits(await getBalanceMicro(db, u.id))).toBe(40);
+    });
   });
 });

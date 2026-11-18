@@ -27,6 +27,9 @@ export interface FreeStatusJson {
   budgetFull: boolean;
   refillNeedsUbi: boolean;
   ubiClaimedToday: boolean | null;
+  /** Why a refill can't be claimed now, beyond the day/week/month limits. */
+  refillBlocked: "not_low" | "inactive" | null;
+  refillBelowCredits: number;
 }
 
 const MONTH_SLOTS = 5;
@@ -145,7 +148,7 @@ export function FreeCreditsCard({ compact = false, onChange: onChangeProp }: { c
 
   if (!status || status.policy !== "verified") return null;
   const refill = status.refill;
-  if (compact && status.verified && refill?.state !== "available" && !note) return null;
+  if (compact && status.verified && (refill?.state !== "available" || status.refillBlocked) && !note) return null;
 
   const shell = compact ? "rounded-block bg-tint p-4 text-sm" : "rounded-card bg-surface p-6 shadow-card";
   const message = note ?? (verifyNote ? { text: verifyNote, tone: "error" as const } : null);
@@ -158,7 +161,7 @@ export function FreeCreditsCard({ compact = false, onChange: onChangeProp }: { c
           Get {status.welcomeCredits} free credits
         </p>
         <p className="mt-1 text-sm text-grey-600">
-          Verify once with GoodDollar, a free face check that takes about a minute. Then, on any day you claim your G$ UBI, claim {status.refillCredits} more credits, up to {MONTH_SLOTS} times a month. Planning stays free either way.
+          Verify once with GoodDollar, a free face check that takes about a minute. Then, when you&apos;re running low, claim {status.refillCredits} more credits on any day you claim your G$ UBI, up to {MONTH_SLOTS} times a month. Unused free credits expire after 30 days. You get 2 free plans a day now, and 5 once verified.
         </p>
         {status.budgetFull ? (
           <p className="mt-3 text-sm text-grey-600">This month&apos;s free credits are all gone. Verify now and you can claim refills from the 1st.</p>
@@ -182,6 +185,7 @@ export function FreeCreditsCard({ compact = false, onChange: onChangeProp }: { c
   const used = new Set(refill.claimedDays);
   const today = gdToday();
   const needsUbi = status.refillNeedsUbi && status.ubiClaimedToday !== true;
+  const blocked = refill.state === "available" ? status.refillBlocked : null;
   const slots = Array.from({ length: MONTH_SLOTS }, (_, i) => refill.claimedDays[i] ?? null);
   return (
     <section className={shell} aria-label="Daily refill">
@@ -212,20 +216,24 @@ export function FreeCreditsCard({ compact = false, onChange: onChangeProp }: { c
       <p className="mt-3 text-sm text-grey-600">
         +{status.refillCredits} credits, once a day. {refillLine(refill)}
       </p>
-      {refill.state === "available" && needsUbi && (
+      {blocked === "not_low" && <p className="mt-1 text-sm text-grey-600">Refills are for when you&apos;re running low. You can claim one once you have under {status.refillBelowCredits} credits.</p>}
+      {blocked === "inactive" && <p className="mt-1 text-sm text-grey-600">Refills are for people who are building. Finish a build or deploy an app, then come back.</p>}
+      {refill.state === "available" && !blocked && needsUbi && (
         <p className="mt-1 text-sm text-grey-600">
           Claim today&apos;s G$ UBI from GoodDollar to unlock it. One tap does both: your wallet claims the G$, then we add the credits. The network fee is a fraction of a cent in CELO.
         </p>
       )}
       {status.budgetFull && refill.state === "available" && <p className="mt-1 text-sm text-grey-600">This month&apos;s free credits are all gone. Refills come back on the 1st.</p>}
       <div className="mt-3">
-        <Button variant="primary" size={compact ? "sm" : "default"} disabled={claiming || refill.state !== "available" || status.budgetFull} onClick={() => void claim()}>
+        <Button variant="primary" size={compact ? "sm" : "default"} disabled={claiming || refill.state !== "available" || status.budgetFull || Boolean(blocked)} onClick={() => void claim()}>
           {claiming && <Loader2 className="animate-spin motion-reduce:animate-none" />}
           {step === "ubi"
             ? "Claiming G$ in your wallet…"
             : step === "refill"
               ? "Adding credits…"
-              : refill.state === "available"
+              : blocked
+                ? "Not yet"
+                : refill.state === "available"
                 ? needsUbi
                   ? `Claim G$ + ${status.refillCredits} credits`
                   : `Claim ${status.refillCredits} credits`

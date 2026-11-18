@@ -9,7 +9,7 @@ vi.mock("./use-claim-ubi", () => ({ useClaimUbi: () => claimUbi, UbiClaimError: 
 
 import { FreeCreditsCard, type FreeStatusJson } from "./free-credits-card";
 
-const base: FreeStatusJson = { policy: "verified", verified: false, welcomeDone: false, welcomeCredits: 40, refillCredits: 10, refill: null, budgetFull: false, refillNeedsUbi: false, ubiClaimedToday: null };
+const base: FreeStatusJson = { policy: "verified", verified: false, welcomeDone: false, welcomeCredits: 40, refillCredits: 10, refill: null, budgetFull: false, refillNeedsUbi: false, ubiClaimedToday: null, refillBlocked: null, refillBelowCredits: 10 };
 const today = new Date(Date.now() - 12 * 3_600_000).toISOString().slice(0, 10);
 
 /** Answers each API the card calls, and records the calls. */
@@ -91,6 +91,15 @@ describe("FreeCreditsCard", () => {
     render(<FreeCreditsCard />);
     await userEvent.click(await screen.findByRole("button", { name: "Claim 10 credits" }));
     expect(await screen.findByText("Added 10 credits.")).toBeInTheDocument();
+    expect(claimUbi).not.toHaveBeenCalled();
+  });
+
+  it("says why a refill is blocked, and never asks the wallet", async () => {
+    claimUbi.mockClear();
+    api({ "/api/credits/free": () => Response.json({ ...base, verified: true, welcomeDone: true, refillNeedsUbi: true, ubiClaimedToday: null, refillBlocked: "not_low", refill: { state: "available", leftThisWeek: 5, leftThisMonth: 5, nextAt: null, claimedDays: [] } }) });
+    render(<FreeCreditsCard />);
+    expect(await screen.findByText(/once you have under 10 credits/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Not yet" })).toBeDisabled();
     expect(claimUbi).not.toHaveBeenCalled();
   });
 

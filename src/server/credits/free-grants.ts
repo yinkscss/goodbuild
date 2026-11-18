@@ -5,7 +5,9 @@ import type { Address } from "viem";
 
 import { MICRO_PER_CREDIT } from "@/lib/credits-math";
 import type { Db } from "@/server/db/client";
+import { deployments } from "@/server/db/deploy-schema";
 import { ledgerEntries, turnJobs, usageEvents, users } from "@/server/db/schema";
+import { readBalance } from "./holds";
 import { postLedgerEntry } from "./ledger";
 
 /**
@@ -31,9 +33,20 @@ export const WELCOME_CREDITS = 40;
 export const REFILL_CREDITS = 10;
 export const REFILLS_PER_WEEK = 5;
 export const REFILLS_PER_MONTH = 5;
+/** Free plan turns a day for a verified account. */
 export const FREE_PLAN_TURNS_PER_DAY = 5;
+/** Free plan turns a day before verifying: new wallets cost nothing, so this is the one thing a fake account can farm. */
+export const FREE_PLAN_TURNS_PER_DAY_UNVERIFIED = 2;
 /** Everything free in a calendar month, in credits ($50): grants plus free planning. Set by the owner, 18 Nov 2026. */
 export const FREE_BUDGET_CREDITS_PER_MONTH = 5_000;
+/** The same, a week (Monday 00:00 UTC), so the month's budget isn't all gone in its first days. */
+export const FREE_BUDGET_CREDITS_PER_WEEK = 1_250;
+/** A refill only for someone below this many credits, so free credit can't pile up. 0 turns it off. */
+export const REFILL_BELOW_CREDITS = 10;
+/** A refill only for someone who finished a build or deployed in this many days. 0 turns it off. */
+export const REFILL_ACTIVE_DAYS = 30;
+/** Free credits not spent this many days after they were given are taken back. 0 turns it off. */
+export const FREE_CREDITS_EXPIRE_DAYS = 30;
 /**
  * Free AI used before this moment counts against the welcome grant, so people verified under D30
  * aren't paid twice. Free planning after it doesn't. FREE_POLICY_START overrides.
@@ -70,7 +83,12 @@ export function freeSettings(env: Env) {
     perWeek: count(env.REFILLS_PER_WEEK, REFILLS_PER_WEEK),
     perMonth: count(env.REFILLS_PER_MONTH, REFILLS_PER_MONTH),
     planTurnsPerDay: count(env.FREE_PLAN_TURNS_PER_DAY, FREE_PLAN_TURNS_PER_DAY),
+    planTurnsPerDayUnverified: count(env.FREE_PLAN_TURNS_PER_DAY_UNVERIFIED, FREE_PLAN_TURNS_PER_DAY_UNVERIFIED),
     budgetMicro: count(env.FREE_BUDGET_CREDITS_PER_MONTH, FREE_BUDGET_CREDITS_PER_MONTH) * MICRO_PER_CREDIT,
+    weekBudgetMicro: count(env.FREE_BUDGET_CREDITS_PER_WEEK, FREE_BUDGET_CREDITS_PER_WEEK) * MICRO_PER_CREDIT,
+    refillBelowMicro: count(env.REFILL_BELOW_CREDITS, REFILL_BELOW_CREDITS) * MICRO_PER_CREDIT,
+    activeDays: count(env.REFILL_ACTIVE_DAYS, REFILL_ACTIVE_DAYS),
+    expireDays: count(env.FREE_CREDITS_EXPIRE_DAYS, FREE_CREDITS_EXPIRE_DAYS),
     policyStart: Number.isNaN(start.getTime()) ? new Date(FREE_POLICY_START) : start,
     /** The refill needs today's G$ UBI claimed first (on unless REFILL_REQUIRES_UBI=off). */
     requiresUbi: env.REFILL_REQUIRES_UBI?.trim().toLowerCase() !== "off",
@@ -153,20 +171,19 @@ export function refillStatusGd(claims: Date[], now: Date, limits: { perWeek: num
 /** The ledger-key day for a refill made now: the date GoodDollar's current day began on. */
 export const gdDayKey = (now: Date) => dayKey(new Date(now.getTime() - GD_DAY_OFFSET_MS));
 
-// ---------------------------------------------------------------- the monthly budget
+// ---------------------------------------------------------------- the monthly and weekly budgets
 
 /**
- * What is free this month so far: grants posted, free AI charged since the policy started, and a
+ * What is free since `from`: grants posted, free AI charged (never before the policy started), and a
  * reservation for each free plan turn queued or running (other than `startingJobId`). In micro-USD.
  */
-export async function freeUsedThisMonthMicro(db: Db, now: Date, env: Env, startingJobId?: string): Promise<number> {
+async function freeUsedSinceMicro(db: Db, from: Date, env: Env, startingJobId?: string): Promise<number> {
   const { policyStart } = freeSettings(env);
-  const month = monthStart(now);
-  const since = policyStart > month ? policyStart : month;
+  const since = policyStart > from ? policyStart : from;
   const [grants] = await db
     .select({ total: sql<string>`coalesce(sum(${ledgerEntries.amountMicro}), 0)` })
     .from(ledgerEntries)
-    .where(and(eq(ledgerEntries.kind, "adjust"), inArray(ledgerEntries.refType, [WELCOME_REF, REFILL_REF]), gte(ledgerEntries.createdAt, month)));
+    .where(and(eq(ledgerEntries.kind, "adjust"), inArray(ledgerEntries.refType, [WELCOME_REF, REFILL_REF]), gte(ledgerEntries.createdAt, from)));
   const [ai] = await db
     .select({ total: sql<string>`coalesce(sum(${usageEvents.chargedMicro}), 0)` })
     .from(usageEvents)
@@ -179,13 +196,29 @@ export async function freeUsedThisMonthMicro(db: Db, now: Date, env: Env, starti
   return Number(grants?.total ?? 0) + Number(ai?.total ?? 0) + reserved;
 }
 
+/** What's free this calendar month so far. */
+export function freeUsedThisMonthMicro(db: Db, now: Date, env: Env, startingJobId?: string): Promise<number> {
+  return freeUsedSinceMicro(db, monthStart(now), env, startingJobId);
+}
+
+/**
+ * Room left for free credit: the smaller of the month's and the week's (calendar, UTC), and which of
+ * the two is the tighter, so a refusal can say when it comes back.
+ */
+export async function freeBudget(db: Db, now: Date, env: Env, startingJobId?: string): Promise<{ leftMicro: number; limit: "week" | "month" }> {
+  const settings = freeSettings(env);
+  const month = settings.budgetMicro - (await freeUsedSinceMicro(db, monthStart(now), env, startingJobId));
+  const week = settings.weekBudgetMicro - (await freeUsedSinceMicro(db, weekStart(now), env, startingJobId));
+  return week < month ? { leftMicro: week, limit: "week" } : { leftMicro: month, limit: "month" };
+}
+
 export async function freeBudgetLeftMicro(db: Db, now: Date, env: Env, startingJobId?: string): Promise<number> {
-  return freeSettings(env).budgetMicro - (await freeUsedThisMonthMicro(db, now, env, startingJobId));
+  return (await freeBudget(db, now, env, startingJobId)).leftMicro;
 }
 
 // ---------------------------------------------------------------- claims
 
-export type FreeGrantErrorCode = "not_verified" | "expired" | "ubi_not_claimed" | "claimed_today" | "week_full" | "month_full" | "budget_full" | "off";
+export type FreeGrantErrorCode = "not_verified" | "expired" | "ubi_not_claimed" | "claimed_today" | "week_full" | "month_full" | "budget_full" | "not_low" | "inactive" | "off";
 
 export class FreeGrantError extends Error {
   constructor(
@@ -200,6 +233,10 @@ export const NOT_VERIFIED_MESSAGE = "This wallet isn't verified with GoodDollar 
 export const EXPIRED_MESSAGE = "Your GoodDollar verification has expired. Verify again to keep getting refills.";
 export const UBI_NOT_CLAIMED_MESSAGE = "Claim today's G$ UBI first, then claim your refill.";
 export const BUDGET_FULL_MESSAGE = "This month's free credits are all gone. Refills come back on the 1st. Credits you buy still work.";
+export const WEEK_BUDGET_FULL_MESSAGE = "This week's free credits are all gone. They come back on Monday. Credits you buy still work.";
+export const budgetFullMessage = (limit: "week" | "month") => (limit === "week" ? WEEK_BUDGET_FULL_MESSAGE : BUDGET_FULL_MESSAGE);
+export const notLowMessage = (credits: number) => `Refills are for when you're running low. You can claim one once you have under ${credits} credits.`;
+export const INACTIVE_MESSAGE = "Refills are for people who are building. Finish a build or deploy an app, then claim.";
 
 /** What GoodDollar's Identity contract says about a wallet, read fresh. */
 export interface GoodIdentity {
@@ -277,7 +314,8 @@ export async function claimWelcome(db: Db, user: { id: string; wallet: string },
 
     const amount = settings.welcomeMicro - (await priorFreeMicro(tx, user.id, root, settings.policyStart));
     if (amount <= 0) return { grantedMicro: 0, done: true };
-    if ((await freeBudgetLeftMicro(tx, now, env)) < amount) throw new FreeGrantError("budget_full", BUDGET_FULL_MESSAGE);
+    const budget = await freeBudget(tx, now, env);
+    if (budget.leftMicro < amount) throw new FreeGrantError("budget_full", budgetFullMessage(budget.limit));
     await postLedgerEntry(tx, { userId: user.id, kind: "adjust", amountMicro: amount, idempotencyKey: `welcome:${root}`, refType: WELCOME_REF, refId: root });
     return { grantedMicro: amount, done: true };
   });
@@ -305,6 +343,32 @@ async function refillTimes(db: Db, root: string, now: Date): Promise<Date[]> {
     .map((day) => new Date(`${day}T00:00:00Z`));
 }
 
+/**
+ * Why this person can't have a refill right now, beyond the day, week and month limits, or null.
+ * - `not_low`: this account has REFILL_BELOW_CREDITS or more, so free credit can't pile up.
+ * - `inactive`: no account on this GoodDollar identity finished a build or deployed in REFILL_ACTIVE_DAYS.
+ */
+async function refillBlock(db: Db, userId: string, root: string, now: Date, settings: ReturnType<typeof freeSettings>): Promise<"not_low" | "inactive" | null> {
+  if (settings.refillBelowMicro > 0 && (await readBalance(db, userId)).balanceMicro >= settings.refillBelowMicro) return "not_low";
+  if (settings.activeDays > 0) {
+    const since = new Date(now.getTime() - settings.activeDays * 86_400_000);
+    const people = sql`(select ${users.id} from ${users} where ${users.goodidRoot} = ${root} or ${users.id} = ${userId})`;
+    const [built] = await db
+      .select({ id: turnJobs.id })
+      .from(turnJobs)
+      .where(and(sql`${turnJobs.userId} in ${people}`, eq(turnJobs.mode, "build"), eq(turnJobs.status, "done"), gte(turnJobs.createdAt, since)))
+      .limit(1);
+    if (built) return null;
+    const [deployed] = await db.select({ id: deployments.id }).from(deployments).where(and(sql`${deployments.userId} in ${people}`, gte(deployments.createdAt, since))).limit(1);
+    if (!deployed) return "inactive";
+  }
+  return null;
+}
+
+function blockError(block: "not_low" | "inactive", settings: ReturnType<typeof freeSettings>) {
+  return block === "not_low" ? new FreeGrantError("not_low", notLowMessage(settings.refillBelowMicro / MICRO_PER_CREDIT)) : new FreeGrantError("inactive", INACTIVE_MESSAGE);
+}
+
 const REFUSAL: Record<Exclude<RefillState, "available">, string> = {
   claimed_today: "You've claimed today's refill. Come back tomorrow.",
   week_full: "You've used this week's refills. They come back on Monday at noon UTC.",
@@ -330,6 +394,9 @@ export async function claimRefill(db: Db, user: { id: string; wallet: string }, 
   if (identity.expiresAt && identity.expiresAt <= now) throw new FreeGrantError("expired", EXPIRED_MESSAGE);
   const root = identity.root.toLowerCase();
   const settings = freeSettings(env);
+  // Before the UBI check, so nobody is sent to pay a network fee for a refill they can't have.
+  const early = await refillBlock(db, user.id, root, now, settings);
+  if (early) throw blockError(early, settings);
   if (settings.requiresUbi) {
     const claimedAt = deps.readUbiClaimedAt ? await deps.readUbiClaimedAt(identity.root) : null;
     if (!claimedAt || claimedAt < gdDayStart(now)) throw new FreeGrantError("ubi_not_claimed", UBI_NOT_CLAIMED_MESSAGE);
@@ -342,7 +409,11 @@ export async function claimRefill(db: Db, user: { id: string; wallet: string }, 
     const before = refillStatusGd(await refillTimes(tx, root, now), now, settings);
     if (before.state !== "available") throw new FreeGrantError(before.state, REFUSAL[before.state]);
     if (settings.refillMicro <= 0) throw new FreeGrantError("off", "Refills are switched off right now.");
-    if ((await freeBudgetLeftMicro(tx, now, env)) < settings.refillMicro) throw new FreeGrantError("budget_full", BUDGET_FULL_MESSAGE);
+    // Again under the lock: two claims at once from linked accounts mustn't both pass the balance check.
+    const block = await refillBlock(tx, user.id, root, now, settings);
+    if (block) throw blockError(block, settings);
+    const budget = await freeBudget(tx, now, env);
+    if (budget.leftMicro < settings.refillMicro) throw new FreeGrantError("budget_full", budgetFullMessage(budget.limit));
     await postLedgerEntry(tx, { userId: user.id, kind: "adjust", amountMicro: settings.refillMicro, idempotencyKey: `refill:${root}:${gdDayKey(now)}`, refType: REFILL_REF, refId: root });
     return { grantedMicro: settings.refillMicro, status: refillStatusGd(await refillTimes(tx, root, now), now, settings) };
   });
@@ -361,6 +432,9 @@ export interface FreeStatus {
   budgetFull: boolean;
   /** A refill needs today's G$ UBI claimed first. */
   refillNeedsUbi: boolean;
+  /** Why a refill can't be claimed beyond the day/week/month limits: under REFILL_BELOW_CREDITS isn't met, or no recent build. */
+  refillBlocked: "not_low" | "inactive" | null;
+  refillBelowCredits: number;
   /** Has this person claimed G$ UBI since GoodDollar's day began? Null when not asked or unreadable. */
   ubiClaimedToday: boolean | null;
 }
@@ -380,15 +454,18 @@ export async function freeStatus(db: Db, userId: string, now = new Date(), env: 
     budgetFull: (await freeBudgetLeftMicro(db, now, env)) < Math.min(settings.refillMicro || Infinity, settings.welcomeMicro || Infinity),
     refillNeedsUbi: settings.requiresUbi,
     ubiClaimedToday: null as boolean | null,
+    refillBlocked: null as "not_low" | "inactive" | null,
+    refillBelowCredits: settings.refillBelowMicro / MICRO_PER_CREDIT,
   };
   if (!root) return { ...base, verified: false, welcomeDone: false, refill: null };
   // Nothing is posted when earlier free AI used the whole welcome, so that counts as done too.
   const welcomeDone = Boolean(await welcomeFor(db, root)) || (await priorFreeMicro(db, userId, root, settings.policyStart)) >= settings.welcomeMicro;
   const refill = refillStatusGd(await refillTimes(db, root, now), now, settings);
+  const refillBlocked = refill.state === "available" ? await refillBlock(db, userId, root, now, settings) : null;
   let ubiClaimedToday: boolean | null = null;
-  if (settings.requiresUbi && readUbiClaimedAt && refill.state === "available") {
+  if (settings.requiresUbi && readUbiClaimedAt && refill.state === "available" && !refillBlocked) {
     const at = await readUbiClaimedAt(root as Address).catch(() => undefined);
     ubiClaimedToday = at === undefined ? null : Boolean(at && at >= gdDayStart(now));
   }
-  return { ...base, verified: true, welcomeDone, refill, ubiClaimedToday };
+  return { ...base, verified: true, welcomeDone, refill, ubiClaimedToday, refillBlocked };
 }
