@@ -1604,3 +1604,8 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - **What:** the vote dialog's API keeps its own per-account record (`flowstate_voters`: the 90-second eligibility rate limit, the vote's tx hash and time) instead of creating a hackathon participant row, which needed an email. A wallet with no email on its account can now vote and unlock the welcome credits.
 - **Hackathon signups:** if the person has already registered for the hackathon, the vote is copied onto their participant row too, so the CSV export and the hackathon credit claim keep working. Voters who never registered aren't in the CSV.
 - **Agreed next (not built yet):** a sign-in pop-up for people with 0 credits and no purchase (Add credits / Get free credits: verify, then "support our project by voting"); hackathon registration requiring verify and vote; and in-app voting on other people's hackathon projects, open to verified voters.
+
+### D127. Celo mainnet is the wallet default; Celo Sepolia only when someone picks it (18 Nov 2026)
+- Decided by: the owner, after a person pressing "Verify with GoodDollar" on /hackathon saw MetaMask ask to add Celo Sepolia. Built by Claude.
+- **Why:** Verify only asks for a signature, but older wallet code treated the testnet as the default, so MetaMask had a leftover "Add Celo Sepolia" request queued in front of it.
+- **What:** MetaMask sign-in asks permission for Celo mainnet only (Ethereum as the fallback when the wallet has no Celo); WalletConnect requires Celo mainnet, with Celo Sepolia optional; `celoChainFor` returns Celo mainnet for any chain other than Celo Sepolia. Picking the testnet in the wallet menu, or deploying a testnet project, still adds and switches to Celo Sepolia.

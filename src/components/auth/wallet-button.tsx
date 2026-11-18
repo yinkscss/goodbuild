@@ -23,7 +23,7 @@ import { chainName, explorerAddressUrl, shortAddress } from "@/lib/format";
 import { useMainnetAllowed } from "@/lib/use-mainnet-allowed";
 import { cn } from "@/lib/utils";
 
-/** Where there is no project (home, landing), a wallet is expected on Celo Sepolia, where every new project starts. */
+/** Where there is no project (home, landing, hackathon), a wallet is expected on Celo mainnet. */
 export const DEFAULT_EXPECTED_CHAIN_ID: number = NETWORKS.celo.chainId;
 
 /**

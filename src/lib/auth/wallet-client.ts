@@ -4,8 +4,9 @@ import { celo, celoSepolia } from "viem/chains";
 /** The Celo chains GoodBuild signs on (viem definitions, D17 / P1). */
 export const CELO_CHAINS = { [celoSepolia.id]: celoSepolia, [celo.id]: celo } as const;
 
+/** Celo mainnet unless Celo Sepolia is asked for by id: an unknown or missing chain never means the testnet. */
 export function celoChainFor(chainId: number | null | undefined) {
-  return chainId === celo.id ? celo : celoSepolia;
+  return chainId === celoSepolia.id ? celoSepolia : celo;
 }
 
 /**

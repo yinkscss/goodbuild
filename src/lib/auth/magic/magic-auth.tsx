@@ -501,16 +501,16 @@ async function initWalletConnect(showQrModal: boolean) {
   const icon = document.querySelector<HTMLLinkElement>('link[rel~="icon"]')?.href;
   return EthereumProvider.init({
     projectId,
-    chains: [celoSepolia.id],
-    // Base only for the GoodCash top-up permit (D122).
-    optionalChains: [celo.id, base.id],
+    chains: [celo.id],
+    // Celo Sepolia only when someone picks the testnet; Base only for the GoodCash top-up permit (D122).
+    optionalChains: [celoSepolia.id, base.id],
     rpcMap: { [celoSepolia.id]: celoSepolia.rpcUrls.default.http[0], [celo.id]: celo.rpcUrls.default.http[0], [base.id]: base.rpcUrls.default.http[0] },
     metadata: walletConnectMetadata(window.location.origin, icon),
     showQrModal,
   });
 }
 
-/** Magic + external wallets on Celo Sepolia (default) and Celo. */
+/** Magic + external wallets on Celo (default) and Celo Sepolia. */
 export function MagicAuthProvider({ publishableKey, children }: { publishableKey: string; children: React.ReactNode }) {
   return <MagicBridge publishableKey={publishableKey}>{children}</MagicBridge>;
 }

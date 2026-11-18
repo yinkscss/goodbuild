@@ -1,10 +1,10 @@
 import { numberToHex, type EIP1193Provider } from "viem";
-import { celo, celoSepolia } from "viem/chains";
+import { celo } from "viem/chains";
 import { describe, expect, it, vi } from "vitest";
 
 import { isCaip25ScopeError, isScopedPermissionUnsupported, requestMetaMaskAccount, unsupportedEvmChains, walletConnectMetadata } from "./metamask";
 
-const CELO = [numberToHex(celo.id), numberToHex(celoSepolia.id)];
+const CELO = [numberToHex(celo.id)];
 const TRON = Object.assign(
   new Error('Invalid approved permissions request: endowment:caip25 error: Received scopeString value(s): tron:728126428 for caveat of type "authorizedScopes" that are not supported by the wallet.'),
   { code: -32603 },
@@ -15,7 +15,7 @@ const scopeError = (scopes: string) =>
     new Error(`endowment:caip25 error: Received scopeString value(s): ${scopes} for caveat of type "authorizedScopes" that are not supported by the wallet.`),
     { code: -32603 },
   );
-const NO_SEPOLIA = scopeError("eip155:11142220");
+const NO_CELO = scopeError("eip155:42220");
 
 function permittedChains(request: ReturnType<typeof vi.fn>): string[][] {
   return request.mock.calls
@@ -54,7 +54,8 @@ describe("requestMetaMaskAccount", () => {
       ],
     });
     expect(request).not.toHaveBeenCalledWith({ method: "eth_requestAccounts" });
-    expect(CELO).toEqual(["0xa4ec", "0xaa044c"]);
+    // Celo mainnet only: never Celo Sepolia, so MetaMask is never asked to add the testnet at sign-in.
+    expect(CELO).toEqual(["0xa4ec"]);
   });
 
   it("uses eth_requestAccounts when the wallet has no scoped permissions", async () => {
@@ -96,29 +97,11 @@ describe("requestMetaMaskAccount", () => {
     expect(request).not.toHaveBeenCalledWith({ method: "eth_requestAccounts" });
   });
 
-  it("asks again without Celo Sepolia when the wallet hasn't added it, and keeps the permission", async () => {
-    const { request, provider: wallet } = provider((method, params) => {
-      if (method === "wallet_requestPermissions") {
-        const chains = (params as [{ "endowment:permitted-chains": { caveats: [{ value: string[] }] } }])[0]["endowment:permitted-chains"].caveats[0].value;
-        if (chains.includes("0xaa044c")) throw NO_SEPOLIA;
-        return null;
-      }
-      if (method === "eth_accounts") return ["0x00000000000000000000000000000000000000a1"];
-      return null;
-    });
-    await expect(requestMetaMaskAccount(wallet)).resolves.toBe("0x00000000000000000000000000000000000000a1");
-    expect(permittedChains(request)).toEqual([CELO, ["0xa4ec"]]);
-    expect(request).not.toHaveBeenCalledWith({ method: "wallet_revokePermissions", params: [{ eth_accounts: {} }] });
-    expect(request).not.toHaveBeenCalledWith({ method: "eth_requestAccounts" });
-    expect(unsupportedEvmChains(NO_SEPOLIA)).toEqual(["0xaa044c"]);
-    expect(isScopedPermissionUnsupported(NO_SEPOLIA)).toBe(false);
-  });
-
   it("falls back to Ethereum when the wallet has neither Celo network", async () => {
     const { request, provider: wallet } = provider((method, params) => {
       if (method === "wallet_requestPermissions") {
         const chains = (params as [{ "endowment:permitted-chains": { caveats: [{ value: string[] }] } }])[0]["endowment:permitted-chains"].caveats[0].value;
-        if (chains.includes("0xa4ec")) throw scopeError("eip155:42220, eip155:11142220");
+        if (chains.includes("0xa4ec")) throw NO_CELO;
         return null;
       }
       if (method === "eth_accounts") return ["0x00000000000000000000000000000000000000a1"];
@@ -126,10 +109,13 @@ describe("requestMetaMaskAccount", () => {
     });
     await expect(requestMetaMaskAccount(wallet)).resolves.toBe("0x00000000000000000000000000000000000000a1");
     expect(permittedChains(request)).toEqual([CELO, ["0x1"]]);
+    expect(unsupportedEvmChains(NO_CELO)).toEqual(["0xa4ec"]);
+    expect(isScopedPermissionUnsupported(NO_CELO)).toBe(false);
+    expect(request).not.toHaveBeenCalledWith({ method: "eth_requestAccounts" });
   });
 
   it("handles a missing network and a stored Tron permission in turn", async () => {
-    const errors = [NO_SEPOLIA, TRON];
+    const errors = [NO_CELO, TRON];
     const { request, provider: wallet } = provider((method) => {
       if (method === "wallet_requestPermissions") {
         const next = errors.shift();
@@ -140,7 +126,7 @@ describe("requestMetaMaskAccount", () => {
       return null;
     });
     await expect(requestMetaMaskAccount(wallet)).resolves.toBe("0x00000000000000000000000000000000000000a1");
-    expect(permittedChains(request)).toEqual([CELO, ["0xa4ec"], ["0xa4ec"]]);
+    expect(permittedChains(request)).toEqual([CELO, ["0x1"], ["0x1"]]);
     expect(request).toHaveBeenCalledWith({ method: "wallet_revokePermissions", params: [{ eth_accounts: {} }] });
   });
 
