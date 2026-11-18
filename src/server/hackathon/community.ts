@@ -90,9 +90,17 @@ export async function saveEntry(
   if (new Date() >= CLAIMS_CLOSE)
     throw new CommunityError("Submissions are closed.", 410);
   const data = entryInput.parse(input);
-  if (!(await getParticipant(db, user.id)))
+  const participant = await getParticipant(db, user.id);
+  if (!participant)
     throw new CommunityError(
       "Save your signup email before submitting a project.",
+    );
+  // Registration needs verify and vote (D131). "voted" is only ever set by the on-chain vote check,
+  // which also requires a verified wallet, so it covers both.
+  if (participant.flowstate !== "voted")
+    throw new CommunityError(
+      "Verify with GoodDollar and vote first, then submit your project.",
+      403,
     );
   const [entry] = await db
     .insert(hackathonEntries)

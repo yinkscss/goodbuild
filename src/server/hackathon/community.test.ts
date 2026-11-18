@@ -2,7 +2,9 @@
 import { beforeEach, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { createTestDb, type Db } from "@/server/db/client";
+import { eq } from "drizzle-orm";
 import { users } from "@/server/db/schema";
+import { hackathonParticipants } from "@/server/db/hackathon-schema";
 import {
   approveEntry,
   listEntries,
@@ -16,13 +18,32 @@ beforeEach(async () => {
 });
 const wallet = () =>
   `0x${randomUUID().replaceAll("-", "").padEnd(40, "0")}` as `0x${string}`;
-async function user() {
+async function user({ voted = true } = {}) {
   const u = (
     await db.insert(users).values({ wallet: wallet() }).returning()
   )[0];
   await saveParticipant(db, u, { email: "builder@example.com" });
+  // The on-chain vote check is the only thing that sets "voted" (D131).
+  if (voted)
+    await db
+      .update(hackathonParticipants)
+      .set({ flowstate: "voted" })
+      .where(eq(hackathonParticipants.userId, u.id));
   return u;
 }
+it("won't take a project until the builder has verified and voted (D131)", async () => {
+  const u = await user({ voted: false });
+  await expect(
+    saveEntry(db, u, { alias: "A", title: "B", pitch: "C", liveUrl: "", sourceUrl: "" }),
+  ).rejects.toThrow(/verify with GoodDollar and vote first/i);
+  await db
+    .update(hackathonParticipants)
+    .set({ flowstate: "voted" })
+    .where(eq(hackathonParticipants.userId, u.id));
+  await expect(
+    saveEntry(db, u, { alias: "A", title: "B", pitch: "C", liveUrl: "", sourceUrl: "" }),
+  ).resolves.toMatchObject({ title: "B" });
+});
 it("keeps signup email before verification and exports safely without exposing it publicly", async () => {
   const u = await user();
   await saveParticipant(db, u, { email: "builder@example.com" });
@@ -128,7 +149,7 @@ it("blocks linked-wallet self approvals even when the owner has no cached verifi
   ).rejects.toThrow(/own/);
 });
 it("persists optional skip without requiring a FlowState vote", async () => {
-  const u = await user();
+  const u = await user({ voted: false });
   await saveParticipant(db, u, {
     email: "builder@example.com",
     flowstate: "skipped",

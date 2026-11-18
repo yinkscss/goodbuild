@@ -1625,3 +1625,8 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
   - The vote pop-up checks for an existing vote on opening and never asks someone who voted to vote again. The vote button has a fallback colour.
   - While a G$ payment confirms, the button reads "Confirming payment…" with "usually about 30 seconds". The 30-block wait stays.
   - When a build stops for lack of credits, a pop-up opens: pay in G$ (exact amount, one click) or get free credits (only the step that person still needs), then "Continue building" retries. Closing it leaves the inline pill.
+
+### D131. Get-credits pop-up on home; verify and vote before submitting a hackathon project (18 Nov 2026)
+- Decided by: the owner (agreed in D126, built now). Built by Claude.
+- **Pop-up:** someone who lands on home with no credits and has never bought any (no deposit in the ledger) sees "Get credits to start building": Add credits, or the free credits card, which shows only the step they still need (verify, then "support our project by voting"; the 40 lands when the vote confirms). It shows once per browser session. A failed check never shows it.
+- **Hackathon:** claiming the hackathon credits already needed verify and a confirmed vote. Submitting or updating a project now needs them too: the server refuses until the signup's vote is confirmed on-chain (only that check sets "voted", and it requires a verified wallet). The form shows "Verify and vote first" with a link to the steps. No project in production was affected (none submitted yet).
