@@ -1633,3 +1633,8 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - **Replaces:** ten equal 100,000 G$ slots and an uncapped 50,000 G$ per approval funded outside the pool.
 - **Credits:** unspent hackathon credits are no longer expired. The worker's hourly sweep is removed. The manual admin button and `/api/hackathon/expire` remain but nothing runs them.
 - **Built:** the live ladder (`ladder.tsx`, shared by `/hackathon` and the app). **Open:** the winners and payout dates; quests, voter badges, weekly Rising Star and referral are planned, not built.
+
+### D131. Get-credits pop-up on home; verify and vote before submitting a hackathon project (18 Nov 2026)
+- Decided by: the owner (agreed in D126, built now). Built by Claude.
+- **Pop-up:** someone who lands on home with no credits and has never bought any (no deposit in the ledger) sees "Get credits to start building": Add credits, or the free credits card, which shows only the step they still need (verify, then "support our project by voting"; the 40 lands when the vote confirms). It shows once per browser session. A failed check never shows it.
+- **Hackathon:** claiming the hackathon credits already needed verify and a confirmed vote. Submitting or updating a project now needs them too: the server refuses until the signup's vote is confirmed on-chain (only that check sets "voted", and it requires a verified wallet). The form shows "Verify and vote first" with a link to the steps. No project in production was affected (none submitted yet).

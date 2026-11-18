@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { Address } from "viem";
 import type { Db } from "@/server/db/client";
 import {
+  flowstateVoters,
   hackathonApprovals,
   hackathonEntries,
   hackathonParticipants,
@@ -52,19 +53,30 @@ export async function saveParticipant(
   input: z.input<typeof participantInput>,
 ) {
   const data = participantInput.parse(input);
+  // Anyone signed in can vote before signing up (D126). A vote already confirmed on-chain carries over,
+  // so the signup, the submit gate (D131) and the CSV all see it.
+  const [vote] = await db
+    .select({ txHash: flowstateVoters.txHash, votedAt: flowstateVoters.votedAt })
+    .from(flowstateVoters)
+    .where(eq(flowstateVoters.userId, user.id));
+  const voted = vote?.votedAt
+    ? { flowstate: "voted" as const, flowstateTxHash: vote.txHash, flowstateVotedAt: vote.votedAt }
+    : null;
   const [row] = await db
     .insert(hackathonParticipants)
-    .values({ hackathon: HACKATHON_ID, userId: user.id, ...data })
+    .values({ hackathon: HACKATHON_ID, userId: user.id, ...data, ...voted })
     .onConflictDoUpdate({
       target: [hackathonParticipants.hackathon, hackathonParticipants.userId],
       // The first email saved is kept: the signup form shows it locked, and a later request can't swap it.
       set: {
         email: sql`${hackathonParticipants.email}`,
-        ...(data.flowstate
-          ? {
-              flowstate: sql`case when ${hackathonParticipants.flowstate} = 'voted' then 'voted' else ${data.flowstate} end`,
-            }
-          : {}),
+        ...(voted
+          ? voted
+          : data.flowstate
+            ? {
+                flowstate: sql`case when ${hackathonParticipants.flowstate} = 'voted' then 'voted' else ${data.flowstate} end`,
+              }
+            : {}),
       },
     })
     .returning();
@@ -90,9 +102,17 @@ export async function saveEntry(
   if (new Date() >= CLAIMS_CLOSE)
     throw new CommunityError("Submissions are closed.", 410);
   const data = entryInput.parse(input);
-  if (!(await getParticipant(db, user.id)))
+  const participant = await getParticipant(db, user.id);
+  if (!participant)
     throw new CommunityError(
       "Save your signup email before submitting a project.",
+    );
+  // Registration needs verify and vote (D131). "voted" is only ever set by the on-chain vote check,
+  // which also requires a verified wallet, so it covers both.
+  if (participant.flowstate !== "voted")
+    throw new CommunityError(
+      "Verify with GoodDollar and vote first, then submit your project.",
+      403,
     );
   const [entry] = await db
     .insert(hackathonEntries)
