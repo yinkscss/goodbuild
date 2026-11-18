@@ -18,6 +18,9 @@ import {
 import { claimFlowstateEligibility } from "@/server/flowstate/eligibility";
 import { getParticipant, saveParticipant } from "@/server/hackathon/community";
 import { HACKATHON_ID } from "@/server/hackathon/claim";
+import { ensureGas, GasGrantError } from "@/server/gas-grant/grant";
+import { gasGrantDeps } from "@/server/gas-grant/runtime";
+import { SUPPORT_TELEGRAM_URL } from "@/config/site-links";
 const headers = { "Cache-Control": "no-store" };
 const bodySchema = z.discriminatedUnion("action", [
   z.object({
@@ -36,6 +39,11 @@ const bodySchema = z.discriminatedUnion("action", [
   }),
 ]);
 function failure(e: unknown) {
+  if (e instanceof GasGrantError)
+    return NextResponse.json(
+      { message: e.message, telegram: e.telegram ? SUPPORT_TELEGRAM_URL : undefined },
+      { status: e.code === "not_verified" ? 403 : 409, headers },
+    );
   if (e instanceof FlowstateError)
     return NextResponse.json(
       { message: e.message },
@@ -87,15 +95,22 @@ export async function POST(request: Request) {
         );
       await saveParticipant(db, s.user, { email: s.user.email });
     }
-    if (body.data.action === "prepare")
-      return NextResponse.json(
-        await prepareFlowstateVote(
-          client,
-          wallet,
-          BigInt(body.data.additional),
-        ),
-        { headers },
-      );
+    if (body.data.action === "prepare") {
+      const additional = BigInt(body.data.additional);
+      let review = await prepareFlowstateVote(client, wallet, additional);
+      let gasGrant: { amountWei: string; txHash: string } | undefined;
+      if (review.short) {
+        // Only someone who can vote right now gets here: verified, registered, with points to give.
+        const grant = await ensureGas(db, s.user, BigInt(review.feeCapWei), "hackathon_vote", gasGrantDeps());
+        if (grant.kind === "granted") gasGrant = { amountWei: String(grant.amountWei), txHash: grant.txHash };
+        review = await prepareFlowstateVote(client, wallet, additional);
+        if (review.short)
+          throw new FlowstateError(
+            "Your email wallet still needs a little CELO for the network fee. Please wait a minute and review your vote again. No votes or credits have been spent.",
+          );
+      }
+      return NextResponse.json({ ...review, gasGrant }, { headers });
+    }
     if (body.data.action === "eligibility") {
       const status = await flowstateStatus(client, wallet);
       if (!status.verified)

@@ -12,6 +12,8 @@ import { DEPLOY_CREDITS, START_CREDITS } from "@/server/hackathon/claim";
 import { hackathonReport, type HackathonReport } from "@/server/hackathon/admin";
 import { loadSession } from "@/server/home-data";
 import { isAdminWallet } from "@/server/settings/mainnet-access";
+import { GRANT_TARGET_WEI, GRANTS_PER_DAY, grantSummary } from "@/server/gas-grant/grant";
+import { gasGrantDeps } from "@/server/gas-grant/runtime";
 
 export const metadata: Metadata = { title: "Hackathon claims · GoodBuild", robots: { index: false } };
 
@@ -35,8 +37,30 @@ export default function HackathonAdminPage() {
 async function Report() {
   const session = await loadSession();
   if (!isAdminWallet(session.user.wallet)) notFound();
-  const r = await hackathonReport(await getDb());
-  return <ReportView r={r} />;
+  const db = await getDb();
+  const r = await hackathonReport(db);
+  const deps = gasGrantDeps();
+  const gas = await grantSummary(db, deps.chain, deps.signer?.address ?? null);
+  return (
+    <>
+      <GasTiles g={gas} />
+      <ReportView r={r} />
+    </>
+  );
+}
+
+/** The network-fee fund (D123): what it holds and how many people it has helped. */
+function GasTiles({ g }: { g: Awaited<ReturnType<typeof grantSummary>> }) {
+  const celo = g.balanceWei === null ? null : Number(g.balanceWei) / 1e18;
+  const left = g.balanceWei === null ? null : Number(g.balanceWei / GRANT_TARGET_WEI);
+  return (
+    <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <Tile label="Network-fee fund" value={celo === null ? "—" : `${celo.toFixed(2)} CELO`} note={g.enabled ? `Enough for about ${left} more people` : "Off: no key installed or switched off"} />
+      <Tile label="Fees covered" value={fmt(g.total)} note="People topped up to 0.3 CELO" />
+      <Tile label="Today" value={`${fmt(g.today)} / ${GRANTS_PER_DAY}`} note="Daily limit, resets at midnight UTC" />
+      <Tile label="Needs a look" value={fmt(g.needsReview)} note="Top-ups that didn't confirm; not retried" />
+    </div>
+  );
 }
 
 function Tile({ label, value, note }: { label: string; value: string; note?: string }) {

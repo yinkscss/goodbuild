@@ -169,6 +169,13 @@
       "when": 1795013138299,
       "tag": "0023_flowstate_vote_proof",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1795017827116,
+      "tag": "0024_gas_grants",
+      "breakpoints": true
     }
   ]
 }

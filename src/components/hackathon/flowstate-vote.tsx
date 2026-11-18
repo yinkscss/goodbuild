@@ -27,11 +27,14 @@ type Review = FlowstateStatus & {
   maxFeePerGas: string;
   maxPriorityFeePerGas: string;
   feeCapWei: string;
+  /** Set when GoodBuild just covered the network fee from its gas wallet. */
+  gasGrant?: { amountWei: string; txHash: string };
 };
 class RequestError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    readonly telegram?: string,
   ) {
     super(message);
   }
@@ -52,6 +55,7 @@ async function request(body?: unknown) {
     throw new RequestError(
       data.message ?? "We couldn’t reach FlowState. Please try again.",
       res.status,
+      typeof data.telegram === "string" ? data.telegram : undefined,
     );
   return data;
 }
@@ -63,6 +67,7 @@ export function FlowstateVote({ onConfirmed }: { onConfirmed?: () => void }) {
   const [quantity, setQuantity] = React.useState("1");
   const [busy, setBusy] = React.useState("");
   const [error, setError] = React.useState("");
+  const [helpLink, setHelpLink] = React.useState<string | undefined>();
   const [txHash, setTxHash] = React.useState<string | null>(null);
   const [discardArmed, setDiscardArmed] = React.useState(false);
   const [confirmed, setConfirmed] = React.useState(false);
@@ -98,10 +103,12 @@ export function FlowstateVote({ onConfirmed }: { onConfirmed?: () => void }) {
   async function perform(label: string, action: () => Promise<void>) {
     setBusy(label);
     setError("");
+    setHelpLink(undefined);
     try {
       await action();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Please try again.");
+      if (e instanceof RequestError) setHelpLink(e.telegram);
     } finally {
       setBusy("");
     }
@@ -157,7 +164,7 @@ export function FlowstateVote({ onConfirmed }: { onConfirmed?: () => void }) {
   }
   async function prepare(e: React.FormEvent) {
     e.preventDefault();
-    await perform("Checking vote and network fee…", async () => {
+    await perform("Checking your vote and covering the network fee… this can take up to 30 seconds.", async () => {
       if (!/^[1-9]\d{0,28}$/.test(quantity))
         throw new Error("Enter a whole number of votes, starting at 1.");
       setReview(await request({ action: "prepare", additional: quantity }));
@@ -264,6 +271,16 @@ export function FlowstateVote({ onConfirmed }: { onConfirmed?: () => void }) {
             <p role="alert" className="text-sm text-danger">
               {error}
             </p>
+          )}
+          {helpLink && (
+            <a
+              href={helpLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex text-sm font-semibold text-violet underline"
+            >
+              Message us on Telegram
+            </a>
           )}
           {error.includes("CELO") && wallet && (
             <div className="space-y-2 rounded-block bg-tint p-3 text-sm">
@@ -374,13 +391,21 @@ export function FlowstateVote({ onConfirmed }: { onConfirmed?: () => void }) {
                     Enable voting with this wallet
                   </button>
                   <p className="text-xs text-grey-600">
-                    The vote itself has a CELO network fee, shown in the next
-                    step.
+                    Voting has a tiny network fee. The first time, GoodBuild
+                    covers it for you.
                   </p>
                 </div>
               ) : review ? (
                 <div className="space-y-4 rounded-block bg-tint p-4">
                   <p className="font-semibold">Review your vote</p>
+                  {review.gasGrant && (
+                    <p className="rounded-block bg-white p-3 text-sm">
+                      ✓ We added{" "}
+                      {Number(formatEther(BigInt(review.gasGrant.amountWei))).toFixed(2)}{" "}
+                      CELO to your wallet to pay the network fee. It&rsquo;s free,
+                      and what&rsquo;s left helps with your first app deploy.
+                    </p>
+                  )}
                   <dl className="grid grid-cols-[1fr_auto] gap-3 text-sm">
                     <dt>Project</dt>
                     <dd>GoodBuildIt</dd>

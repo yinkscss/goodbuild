@@ -35,6 +35,8 @@ function client() {
     simulateContract: vi.fn(async () => ({})),
     estimateContractGas: vi.fn(async () => BigInt(100_000)),
     getGasPrice: vi.fn(async () => BigInt(1_000_000_000)),
+    getBlock: vi.fn(async () => ({ baseFeePerGas: BigInt(1_000_000_000) })),
+    estimateMaxPriorityFeePerGas: vi.fn(async () => BigInt(10_000_000)),
     getBalance: vi.fn(async () => BigInt(1_000_000_000_000_000_000)),
     getTransaction: vi.fn(async () => ({
       from: wallet,

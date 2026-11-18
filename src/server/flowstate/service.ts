@@ -17,6 +17,7 @@ import {
   type FlowstateStatus,
 } from "@/lib/flowstate/config";
 import { readGoodIdRoot } from "@/server/goodid";
+import { celoFees } from "@/server/gas-grant/grant";
 
 export class FlowstateError extends Error {
   constructor(
@@ -114,19 +115,16 @@ export async function prepareFlowstateVote(
     args: [plan.votes] as const,
   };
   await client.simulateContract(call);
-  const [estimatedGas, gasPrice, balance] = await Promise.all([
+  const [estimatedGas, fees, balance] = await Promise.all([
     client.estimateContractGas(call),
-    client.getGasPrice(),
+    celoFees(client),
     client.getBalance({ address: wallet }),
   ]);
   const gas = (estimatedGas * BigInt(120) + BigInt(99)) / BigInt(100);
-  const maxFeePerGas = gasPrice * BigInt(2);
-  const maxPriorityFeePerGas = gasPrice;
+  // A small tip over a doubled base fee. The tip used to equal the whole gas price, which doubled what
+  // people actually paid; the cap stays about the same, the real fee is about half.
+  const { maxFeePerGas, maxPriorityFeePerGas } = fees;
   const feeCapWei = gas * maxFeePerGas;
-  if (balance < feeCapWei)
-    throw new FlowstateError(
-      "Your email wallet needs a little CELO for the network fee. Add CELO to this wallet, then review your vote again. No votes or credits have been spent.",
-    );
   return {
     ...status,
     additional: String(additional),
@@ -135,6 +133,8 @@ export async function prepareFlowstateVote(
     maxFeePerGas: String(maxFeePerGas),
     maxPriorityFeePerGas: String(maxPriorityFeePerGas),
     feeCapWei: String(feeCapWei),
+    /** The wallet can't cover the cap yet. The route tops it up from the gas grant before answering. */
+    short: balance < feeCapWei,
   };
 }
 
