@@ -1,4 +1,4 @@
-import type { WalletClient } from "viem";
+import type { Chain, TypedDataDefinition, WalletClient } from "viem";
 
 /**
  * Provider-agnostic auth contract. UI code only talks to this (via useAuth / useWallet);
@@ -70,6 +70,12 @@ export interface AuthApi {
    * every external wallet (D22). Deploy signing goes through this. Throws if no wallet is connected.
    */
   getWalletClient(): Promise<WalletClient>;
+  /**
+   * Signs one EIP-712 message for another chain (the GoodCash top-up permit on Base, D120): moves the wallet to
+   * `chain` if it can, signs, and always moves it back to the chain it was on. A wallet that can't switch signs
+   * without switching. Throws if no wallet is connected, the wallet refuses, or the answer isn't a signature.
+   */
+  signTypedDataOn(chain: Chain, typedData: TypedDataDefinition): Promise<`0x${string}`>;
   /** Only for embedded wallets: opens Magic's key reveal. */
   exportKey?: () => Promise<void>;
 }

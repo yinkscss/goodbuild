@@ -1,4 +1,4 @@
-import { createWalletClient, custom, type EIP1193Provider, type WalletClient } from "viem";
+import { createWalletClient, custom, type Chain, type EIP1193Provider, type WalletClient } from "viem";
 import { celo, celoSepolia } from "viem/chains";
 
 /** The Celo chains GoodBuild signs on (viem definitions, D17 / P1). */
@@ -18,7 +18,11 @@ export function walletClientFor(provider: EIP1193Provider, address: `0x${string}
 
 /** Switch a wallet to a Celo chain, adding it first if the wallet doesn't know it (error 4902). */
 export async function switchWalletChain(client: WalletClient, chainId: number): Promise<void> {
-  const chain = celoChainFor(chainId);
+  await switchWalletTo(client, celoChainFor(chainId));
+}
+
+/** Switch a wallet to any chain (Base for the GoodCash top-up permit, D120), adding it first if needed. */
+export async function switchWalletTo(client: WalletClient, chain: Chain): Promise<void> {
   try {
     await client.switchChain({ id: chain.id });
   } catch (error) {

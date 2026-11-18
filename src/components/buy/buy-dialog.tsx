@@ -3,10 +3,13 @@
 import * as React from "react";
 
 import { Check, ChevronDown, Landmark, ShieldCheck, Wallet } from "lucide-react";
+import { base } from "viem/chains";
 
 import { ActionButton, Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { useAuth } from "@/lib/auth/context";
+
+import { canHostSign, makeTopUpSigner } from "./host-signing";
 import { STEPS, formatAmount, nairaValid, statusIndex, type Asset, type TopUpStatus } from "./buy-logic";
 
 const HOW = [
@@ -29,7 +32,7 @@ interface WidgetEvent {
 }
 declare global {
   interface Window {
-    GoodCash?: { open: (options: Record<string, unknown>) => unknown };
+    GoodCash?: { open: (options: Record<string, unknown>) => unknown; version?: string };
   }
 }
 
@@ -70,7 +73,12 @@ function BuyPanel({ defaultAsset, onClose, onDelivered }: { defaultAsset: Asset;
   const wallet = auth.wallet?.address ?? auth.user?.wallet ?? null;
   const [asset, setAsset] = React.useState<Asset>(defaultAsset);
   const [naira, setNaira] = React.useState("5000");
-  const [config, setConfig] = React.useState<{ enabled: boolean; publishableKey: string | null; test: boolean } | null | undefined>(undefined);
+  const [config, setConfig] = React.useState<{ enabled: boolean; publishableKey: string | null; test: boolean; hostSigning?: boolean } | null | undefined>(undefined);
+  // The signer reads the connected wallet when GoodCash asks, not when the panel opened.
+  const authRef = React.useRef(auth);
+  React.useEffect(() => {
+    authRef.current = auth;
+  });
   // A quote belongs to the amount and asset it was asked for; for any other it is still loading.
   const [quoteState, setQuoteState] = React.useState<{ key: string; quote: Quote | null; error: string | null } | null>(null);
   const [order, setOrder] = React.useState<{ id: string | null; status: TopUpStatus } | null>(null);
@@ -164,6 +172,21 @@ function BuyPanel({ defaultAsset, onClose, onDelivered }: { defaultAsset: Asset;
       setPanelReady(false);
       setStage("pay");
       container.current.replaceChildren();
+      // Host signing (D120): the person is already signed in here (often a Magic email wallet GoodCash can't see), so our
+      // page signs the one top-up permit and the widget skips its connect screen. Off, or on an older widget, nothing changes.
+      const sessionWallet = auth.user?.wallet ?? null;
+      const host = canHostSign({ enabled: config.hostSigning, widgetVersion: window.GoodCash?.version, sessionWallet, connectedWallet: auth.wallet?.address });
+      const hostOptions =
+        host && sessionWallet
+          ? {
+              wallet: sessionWallet,
+              signTypedData: makeTopUpSigner({
+                wallet: sessionWallet,
+                signer: () => authRef.current.wallet?.address,
+                sign: (permit) => authRef.current.signTypedDataOn(base, permit),
+              }),
+            }
+          : {};
       // Embed mode with our own container: the panel is an iframe inside this dialog, so the dialog's focus and click handling
       // never fights an overlay on the page. The wallet is pinned to the signed-in one.
       handle.current = window.GoodCash?.open({
@@ -175,6 +198,7 @@ function BuyPanel({ defaultAsset, onClose, onDelivered }: { defaultAsset: Asset;
         asset,
         wallet,
         partnerRef: auth.user?.id,
+        ...hostOptions,
         onEvent: (e: WidgetEvent) => {
           if (e.type === "closed") {
             // Closed before an order existed: back to the form. With an order, keep following it.
@@ -369,6 +393,10 @@ function BuyPanel({ defaultAsset, onClose, onDelivered }: { defaultAsset: Asset;
       {showPay && (
         <div className="mt-5 space-y-4" aria-live="polite">
           {!order && <p className="text-center text-xs text-grey-600">Follow the steps above. This screen updates when your order starts.</p>}
+
+          {order?.status === "paid_in" && (
+            <p className="rounded-block bg-tint px-4 py-3 text-xs text-grey-600">Your naira arrived. If the last step stops, your money is safe in your wallet. Open Buy {label} again to finish.</p>
+          )}
 
           {order && !done && !failed && (
             <ol className="rounded-card bg-surface p-5 shadow-card">

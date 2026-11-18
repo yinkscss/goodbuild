@@ -56,4 +56,7 @@ export const unconfiguredAuth: AuthApi = {
   getWalletClient: async () => {
     throw new Error("No wallet is connected.");
   },
+  signTypedDataOn: async () => {
+    throw new Error("No wallet is connected.");
+  },
 };
