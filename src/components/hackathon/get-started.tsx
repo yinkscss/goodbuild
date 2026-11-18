@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth/context";
+import { InviteCard } from "./invite-card";
 import { Quests } from "./quests";
 import { RegisterSteps } from "./register-steps";
 import { DEPLOY_CREDITS, START_CREDITS, useHackathonClaim } from "./use-hackathon-claim";
@@ -26,7 +27,7 @@ function Signed({ userId }: { userId: string }) {
   const claim = useHackathonClaim(userId, () => undefined);
   if (!claim.status) return <p role="status">Loading your hackathon status…</p>;
   if (!claim.status.registered) return <RegisterSteps />;
-  const { startCredits, deployCredits, deployPending } = claim.status;
+  const { startCredits, deployCredits, deployPending, referralPending } = claim.status;
   return (
     <div className="grid gap-4">
       <div className="rounded-card bg-violet p-8 text-white shadow-card">
@@ -37,20 +38,21 @@ function Signed({ userId }: { userId: string }) {
         </p>
         <div className="mt-6 flex flex-wrap items-center gap-3">
           <Link href="/" className="rounded-full bg-white px-6 py-3 text-sm font-medium text-ink outline-none focus-visible:shadow-focus">Start building →</Link>
-          {deployPending && (
+          {(deployPending || referralPending) && (
             <button
               type="button"
               disabled={claim.busy}
               onClick={() => void claim.run()}
               className="rounded-full bg-white/15 px-6 py-3 text-sm font-medium text-white outline-none hover:bg-white/25 focus-visible:shadow-focus disabled:opacity-60"
             >
-              {claim.busy ? "Checking…" : `I’ve deployed · claim ${DEPLOY_CREDITS} more`}
+              {claim.busy ? "Checking…" : deployPending ? `I’ve deployed · claim ${DEPLOY_CREDITS} more` : "Claim your invite bonus"}
             </button>
           )}
         </div>
         {claim.error && <p role="alert" className="mt-3 text-sm">{claim.error}</p>}
       </div>
       <Quests registered deployClaimed={deployCredits > 0} />
+      <InviteCard />
       <div className="grid gap-4 sm:grid-cols-3">
         {NEXT.map((n) => (
           <Link key={n.href} href={n.href} className="rounded-card bg-surface p-6 shadow-card outline-none hover:shadow-pop focus-visible:shadow-focus">

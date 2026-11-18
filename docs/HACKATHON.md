@@ -90,3 +90,6 @@ The required FlowState step supports direct voting with the existing Magic email
 ## 13. Weekly Rising Star (19 Nov 2026, D135)
 `src/lib/hackathon-weeks.ts` picks each finished week's winner from the daily snapshots (D134); the leaderboard shows "★ Rising Star" and the owner's badge row gets a Rising Star badge. Weeks end 25 Nov, 2 Dec and 10 Dec and are read from the snapshots dated the next day.
 
+
+## 14. Referral credits (19 Nov 2026, D136)
+You and a friend each get 10 credits when they register through your link and deploy their first app. One bonus per GoodDollar identity; up to 5 friends can pay you; the friend is always paid. Own pot of 1,000 credits (`HACKATHON_REFERRAL_BUDGET_CREDITS`), separate from the registration budget. Nothing after 10 Dec.

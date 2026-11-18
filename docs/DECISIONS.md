@@ -1671,3 +1671,11 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - **Limits:** needs the worker to have written the boundary-day snapshot. If it missed a day, the next snapshot is used; if a week can't be measured it is skipped, not guessed.
 - **Not built:** referral credits.
 
+
+### D136. Referral credits (19 Nov 2026)
+- Decided by: the owner (picked referrals next). Built by Claude. The 1,000-credit referral pot and the 5-friend limit are Claude's numbers until the owner confirms.
+- **What:** every registered builder has an invite link (`/hackathon?ref=CODE`) on Get started. When someone registers through it and later makes their first Celo deploy, the invited builder and the inviter each get 10 build credits.
+- **Rules:** one bonus per GoodDollar identity (keyed on the invited person's root, so a second account can't claim it again). The invited builder is always paid; an inviter is paid for up to 5 friends. Codes are random, never derived from a wallet or user id. A code only counts in the call that creates the registration: someone already registered who opens a link gets nothing. A bad, unknown, self or same-identity code is ignored and registration goes ahead as normal. Nothing is paid after the close (10 Dec).
+- **Money:** a separate pot (`HACKATHON_REFERRAL_BUDGET_CREDITS`, default 1,000 credits) checked in the same hackathon lock, so referrals can't use up the 20 start credits promised to new builders. Both bonuses are paid together or not at all. If the pot is short the referral is held, the invited builder sees "Claim your invite bonus" on Get started, and a later claim pays it once the pot is topped up. Ledger entries are `adjust` with per-identity idempotency keys. The admin report shows referral credits paid against that pot.
+- **How:** new table `hackathon_referrals` and `referral_code` on registrations (migration `0027`; renumber if another branch takes it). `POST /api/hackathon` takes an optional `{ ref }`; `GET /api/hackathon/referral` returns the code and counts. The link is kept in localStorage from `?ref=` until the person registers.
+- **Not verified in a browser** (see D132).

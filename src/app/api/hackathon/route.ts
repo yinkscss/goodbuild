@@ -34,7 +34,7 @@ export async function GET() {
 }
 
 /** Register for the hackathon and collect any credits that are due. Safe to repeat. */
-export async function POST() {
+export async function POST(request: Request) {
   try {
     const session = await requireSession();
     const db = await getDb();
@@ -72,8 +72,11 @@ export async function POST() {
             { status: 403, headers: NO_STORE },
           );
       }
+      // An invite code may come with the call. A missing body, bad JSON or a bad code changes nothing (D136).
+      const body = (await request.json().catch(() => null)) as { ref?: unknown } | null;
       const status = await claimHackathon(await getDb(), session.user, {
         readRoot: (wallet) => readGoodIdRoot(client, wallet),
+        ref: body?.ref,
       });
       return NextResponse.json(status, { headers: NO_STORE });
     } catch (error) {
