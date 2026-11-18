@@ -1,7 +1,7 @@
 /** Referral credits (D136). Client-safe constants and the code format. */
 export const REFERRAL_BONUS_CREDITS = 10;
 /** How many invited builders can earn one inviter the bonus. The invited builder is always paid. */
-export const MAX_PAID_REFERRALS = 5;
+export const MAX_PAID_REFERRALS = 3;
 /** Its own pot, so referrals can't use up the 20 start credits promised to new builders. */
 export const DEFAULT_REFERRAL_BUDGET_CREDITS = 1_000;
 export const REFERRAL_STORAGE_KEY = "gb:hk-ref";

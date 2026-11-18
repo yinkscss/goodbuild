@@ -92,4 +92,4 @@ The required FlowState step supports direct voting with the existing Magic email
 
 
 ## 14. Referral credits (19 Nov 2026, D136)
-You and a friend each get 10 credits when they register through your link and deploy their first app. One bonus per GoodDollar identity; up to 5 friends can pay you; the friend is always paid. Own pot of 1,000 credits (`HACKATHON_REFERRAL_BUDGET_CREDITS`), separate from the registration budget. Nothing after 10 Dec.
+You and a friend each get 10 credits when they register through your link and deploy their first app. One bonus per GoodDollar identity; up to 3 friends can pay you; the friend is always paid. Own pot of 1,000 credits (`HACKATHON_REFERRAL_BUDGET_CREDITS`), separate from the registration budget. Nothing after 10 Dec.
