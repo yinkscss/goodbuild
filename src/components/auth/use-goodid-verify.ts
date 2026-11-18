@@ -5,11 +5,50 @@ import * as React from "react";
 import { useAuth } from "@/lib/auth/context";
 import { faceVerificationLink, faceVerificationMessage } from "@/lib/goodid";
 
-const CHECKS_AFTER_RETURN = 6;
-const CHECK_INTERVAL_MS = 3000;
+/** About 100s: GoodDollar can take a while to register a face check on Celo. */
+const CHECKS_AFTER_RETURN = 20;
+const CHECK_INTERVAL_MS = 5000;
+/** Set just before leaving for GoodDollar, so coming back is recognised even if the address loses its ?isVerified. */
+const PENDING_KEY = "goodbuild:goodid-pending";
+
+function pending(action: "get" | "set" | "clear"): boolean {
+  try {
+    if (action === "set") window.sessionStorage.setItem(PENDING_KEY, "1");
+    else if (action === "clear") window.sessionStorage.removeItem(PENDING_KEY);
+    else return window.sessionStorage.getItem(PENDING_KEY) === "1";
+  } catch {
+    // Storage blocked (private window, some in-app browsers): the address hint still works.
+  }
+  return false;
+}
+/** A slow connection or a wallet pop-up that never opened must not leave the button spinning forever. */
+const CHECK_TIMEOUT_MS = 15_000;
+const WALLET_TIMEOUT_MS = 90_000;
+
+const NO_ANSWER = "That's taking too long. Check your connection and press Verify to try again.";
+const WALLET_NO_ANSWER = "We didn't hear back from your wallet. Open it, then press Verify to try again.";
+
+/** Rejects with `message` if `promise` hasn't settled in `ms`. */
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), ms);
+  });
+  return Promise.race([promise, deadline]).finally(() => clearTimeout(timer));
+}
 
 async function checkOnChain(): Promise<boolean> {
-  const res = await fetch("/api/account/goodid", { method: "POST" });
+  const controller = new AbortController();
+  const abortTimer = setTimeout(() => controller.abort(), CHECK_TIMEOUT_MS);
+  try {
+    return await withTimeout(checkOnChainRequest(controller.signal), CHECK_TIMEOUT_MS, NO_ANSWER);
+  } finally {
+    clearTimeout(abortTimer);
+  }
+}
+
+async function checkOnChainRequest(signal: AbortSignal): Promise<boolean> {
+  const res = await fetch("/api/account/goodid", { method: "POST", signal });
   const body = (await res.json().catch(() => ({}))) as { verified?: boolean; message?: string };
   if (!res.ok) throw new Error(body.message ?? "We couldn't check that. Try again.");
   return Boolean(body.verified);
@@ -39,13 +78,16 @@ export function useGoodIdVerify(onVerified: () => unknown, returnTo?: () => stri
     let stopped = false;
     void Promise.resolve().then(async () => {
       const url = new URL(window.location.href);
-      const result = url.searchParams.get("isVerified");
+      let result = url.searchParams.get("isVerified");
+      // Back without the hint (some in-app browsers drop it): we left for GoodDollar, so ask the chain.
+      if (result === null && pending("get")) result = "true";
       if (result === null) return;
       const reason = url.searchParams.get("reason");
       url.searchParams.delete("isVerified");
       url.searchParams.delete("reason");
       window.history.replaceState(null, "", url);
       if (result !== "true") {
+        pending("clear");
         setShowLinkGuide(true);
         setNote(reason ? `GoodDollar couldn't verify you: ${reason.slice(0, 200)}` : "GoodDollar couldn't verify you.");
         return;
@@ -54,6 +96,7 @@ export function useGoodIdVerify(onVerified: () => unknown, returnTo?: () => stri
       for (let i = 0; i < CHECKS_AFTER_RETURN && !stopped; i++) {
         const verified = await checkOnChain().catch(() => false);
         if (verified) {
+          pending("clear");
           setBusy(false);
           await onVerified();
           return;
@@ -61,6 +104,7 @@ export function useGoodIdVerify(onVerified: () => unknown, returnTo?: () => stri
         await new Promise((resolve) => window.setTimeout(resolve, CHECK_INTERVAL_MS));
       }
       if (!stopped) {
+        // The flag stays, so reloading the page picks the check up again.
         setBusy(false);
         setNote("GoodDollar hasn't confirmed it yet. Wait a minute and press Verify again.");
       }
@@ -79,16 +123,18 @@ export function useGoodIdVerify(onVerified: () => unknown, returnTo?: () => stri
     try {
       // Already verified with GoodDollar? No signature or face scan needed.
       if (await checkOnChain()) {
+        pending("clear");
         setBusy(false);
         await onVerified();
         return;
       }
-      const client = await auth.getWalletClient();
-      const [address] = await client.getAddresses();
+      const client = await withTimeout(auth.getWalletClient(), WALLET_TIMEOUT_MS, WALLET_NO_ANSWER);
+      const [address] = await withTimeout(client.getAddresses(), WALLET_TIMEOUT_MS, WALLET_NO_ANSWER);
       if (!address || address.toLowerCase() !== auth.user?.wallet.toLowerCase()) {
         throw new Error("Switch to the wallet you signed in with, then try again.");
       }
-      const signature = await client.signMessage({ account: address, message: faceVerificationMessage(address) });
+      const signature = await withTimeout(client.signMessage({ account: address, message: faceVerificationMessage(address) }), WALLET_TIMEOUT_MS, WALLET_NO_ANSWER);
+      pending("set");
       window.location.assign(faceVerificationLink(address, signature, returnTo ? returnTo() : window.location.href));
     } catch (error) {
       setNote(error instanceof Error && !/reject|denied/i.test(error.message) ? error.message : "Verification was cancelled. Press Verify to try again.");
