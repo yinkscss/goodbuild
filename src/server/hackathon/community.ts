@@ -231,12 +231,26 @@ export async function approveEntry(
   });
 }
 
+/**
+ * A confirmed FlowState vote, from either record: `flowstate_voters` (D126) or a hackathon signup that
+ * was marked "voted" before that table existed and was never copied over.
+ */
 async function hasVoted(db: Db, userId: string) {
   const [row] = await db
     .select({ votedAt: flowstateVoters.votedAt })
     .from(flowstateVoters)
     .where(eq(flowstateVoters.userId, userId));
-  return Boolean(row?.votedAt);
+  if (row?.votedAt) return true;
+  const [signup] = await db
+    .select({ flowstate: hackathonParticipants.flowstate })
+    .from(hackathonParticipants)
+    .where(
+      and(
+        eq(hackathonParticipants.hackathon, HACKATHON_ID),
+        eq(hackathonParticipants.userId, userId),
+      ),
+    );
+  return signup?.flowstate === "voted";
 }
 
 /** The entries one verified person has approved in this hackathon, whichever wallet they used. */

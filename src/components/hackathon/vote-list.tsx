@@ -4,7 +4,7 @@ import { useAuth } from "@/lib/auth/context";
 import { useSendGate } from "@/components/auth/send-gate";
 import { useGoodIdVerify } from "@/components/auth/use-goodid-verify";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
-import { buildLadder } from "@/lib/hackathon-ladder";
+import { allocateHackathonRewards } from "@/lib/hackathon-rewards";
 import { MAX_APPROVALS_PER_PERSON, type VoteStatus } from "@/lib/hackathon-vote";
 import { FlowstateVote } from "./flowstate-vote";
 
@@ -76,7 +76,8 @@ export function VoteList() {
     if (pending && user) setPicked(pending);
   }, [ready, user, loadStatus]);
 
-  const ladder = entries ? buildLadder(entries).rows : [];
+  // Published projects first by rank, then ideas that have no live app yet (they can't be approved).
+  const ladder = entries ? allocateHackathonRewards(entries).map((entry) => ({ entry })) : [];
   const ready_ = status.signedIn && status.verified && status.voted;
   const left = status.max - status.used;
 
@@ -132,7 +133,7 @@ export function VoteList() {
       {error && <p role="alert" className="mt-3 text-sm text-danger">{error}</p>}
       {notice && <p role="status" className="mt-3 text-sm text-violet">{notice}</p>}
       {ladder.length === 0 ? (
-        <p className="mt-4 text-sm text-grey-600">No published projects yet. Approvals open as soon as a builder adds a live app.</p>
+        <p className="mt-4 text-sm text-grey-600">No projects yet. The first idea or app to be added shows up here.</p>
       ) : (
         <ul className="m-0 mt-4 grid list-none gap-3 p-0 sm:grid-cols-2">
           {ladder.map(({ entry }) => {
@@ -141,7 +142,7 @@ export function VoteList() {
             return (
               <li key={entry.id} id={entry.id} className="flex flex-col gap-3 rounded-card bg-surface p-5 shadow-card">
                 <div className="flex items-start justify-between gap-3">
-                  <small className="text-grey-600">#{entry.rank} · by {entry.alias}</small>
+                  <small className="text-grey-600">{entry.rank ? `#${entry.rank}` : "Idea"} · by {entry.alias}</small>
                   <strong className="whitespace-nowrap text-sm">
                     {entry.approvals} {entry.approvals === 1 ? "approval" : "approvals"}
                   </strong>
@@ -151,9 +152,13 @@ export function VoteList() {
                   <p className="mt-1 text-sm text-grey-600">{entry.pitch}</p>
                 </div>
                 <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
-                  <a className="font-medium text-violet underline-offset-4 hover:underline" href={entry.liveUrl} target="_blank" rel="noreferrer">
-                    Try the app ↗
-                  </a>
+                  {entry.liveUrl ? (
+                    <a className="font-medium text-violet underline-offset-4 hover:underline" href={entry.liveUrl} target="_blank" rel="noreferrer">
+                      Try the app ↗
+                    </a>
+                  ) : (
+                    <span className="text-grey-600">Building soon</span>
+                  )}
                   {entry.sourceUrl && (
                     <a className="font-medium text-violet underline-offset-4 hover:underline" href={entry.sourceUrl} target="_blank" rel="noreferrer">
                       Source code ↗
@@ -163,10 +168,10 @@ export function VoteList() {
                 <button
                   type="button"
                   className="mt-auto w-fit rounded-full bg-violet px-5 py-2.5 text-sm font-medium text-white outline-none focus-visible:shadow-focus disabled:opacity-50"
-                  disabled={mine || out || busyId !== null}
+                  disabled={!entry.liveUrl || mine || out || busyId !== null}
                   onClick={() => choose(entry.id)}
                 >
-                  {busyId === entry.id ? "Saving…" : mine ? "✓ Approved" : out ? "No approvals left" : "Approve"}
+                  {busyId === entry.id ? "Saving…" : !entry.liveUrl ? "Not live yet" : mine ? "✓ Approved" : out ? "No approvals left" : "Approve"}
                 </button>
               </li>
             );

@@ -19,7 +19,7 @@ beforeEach(async () => {
 });
 const wallet = () =>
   `0x${randomUUID().replaceAll("-", "").padEnd(40, "0")}` as `0x${string}`;
-async function user({ voted = true } = {}) {
+async function user({ voted = true, voteRecord = true } = {}) {
   const u = (
     await db.insert(users).values({ wallet: wallet() }).returning()
   )[0];
@@ -31,7 +31,7 @@ async function user({ voted = true } = {}) {
       .set({ flowstate: "voted" })
       .where(eq(hackathonParticipants.userId, u.id));
   // Approving needs the confirmed vote in flowstate_voters, which also covers people who never signed up (D126, D132).
-  if (voted) await db.insert(flowstateVoters).values({ userId: u.id, votedAt: new Date(), txHash: "0xabc" });
+  if (voted && voteRecord) await db.insert(flowstateVoters).values({ userId: u.id, votedAt: new Date(), txHash: "0xabc" });
   return u;
 }
 it("won't take a project until the builder has verified and voted (D131)", async () => {
@@ -306,4 +306,12 @@ it("reports the steps done and the approvals used, for the vote buttons", async 
   expect(await voteStatus(db, voter, rootOf)).toMatchObject({ signedIn: true, verified: true, voted: true, used: 1, max: 3, entryIds: [entry.id] });
   expect(await voteStatus(db, voter, async () => null)).toMatchObject({ verified: false, voted: true, used: 0 });
   expect(await voteStatus(db, null, async () => null)).toMatchObject({ signedIn: false, verified: false, voted: false });
+});
+
+it("counts a vote recorded only on the hackathon signup, from before flowstate_voters existed", async () => {
+  const early = await user({ voted: true, voteRecord: false });
+  expect(await db.select().from(flowstateVoters).where(eq(flowstateVoters.userId, early.id))).toHaveLength(0);
+  const entry = await liveEntry("a");
+  await expect(approveEntry(db, early, entry.id, rootFor(wallet(), early.wallet))).resolves.toMatchObject({ approved: true, used: 1 });
+  expect(await voteStatus(db, early, async () => null)).toMatchObject({ voted: true });
 });
