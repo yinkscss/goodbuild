@@ -1503,3 +1503,14 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - **Not covered:** the naira top-up (GoodCash panel) gets the signed-in address and runs in its own window; if that panel itself asks to connect a wallet, this fix doesn't change it.
 - **UNVERIFIED:** on a real phone with WalletConnect, and how long Magic keeps an email login (set in the Magic dashboard; if it is shorter than our 7-day session, email users see the "sign in again" message after it).
 - **Not fixed here: a new address after Disconnect and email sign-in again.** Code can't cause it: Magic gives one fixed wallet per email for one publishable key, and GoodBuild keys accounts by address, so a different address means a different email (a typo, a dot or a `+` in a Gmail address) or a different Magic key on the server. Needs the two addresses and the Magic dashboard to tell which.
+
+### D121. A file attached in the chat goes with the message and shows in its bubble
+- **Date:** 2026-11-18. **Decided by:** Claude, from the user's bug report (an attached image stayed as a chip above the composer after sending, so it looked like it hadn't gone through).
+- **Cause:** the composer listed every file uploaded to the project, always, and messages didn't record which files went with them.
+- **The fix:**
+  - The turns API takes `assetIds` (only the project's own files, only on a new message) and saves them on the user message (`meta.assetIds`). The client sends the files waiting in the composer with the next message, whatever sends it (typed, a suggestion chip, resend).
+  - The sent bubble shows those files above the text: image thumbnails, other files as a named chip. It shows at once (optimistic), before the server answers.
+  - The composer's chips are only files uploaded since the last message (`pending`, worked out in `src/lib/attachments.ts`). Files sent earlier are behind a small "Files N" button next to attach, where they can still be removed or re-classified. A plan answer can't carry files, so a chip waits for the next real message.
+  - Older projects: a file uploaded before the newest message counts as sent, so it doesn't reappear above the composer; older bubbles show no files, since that wasn't recorded.
+- **Unchanged:** the builder still sees every project file on every turn; this is about what the chat shows.
+- **Tests:** `src/lib/attachments.test.ts`, `composer-files.test.tsx`, one in `jobs.test.ts`. Full suite passes.

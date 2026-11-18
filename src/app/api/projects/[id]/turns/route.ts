@@ -6,6 +6,7 @@ import { errorResponse, requireSession } from "@/server/auth/http";
 import { getDb } from "@/server/db/client";
 import { kickWorker } from "@/server/jobs";
 import { startTurn } from "@/server/jobs/jobs";
+import { dbAssetStore } from "@/server/agent/asset-store";
 import { shouldPlanFirst } from "@/server/agent/plan-first";
 import { getOwnedProject } from "@/server/projects";
 
@@ -16,6 +17,8 @@ const body = z
     userMessageId: z.string().uuid().optional(),
     /** "Skip, just build it" while the questions are still being written. */
     skipPlan: z.boolean().optional(),
+    /** Files attached in the composer since the last message: they show in this message's bubble. */
+    assetIds: z.array(z.string().uuid()).max(50).optional(),
   })
   .refine((b) => b.prompt || b.userMessageId, { message: "prompt or userMessageId is required" });
 
@@ -38,10 +41,16 @@ export async function POST(request: Request, ctx: RouteContext<"/api/projects/[i
       return NextResponse.json({ error: "message_not_found" }, { status: 404 });
     }
     const { skipPlan, mode, prompt, userMessageId } = parsed.data;
+    // Only this project's files, and only on a new message (an existing one keeps what it had).
+    let assetIds: string[] | undefined;
+    if (parsed.data.assetIds && prompt && !userMessageId) {
+      const owns = new Set((await dbAssetStore(db).list(id)).map((a) => a.id));
+      assetIds = [...new Set(parsed.data.assetIds)].filter((a) => owns.has(a));
+    }
     // First send plans first (D32), whichever screen it came from: the server decides, not the client.
     const intake = await shouldPlanFirst(db, { projectId: id, userId: session.user.id, prompt, skipPlan });
     // The check, the hold and the queueing are one step, under a lock on this user's balance (D49).
-    const started = await startTurn(db, { projectId: id, userId: session.user.id, mode: intake ? "plan" : mode, prompt, userMessageId, intake });
+    const started = await startTurn(db, { projectId: id, userId: session.user.id, mode: intake ? "plan" : mode, prompt, userMessageId, intake, assetIds });
     if ("refused" in started) return NextResponse.json({ error: started.refused.reason, message: started.refused.message }, { status: 402 });
     const { job } = started;
     kickWorker();
