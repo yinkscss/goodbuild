@@ -1,6 +1,9 @@
 import "server-only";
 
 import { getDb, type Db } from "@/server/db/client";
+import { and, eq } from "drizzle-orm";
+
+import { ledgerEntries } from "@/server/db/schema";
 import { getBalanceMicro } from "@/server/credits/ledger";
 
 export interface CreditSnapshot {
@@ -27,4 +30,24 @@ export async function getCredits(userId: string, database?: Db): Promise<CreditS
     console.warn(`[credits] couldn't read the balance: ${(error as Error).message}`);
   }
   return { balanceMicro, balanceGd: null, usdPerGd: null };
+}
+
+/**
+ * Whether to greet this person with the "get credits" pop-up on home (D131): nothing to spend and never bought
+ * any. A purchase is any deposit in the ledger. A failed read never shows it.
+ */
+export async function needsStartCredits(userId: string, database?: Db): Promise<boolean> {
+  try {
+    const db = database ?? (await getDb());
+    if ((await getBalanceMicro(db, userId)) > 0) return false;
+    const [bought] = await db
+      .select({ id: ledgerEntries.id })
+      .from(ledgerEntries)
+      .where(and(eq(ledgerEntries.userId, userId), eq(ledgerEntries.kind, "deposit")))
+      .limit(1);
+    return !bought;
+  } catch (error) {
+    console.warn(`[credits] couldn't check for the start pop-up: ${(error as Error).message}`);
+    return false;
+  }
 }

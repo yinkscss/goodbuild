@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createTestDb, type Db } from "@/server/db/client";
 import { users } from "@/server/db/schema";
 import { creditState } from "@/lib/home";
-import { getCredits } from "./credits";
+import { getCredits, needsStartCredits } from "./credits";
 import { postLedgerEntry } from "./credits/ledger";
 
 let db: Db;
@@ -44,5 +44,22 @@ describe("getCredits", () => {
     expect(await getCredits(userId, broken)).toEqual({ balanceMicro: null, balanceGd: null, usdPerGd: null });
     expect(warn).toHaveBeenCalledOnce();
     warn.mockRestore();
+  });
+});
+
+describe("needsStartCredits (D131)", () => {
+  it("greets someone with nothing to spend who never bought any", async () => {
+    expect(await needsStartCredits(userId, db)).toBe(true);
+  });
+
+  it("not when they have credits, even free ones", async () => {
+    await postLedgerEntry(db, { userId, kind: "adjust", amountMicro: 200_000, idempotencyKey: "hackathon:one", refType: "hackathon", refId: "x" });
+    expect(await needsStartCredits(userId, db)).toBe(false);
+  });
+
+  it("not when they bought before, even with the balance spent", async () => {
+    await postLedgerEntry(db, { userId, kind: "deposit", amountMicro: 500_000, idempotencyKey: "topup:spent" });
+    await postLedgerEntry(db, { userId, kind: "usage", amountMicro: -500_000, idempotencyKey: "usage:spent" });
+    expect(await needsStartCredits(userId, db)).toBe(false);
   });
 });

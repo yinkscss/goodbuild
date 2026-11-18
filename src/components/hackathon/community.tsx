@@ -264,6 +264,8 @@ function Submission() {
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState("");
   const [saved, setSaved] = React.useState<string | null>(null);
+  /** Submitting needs verify and vote first (D131). */
+  const [voted, setVoted] = React.useState(false);
   React.useEffect(() => {
     if (!user) return;
     let stopped = false;
@@ -278,6 +280,7 @@ function Submission() {
           setEmail(participant.email);
           setEmailLocked(true);
         }
+        setVoted(participant?.flowstate === "voted");
       })
       .catch((e) => {
         if (!stopped) setError(e.message);
@@ -321,6 +324,19 @@ function Submission() {
       </div>
     );
   if (loading) return <p role="status">Loading your submission…</p>;
+  if (!voted)
+    return (
+      <div className={`${styles.card} hk-community-empty`}>
+        <h2 className="text-2xl font-bold">Verify and vote first.</h2>
+        <p className="my-4">
+          Verify with GoodDollar and support our project with your vote. Then
+          you can submit your project here.
+        </p>
+        <a className={styles.btnV} href="/home/hackathon#progress">
+          Go to the steps
+        </a>
+      </div>
+    );
   return (
     <form
       className="hk-form"
