@@ -1648,3 +1648,10 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - **New:** `GET /api/hackathon/votes` (steps done, approvals used and which), `src/lib/hackathon-vote.ts`, `vote-list.tsx`, `get-started.tsx`, `home-tabs.tsx`. The old gallery in `community.tsx` is removed.
 - **Not verified in a browser:** the dev server wouldn't run in this environment (Turbopack file watching is blocked by the sandbox, and the webpack fallback chokes on Tailwind's native module). Server rules are covered by tests; the pages are typechecked and linted only.
 
+### D133. Quests and badges on Get started (19 Nov 2026)
+- Decided by: the owner (asked for quests next). Built by Claude.
+- **What:** a quest list and badge row for registered builders on `/home/hackathon` (`quests.tsx`, rules in `src/lib/hackathon-quests.ts`). Six quests: register (+20 credits), deploy (+30 credits), publish, use your 3 approvals, get 10 approvals (Bronze), reach the top 20. Badges: First approval, Full ballot, Published, Bronze, Silver, Gold, Prize zone.
+- **No new tables, no new money.** Everything is read from what exists: the registration claim, `GET /api/hackathon/votes`, and the public entry list. The only credits are the 20 + 30 the existing claims already pay. Badges never pay G$ (no incentive to farm votes).
+- **Changed from the preview:** the "Talent spotter (5 approvals)" badge is gone, because D132 caps approvals at 3. "Scout" (approved a project that finished top 20) needs final rankings, so it is not built.
+- **Not built:** weekly Rising Star (needs a snapshot job), referral credits (new rules and tables), rank-movement arrows (need a daily rank snapshot).
+

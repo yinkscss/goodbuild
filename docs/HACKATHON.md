@@ -81,3 +81,6 @@ The required FlowState step supports direct voting with the existing Magic email
 ## 10. Four app pages and three approvals (19 Nov 2026, D132)
 `/home/hackathon` has Get started, My project, Leaderboard and Vote as separate pages (`src/app/home/hackathon/*`, tabs in `home-tabs.tsx`). Registered people see a summary instead of the steps (`get-started.tsx`). Voting is limited to **3 approvals per verified person** and needs a confirmed FlowState vote; the server enforces both (`approveEntry` in `src/server/hackathon/community.ts`, status at `GET /api/hackathon/votes`). The public page has a Vote section and the same list powers `/hackathon/projects` (`vote-list.tsx`).
 
+## 11. Quests and badges (19 Nov 2026, D133)
+`src/lib/hackathon-quests.ts` turns what the app already knows into six quests and seven badges; `quests.tsx` shows them on Get started for registered builders. Credits come only from the existing 20 + 30 claims; badges never carry G$. Weekly Rising Star, referral and rank-movement arrows are still not built.
+
