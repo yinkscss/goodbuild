@@ -7,7 +7,7 @@ import { readGoodIdentityOnCelo } from "@/server/goodid";
 
 const NO_STORE = { "Cache-Control": "no-store" };
 
-/** Claim today's refill (D112). The chain is read again before anything is paid. */
+/** Claim today's refill (D123). The chain is read again before anything is paid. */
 export async function POST() {
   try {
     const session = await requireSession();

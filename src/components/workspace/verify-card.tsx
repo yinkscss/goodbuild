@@ -6,7 +6,7 @@ import { useGoodIdVerify } from "@/components/auth/use-goodid-verify";
 import { Button } from "@/components/ui/button";
 import { LINK_WALLET_GUIDE } from "@/lib/goodid";
 
-/** Under FREE_POLICY=legacy only (D112): shown when an account has used its free AI, and verifying unlocks more (D30). */
+/** Under FREE_POLICY=legacy only (D123): shown when an account has used its free AI, and verifying unlocks more (D30). */
 export function VerifyCard({ onVerified }: { onVerified: () => unknown }) {
   const { busy, note, showLinkGuide, verify } = useGoodIdVerify(onVerified);
 

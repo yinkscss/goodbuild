@@ -9,7 +9,7 @@ import { ledgerEntries, turnJobs, usageEvents, users } from "@/server/db/schema"
 import { postLedgerEntry } from "./ledger";
 
 /**
- * Free credits for verified people (D112). Nobody gets free build credits until GoodDollar's
+ * Free credits for verified people (D123). Nobody gets free build credits until GoodDollar's
  * Identity contract says they are a verified person. Then:
  * - a welcome grant, once per GoodDollar root (so linked wallets share it), posted automatically
  *   when the verification is first seen;
@@ -32,8 +32,8 @@ export const REFILL_CREDITS = 10;
 export const REFILLS_PER_WEEK = 5;
 export const REFILLS_PER_MONTH = 5;
 export const FREE_PLAN_TURNS_PER_DAY = 5;
-/** Everything free in a calendar month, in credits: grants plus free planning. Owner to tune (UNVERIFIED). */
-export const FREE_BUDGET_CREDITS_PER_MONTH = 2_000;
+/** Everything free in a calendar month, in credits ($50): grants plus free planning. Set by the owner, 18 Nov 2026. */
+export const FREE_BUDGET_CREDITS_PER_MONTH = 5_000;
 /**
  * Free AI used before this moment counts against the welcome grant, so people verified under D30
  * aren't paid twice. Free planning after it doesn't. FREE_POLICY_START overrides.
@@ -230,7 +230,7 @@ async function welcomeFor(tx: Db, root: string) {
 
 /**
  * Give a verified person their welcome credits, once per root. Safe to call any number of times.
- * Free AI they had before D112 (D28, D30) comes off it, so nobody is paid twice; if that leaves
+ * Free AI they had before D123 (D28, D30) comes off it, so nobody is paid twice; if that leaves
  * nothing, nothing is posted and the welcome counts as done.
  */
 export async function claimWelcome(db: Db, user: { id: string; wallet: string }, deps: FreeDeps): Promise<WelcomeResult> {

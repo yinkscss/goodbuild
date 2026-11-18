@@ -27,7 +27,7 @@ import { CAP_MESSAGE } from "@/server/credits/cap";
 import { postLedgerEntry } from "@/server/credits/ledger";
 import { POST } from "./route";
 
-/** Uses the D28/D30 free allowances, kept as the FREE_POLICY=legacy off switch (D112). */
+/** Uses the D28/D30 free allowances, kept as the FREE_POLICY=legacy off switch (D123). */
 process.env.FREE_POLICY = "legacy";
 
 

@@ -4,7 +4,7 @@ import { errorResponse, requireSession } from "@/server/auth/http";
 import { freeStatus } from "@/server/credits/free-grants";
 import { getDb } from "@/server/db/client";
 
-/** Where the signed-in person stands with free credits (D112): verified, welcome, refills. No chain read. */
+/** Where the signed-in person stands with free credits (D123): verified, welcome, refills. No chain read. */
 export async function GET() {
   try {
     const session = await requireSession();

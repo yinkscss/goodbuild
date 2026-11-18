@@ -43,13 +43,13 @@ export const FUNDING_UNAVAILABLE_MESSAGE = "This build can't start yet. Please t
 /** A free job's free AI ran out while it waited, and they have credit. A job keeps one source (D48). */
 export const FREE_RAN_OUT_MESSAGE = "Your free AI ran out before this build started. Retry to run it on your credits.";
 
-/** D112: no free builds. Unverified people are told how to get free credits. */
+/** D123: no free builds. Unverified people are told how to get free credits. */
 export const NEEDS_VERIFICATION_MESSAGE = "Verify with GoodDollar to get 40 free credits, or add credits to keep building.";
-/** D112: a verified person whose credits are spent. */
+/** D123: a verified person whose credits are spent. */
 export const OUT_OF_FREE_CREDITS_MESSAGE = "You're out of credits. Claim your daily refill or add credits to keep building.";
-/** D112: today's free plans are used up. */
+/** D123: today's free plans are used up. */
 export const PLAN_LIMIT_MESSAGE = "You've used today's free plans. Add credits, or come back tomorrow.";
-/** D112: the month's free budget is spent. */
+/** D123: the month's free budget is spent. */
 export const FREE_BUDGET_FULL_MESSAGE = "This month's free AI is all used up. It comes back on the 1st. Credits you buy still work.";
 
 export type CapRefusal = {
@@ -121,7 +121,7 @@ async function identitySpentMicro(db: Db, goodidRoot: string): Promise<number> {
 export async function freeRemainingMicro(db: Db, userId: string, env: Record<string, string | undefined> = process.env): Promise<number | null> {
   const [user] = await db.select({ wallet: users.wallet, verifiedAt: users.verifiedAt, goodidRoot: users.goodidRoot }).from(users).where(eq(users.id, userId)).limit(1);
   if (!user || isExempt(user.wallet, env)) return null;
-  // D112: free credits are in the balance now, so there's no separate allowance to add.
+  // D123: free credits are in the balance now, so there's no separate allowance to add.
   if (freePolicy(env) === "verified") return 0;
   if (user.verifiedAt) {
     const spent = user.goodidRoot ? await identitySpentMicro(db, user.goodidRoot) : await spentMicro(db, userId);
@@ -162,7 +162,7 @@ export async function decideFunding(db: Db, userId: string, env: Record<string, 
 type AllowanceInput = { userId: string; projectId?: string; startingJobId?: string; mode?: string };
 
 /**
- * D112: the only free AI is planning, for everyone, up to a number of plan turns a day per account,
+ * D123: the only free AI is planning, for everyone, up to a number of plan turns a day per account,
  * inside the month's free budget. Builds, fixes, uploads and visual checks are paid from the balance,
  * which is where free credits now land. Exempt wallets are handled by the caller.
  */
@@ -286,7 +286,7 @@ export const PLAN_HEADROOM_MICRO = 10_000;
 export async function hasPlanHeadroom(db: Db, userId: string, env: Record<string, string | undefined> = process.env): Promise<boolean> {
   const [user] = await db.select({ wallet: users.wallet, verifiedAt: users.verifiedAt, goodidRoot: users.goodidRoot }).from(users).where(eq(users.id, userId)).limit(1);
   if (!user || isExempt(user.wallet, env)) return true;
-  // D112: planning is free and limited by count, so there's always room to plan first.
+  // D123: planning is free and limited by count, so there's always room to plan first.
   if (freePolicy(env) === "verified") return true;
   const spent = user.verifiedAt && user.goodidRoot ? await identitySpentMicro(db, user.goodidRoot) : await spentMicro(db, userId);
   return spent + PLAN_HEADROOM_MICRO < (user.verifiedAt ? verifiedCapMicro(env) : capMicro(env));
@@ -296,7 +296,7 @@ export async function hasPlanHeadroom(db: Db, userId: string, env: Record<string
 export async function shouldOfferVerification(db: Db, userId: string, env: Record<string, string | undefined> = process.env): Promise<boolean> {
   const [user] = await db.select({ wallet: users.wallet, verifiedAt: users.verifiedAt }).from(users).where(eq(users.id, userId)).limit(1);
   if (!user || user.verifiedAt || isExempt(user.wallet, env)) return false;
-  // D112: verifying is the only way to free credits, so every unverified account is asked, payers too.
+  // D123: verifying is the only way to free credits, so every unverified account is asked, payers too.
   if (freePolicy(env) === "verified") return (await freeBudgetLeftMicro(db, new Date(), env)) >= freeSettings(env).welcomeMicro;
   if ((await spentMicro(db, userId)) < capMicro(env)) return false;
   // Whoever has bought credit hears about credit, never about free limits (plan section 5 item 4).

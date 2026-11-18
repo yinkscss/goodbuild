@@ -7,7 +7,7 @@ import { readGoodIdentityOnCelo, syncGoodId } from "@/server/goodid";
 
 /**
  * Check the signed-in wallet against GoodDollar's Identity contract. Once it's verified, the welcome
- * credits are posted (D112), once per GoodDollar identity, so verifying is all a person has to do.
+ * credits are posted (D123), once per GoodDollar identity, so verifying is all a person has to do.
  * A failed grant never hides the verification: it's reported beside it.
  */
 export async function POST() {

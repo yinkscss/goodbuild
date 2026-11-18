@@ -23,7 +23,7 @@ import { postLedgerEntry } from "./ledger";
  */
 
 /**
- * The least a paid build needs free to start: 10 credits, one daily refill (D112, owner 18 Nov 2026).
+ * The least a paid build needs free to start: 10 credits, one daily refill (D123, owner 18 Nov 2026).
  * It was 35 credits (D49), one worst-case call to the strong model on a large project. At 10, a
  * build on the fast model runs (its worst-case call is about 5 credits), but a strong-model fix on
  * a small balance can fail the check before that call, and the build then stops with "your credits

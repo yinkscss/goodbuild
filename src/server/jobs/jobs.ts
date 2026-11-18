@@ -37,7 +37,16 @@ function rowsOf<T>(result: unknown): T[] {
   return (Array.isArray(result) ? result : ((result as { rows?: T[] }).rows ?? [])) as T[];
 }
 
-type QueueArgs = { projectId: string; userId: string; mode: TurnMode; prompt?: string; userMessageId?: string; intake?: boolean };
+type QueueArgs = {
+  projectId: string;
+  userId: string;
+  mode: TurnMode;
+  prompt?: string;
+  userMessageId?: string;
+  intake?: boolean;
+  /** Files sent with this message (shown in its bubble). Checked against the project by the caller. */
+  assetIds?: string[];
+};
 
 /**
  * Queue a turn. The user message is saved now (queued), so a reload before the job starts
@@ -62,7 +71,7 @@ async function queueTurn(tx: Db, args: QueueArgs, funding: FundingSource, holdMi
   } else {
     const [m] = await tx
       .insert(messages)
-      .values({ projectId: args.projectId, role: "user", content: prompt, status: "queued", meta: { mode: args.mode } })
+      .values({ projectId: args.projectId, role: "user", content: prompt, status: "queued", meta: { mode: args.mode, ...(args.assetIds ? { assetIds: args.assetIds } : {}) } })
       .returning({ id: messages.id });
     messageId = m.id;
   }

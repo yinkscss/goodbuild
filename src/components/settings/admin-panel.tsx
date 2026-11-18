@@ -7,6 +7,7 @@ import type { Address } from "viem";
 import { Button } from "@/components/ui/button";
 import { PanelState, useAccountData, CARD, CHIP } from "@/components/settings/use-account-data";
 import { useAuth } from "@/lib/auth/context";
+import { SignInError } from "@/lib/auth/session-client";
 import { parseArgs } from "@/lib/deploy/admin-functions";
 import { readOwner, runAdminCall } from "@/lib/deploy/admin-call";
 import { explorerTxUrl } from "@/lib/deploy/explorer";
@@ -40,15 +41,13 @@ function FunctionCard({ contract, fn, owner }: { contract: AdminContract; fn: Ad
     setBusy(true);
     setError(null);
     try {
-      if (!auth.wallet) throw new Error("no_wallet");
-      if (auth.wallet.address.toLowerCase() !== auth.user?.wallet.toLowerCase()) throw new Error("wrong_wallet");
-      if (auth.wallet.chainId !== contract.chainId) await auth.switchChain(contract.chainId);
-      const hash = await runAdminCall({ client: await auth.getWalletClient(), account: auth.wallet.address, chainId: contract.chainId, embedded: auth.wallet.kind === "embedded", contract: contract.address as Address, fn: fn.abi, callArgs: parsed.args });
+      const wallet = await auth.ensureWallet(); // reconnects the signed-in wallet if the page lost it
+      if (wallet.chainId !== contract.chainId) await auth.switchChain(contract.chainId);
+      const hash = await runAdminCall({ client: await auth.getWalletClient(), account: wallet.address, chainId: contract.chainId, embedded: wallet.kind === "embedded", contract: contract.address as Address, fn: fn.abi, callArgs: parsed.args });
       setDone(hash);
       setConfirming(false);
     } catch (e) {
-      const m = e instanceof Error ? e.message : "";
-      setError(m === "no_wallet" ? "Connect your wallet from the top bar first." : m === "wrong_wallet" ? "Switch to the wallet you signed in with, then try again." : withdrawErrorMessage(e));
+      setError(e instanceof SignInError ? e.message : withdrawErrorMessage(e));
       setConfirming(false);
     } finally {
       setBusy(false);

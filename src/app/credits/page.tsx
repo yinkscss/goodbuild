@@ -45,7 +45,7 @@ async function CreditsBody() {
   const session = await loadSession();
   const { balanceMicro } = await getCredits(session.user.id);
   const freeMicro = await freeRemainingMicro(await getDb(), session.user.id).catch(() => 0);
-  // D112: free credits are posted to the balance, so there's nothing separate to add.
+  // D123: free credits are posted to the balance, so there's nothing separate to add.
   const grants = freePolicy(process.env) === "verified";
   const totalMicro = balanceMicro === null ? null : balanceMicro + (freeMicro ?? 0);
   let topUps: Awaited<ReturnType<typeof listTopUps>> = [];

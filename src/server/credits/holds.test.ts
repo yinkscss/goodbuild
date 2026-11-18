@@ -32,7 +32,7 @@ import {
 import { balanceFromEntriesMicro, findBalanceMismatches, postLedgerEntry } from "./ledger";
 import { MIGRATIONS, testBackends, type TestDatabase } from "./test-backends";
 
-/** These tests pin the D28/D30 free allowances, kept as the FREE_POLICY=legacy off switch (D112). */
+/** These tests pin the D28/D30 free allowances, kept as the FREE_POLICY=legacy off switch (D123). */
 const LEGACY = { FREE_POLICY: "legacy" };
 process.env.FREE_POLICY = "legacy";
 

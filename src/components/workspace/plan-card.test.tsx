@@ -99,6 +99,13 @@ describe("PlanCard", () => {
     expect(screen.getByText("you crash")).toBeTruthy();
   });
 
+  it("says when a game starts from a ready-made one, in plain words (D114)", () => {
+    const game: PlanIntake["game"] = { name: "Night Lanes", pitch: "Weave through traffic.", loop: "dodge", lose: "you crash", harder: "faster", extras: [], template: "lane-racer", templateName: "Lane racer" };
+    render(<PlanCard intake={{ ...intake({ q1: { picks: ["o1"] } }), game }} />);
+    expect(screen.getByText("Starts from a ready-made lane racer we reshape for you.")).toBeTruthy();
+    expect(screen.queryByText(/template|kit/i)).toBeNull();
+  });
+
   it("is read-only once the build has started", () => {
     render(<PlanCard intake={intake({ q1: { picks: ["o1"] } })} />);
     expect(screen.getByText("Send money")).toBeTruthy();

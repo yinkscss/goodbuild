@@ -116,7 +116,7 @@ describe.each(testBackends())("free grants on $name", (backend) => {
     expect(await getBalanceMicro(db, second.id)).toBe(0);
   });
 
-  it("takes free AI used before D112 off the welcome, so nobody is paid twice", async () => {
+  it("takes free AI used before D123 off the welcome, so nobody is paid twice", async () => {
     const r = address();
     const u = await newUser();
     const linked = await newUser();
@@ -199,7 +199,7 @@ describe.each(testBackends())("free grants on $name", (backend) => {
     await expect(claimWelcome(db, u, verifiedAs(address(), null, { FREE_POLICY: "legacy" }))).rejects.toMatchObject({ code: "off" });
   });
 
-  describe("funding under D112", () => {
+  describe("funding under D123", () => {
     async function withProject() {
       const u = await newUser();
       const project = await createProjectFromPrompt(db, u.id, { prompt: "A tip jar", network: "celo-sepolia" });

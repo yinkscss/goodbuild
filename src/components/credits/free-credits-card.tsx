@@ -46,7 +46,7 @@ function refillLine(refill: NonNullable<FreeStatusJson["refill"]>) {
 }
 
 /**
- * Free credits (D112). Not verified: verify with GoodDollar to get the welcome credits, which the
+ * Free credits (D123). Not verified: verify with GoodDollar to get the welcome credits, which the
  * server adds as soon as it sees the verification on-chain. Verified: tap to claim the daily refill,
  * with this month's claims shown as five slots. `compact` is the workspace version: it shows only
  * when there's something to do.

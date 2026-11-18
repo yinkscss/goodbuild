@@ -1,6 +1,6 @@
-# Verified free credits: build plan (D112)
+# Verified free credits: build plan (D123)
 
-Status: built on 18 Nov 2026 (see D112 "As built"). Steps 1 to 4, 6 and 7 are done. Step 5 is handled inside `claimWelcome` (earlier free use comes off the welcome), so no script is needed. Step 8 (removing the D28/D30 settings) waits until `FREE_POLICY=legacy` is no longer wanted as an off switch. Rules: [DECISIONS.md](DECISIONS.md) D112. Flow mock: https://claude.ai/artifact/FfoVGAPT5tPFoAYxHa9vPf
+Status: built on 18 Nov 2026 (see D123 "As built"). Steps 1 to 4, 6 and 7 are done. Step 5 is handled inside `claimWelcome` (earlier free use comes off the welcome), so no script is needed. Step 8 (removing the D28/D30 settings) waits until `FREE_POLICY=legacy` is no longer wanted as an off switch. Rules: [DECISIONS.md](DECISIONS.md) D123. Flow mock: https://claude.ai/artifact/FfoVGAPT5tPFoAYxHa9vPf
 
 ## Steps
 1. **Settings and pure rules** (`src/server/credits/free-grants.ts`): welcome amount, refill amount, the per-day, per-week and per-month limits, and a pure `refillStatus(claims, now)` that answers "can claim / claimed today / weekly limit reached / monthly limit reached", with the next reset time. Unit tests for week and month edges (Monday 00:00 UTC, the 1st, a week that spans two months).

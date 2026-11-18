@@ -793,6 +793,49 @@ describe("kits in a turn (D71)", { timeout: 120_000 }, () => {
     expect(files["src/game/GameOver.tsx"]).toContain("export function GameOver");
   });
 
+  it("turns the games kit on with the 3D kit for a 3D game (D113)", async () => {
+    const maze = await buildFromPlan("A 3D maze game where a monster chases you");
+    expect(JSON.parse(maze["src/goodbuild.json"]).kits).toEqual(expect.arrayContaining(["three-d", "game-2d"]));
+    expect(maze["src/game/probe.ts"]).toContain("export function declareGame");
+    expect(maze["src/three/Hud3D.tsx"]).toContain("export function Hud3D");
+  });
+
+  it("leaves the games kit off for a 3D viewer (D113)", async () => {
+    const viewer = await buildFromPlan("A spinning 3D viewer for my NFT art");
+    expect(JSON.parse(viewer["src/goodbuild.json"]).kits).toEqual(["three-d"]);
+  });
+
+  it("starts a game's first build from the template the plan picked, with its kits and the board's rule (D114)", async () => {
+    const request = "A racing game where you dodge traffic";
+    await db.update(messages).set({ content: request, status: "done" }).where(eq(messages.id, queuedId));
+    const intake = { ...fallbackIntake(request), game: { name: "Night Lanes", pitch: "Weave through night traffic.", loop: "dodge, pass close", lose: "you crash", harder: "faster traffic", extras: [], template: "lane-racer", templateName: "Lane racer" } };
+    await db.insert(messages).values({ projectId, role: "assistant", content: "A few questions.", status: "done", meta: { intake } });
+    const [start] = await db.insert(messages).values({ projectId, role: "user", content: "Start building", status: "queued", meta: { mode: "build" } }).returning({ id: messages.id });
+    const { client, requests } = scriptedModel([{ text: "Built it." }]);
+    const events: Array<{ type: string; line?: string }> = [];
+    await runTurn({ db, model: client }, { projectId, userId, mode: "build", userMessageId: start.id }, (e) => events.push(e as { type: string; line?: string }));
+    const files = await loadFiles(db, projectId);
+    expect(files["src/play/Game.tsx"]).toContain('declareGame({ style: "action"');
+    expect(JSON.parse(files["src/goodbuild.json"]).kits).toContain("game-2d");
+    expect(JSON.parse(files["src/lib/dataRules.json"]).collections.scores).toBeTruthy();
+    expect(events.some((e) => e.type === "log" && e.line === "game template: started from lane-racer")).toBe(true);
+    expect(JSON.stringify(requests[0].messages)).toContain("Lane racer template");
+  });
+
+  it("a MiniPay game from a template with a leaderboard gets the board contract too, even when its words don't name a game kit (D114)", async () => {
+    const request = "A racing game for MiniPay where you dodge traffic, with a leaderboard";
+    await db.update(messages).set({ content: request, status: "done" }).where(eq(messages.id, queuedId));
+    const base = fallbackIntake(request);
+    const intake = { ...base, leaderboard: true, game: { name: "Night Lanes", pitch: "Weave through traffic.", loop: "dodge", lose: "you crash", harder: "faster", extras: [], template: "lane-racer", templateName: "Lane racer" } };
+    await db.insert(messages).values({ projectId, role: "assistant", content: "A few questions.", status: "done", meta: { intake } });
+    const [start] = await db.insert(messages).values({ projectId, role: "user", content: "Start building", status: "queued", meta: { mode: "build" } }).returning({ id: messages.id });
+    const { client } = scriptedModel([{ text: "Built it." }]);
+    await runTurn({ db, model: client }, { projectId, userId, mode: "build", userMessageId: start.id }, () => {});
+    const files = await loadFiles(db, projectId);
+    expect(JSON.parse(files["src/goodbuild.json"]).kits).toEqual(expect.arrayContaining(["game-2d", "mini-app", "game-board"]));
+    expect(files["contracts/GameBoard.sol"]).toContain("contract GameBoard");
+  });
+
   it("leaves the contract off for a MiniPay game that says it wants no leaderboard, even naming an onchain one", async () => {
     const files = await buildFromPlan("A snake game for MiniPay without an onchain leaderboard");
     expect(JSON.parse(files["src/goodbuild.json"]).kits).toEqual(expect.arrayContaining(["game-2d", "mini-app"]));

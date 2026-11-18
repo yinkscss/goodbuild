@@ -16,7 +16,7 @@ import type { TurnEvent, TurnRecord } from "@/lib/turn-types";
 import { activeJobs, appendEvents, claimJob, enqueueTurn, jobContext, readEvents, stopProject } from "./jobs";
 import { EventSink, TurnWorker } from "./worker";
 
-/** These tests pin the D28/D30 free allowances, kept as the FREE_POLICY=legacy off switch (D112). */
+/** These tests pin the D28/D30 free allowances, kept as the FREE_POLICY=legacy off switch (D123). */
 const LEGACY = { FREE_POLICY: "legacy" };
 process.env.FREE_POLICY = "legacy";
 
@@ -78,6 +78,13 @@ describe("background turn jobs", { timeout: 60_000 }, () => {
     expect(p.status).toBe("ready");
     expect((await loadFiles(db, projectId))["src/App.tsx"]).toBe(APP);
     expect(await db.select().from(turnJobCalls).where(eq(turnJobCalls.jobId, job.id))).toHaveLength(SCRIPT.length);
+  });
+
+  it("saves the files a message was sent with on that message", async () => {
+    const job = await enqueueTurn(db, { projectId, userId, mode: "build", prompt: "Use my portrait", assetIds: ["00000000-0000-4000-8000-000000000001"] });
+    const [m] = await db.select().from(messages).where(eq(messages.id, job.userMessageId));
+    expect(m.meta).toMatchObject({ mode: "build", assetIds: ["00000000-0000-4000-8000-000000000001"], jobId: job.id });
+    await stopProject(db, projectId);
   });
 
   it("runs two prompts on one project one after the other, never together", async () => {
