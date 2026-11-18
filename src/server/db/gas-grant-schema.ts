@@ -5,7 +5,7 @@ import { users } from "./schema";
 
 /**
  * One row per GoodDollar-verified person who received (or is receiving) network-fee CELO from the
- * gas wallet (D41, amended by D-GAS in DECISIONS.md: top up to 0.3 CELO, once per person, 50 a day).
+ * gas wallet (D41, amended by D124 in DECISIONS.md: top up to 0.3 CELO, once per person, 50 a day).
  *
  * `goodid_root` is unique: the insert decides who wins a race, so a person gets one grant however many
  * wallets or tabs they use. The signed transaction is saved before it is broadcast, so a crash or an

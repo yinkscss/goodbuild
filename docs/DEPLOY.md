@@ -109,7 +109,8 @@ docker compose --env-file .env.production ps
 docker compose --env-file .env.production logs -f web worker
 docker compose --env-file .env.production restart web worker
 ```
-- Real AI spend so far, against the free budget (D29; `FREE_AI_BUDGET_MICRO`, default 4000000 = $4): `docker compose --env-file .env.production exec -T goodbuild-postgres psql -U goodbuild -d goodbuild -c "select sum(provider_cost_micro)/1000000.0 as usd from usage_events where funding in ('free', 'exempt')"`. Paid and platform spend don't count (D48). A changed setting needs `up -d web worker`, because a restart doesn't reread the env file.
+- **Free credits (D123).** Settings, all optional: `FREE_POLICY` (`verified` by default; `legacy` brings back D28/D30), `WELCOME_CREDITS` (40; keep it at or above `PAID_MIN_START_MICRO`, now 100000 = 10 credits), `REFILL_CREDITS` (10), `REFILLS_PER_WEEK` (5), `REFILLS_PER_MONTH` (5), `FREE_PLAN_TURNS_PER_DAY` (5), `FREE_BUDGET_CREDITS_PER_MONTH` (5000), `REFILL_REQUIRES_UBI` (on; `off` lets refills skip the G$ UBI claim), `FREE_BUDGET_CREDITS_PER_WEEK` (1250), `REFILL_BELOW_CREDITS` (10; 0 = off), `REFILL_ACTIVE_DAYS` (30; 0 = off), `FREE_PLAN_TURNS_PER_DAY_UNVERIFIED` (2) and `FREE_CREDITS_EXPIRE_DAYS` (30; 0 = off; swept hourly by `pnpm worker` only, not the web process's inline worker) and `FREE_POLICY_START` (set it to the deploy time). Granted this month: `docker compose --env-file .env.production exec -T goodbuild-postgres psql -U goodbuild -d goodbuild -c "select ref_type, count(*), sum(amount_micro)/10000 as credits from ledger_entries where ref_type in ('welcome','refill') and created_at >= date_trunc('month', now()) group by 1"`.
+- Real AI spend so far, against the free budget (D29; Under D123 this applies only with `FREE_POLICY=legacy`. `FREE_AI_BUDGET_MICRO`, default 4000000 = $4): `docker compose --env-file .env.production exec -T goodbuild-postgres psql -U goodbuild -d goodbuild -c "select sum(provider_cost_micro)/1000000.0 as usd from usage_events where funding in ('free', 'exempt')"`. Paid and platform spend don't count (D48). A changed setting needs `up -d web worker`, because a restart doesn't reread the env file.
 - Take a published app down: `docker compose --env-file .env.production exec web sh -c 'node scripts/takedown.mjs <slug>'`. Add `--restore` to bring it back.
 - A takedown also stops the app's data API and keeps its data. Add `--purge-data` to delete what visitors saved in it (D31).
 - App data on the whole server: `docker compose --env-file .env.production exec -T goodbuild-postgres psql -U goodbuild -d goodbuild -c "select count(*) as apps, sum(rows) as records, pg_size_pretty(sum(bytes)) as size from app_data_usage where wallet = '*'"`. The limit is `APP_DATA_MAX_TOTAL_BYTES` (default 1 GB). Set it to suit the free disk.
@@ -293,7 +294,7 @@ The throwaway wallet in `.data/throwaway-wallet.key` (Celo Sepolia only) can sig
 ## Status of this setup
 See "Hosting" in `HANDOFF.md`. It has one server and no failover, which suits the one-month testnet beta. Before M6 takes real money, set up the off-site backups (D47) and record a restore drill. Moving the database off the box is challenged in MAINNET_PLAN.md section 10.
 
-## Gas grant key (D123)
+## Gas grant key (D124)
 
 The hackathon vote's network fee is paid from the gas wallet. The web app reads its key from a file, not from the environment.
 

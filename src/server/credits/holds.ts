@@ -23,11 +23,13 @@ import { postLedgerEntry } from "./ledger";
  */
 
 /**
- * The least a paid build needs free to start: about one worst-case call to the strong model on a
- * large project, so it can afford at least one fix (D49). Below $1 on purpose: the smallest top-up
- * (MAINNET_PLAN decision 7, about N1,000) may buy less than $1, and it must be able to build.
+ * The least a paid build needs free to start: 10 credits, one daily refill (D123, owner 18 Nov 2026).
+ * It was 35 credits (D49), one worst-case call to the strong model on a large project. At 10, a
+ * build on the fast model runs (its worst-case call is about 5 credits), but a strong-model fix on
+ * a small balance can fail the check before that call, and the build then stops with "your credits
+ * ran out". The checks before each call keep spending safe at any size. PAID_MIN_START_MICRO overrides.
  */
-export const PAID_MIN_START_MICRO = 350_000;
+export const PAID_MIN_START_MICRO = 100_000;
 
 /**
  * The most set aside when a paid build is queued: plan section 5 item 5's $1, twice the dearest
@@ -158,9 +160,12 @@ export function worstCaseCallMicro(model: string, request: { messages: readonly 
  */
 export async function ensureHold(tx: Db, jobId: string, worstMicro: number): Promise<boolean> {
   // Lock order: job row, then balances row. The fence has usually locked this row already.
-  const [job] = await tx.select({ userId: turnJobs.userId, holdMicro: turnJobs.holdMicro, funding: turnJobs.funding }).from(turnJobs).where(eq(turnJobs.id, jobId)).for("update");
+  const [job] = await tx.select({ userId: turnJobs.userId, holdMicro: turnJobs.holdMicro, funding: turnJobs.funding, status: turnJobs.status }).from(turnJobs).where(eq(turnJobs.id, jobId)).for("update");
   if (!job || job.funding !== "paid") return true;
   if (job.holdMicro >= worstMicro) return true;
+  // Stopped or ended while this call waited for the lock: its hold has gone back and can't change
+  // (the database refuses it), so no more spending on it.
+  if (job.status !== "queued" && job.status !== "running") return false;
   const need = worstMicro - job.holdMicro;
   const balance = await lockBalance(tx, job.userId);
   if (balance.availableMicro < need) return false;

@@ -75,10 +75,10 @@ describe.each(testBackends())("migration to M3 over existing rows on $name", (ba
     Promise.all([
       cap.spentMicro(db, ALICE),
       cap.spentMicro(db, BOB),
-      cap.checkAiAllowance(db, { userId: BOB }, { VERIFIED_CAP_MICRO: "5000000", FREE_AI_BUDGET_MICRO: "4000000" }),
-      cap.checkAiAllowance(db, { userId: ALICE }, { UNVERIFIED_CAP_MICRO: "5000000", FREE_AI_BUDGET_MICRO: "1" }),
-      cap.checkAiAllowance(db, { userId: ALICE }, { UNVERIFIED_CAP_MICRO: "187500", FREE_AI_BUDGET_MICRO: "99000000" }),
-      cap.checkAiAllowance(db, { userId: ALICE }, { UNVERIFIED_CAP_MICRO: "187501", FREE_AI_BUDGET_MICRO: "99000000" }),
+      cap.checkAiAllowance(db, { userId: BOB }, { FREE_POLICY: "legacy", VERIFIED_CAP_MICRO: "5000000", FREE_AI_BUDGET_MICRO: "4000000" }),
+      cap.checkAiAllowance(db, { userId: ALICE }, { FREE_POLICY: "legacy", UNVERIFIED_CAP_MICRO: "5000000", FREE_AI_BUDGET_MICRO: "1" }),
+      cap.checkAiAllowance(db, { userId: ALICE }, { FREE_POLICY: "legacy", UNVERIFIED_CAP_MICRO: "187500", FREE_AI_BUDGET_MICRO: "99000000" }),
+      cap.checkAiAllowance(db, { userId: ALICE }, { FREE_POLICY: "legacy", UNVERIFIED_CAP_MICRO: "187501", FREE_AI_BUDGET_MICRO: "99000000" }),
     ]);
 
   beforeAll(async () => {

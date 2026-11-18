@@ -57,6 +57,6 @@ Targeted check:
 pnpm test -- src/lib/flowstate src/server/flowstate src/app/api/hackathon/flowstate/route.test.ts src/components/hackathon src/server/hackathon
 ```
 
-## Network fee covered by GoodBuild (D123, 18 Nov 2026)
+## Network fee covered by GoodBuild (D124, 18 Nov 2026)
 
 When the review finds the wallet can't pay the fee cap, `POST /api/hackathon/flowstate` (`prepare`) calls `ensureGas` (`src/server/gas-grant/grant.ts`): the gas wallet tops the session wallet up to 0.3 CELO, once per GoodDollar identity, 50 a day, and waits for it before answering. The dialog says "We added X CELO". If the fund is empty, off, or the person already had their grant, the dialog shows a Telegram link. Owner setup: `deploy/install-gas-key.sh` (see DEPLOY.md), then migration 0024.

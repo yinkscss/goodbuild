@@ -49,7 +49,7 @@ async function Report() {
   );
 }
 
-/** The network-fee fund (D123): what it holds and how many people it has helped. */
+/** The network-fee fund (D124): what it holds and how many people it has helped. */
 function GasTiles({ g }: { g: Awaited<ReturnType<typeof grantSummary>> }) {
   const celo = g.balanceWei === null ? null : Number(g.balanceWei) / 1e18;
   const left = g.balanceWei === null ? null : Number(g.balanceWei / GRANT_TARGET_WEI);

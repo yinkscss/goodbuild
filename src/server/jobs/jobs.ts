@@ -90,7 +90,7 @@ export type StartResult = { job: TurnJob } | { refused: CapRefusal };
 export async function startTurn(db: Db, args: QueueArgs, env: Record<string, string | undefined> = process.env): Promise<StartResult> {
   return db.transaction(async (raw) => {
     const tx = raw as unknown as Db;
-    const decision = await decideStart(tx, { userId: args.userId, projectId: args.projectId }, env);
+    const decision = await decideStart(tx, { userId: args.userId, projectId: args.projectId, mode: args.mode }, env);
     if (args.userMessageId) {
       // Already queued and paid for: a double submit gets the same job, even if nothing's left for a second.
       const [existing] = await tx.select().from(turnJobs).where(eq(turnJobs.userMessageId, args.userMessageId)).limit(1);

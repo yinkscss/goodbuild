@@ -187,7 +187,7 @@ export class TurnWorker {
     }
     // A queued follow-up may have been overtaken by the build ahead of it. A resumed build may finish.
     if (job.attempt === 1) {
-      const allowance = await checkAiAllowance(db, { userId: job.userId, startingJobId: job.id, funding: job.funding });
+      const allowance = await checkAiAllowance(db, { userId: job.userId, startingJobId: job.id, funding: job.funding, mode: job.mode });
       if (!allowance.allowed) {
         await failJob(db, job, allowance.message);
         sink.push({ type: "error", message: allowance.message });

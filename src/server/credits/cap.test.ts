@@ -10,6 +10,11 @@ import { eq } from "drizzle-orm";
 import { BUDGET_MESSAGE, checkAiAllowance, shouldOfferVerification, spentMicro } from "./cap";
 import { postLedgerEntry } from "./ledger";
 
+/** These tests pin the D28/D30 free allowances, kept as the FREE_POLICY=legacy off switch (D123). */
+const LEGACY = { FREE_POLICY: "legacy" };
+process.env.FREE_POLICY = "legacy";
+
+
 const WALLET = "0x7a3000000000000000000000000000000000e41c";
 let db: Db;
 let userId: string;
@@ -30,29 +35,29 @@ describe("the free AI cap", () => {
   it("allows spending up to $0.20, then stops, counting across projects", async () => {
     const other = await createProjectFromPrompt(db, userId, { prompt: "Another", network: "celo-sepolia" });
     await spend(150_000, "a");
-    expect(await checkAiAllowance(db, { userId, projectId }, {})).toEqual({ allowed: true });
+    expect(await checkAiAllowance(db, { userId, projectId }, LEGACY)).toEqual({ allowed: true });
     await db.insert(usageEvents).values({ userId, projectId: other.id, callId: "b", model: "m", inputTokens: 1, outputTokens: 1, providerCostMicro: 50_000, chargedMicro: 50_000, markupBps: 0 });
     expect(await spentMicro(db, userId)).toBe(200_000);
-    expect(await checkAiAllowance(db, { userId, projectId }, {})).toMatchObject({ allowed: false, reason: "free_limit" });
+    expect(await checkAiAllowance(db, { userId, projectId }, LEGACY)).toMatchObject({ allowed: false, reason: "free_limit" });
   });
 
   it("doesn't apply to verified users or wallets exempted for running the service", async () => {
     await spend(500_000, "a");
-    expect(await checkAiAllowance(db, { userId }, { UNCAPPED_WALLETS: `0xother, ${WALLET.toUpperCase().replace("0X", "0x")}` })).toEqual({ allowed: true });
+    expect(await checkAiAllowance(db, { userId }, { ...LEGACY, UNCAPPED_WALLETS: `0xother, ${WALLET.toUpperCase().replace("0X", "0x")}` })).toEqual({ allowed: true });
     await db.update(users).set({ verifiedAt: new Date() }).where(eq(users.id, userId));
-    expect(await checkAiAllowance(db, { userId }, {})).toEqual({ allowed: true });
+    expect(await checkAiAllowance(db, { userId }, LEGACY)).toEqual({ allowed: true });
   });
 
   it("allows one project's build at a time, so parallel builds can't overrun it", async () => {
     await enqueueTurn(db, { projectId, userId, mode: "build", prompt: "first" });
     const other = await createProjectFromPrompt(db, userId, { prompt: "Another", network: "celo-sepolia" });
-    expect(await checkAiAllowance(db, { userId, projectId: other.id }, {})).toMatchObject({ allowed: false, reason: "one_build_at_a_time" });
-    expect(await checkAiAllowance(db, { userId, projectId }, {})).toEqual({ allowed: true });
+    expect(await checkAiAllowance(db, { userId, projectId: other.id }, LEGACY)).toMatchObject({ allowed: false, reason: "one_build_at_a_time" });
+    expect(await checkAiAllowance(db, { userId, projectId }, LEGACY)).toEqual({ allowed: true });
   });
 });
 
 describe("the total free budget", () => {
-  const BUDGET = { FREE_AI_BUDGET_MICRO: "1000000" };
+  const BUDGET = { ...LEGACY, FREE_AI_BUDGET_MICRO: "1000000" };
 
   /** A new account, with its own spending under its own $0.20 cap, and the rest spent by others. */
   async function otherAccount(wallet: string, spentByThem: number) {
@@ -71,15 +76,15 @@ describe("the total free budget", () => {
 
   it("counts real provider cost, not the marked-up charge", async () => {
     await db.insert(usageEvents).values({ userId, projectId, callId: "a", model: "m", inputTokens: 1, outputTokens: 1, providerCostMicro: 100_000, chargedMicro: 125_000, markupBps: 2500 });
-    expect(await checkAiAllowance(db, { userId, projectId }, { FREE_AI_BUDGET_MICRO: "100001" })).toEqual({ allowed: true });
-    expect(await checkAiAllowance(db, { userId, projectId }, { FREE_AI_BUDGET_MICRO: "100000" })).toMatchObject({ reason: "budget_full" });
+    expect(await checkAiAllowance(db, { userId, projectId }, { ...LEGACY, FREE_AI_BUDGET_MICRO: "100001" })).toEqual({ allowed: true });
+    expect(await checkAiAllowance(db, { userId, projectId }, { ...LEGACY, FREE_AI_BUDGET_MICRO: "100000" })).toMatchObject({ reason: "budget_full" });
   });
 
   it("holds back room for builds in progress, so many at once can't overrun it", async () => {
     const other = await otherAccount("0x7a3000000000000000000000000000000000e41d", 0);
     await enqueueTurn(db, { projectId: other.projectId, userId: other.userId, mode: "build", prompt: "theirs" });
-    expect(await checkAiAllowance(db, { userId, projectId }, { FREE_AI_BUDGET_MICRO: "350001" })).toEqual({ allowed: true });
-    expect(await checkAiAllowance(db, { userId, projectId }, { FREE_AI_BUDGET_MICRO: "350000" })).toMatchObject({ reason: "budget_full" });
+    expect(await checkAiAllowance(db, { userId, projectId }, { ...LEGACY, FREE_AI_BUDGET_MICRO: "350001" })).toEqual({ allowed: true });
+    expect(await checkAiAllowance(db, { userId, projectId }, { ...LEGACY, FREE_AI_BUDGET_MICRO: "350000" })).toMatchObject({ reason: "budget_full" });
   });
 
   it("lets the worker start a claimed build without counting it or queued builds", async () => {
@@ -87,7 +92,7 @@ describe("the total free budget", () => {
     const other = await otherAccount("0x7a3000000000000000000000000000000000e41d", 0);
     await enqueueTurn(db, { projectId: other.projectId, userId: other.userId, mode: "build", prompt: "queued" });
     await db.update(turnJobs).set({ status: "running" }).where(eq(turnJobs.id, job.id));
-    expect(await checkAiAllowance(db, { userId, startingJobId: job.id }, { FREE_AI_BUDGET_MICRO: "1" })).toEqual({ allowed: true });
+    expect(await checkAiAllowance(db, { userId, startingJobId: job.id }, { ...LEGACY, FREE_AI_BUDGET_MICRO: "1" })).toEqual({ allowed: true });
   });
 
   it("also covers verified accounts, but not wallets exempted for running the service", async () => {
@@ -98,11 +103,11 @@ describe("the total free budget", () => {
   });
 
   it("defaults to $4, and 0 turns free AI off", async () => {
-    expect(await checkAiAllowance(db, { userId }, {})).toEqual({ allowed: true });
-    expect(await checkAiAllowance(db, { userId }, { FREE_AI_BUDGET_MICRO: "not a number" })).toEqual({ allowed: true });
-    expect(await checkAiAllowance(db, { userId }, { FREE_AI_BUDGET_MICRO: "0" })).toMatchObject({ reason: "budget_full" });
+    expect(await checkAiAllowance(db, { userId }, LEGACY)).toEqual({ allowed: true });
+    expect(await checkAiAllowance(db, { userId }, { ...LEGACY, FREE_AI_BUDGET_MICRO: "not a number" })).toEqual({ allowed: true });
+    expect(await checkAiAllowance(db, { userId }, { ...LEGACY, FREE_AI_BUDGET_MICRO: "0" })).toMatchObject({ reason: "budget_full" });
     await otherAccount("0x7a3000000000000000000000000000000000e41d", 4_000_000);
-    expect(await checkAiAllowance(db, { userId }, {})).toMatchObject({ reason: "budget_full" });
+    expect(await checkAiAllowance(db, { userId }, LEGACY)).toMatchObject({ reason: "budget_full" });
   });
 });
 
@@ -112,11 +117,11 @@ describe("verified accounts", () => {
 
   it("get $0.50 more after the free $0.20, and tell them when it's used", async () => {
     await spend(200_000, "a");
-    expect(await checkAiAllowance(db, { userId }, {})).toMatchObject({ reason: "free_limit" });
+    expect(await checkAiAllowance(db, { userId }, LEGACY)).toMatchObject({ reason: "free_limit" });
     await verify(userId);
-    expect(await checkAiAllowance(db, { userId }, {})).toEqual({ allowed: true });
+    expect(await checkAiAllowance(db, { userId }, LEGACY)).toEqual({ allowed: true });
     await spend(500_000, "b");
-    expect(await checkAiAllowance(db, { userId }, {})).toMatchObject({ reason: "verified_limit" });
+    expect(await checkAiAllowance(db, { userId }, LEGACY)).toMatchObject({ reason: "verified_limit" });
   });
 
   it("share one allowance across wallets linked to the same person", async () => {
@@ -124,37 +129,37 @@ describe("verified accounts", () => {
     await spend(700_000, "a");
     const second = await signInUser(db, { wallet: "0x7a3000000000000000000000000000000000e41d", walletKind: "external", attestation: { ageOk: true, notUsPerson: true } });
     await verify(second.id);
-    expect(await checkAiAllowance(db, { userId: second.id }, {})).toMatchObject({ reason: "verified_limit" });
+    expect(await checkAiAllowance(db, { userId: second.id }, LEGACY)).toMatchObject({ reason: "verified_limit" });
   });
 
   it("are still limited to one project's build at a time", async () => {
     await verify(userId);
     await enqueueTurn(db, { projectId, userId, mode: "build", prompt: "first" });
     const other = await createProjectFromPrompt(db, userId, { prompt: "Another", network: "celo-sepolia" });
-    expect(await checkAiAllowance(db, { userId, projectId: other.id }, {})).toMatchObject({ reason: "one_build_at_a_time" });
+    expect(await checkAiAllowance(db, { userId, projectId: other.id }, LEGACY)).toMatchObject({ reason: "one_build_at_a_time" });
   });
 });
 
 describe("offering verification", () => {
   it("waits until the free credit is used", async () => {
     await spend(199_999, "a");
-    expect(await shouldOfferVerification(db, userId, {})).toBe(false);
+    expect(await shouldOfferVerification(db, userId, LEGACY)).toBe(false);
     await spend(1, "b");
-    expect(await shouldOfferVerification(db, userId, {})).toBe(true);
+    expect(await shouldOfferVerification(db, userId, LEGACY)).toBe(true);
   });
 
   it("doesn't offer it to someone who has bought credit: they hear about credit, not free limits", async () => {
     await spend(200_000, "a");
-    expect(await shouldOfferVerification(db, userId, {})).toBe(true);
+    expect(await shouldOfferVerification(db, userId, LEGACY)).toBe(true);
     await postLedgerEntry(db, { userId, kind: "deposit", amountMicro: 350_000, idempotencyKey: "dep-1" });
-    expect(await shouldOfferVerification(db, userId, {})).toBe(false);
+    expect(await shouldOfferVerification(db, userId, LEGACY)).toBe(false);
   });
 
   it("doesn't offer it to verified or exempt accounts, or when the trial is full", async () => {
     await spend(200_000, "a");
-    expect(await shouldOfferVerification(db, userId, { UNCAPPED_WALLETS: WALLET })).toBe(false);
-    expect(await shouldOfferVerification(db, userId, { FREE_AI_BUDGET_MICRO: "200000" })).toBe(false);
+    expect(await shouldOfferVerification(db, userId, { ...LEGACY, UNCAPPED_WALLETS: WALLET })).toBe(false);
+    expect(await shouldOfferVerification(db, userId, { ...LEGACY, FREE_AI_BUDGET_MICRO: "200000" })).toBe(false);
     await db.update(users).set({ verifiedAt: new Date() }).where(eq(users.id, userId));
-    expect(await shouldOfferVerification(db, userId, {})).toBe(false);
+    expect(await shouldOfferVerification(db, userId, LEGACY)).toBe(false);
   });
 });

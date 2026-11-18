@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Puts the gas wallet key where the gas grant reads it (D41, D123): /opt/goodbuild-secrets/gas_wallet_key (outside /opt/goodbuild,
+# Puts the gas wallet key where the gas grant reads it (D41, D124): /opt/goodbuild-secrets/gas_wallet_key (outside /opt/goodbuild,
 # which deploy.sh wipes on every release), owned by the
 # web container's user (uid 1000) and readable only by it. Run ON THE SERVER, in /opt/goodbuild/deploy, by the owner.
 #

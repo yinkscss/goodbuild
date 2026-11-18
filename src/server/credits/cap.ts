@@ -1,9 +1,10 @@
 import "server-only";
 
-import { and, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, ne, sql } from "drizzle-orm";
 
 import type { Db } from "@/server/db/client";
 import { turnJobs, usageEvents, users, type FundingSource } from "@/server/db/schema";
+import { dayStart, freeBudget, freeBudgetLeftMicro, freePolicy, freeSettings, RESERVED_PER_PLAN_MICRO } from "./free-grants";
 import { CREDIT_HELD_MESSAGE, OUT_OF_CREDITS_MESSAGE, PAID_MIN_DIRECT_MICRO, hasPaid, holdMicro, lockBalance, minStartMicro, readBalance } from "./holds";
 
 /**
@@ -42,9 +43,21 @@ export const FUNDING_UNAVAILABLE_MESSAGE = "This build can't start yet. Please t
 /** A free job's free AI ran out while it waited, and they have credit. A job keeps one source (D48). */
 export const FREE_RAN_OUT_MESSAGE = "Your free AI ran out before this build started. Retry to run it on your credits.";
 
+/** D123: no free builds. Unverified people are told how to get free credits. */
+export const NEEDS_VERIFICATION_MESSAGE = "Verify with GoodDollar to get 40 free credits, or add credits to keep building.";
+/** D123: a verified person whose credits are spent. */
+export const OUT_OF_FREE_CREDITS_MESSAGE = "You're out of credits. Claim your daily refill or add credits to keep building.";
+/** D123: today's free plans are used up. */
+export const PLAN_LIMIT_MESSAGE = "You've used today's free plans. Add credits, or come back tomorrow.";
+/** D123: an unverified account's free plans for today are used up. */
+export const PLAN_LIMIT_UNVERIFIED_MESSAGE = "You've used today's 2 free plans. Verify with GoodDollar for more plans and 40 free credits.";
+/** D123: the month's free budget is spent. */
+export const FREE_BUDGET_FULL_MESSAGE = "This month's free AI is all used up. It comes back on the 1st. Credits you buy still work.";
+export const FREE_BUDGET_WEEK_FULL_MESSAGE = "This week's free AI is all used up. It comes back on Monday. Credits you buy still work.";
+
 export type CapRefusal = {
   allowed: false;
-  reason: "free_limit" | "verified_limit" | "one_build_at_a_time" | "budget_full" | "funding_unavailable" | "out_of_credits" | "credit_held";
+  reason: "needs_verification" | "needs_credits" | "plan_limit" | "free_limit" | "verified_limit" | "one_build_at_a_time" | "budget_full" | "funding_unavailable" | "out_of_credits" | "credit_held";
   message: string;
 };
 
@@ -111,6 +124,8 @@ async function identitySpentMicro(db: Db, goodidRoot: string): Promise<number> {
 export async function freeRemainingMicro(db: Db, userId: string, env: Record<string, string | undefined> = process.env): Promise<number | null> {
   const [user] = await db.select({ wallet: users.wallet, verifiedAt: users.verifiedAt, goodidRoot: users.goodidRoot }).from(users).where(eq(users.id, userId)).limit(1);
   if (!user || isExempt(user.wallet, env)) return null;
+  // D123: free credits are in the balance now, so there's no separate allowance to add.
+  if (freePolicy(env) === "verified") return 0;
   if (user.verifiedAt) {
     const spent = user.goodidRoot ? await identitySpentMicro(db, user.goodidRoot) : await spentMicro(db, userId);
     return Math.max(verifiedCapMicro(env) - spent, 0);
@@ -147,10 +162,51 @@ export async function decideFunding(db: Db, userId: string, env: Record<string, 
   return user && isExempt(user.wallet, env) ? "exempt" : "free";
 }
 
+type AllowanceInput = { userId: string; projectId?: string; startingJobId?: string; mode?: string };
+
+/**
+ * D123: the only free AI is planning, for everyone, up to a number of plan turns a day per account,
+ * inside the month's free budget. Builds, fixes, uploads and visual checks are paid from the balance,
+ * which is where free credits now land. Exempt wallets are handled by the caller.
+ */
+async function freePlanAllowance(db: Db, user: { verifiedAt: Date | null }, input: AllowanceInput, env: Record<string, string | undefined>): Promise<CapDecision> {
+  if (input.mode !== "plan") {
+    return user.verifiedAt ? { allowed: false, reason: "needs_credits", message: OUT_OF_FREE_CREDITS_MESSAGE } : { allowed: false, reason: "needs_verification", message: NEEDS_VERIFICATION_MESSAGE };
+  }
+  const now = new Date();
+  const today = await db
+    .select({ id: turnJobs.id })
+    .from(turnJobs)
+    .where(and(eq(turnJobs.userId, input.userId), eq(turnJobs.mode, "plan"), eq(turnJobs.funding, "free"), gte(turnJobs.createdAt, dayStart(now))));
+  const settings = freeSettings(env);
+  // Fewer before verifying: a new wallet costs nothing, so this is all a fake account can farm.
+  const limit = user.verifiedAt ? settings.planTurnsPerDay : settings.planTurnsPerDayUnverified;
+  if (today.filter((j) => j.id !== input.startingJobId).length >= limit) {
+    return { allowed: false, reason: "plan_limit", message: user.verifiedAt ? PLAN_LIMIT_MESSAGE : PLAN_LIMIT_UNVERIFIED_MESSAGE };
+  }
+  const budget = await freeBudget(db, now, env, input.startingJobId);
+  if (budget.leftMicro < RESERVED_PER_PLAN_MICRO) return { allowed: false, reason: "budget_full", message: budget.limit === "week" ? FREE_BUDGET_WEEK_FULL_MESSAGE : FREE_BUDGET_FULL_MESSAGE };
+  return oneBuildAtATime(db, input);
+}
+
+/** Otherwise builds running at once on several projects could each pass the check and overrun it. */
+async function oneBuildAtATime(db: Db, input: AllowanceInput): Promise<CapDecision> {
+  if (input.projectId) {
+    const [other] = await db
+      .select({ id: turnJobs.id })
+      .from(turnJobs)
+      .where(and(eq(turnJobs.userId, input.userId), ne(turnJobs.projectId, input.projectId), inArray(turnJobs.status, ["queued", "running"])))
+      .limit(1);
+    if (other) return { allowed: false, reason: "one_build_at_a_time", message: "You have a build running on another project. Wait for it to finish, then try again." };
+  }
+  return { allowed: true };
+}
+
 /** May this user spend free AI now? The free limits only: credit doesn't come into it. */
-async function freeAllowance(db: Db, input: { userId: string; projectId?: string; startingJobId?: string }, env: Record<string, string | undefined>): Promise<CapDecision> {
+async function freeAllowance(db: Db, input: AllowanceInput, env: Record<string, string | undefined>): Promise<CapDecision> {
   const [user] = await db.select({ wallet: users.wallet, verifiedAt: users.verifiedAt, goodidRoot: users.goodidRoot }).from(users).where(eq(users.id, input.userId)).limit(1);
   if (!user || isExempt(user.wallet, env)) return { allowed: true };
+  if (freePolicy(env) === "verified") return freePlanAllowance(db, user, input, env);
 
   if (user.verifiedAt) {
     const spent = user.goodidRoot ? await identitySpentMicro(db, user.goodidRoot) : await spentMicro(db, input.userId);
@@ -162,16 +218,7 @@ async function freeAllowance(db: Db, input: { userId: string; projectId?: string
   // Verified accounts are on free credit too, so the total applies to them as well.
   if (!(await budgetHasRoom(db, input.startingJobId, env))) return { allowed: false, reason: "budget_full", message: BUDGET_MESSAGE };
 
-  // Otherwise builds running at once on several projects could each pass the check and overrun it.
-  if (input.projectId) {
-    const [other] = await db
-      .select({ id: turnJobs.id })
-      .from(turnJobs)
-      .where(and(eq(turnJobs.userId, input.userId), ne(turnJobs.projectId, input.projectId), inArray(turnJobs.status, ["queued", "running"])))
-      .limit(1);
-    if (other) return { allowed: false, reason: "one_build_at_a_time", message: "You have a build running on another project. Wait for it to finish, then try again." };
-  }
-  return { allowed: true };
+  return oneBuildAtATime(db, input);
 }
 
 /**
@@ -190,7 +237,7 @@ async function creditRefusal(db: Db, userId: string, free: CapRefusal, balance: 
  * transaction that queues the job: this takes the user's balance lock and holds it until the job is
  * in, so builds started at the same moment see each other's jobs and holds, for free builds too.
  */
-export async function decideStart(tx: Db, input: { userId: string; projectId: string }, env: Record<string, string | undefined> = process.env): Promise<StartDecision> {
+export async function decideStart(tx: Db, input: { userId: string; projectId: string; mode?: string }, env: Record<string, string | undefined> = process.env): Promise<StartDecision> {
   const balance = await lockBalance(tx, input.userId);
   const free = await freeAllowance(tx, input, env);
   if (free.allowed) return { allowed: true, funding: await decideFunding(tx, input.userId, env), holdMicro: 0 };
@@ -221,7 +268,7 @@ export async function decideDirectFunding(db: Db, userId: string, env: Record<st
  */
 export async function checkAiAllowance(
   db: Db,
-  input: { userId: string; projectId?: string; startingJobId?: string; funding?: FundingSource },
+  input: { userId: string; projectId?: string; startingJobId?: string; funding?: FundingSource; mode?: string },
   env: Record<string, string | undefined> = process.env,
 ): Promise<CapDecision> {
   if (input.funding === "exempt" || input.funding === "paid") return { allowed: true };
@@ -248,6 +295,8 @@ export const PLAN_HEADROOM_MICRO = 10_000;
 export async function hasPlanHeadroom(db: Db, userId: string, env: Record<string, string | undefined> = process.env): Promise<boolean> {
   const [user] = await db.select({ wallet: users.wallet, verifiedAt: users.verifiedAt, goodidRoot: users.goodidRoot }).from(users).where(eq(users.id, userId)).limit(1);
   if (!user || isExempt(user.wallet, env)) return true;
+  // D123: planning is free and limited by count, so there's always room to plan first.
+  if (freePolicy(env) === "verified") return true;
   const spent = user.verifiedAt && user.goodidRoot ? await identitySpentMicro(db, user.goodidRoot) : await spentMicro(db, userId);
   return spent + PLAN_HEADROOM_MICRO < (user.verifiedAt ? verifiedCapMicro(env) : capMicro(env));
 }
@@ -256,6 +305,8 @@ export async function hasPlanHeadroom(db: Db, userId: string, env: Record<string
 export async function shouldOfferVerification(db: Db, userId: string, env: Record<string, string | undefined> = process.env): Promise<boolean> {
   const [user] = await db.select({ wallet: users.wallet, verifiedAt: users.verifiedAt }).from(users).where(eq(users.id, userId)).limit(1);
   if (!user || user.verifiedAt || isExempt(user.wallet, env)) return false;
+  // D123: verifying is the only way to free credits, so every unverified account is asked, payers too.
+  if (freePolicy(env) === "verified") return (await freeBudgetLeftMicro(db, new Date(), env)) >= freeSettings(env).welcomeMicro;
   if ((await spentMicro(db, userId)) < capMicro(env)) return false;
   // Whoever has bought credit hears about credit, never about free limits (plan section 5 item 4).
   if (await hasPaid(db, userId)) return false;
