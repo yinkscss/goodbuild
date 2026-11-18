@@ -236,7 +236,7 @@ export function FlowstateVote({ onConfirmed }: { onConfirmed?: () => void }) {
       >
         {confirmed
           ? "✓ FlowState vote confirmed"
-          : "Vote here with your email wallet"}
+          : "Vote here with your wallet"}
       </button>
       <Dialog
         open={open}
@@ -254,8 +254,8 @@ export function FlowstateVote({ onConfirmed }: { onConfirmed?: () => void }) {
             Support GoodBuildIt on FlowState
           </DialogTitle>
           <DialogDescription>
-            Use the wallet you already created with your email. You stay on
-            GoodBuild and review everything before voting.
+            Use the wallet you&rsquo;re signed in with. You stay on GoodBuild
+            and review everything before voting.
           </DialogDescription>
           <p className="text-sm text-grey-600">
             Wallet:{" "}

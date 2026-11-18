@@ -1596,5 +1596,11 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - **What:** D123's 40-credit welcome is posted only once the person's wallet has settled support for GoodBuildIt on the FlowState GoodBuilders council, read from the chain (`hasVotedForGoodBuild`: support above 0, unchanged for 2 blocks). Daily refills are unchanged: they need verification only.
 - **Where the vote happens:** in GoodBuild's own vote dialog (`FlowstateVote`, the hackathon one), shown by the free-credits card as "Unlock 40 free credits" once someone is verified but not yet welcomed. The network fee is covered by the gas grant (D124), so a new email wallet with 0 CELO can still do it.
 - **Who it doesn't touch:** anyone already welcomed is never asked again. `WELCOME_REQUIRES_VOTE=off` brings back verify-only welcomes, for example if FlowState's contract changes (the vote check fails closed, so no welcome is posted while it can't be read).
-- **Side effect:** voting through the dialog records the person as a hackathon participant (the dialog's API needs that row for its rate limit and vote record), so they appear in the hackathon CSV export. A wallet with no email on its account can't use the dialog yet.
+- **Side effect:** none since D126: voting no longer enrols anyone in the hackathon.
 - **Not changed:** landing, pricing and docs still say "40 credits when verified". The card itself says the vote is part of it.
+
+### D126. Any signed-in wallet can vote; voting doesn't enrol anyone in the hackathon (18 Nov 2026; amends D125)
+- Decided by: the owner (email sign-in and imported wallets follow the same rules: verify and vote for free credits). Built by Claude.
+- **What:** the vote dialog's API keeps its own per-account record (`flowstate_voters`: the 90-second eligibility rate limit, the vote's tx hash and time) instead of creating a hackathon participant row, which needed an email. A wallet with no email on its account can now vote and unlock the welcome credits.
+- **Hackathon signups:** if the person has already registered for the hackathon, the vote is copied onto their participant row too, so the CSV export and the hackathon credit claim keep working. Voters who never registered aren't in the CSV.
+- **Agreed next (not built yet):** a sign-in pop-up for people with 0 credits and no purchase (Add credits / Get free credits: verify, then "support our project by voting"); hackathon registration requiring verify and vote; and in-app voting on other people's hackathon projects, open to verified voters.

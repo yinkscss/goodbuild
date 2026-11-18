@@ -5,7 +5,7 @@ import type { Address, Hex } from "viem";
 import { AuthError } from "@/server/auth/errors";
 import { requireSession, errorResponse } from "@/server/auth/http";
 import { getDb } from "@/server/db/client";
-import { hackathonParticipants } from "@/server/db/hackathon-schema";
+import { flowstateVoters, hackathonParticipants } from "@/server/db/hackathon-schema";
 import { publicClientFor } from "@/server/deploy/service";
 import { FLOWSTATE_CHAIN_ID } from "@/lib/flowstate/config";
 import {
@@ -16,7 +16,6 @@ import {
   FlowstateError,
 } from "@/server/flowstate/service";
 import { claimFlowstateEligibility } from "@/server/flowstate/eligibility";
-import { getParticipant, saveParticipant } from "@/server/hackathon/community";
 import { HACKATHON_ID } from "@/server/hackathon/claim";
 import { ensureGas, GasGrantError } from "@/server/gas-grant/grant";
 import { gasGrantDeps } from "@/server/gas-grant/runtime";
@@ -88,13 +87,8 @@ export async function POST(request: Request) {
     const client = publicClientFor(FLOWSTATE_CHAIN_ID);
     const wallet = s.user.wallet as Address;
     const db = await getDb();
-    if (!(await getParticipant(db, s.user.id))) {
-      if (!s.user.email)
-        throw new FlowstateError(
-          "Save your email in hackathon registration first, then return here.",
-        );
-      await saveParticipant(db, s.user, { email: s.user.email });
-    }
+    // Any signed-in wallet can vote (D126): no email or hackathon signup needed.
+    await db.insert(flowstateVoters).values({ userId: s.user.id }).onConflictDoNothing();
     if (body.data.action === "prepare") {
       const additional = BigInt(body.data.additional);
       let review = await prepareFlowstateVote(client, wallet, additional);
@@ -106,7 +100,7 @@ export async function POST(request: Request) {
         review = await prepareFlowstateVote(client, wallet, additional);
         if (review.short)
           throw new FlowstateError(
-            "Your email wallet still needs a little CELO for the network fee. Please wait a minute and review your vote again. No votes or credits have been spent.",
+            "Your wallet still needs a little CELO for the network fee. Please wait a minute and review your vote again. No votes or credits have been spent.",
           );
       }
       return NextResponse.json({ ...review, gasGrant }, { headers });
@@ -119,31 +113,20 @@ export async function POST(request: Request) {
           403,
         );
       if (status.registered) return NextResponse.json(status, { headers });
-      if (!(await getParticipant(db, s.user.id))) {
-        if (!s.user.email)
-          throw new FlowstateError(
-            "Save your email in hackathon registration first, then return here.",
-          );
-        await saveParticipant(db, s.user, { email: s.user.email });
-      }
       const now = new Date();
       const claimed = await db
-        .update(hackathonParticipants)
-        .set({ flowstateClaimAt: now })
+        .update(flowstateVoters)
+        .set({ claimAt: now })
         .where(
           and(
-            eq(hackathonParticipants.userId, s.user.id),
-            eq(hackathonParticipants.hackathon, HACKATHON_ID),
+            eq(flowstateVoters.userId, s.user.id),
             or(
-              isNull(hackathonParticipants.flowstateClaimAt),
-              lt(
-                hackathonParticipants.flowstateClaimAt,
-                new Date(now.getTime() - 90_000),
-              ),
+              isNull(flowstateVoters.claimAt),
+              lt(flowstateVoters.claimAt, new Date(now.getTime() - 90_000)),
             ),
           ),
         )
-        .returning({ id: hackathonParticipants.id });
+        .returning({ id: flowstateVoters.userId });
       if (!claimed.length)
         throw new FlowstateError(
           "Please wait 90 seconds before enabling voting again.",
@@ -165,20 +148,29 @@ export async function POST(request: Request) {
       throw new FlowstateError(
         "This wallet does not currently have verified support for GoodBuildIt.",
       );
+    const votedAt = new Date();
     const recorded = await db
+      .update(flowstateVoters)
+      .set({
+        ...(confirmed.hash ? { txHash: confirmed.hash } : {}),
+        votedAt,
+      })
+      .where(eq(flowstateVoters.userId, s.user.id))
+      .returning({ id: flowstateVoters.userId });
+    // Hackathon signups keep their own copy, for the CSV and the hackathon credit claim.
+    await db
       .update(hackathonParticipants)
       .set({
         flowstate: "voted",
         ...(confirmed.hash ? { flowstateTxHash: confirmed.hash } : {}),
-        flowstateVotedAt: new Date(),
+        flowstateVotedAt: votedAt,
       })
       .where(
         and(
           eq(hackathonParticipants.userId, s.user.id),
           eq(hackathonParticipants.hackathon, HACKATHON_ID),
         ),
-      )
-      .returning({ id: hackathonParticipants.id });
+      );
     if (!recorded.length)
       throw new FlowstateError(
         "Your vote is on-chain, but we couldn’t save its confirmation. Please retry the confirmation.",

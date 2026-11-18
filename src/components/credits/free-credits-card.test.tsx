@@ -9,7 +9,7 @@ const claimUbi = vi.fn(async () => undefined);
 vi.mock("@/components/hackathon/flowstate-vote", () => ({
   FlowstateVote: ({ onConfirmed }: { onConfirmed?: () => void }) => (
     <button type="button" onClick={() => onConfirmed?.()}>
-      Vote here with your email wallet
+      Vote here with your wallet
     </button>
   ),
 }));

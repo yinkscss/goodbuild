@@ -71,7 +71,7 @@ it("only sends the pinned vote after an explicit review and confirms it through 
   const { client, onConfirmed } = setup();
   expect(client.writeContract).not.toHaveBeenCalled();
   await userEvent.click(
-    screen.getByRole("button", { name: "Vote here with your email wallet" }),
+    screen.getByRole("button", { name: "Vote here with your wallet" }),
   );
   const slider = await screen.findByRole("slider", {
     name: "Additional votes for GoodBuildIt",
@@ -99,7 +99,7 @@ it("only sends the pinned vote after an explicit review and confirms it through 
 it("requires another review if the ballot changes after a wallet prompt", async () => {
   const { client, onConfirmed } = setup(true);
   await userEvent.click(
-    screen.getByRole("button", { name: "Vote here with your email wallet" }),
+    screen.getByRole("button", { name: "Vote here with your wallet" }),
   );
   await screen.findByLabelText("Additional votes for GoodBuildIt");
   await userEvent.click(
@@ -129,7 +129,7 @@ it("recovers from a persisted reverted transaction without marking a vote confir
   });
   vi.stubGlobal("fetch", fetcher);
   await userEvent.click(
-    screen.getByRole("button", { name: "Vote here with your email wallet" }),
+    screen.getByRole("button", { name: "Vote here with your wallet" }),
   );
   await screen.findByText(/The vote reverted/);
   expect(localStorage.getItem(`gb:flowstate:pending:${wallet}`)).toBeNull();
@@ -176,7 +176,7 @@ it("selects ten points after a verified wallet enables its community voting righ
     </AuthContextProvider>,
   );
   await userEvent.click(
-    screen.getByRole("button", { name: "Vote here with your email wallet" }),
+    screen.getByRole("button", { name: "Vote here with your wallet" }),
   );
   await userEvent.click(
     await screen.findByRole("button", {

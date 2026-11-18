@@ -24,7 +24,7 @@ Primary sources:
 
 ## User flow
 
-1. Click **Vote here with your email wallet**. The app checks the council, recipient, GoodDollar identity, voting rights and existing ballot; it requests no signature just to open the dialog.
+1. Click **Vote here with your wallet** (any signed-in wallet; no email or hackathon signup needed, D126). The app checks the council, recipient, GoodDollar identity, voting rights and existing ballot; it requests no signature just to open the dialog.
 2. If necessary, click **Enable voting with this wallet**. A human-readable signature authorizes FlowState to register this exact wallet in this council. The fixed claim message includes council, chain, wallet and a short-lived timestamp. It is not a login, token approval or payment. FlowState's own eligibility service registers the voter.
 3. The visual slider selects all available points by default (normally 10); users can drag to adjust before confirming. The app supports only increases from unallocated power; it never silently takes votes away from another project. Existing supporters can confirm their current positive allocation without another transaction. An already allocated ballot is never silently reallocated.
 4. Review the project, allocation change, zero G$ transferred, and CELO network fee cap. The server simulates the exact call and checks the wallet's gas balance. It uses a gas limit with 20% headroom and explicit fee caps.

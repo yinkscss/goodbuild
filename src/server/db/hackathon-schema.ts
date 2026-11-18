@@ -88,3 +88,16 @@ export const hackathonApprovals = pgTable("hackathon_approvals", {
   goodidRoot: text("goodid_root").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, t => [uniqueIndex("hackathon_approvals_human_unique").on(t.entryId, t.goodidRoot)]);
+
+/**
+ * FlowState vote state per account (D126), for everyone who votes through GoodBuild's dialog, with or
+ * without an email or a hackathon signup. Holds the eligibility-claim rate limit and the confirmed vote.
+ * A hackathon participant row, when there is one, gets the same vote copied onto it for the CSV and claims.
+ */
+export const flowstateVoters = pgTable("flowstate_voters", {
+  userId: uuid("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  claimAt: timestamp("claim_at", { withTimezone: true }),
+  txHash: text("tx_hash"),
+  votedAt: timestamp("voted_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});

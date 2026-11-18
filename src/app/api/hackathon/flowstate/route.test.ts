@@ -2,7 +2,9 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import { createTestDb, type Db } from "@/server/db/client";
 import { users } from "@/server/db/schema";
-import { getParticipant } from "@/server/hackathon/community";
+import { eq } from "drizzle-orm";
+import { flowstateVoters } from "@/server/db/hackathon-schema";
+import { getParticipant, saveParticipant } from "@/server/hackathon/community";
 const mocks = vi.hoisted(() => ({
   status: vi.fn(),
   prepare: vi.fn(),
@@ -51,6 +53,8 @@ const state = {
   spreadFull: false,
 };
 const hash = "0x" + "a".repeat(64);
+const voter = async () =>
+  (await db.select().from(flowstateVoters).where(eq(flowstateVoters.userId, session!.user.id)))[0] ?? null;
 const post = (body: unknown) =>
   POST(
     new Request("http://localhost/api/hackathon/flowstate", {
@@ -96,20 +100,26 @@ it("atomically allows only one upstream eligibility claim from concurrent clicks
   expect(results.map((r) => r.status).sort()).toEqual([200, 429]);
   expect(mocks.claim).toHaveBeenCalledOnce();
 });
-it("saves proof for an existing voter arriving without a hackathon signup", async () => {
-  expect(await getParticipant(db, session!.user.id)).toBeNull();
+it("records a vote without enrolling the voter in the hackathon (D126)", async () => {
   const res = await post({ action: "confirm", hash });
   expect(res.status).toBe(200);
+  expect(await voter()).toMatchObject({ txHash: hash });
+  expect((await voter())?.votedAt).toBeInstanceOf(Date);
+  expect(await getParticipant(db, session!.user.id)).toBeNull();
+});
+it("mirrors the vote onto an existing hackathon signup", async () => {
+  await saveParticipant(db, session!.user, { email: "builder@example.com" });
+  expect((await post({ action: "confirm", hash })).status).toBe(200);
   expect(await getParticipant(db, session!.user.id)).toMatchObject({
-    email: "builder@example.com",
     flowstate: "voted",
     flowstateTxHash: hash,
   });
 });
-it("requires contact signup before preparing a vote for an external wallet", async () => {
+it("lets a wallet with no email on the account prepare a vote", async () => {
   session!.user.email = null;
-  expect((await post({ action: "prepare", additional: "1" })).status).toBe(409);
-  expect(mocks.prepare).not.toHaveBeenCalled();
+  mocks.prepare.mockResolvedValue({ ...state, short: false, feeCapWei: "1" });
+  expect((await post({ action: "prepare", additional: "1" })).status).toBe(200);
+  expect(mocks.prepare).toHaveBeenCalledOnce();
 });
 it("only accepts existing support after a fresh on-chain positive check", async () => {
   expect((await post({ action: "existing" })).status).toBe(409);
@@ -120,8 +130,6 @@ it("only accepts existing support after a fresh on-chain positive check", async 
     hash: null,
   });
   expect((await post({ action: "existing" })).status).toBe(200);
-  expect(await getParticipant(db, session!.user.id)).toMatchObject({
-    flowstate: "voted",
-    flowstateTxHash: null,
-  });
+  expect(await voter()).toMatchObject({ txHash: null });
+  expect((await voter())?.votedAt).toBeInstanceOf(Date);
 });
