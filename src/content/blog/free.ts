@@ -15,7 +15,7 @@ export const freePosts: Post[] = [
       {
         heading: "What free means at GoodBuild",
         paragraphs: [
-          "Planning is free. Verify once with GoodDollar and you get 40 free credits, enough for a few builds, plus 10 more a day when you claim them, up to 5 times a month. After that you pay the actual AI cost of each build plus 25%, and you see an estimate before each build, so the cost is never a surprise.",
+          "Planning is free. Verify once with GoodDollar and you get 40 free credits, enough for a few builds, plus 10 more on any day you claim your G$ UBI, up to 5 times a month. After that you pay the actual AI cost of each build plus 25%, and you see an estimate before each build, so the cost is never a surprise.",
           "So it is free to try, not unlimited. We say that plainly because a lot of \"free\" pages don't.",
         ],
       },

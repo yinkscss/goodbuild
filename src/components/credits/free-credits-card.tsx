@@ -7,6 +7,7 @@ import { BadgeCheck, Gift, Loader2 } from "lucide-react";
 import { useGoodIdVerify } from "@/components/auth/use-goodid-verify";
 import { Button } from "@/components/ui/button";
 import { LINK_WALLET_GUIDE } from "@/lib/goodid";
+import { UbiClaimError, useClaimUbi } from "./use-claim-ubi";
 import { cn } from "@/lib/utils";
 
 /** What GET /api/credits/free answers (FreeStatus in server/credits/free-grants.ts, dates as strings). */
@@ -24,6 +25,8 @@ export interface FreeStatusJson {
     claimedDays: string[];
   } | null;
   budgetFull: boolean;
+  refillNeedsUbi: boolean;
+  ubiClaimedToday: boolean | null;
 }
 
 const MONTH_SLOTS = 5;
@@ -38,8 +41,13 @@ function shortDay(iso: string) {
   return new Date(iso).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
 }
 
+/** The date GoodDollar's current day began on (its days run noon to noon UTC), as YYYY-MM-DD. */
+function gdToday() {
+  return new Date(Date.now() - 12 * 3_600_000).toISOString().slice(0, 10);
+}
+
 function refillLine(refill: NonNullable<FreeStatusJson["refill"]>) {
-  if (refill.state === "claimed_today") return "Claimed today. Your next refill is tomorrow.";
+  if (refill.state === "claimed_today") return "Claimed today. Your next refill is after noon UTC.";
   if (refill.state === "week_full") return `This week's refills are used. Back on ${refill.nextAt ? shortDay(refill.nextAt) : "Monday"}.`;
   if (refill.state === "month_full") return `This month's refills are used. Back on ${refill.nextAt ? shortDay(refill.nextAt) : "the 1st"}.`;
   return `${refill.leftThisMonth} of ${MONTH_SLOTS} left this month.`;
@@ -47,7 +55,8 @@ function refillLine(refill: NonNullable<FreeStatusJson["refill"]>) {
 
 /**
  * Free credits (D123). Not verified: verify with GoodDollar to get the welcome credits, which the
- * server adds as soon as it sees the verification on-chain. Verified: tap to claim the daily refill,
+ * server adds as soon as it sees the verification on-chain. Verified: one tap claims today's G$ UBI
+ * in the wallet (when the refill needs it) and then the daily refill,
  * with this month's claims shown as five slots. `compact` is the workspace version: it shows only
  * when there's something to do.
  */
@@ -58,6 +67,8 @@ export function FreeCreditsCard({ compact = false, onChange: onChangeProp }: { c
   const [status, setStatus] = React.useState<FreeStatusJson | null>(null);
   const [claiming, setClaiming] = React.useState(false);
   const [note, setNote] = React.useState<{ text: string; tone: "ok" | "error" } | null>(null);
+  const [step, setStep] = React.useState<"ubi" | "refill" | null>(null);
+  const claimUbi = useClaimUbi();
 
   const refresh = React.useCallback(async () => {
     const next = await loadStatus().catch(() => null);
@@ -98,18 +109,37 @@ export function FreeCreditsCard({ compact = false, onChange: onChangeProp }: { c
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /** Claim today's G$ UBI first when it's needed and not done, then the refill (D123). */
   async function claim() {
     setClaiming(true);
     setNote(null);
     try {
-      const res = await fetch("/api/credits/free/refill", { method: "POST", credentials: "same-origin" });
-      const body = (await res.json().catch(() => ({}))) as { grantedMicro?: number; message?: string };
-      if (!res.ok) setNote({ text: body.message ?? "We couldn't add your refill. Try again.", tone: "error" });
+      if (status?.refillNeedsUbi && status.ubiClaimedToday !== true) {
+        setStep("ubi");
+        try {
+          await claimUbi();
+        } catch (error) {
+          setNote({ text: error instanceof UbiClaimError ? error.message : "We couldn't claim your G$. Try again in a moment.", tone: "error" });
+          return;
+        }
+      }
+      setStep("refill");
+      // The server reads the claim from the chain, which can trail the receipt by a few seconds.
+      let res: Response | null = null;
+      let body: { grantedMicro?: number; error?: string; message?: string } = {};
+      for (let i = 0; i < 5; i++) {
+        res = await fetch("/api/credits/free/refill", { method: "POST", credentials: "same-origin" });
+        body = (await res.json().catch(() => ({}))) as typeof body;
+        if (res.ok || body.error !== "ubi_not_claimed" || !status?.refillNeedsUbi) break;
+        await new Promise((t) => setTimeout(t, 2000));
+      }
+      if (!res?.ok) setNote({ text: body.message ?? "We couldn't add your refill. Try again.", tone: "error" });
       else setNote({ text: `Added ${Math.round((body.grantedMicro ?? 0) / 10_000)} credits.`, tone: "ok" });
       await refresh();
       await onChange?.();
     } finally {
       setClaiming(false);
+      setStep(null);
     }
   }
 
@@ -128,7 +158,7 @@ export function FreeCreditsCard({ compact = false, onChange: onChangeProp }: { c
           Get {status.welcomeCredits} free credits
         </p>
         <p className="mt-1 text-sm text-grey-600">
-          Verify once with GoodDollar, a free face check that takes about a minute. Then claim {status.refillCredits} more credits a day, up to {MONTH_SLOTS} times a month. Planning stays free either way.
+          Verify once with GoodDollar, a free face check that takes about a minute. Then, on any day you claim your G$ UBI, claim {status.refillCredits} more credits, up to {MONTH_SLOTS} times a month. Planning stays free either way.
         </p>
         {status.budgetFull ? (
           <p className="mt-3 text-sm text-grey-600">This month&apos;s free credits are all gone. Verify now and you can claim refills from the 1st.</p>
@@ -150,7 +180,8 @@ export function FreeCreditsCard({ compact = false, onChange: onChangeProp }: { c
 
   if (!refill) return null;
   const used = new Set(refill.claimedDays);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = gdToday();
+  const needsUbi = status.refillNeedsUbi && status.ubiClaimedToday !== true;
   const slots = Array.from({ length: MONTH_SLOTS }, (_, i) => refill.claimedDays[i] ?? null);
   return (
     <section className={shell} aria-label="Daily refill">
@@ -181,11 +212,26 @@ export function FreeCreditsCard({ compact = false, onChange: onChangeProp }: { c
       <p className="mt-3 text-sm text-grey-600">
         +{status.refillCredits} credits, once a day. {refillLine(refill)}
       </p>
+      {refill.state === "available" && needsUbi && (
+        <p className="mt-1 text-sm text-grey-600">
+          Claim today&apos;s G$ UBI from GoodDollar to unlock it. One tap does both: your wallet claims the G$, then we add the credits. The network fee is a fraction of a cent in CELO.
+        </p>
+      )}
       {status.budgetFull && refill.state === "available" && <p className="mt-1 text-sm text-grey-600">This month&apos;s free credits are all gone. Refills come back on the 1st.</p>}
       <div className="mt-3">
         <Button variant="primary" size={compact ? "sm" : "default"} disabled={claiming || refill.state !== "available" || status.budgetFull} onClick={() => void claim()}>
           {claiming && <Loader2 className="animate-spin motion-reduce:animate-none" />}
-          {refill.state === "available" ? `Claim ${status.refillCredits} credits` : refill.state === "claimed_today" ? "Claimed today" : "No refills left"}
+          {step === "ubi"
+            ? "Claiming G$ in your wallet…"
+            : step === "refill"
+              ? "Adding credits…"
+              : refill.state === "available"
+                ? needsUbi
+                  ? `Claim G$ + ${status.refillCredits} credits`
+                  : `Claim ${status.refillCredits} credits`
+                : refill.state === "claimed_today"
+                  ? "Claimed today"
+                  : "No refills left"}
         </Button>
       </div>
       {message && <Note {...message} />}

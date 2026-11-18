@@ -48,6 +48,23 @@ export async function readGoodIdentity(client: Pick<PublicClient, "readContract"
 /** The production reader: Celo mainnet, whichever network the builder uses. */
 export const readGoodIdentityOnCelo = (wallet: Address) => readGoodIdentity(publicClientFor(celo.id), wallet);
 
+/** GoodDollar's UBI contract on Celo mainnet (UBIScheme in GoodProtocol's releases/deployment.json, "production-celo"). */
+export const GOODDOLLAR_UBI: Address = "0x43d72Ff17701B2DA814620735C39C620Ce0ea4A1";
+
+const UBI_ABI = parseAbi(["function lastClaimed(address account) view returns (uint256)"]);
+
+/**
+ * When this GoodDollar identity last claimed its daily G$ UBI, or null if never. UBISchemeV2 keys
+ * `lastClaimed` by the whitelisted root and sets it to the block time of each claim, so any linked
+ * wallet's claim counts. Read on the server: the browser's word for it is never trusted.
+ */
+export async function readUbiClaimedAt(client: Pick<PublicClient, "readContract">, root: Address): Promise<Date | null> {
+  const at = await client.readContract({ address: GOODDOLLAR_UBI, abi: UBI_ABI, functionName: "lastClaimed", args: [root] });
+  return at > BigInt(0) ? new Date(Number(at) * 1000) : null;
+}
+
+export const readUbiClaimedAtOnCelo = (root: Address) => readUbiClaimedAt(publicClientFor(celo.id), root);
+
 /**
  * Ask the contract whether this account's wallet is verified, and record it. The chain is the only
  * thing trusted here, never what the browser or GoodDollar's redirect says. Verification is kept once

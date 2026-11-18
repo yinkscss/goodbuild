@@ -13,8 +13,8 @@ export function Pricing() {
             <p className="display mt-3 text-[58px] font-extrabold text-violet">Free</p>
           </div>
           <p className="max-w-md text-sm text-grey-600">
-            Verify once with GoodDollar for 40 free credits, then claim 10 more a day, up to 5 times
-            a month. Planning is always free. On a test network, tokens are free and nothing spends real money.
+            Verify once with GoodDollar for 40 free credits. Then claim your daily G$ UBI and get 10
+            more credits with it, up to 5 times a month. Planning is always free. On a test network, tokens are free and nothing spends real money.
           </p>
         </article>
         <article className="flex flex-col justify-between gap-12 rounded-card bg-surface p-8 shadow-card">

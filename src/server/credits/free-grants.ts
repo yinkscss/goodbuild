@@ -42,6 +42,13 @@ export const FREE_POLICY_START = "2026-11-18T00:00:00Z";
 /** Held back in the budget for each free plan turn queued or running: more than a plan costs (PLAN_HEADROOM_MICRO). */
 export const RESERVED_PER_PLAN_MICRO = 10_000;
 
+/**
+ * Refills follow GoodDollar's day, which runs noon to noon UTC (UBISchemeV2's periodStart, read on
+ * Celo as 2023-03-01T12:00:00Z), so "claim your G$, then your refill" is one day in both places.
+ * Weeks and months for refills shift by the same 12 hours: a week starts Monday at noon UTC.
+ */
+export const GD_DAY_OFFSET_MS = 12 * 3_600_000;
+
 export const WELCOME_REF = "welcome";
 export const REFILL_REF = "refill";
 
@@ -65,6 +72,8 @@ export function freeSettings(env: Env) {
     planTurnsPerDay: count(env.FREE_PLAN_TURNS_PER_DAY, FREE_PLAN_TURNS_PER_DAY),
     budgetMicro: count(env.FREE_BUDGET_CREDITS_PER_MONTH, FREE_BUDGET_CREDITS_PER_MONTH) * MICRO_PER_CREDIT,
     policyStart: Number.isNaN(start.getTime()) ? new Date(FREE_POLICY_START) : start,
+    /** The refill needs today's G$ UBI claimed first (on unless REFILL_REQUIRES_UBI=off). */
+    requiresUbi: env.REFILL_REQUIRES_UBI?.trim().toLowerCase() !== "off",
   };
 }
 
@@ -130,6 +139,20 @@ export function refillStatus(claims: Date[], now: Date, limits: { perWeek: numbe
   return { state: "available", leftThisWeek, leftThisMonth, nextAt: null, claimedDays };
 }
 
+/** The moment GoodDollar's current day began (noon UTC). */
+export function gdDayStart(now: Date): Date {
+  return new Date(dayStart(new Date(now.getTime() - GD_DAY_OFFSET_MS)).getTime() + GD_DAY_OFFSET_MS);
+}
+
+/** refillStatus on GoodDollar's day: the clock is shifted back 12 hours, and the next time forward again. */
+export function refillStatusGd(claims: Date[], now: Date, limits: { perWeek: number; perMonth: number }): RefillStatus {
+  const s = refillStatus(claims, new Date(now.getTime() - GD_DAY_OFFSET_MS), limits);
+  return { ...s, nextAt: s.nextAt ? new Date(s.nextAt.getTime() + GD_DAY_OFFSET_MS) : null };
+}
+
+/** The ledger-key day for a refill made now: the date GoodDollar's current day began on. */
+export const gdDayKey = (now: Date) => dayKey(new Date(now.getTime() - GD_DAY_OFFSET_MS));
+
 // ---------------------------------------------------------------- the monthly budget
 
 /**
@@ -162,7 +185,7 @@ export async function freeBudgetLeftMicro(db: Db, now: Date, env: Env, startingJ
 
 // ---------------------------------------------------------------- claims
 
-export type FreeGrantErrorCode = "not_verified" | "expired" | "claimed_today" | "week_full" | "month_full" | "budget_full" | "off";
+export type FreeGrantErrorCode = "not_verified" | "expired" | "ubi_not_claimed" | "claimed_today" | "week_full" | "month_full" | "budget_full" | "off";
 
 export class FreeGrantError extends Error {
   constructor(
@@ -175,6 +198,7 @@ export class FreeGrantError extends Error {
 
 export const NOT_VERIFIED_MESSAGE = "This wallet isn't verified with GoodDollar yet. Verify, then try again.";
 export const EXPIRED_MESSAGE = "Your GoodDollar verification has expired. Verify again to keep getting refills.";
+export const UBI_NOT_CLAIMED_MESSAGE = "Claim today's G$ UBI first, then claim your refill.";
 export const BUDGET_FULL_MESSAGE = "This month's free credits are all gone. Refills come back on the 1st. Credits you buy still work.";
 
 /** What GoodDollar's Identity contract says about a wallet, read fresh. */
@@ -187,6 +211,8 @@ export interface GoodIdentity {
 
 export interface FreeDeps {
   readIdentity: (wallet: Address) => Promise<GoodIdentity>;
+  /** When this root last claimed its G$ UBI (UBIScheme lastClaimed), read fresh. Needed by refills. */
+  readUbiClaimedAt?: (root: Address) => Promise<Date | null>;
   now?: Date;
   env?: Env;
 }
@@ -263,8 +289,10 @@ export async function claimWelcome(db: Db, user: { id: string; wallet: string },
  * made for, whatever the clock in the database says.
  */
 async function refillTimes(db: Db, root: string, now: Date): Promise<Date[]> {
-  const week = weekStart(now);
-  const month = monthStart(now);
+  // Keys are GoodDollar days, so the windows are worked out on GoodDollar's clock.
+  const gdNow = new Date(now.getTime() - GD_DAY_OFFSET_MS);
+  const week = weekStart(gdNow);
+  const month = monthStart(gdNow);
   const since = dayKey(week < month ? week : month);
   const prefix = `refill:${root}:`;
   const rows = await db
@@ -279,14 +307,15 @@ async function refillTimes(db: Db, root: string, now: Date): Promise<Date[]> {
 
 const REFUSAL: Record<Exclude<RefillState, "available">, string> = {
   claimed_today: "You've claimed today's refill. Come back tomorrow.",
-  week_full: "You've used this week's refills. They come back on Monday.",
+  week_full: "You've used this week's refills. They come back on Monday at noon UTC.",
   month_full: "You've used this month's refills. They come back on the 1st.",
 };
 
 /**
- * Claim today's refill. The chain is read again: the wallet must still have a root, and the root's
- * verification must not have expired. Then the day, week and month limits, counted per root under
- * the free-grants lock, and the monthly budget.
+ * Claim today's refill. The chain is read again: the wallet must still have a root, the root's
+ * verification must not have expired, and (unless REFILL_REQUIRES_UBI=off) the root must have claimed
+ * its G$ UBI since GoodDollar's day began at noon UTC. Then the day, week and month limits, counted
+ * per root under the free-grants lock, and the monthly budget.
  */
 export async function claimRefill(db: Db, user: { id: string; wallet: string }, deps: FreeDeps): Promise<RefillResult> {
   const env = deps.env ?? process.env;
@@ -301,17 +330,21 @@ export async function claimRefill(db: Db, user: { id: string; wallet: string }, 
   if (identity.expiresAt && identity.expiresAt <= now) throw new FreeGrantError("expired", EXPIRED_MESSAGE);
   const root = identity.root.toLowerCase();
   const settings = freeSettings(env);
+  if (settings.requiresUbi) {
+    const claimedAt = deps.readUbiClaimedAt ? await deps.readUbiClaimedAt(identity.root) : null;
+    if (!claimedAt || claimedAt < gdDayStart(now)) throw new FreeGrantError("ubi_not_claimed", UBI_NOT_CLAIMED_MESSAGE);
+  }
 
   return db.transaction(async (raw) => {
     const tx = raw as unknown as Db;
     await lockFree(tx);
     await recordRoot(tx, user.id, root);
-    const before = refillStatus(await refillTimes(tx, root, now), now, settings);
+    const before = refillStatusGd(await refillTimes(tx, root, now), now, settings);
     if (before.state !== "available") throw new FreeGrantError(before.state, REFUSAL[before.state]);
     if (settings.refillMicro <= 0) throw new FreeGrantError("off", "Refills are switched off right now.");
     if ((await freeBudgetLeftMicro(tx, now, env)) < settings.refillMicro) throw new FreeGrantError("budget_full", BUDGET_FULL_MESSAGE);
-    await postLedgerEntry(tx, { userId: user.id, kind: "adjust", amountMicro: settings.refillMicro, idempotencyKey: `refill:${root}:${dayKey(now)}`, refType: REFILL_REF, refId: root });
-    return { grantedMicro: settings.refillMicro, status: refillStatus([...(await refillTimes(tx, root, now))], now, settings) };
+    await postLedgerEntry(tx, { userId: user.id, kind: "adjust", amountMicro: settings.refillMicro, idempotencyKey: `refill:${root}:${gdDayKey(now)}`, refType: REFILL_REF, refId: root });
+    return { grantedMicro: settings.refillMicro, status: refillStatusGd(await refillTimes(tx, root, now), now, settings) };
   });
 }
 
@@ -326,13 +359,17 @@ export interface FreeStatus {
   refillCredits: number;
   refill: RefillStatus | null;
   budgetFull: boolean;
+  /** A refill needs today's G$ UBI claimed first. */
+  refillNeedsUbi: boolean;
+  /** Has this person claimed G$ UBI since GoodDollar's day began? Null when not asked or unreadable. */
+  ubiClaimedToday: boolean | null;
 }
 
 /**
- * Where this account stands, from what's stored: no chain read, so it's cheap enough for every page
- * load. A claim reads the chain again before it pays anything.
+ * Where this account stands, from what's stored. With `readUbiClaimedAt`, one chain read too, only for
+ * a verified person who needs it for a refill. A claim reads the chain again before it pays anything.
  */
-export async function freeStatus(db: Db, userId: string, now = new Date(), env: Env = process.env): Promise<FreeStatus> {
+export async function freeStatus(db: Db, userId: string, now = new Date(), env: Env = process.env, readUbiClaimedAt?: FreeDeps["readUbiClaimedAt"]): Promise<FreeStatus> {
   const settings = freeSettings(env);
   const [user] = await db.select({ verifiedAt: users.verifiedAt, goodidRoot: users.goodidRoot }).from(users).where(eq(users.id, userId)).limit(1);
   const root = user?.verifiedAt ? user.goodidRoot : null;
@@ -341,9 +378,17 @@ export async function freeStatus(db: Db, userId: string, now = new Date(), env: 
     welcomeCredits: settings.welcomeMicro / MICRO_PER_CREDIT,
     refillCredits: settings.refillMicro / MICRO_PER_CREDIT,
     budgetFull: (await freeBudgetLeftMicro(db, now, env)) < Math.min(settings.refillMicro || Infinity, settings.welcomeMicro || Infinity),
+    refillNeedsUbi: settings.requiresUbi,
+    ubiClaimedToday: null as boolean | null,
   };
   if (!root) return { ...base, verified: false, welcomeDone: false, refill: null };
   // Nothing is posted when earlier free AI used the whole welcome, so that counts as done too.
   const welcomeDone = Boolean(await welcomeFor(db, root)) || (await priorFreeMicro(db, userId, root, settings.policyStart)) >= settings.welcomeMicro;
-  return { ...base, verified: true, welcomeDone, refill: refillStatus(await refillTimes(db, root, now), now, settings) };
+  const refill = refillStatusGd(await refillTimes(db, root, now), now, settings);
+  let ubiClaimedToday: boolean | null = null;
+  if (settings.requiresUbi && readUbiClaimedAt && refill.state === "available") {
+    const at = await readUbiClaimedAt(root as Address).catch(() => undefined);
+    ubiClaimedToday = at === undefined ? null : Boolean(at && at >= gdDayStart(now));
+  }
+  return { ...base, verified: true, welcomeDone, refill, ubiClaimedToday };
 }

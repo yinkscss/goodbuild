@@ -11,7 +11,7 @@ import { turnJobs, usageEvents, users } from "@/server/db/schema";
 import { startTurn } from "@/server/jobs/jobs";
 import { createProjectFromPrompt } from "@/server/projects";
 import { NEEDS_VERIFICATION_MESSAGE, OUT_OF_FREE_CREDITS_MESSAGE, checkAiAllowance, freeRemainingMicro, shouldOfferVerification } from "./cap";
-import { claimRefill, claimWelcome, dayKey, freeStatus, refillStatus, weekStart, type GoodIdentity } from "./free-grants";
+import { claimRefill, claimWelcome, dayKey, freeStatus, gdDayKey, gdDayStart, refillStatus, refillStatusGd, weekStart, type GoodIdentity } from "./free-grants";
 import { getBalanceMicro } from "./ledger";
 import { MIGRATIONS, testBackends, type TestDatabase } from "./test-backends";
 
@@ -51,6 +51,16 @@ describe("refillStatus (pure)", () => {
     expect(refillStatus([], at("2026-11-25T09:00:00Z"), limits).leftThisWeek).toBe(2);
   });
 
+  it("follows GoodDollar's day, noon to noon UTC", () => {
+    expect(gdDayStart(at("2026-11-18T11:59:59Z")).toISOString()).toBe("2026-11-17T12:00:00.000Z");
+    expect(gdDayStart(at("2026-11-18T12:00:00Z")).toISOString()).toBe("2026-11-18T12:00:00.000Z");
+    expect(gdDayKey(at("2026-11-18T11:00:00Z"))).toBe("2026-11-17");
+    expect(gdDayKey(at("2026-11-18T13:00:00Z"))).toBe("2026-11-18");
+    const s = refillStatusGd([at("2026-11-18T00:00:00Z")], at("2026-11-18T13:00:00Z"), LIMITS);
+    expect(s.state).toBe("claimed_today");
+    expect(s.nextAt?.toISOString()).toBe("2026-11-19T12:00:00.000Z");
+  });
+
   it("counts a week that spans two months against each month separately", () => {
     // Mon 30 Nov 2026 is in the same week as Thu 3 Dec.
     const s = refillStatus([at("2026-11-30T00:00:00Z")], at("2026-12-03T09:00:00Z"), { perWeek: 1, perMonth: 5 });
@@ -79,8 +89,10 @@ describe.each(testBackends())("free grants on $name", (backend) => {
     const [u] = await db.insert(users).values({ wallet: address().toLowerCase() }).returning({ id: users.id, wallet: users.wallet });
     return u;
   }
-  const verifiedAs = (root: Address | null, expiresAt: Date | null = null, env: Record<string, string> = ENV, now = NOW) => ({
+  /** A wallet the chain says has this root, and (by default) claimed its G$ UBI at `now`. */
+  const verifiedAs = (root: Address | null, expiresAt: Date | null = null, env: Record<string, string> = ENV, now = NOW, ubiClaimedAt: Date | null = now) => ({
     readIdentity: async (): Promise<GoodIdentity> => ({ root, expiresAt }),
+    readUbiClaimedAt: async () => ubiClaimedAt,
     env,
     now,
   });
@@ -144,7 +156,7 @@ describe.each(testBackends())("free grants on $name", (backend) => {
     const r = address();
     const a = await newUser();
     const b = await newUser();
-    const day1 = new Date("2026-12-07T08:00:00Z"); // a Monday
+    const day1 = new Date("2026-12-07T13:00:00Z"); // a Monday, after GoodDollar's day starts at noon UTC
     expect(credits((await claimRefill(db, a, verifiedAs(r, null, ENV, day1))).grantedMicro)).toBe(10);
     await expect(claimRefill(db, a, verifiedAs(r, null, ENV, day1))).rejects.toMatchObject({ code: "claimed_today" });
     await expect(claimRefill(db, b, verifiedAs(r, null, ENV, day1))).rejects.toMatchObject({ code: "claimed_today" });
@@ -160,17 +172,42 @@ describe.each(testBackends())("free grants on $name", (backend) => {
     expect(status.refill).toMatchObject({ state: "month_full", leftThisMonth: 0 });
     expect(status.refill?.claimedDays).toEqual(["2026-12-07", "2026-12-08", "2026-12-09", "2026-12-10", "2026-12-11"]);
     // January is a new month.
-    expect((await claimRefill(db, a, verifiedAs(r, null, ENV, new Date("2027-01-04T09:00:00Z")))).status.leftThisMonth).toBe(4);
+    expect((await claimRefill(db, a, verifiedAs(r, null, ENV, new Date("2027-01-04T13:00:00Z")))).status.leftThisMonth).toBe(4);
   });
 
   it("applies the weekly limit from the settings", async () => {
     const r = address();
     const u = await newUser();
     const env = { ...ENV, REFILLS_PER_WEEK: "2" };
-    await claimRefill(db, u, verifiedAs(r, null, env, new Date("2027-02-01T09:00:00Z")));
-    await claimRefill(db, u, verifiedAs(r, null, env, new Date("2027-02-02T09:00:00Z")));
-    await expect(claimRefill(db, u, verifiedAs(r, null, env, new Date("2027-02-03T09:00:00Z")))).rejects.toMatchObject({ code: "week_full" });
-    expect((await claimRefill(db, u, verifiedAs(r, null, env, new Date("2027-02-08T09:00:00Z")))).status).toMatchObject({ leftThisWeek: 1, leftThisMonth: 2 });
+    await claimRefill(db, u, verifiedAs(r, null, env, new Date("2027-02-01T13:00:00Z")));
+    await claimRefill(db, u, verifiedAs(r, null, env, new Date("2027-02-02T13:00:00Z")));
+    await expect(claimRefill(db, u, verifiedAs(r, null, env, new Date("2027-02-03T13:00:00Z")))).rejects.toMatchObject({ code: "week_full" });
+    expect((await claimRefill(db, u, verifiedAs(r, null, env, new Date("2027-02-08T13:00:00Z")))).status).toMatchObject({ leftThisWeek: 1, leftThisMonth: 2 });
+  });
+
+  it("needs today's G$ UBI claimed first, on GoodDollar's noon-to-noon UTC day", async () => {
+    const r = address();
+    const u = await newUser();
+    const now = new Date("2027-03-10T15:00:00Z");
+    // Never claimed, or last claimed before today's noon: refused, and nothing posted.
+    await expect(claimRefill(db, u, verifiedAs(r, null, ENV, now, null))).rejects.toMatchObject({ code: "ubi_not_claimed" });
+    await expect(claimRefill(db, u, verifiedAs(r, null, ENV, now, new Date("2027-03-10T11:59:59Z")))).rejects.toMatchObject({ code: "ubi_not_claimed" });
+    expect(await getBalanceMicro(db, u.id)).toBe(0);
+    // Claimed after noon: the refill goes through, keyed to the GoodDollar day.
+    const ok = await claimRefill(db, u, verifiedAs(r, null, ENV, now, new Date("2027-03-10T12:00:05Z")));
+    expect(credits(ok.grantedMicro)).toBe(10);
+    // Before noon the next morning it's still the same GoodDollar day.
+    await expect(claimRefill(db, u, verifiedAs(r, null, ENV, new Date("2027-03-11T09:00:00Z"), new Date("2027-03-10T12:00:05Z")))).rejects.toMatchObject({ code: "claimed_today" });
+    expect(credits(await getBalanceMicro(db, u.id))).toBe(10);
+    // The status reads the UBI claim too, when it's given a reader.
+    const status = await freeStatus(db, u.id, new Date("2027-03-11T13:00:00Z"), ENV, async () => new Date("2027-03-10T12:00:05Z"));
+    expect(status).toMatchObject({ refillNeedsUbi: true, ubiClaimedToday: false, refill: { state: "available" } });
+  });
+
+  it("works without the UBI claim when REFILL_REQUIRES_UBI=off", async () => {
+    const u = await newUser();
+    const env = { ...ENV, REFILL_REQUIRES_UBI: "off" };
+    expect(credits((await claimRefill(db, u, { readIdentity: async () => ({ root: address(), expiresAt: null }), env })).grantedMicro)).toBe(10);
   });
 
   it("pauses refills when GoodDollar's verification has expired", async () => {

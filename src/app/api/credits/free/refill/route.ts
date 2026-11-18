@@ -3,20 +3,20 @@ import { NextResponse } from "next/server";
 import { errorResponse, requireSession } from "@/server/auth/http";
 import { FreeGrantError, claimRefill } from "@/server/credits/free-grants";
 import { getDb } from "@/server/db/client";
-import { readGoodIdentityOnCelo } from "@/server/goodid";
+import { readGoodIdentityOnCelo, readUbiClaimedAtOnCelo } from "@/server/goodid";
 
 const NO_STORE = { "Cache-Control": "no-store" };
 
-/** Claim today's refill (D123). The chain is read again before anything is paid. */
+/** Claim today's refill (D123). The chain is read again before anything is paid, including today's G$ UBI claim. */
 export async function POST() {
   try {
     const session = await requireSession();
     try {
-      const result = await claimRefill(await getDb(), session.user, { readIdentity: readGoodIdentityOnCelo });
+      const result = await claimRefill(await getDb(), session.user, { readIdentity: readGoodIdentityOnCelo, readUbiClaimedAt: readUbiClaimedAtOnCelo });
       return NextResponse.json(result, { headers: NO_STORE });
     } catch (error) {
       if (error instanceof FreeGrantError) {
-        const status = error.code === "not_verified" || error.code === "expired" ? 403 : error.code === "budget_full" || error.code === "off" ? 410 : 409;
+        const status = error.code === "not_verified" || error.code === "expired" || error.code === "ubi_not_claimed" ? 403 : error.code === "budget_full" || error.code === "off" ? 410 : 409;
         return NextResponse.json({ error: error.code, message: error.message }, { status, headers: NO_STORE });
       }
       if (error instanceof Error && /fetch|network|timeout|rpc/i.test(error.message)) {
