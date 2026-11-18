@@ -29,9 +29,11 @@ describe("walletClientFor", () => {
     expect(client.chain?.id).toBe(11142220);
   });
 
-  it("defaults unknown chains to Celo Sepolia and honours mainnet", () => {
-    expect(celoChainFor(null).id).toBe(11142220);
+  it("defaults unknown chains to Celo mainnet and gives Celo Sepolia only when asked by id", () => {
+    expect(celoChainFor(null).id).toBe(42220);
+    expect(celoChainFor(1).id).toBe(42220);
     expect(celoChainFor(42220).id).toBe(42220);
+    expect(celoChainFor(11142220).id).toBe(11142220);
   });
 });
 

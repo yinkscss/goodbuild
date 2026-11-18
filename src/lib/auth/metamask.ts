@@ -1,5 +1,5 @@
 import { numberToHex, type EIP1193Provider } from "viem";
-import { celo, celoSepolia } from "viem/chains";
+import { celo } from "viem/chains";
 
 /**
  * MetaMask's connect screen, for a plain eth_requestAccounts, pre-selects every network the
@@ -7,14 +7,15 @@ import { celo, celoSepolia } from "viem/chains";
  * then refuses to store the approval, because that scope isn't one it can grant, and the account
  * request fails after the person has already pressed Connect.
  *
- * Naming the two Celo chains in endowment:permitted-chains makes the screen pre-select only those,
- * so Tron stays out of the approval. See MetaMask's getDefaultConnectChainIds.
+ * Naming Celo in endowment:permitted-chains makes the screen pre-select only it, so Tron stays out
+ * of the approval. See MetaMask's getDefaultConnectChainIds. Only Celo mainnet is named: Celo Sepolia
+ * is asked for (and added) only when someone picks the testnet, never at sign-in.
  *
- * MetaMask refuses the whole request when it names a network the wallet hasn't added (for Celo
- * Sepolia: 'Received scopeString value(s): eip155:11142220 ... not supported by the wallet').
- * Then we ask again without that network, and the chain switch afterwards adds it.
+ * MetaMask refuses the whole request when it names a network the wallet hasn't added
+ * ('Received scopeString value(s): eip155:42220 ... not supported by the wallet').
+ * Then we ask again with Ethereum instead, and the chain switch afterwards adds Celo.
  */
-const CELO_CHAIN_IDS = [numberToHex(celo.id), numberToHex(celoSepolia.id)];
+const CELO_CHAIN_IDS = [numberToHex(celo.id)];
 /** Every MetaMask has Ethereum, so it stands in when the wallet has neither Celo chain. It still keeps Tron out. */
 const FALLBACK_CHAIN_IDS = ["0x1"];
 
