@@ -1,7 +1,7 @@
 import { Check } from "lucide-react";
 
 const FACTS = [
-  { title: "Free to start", body: "Plan for free. Verify with GoodDollar for 100 free credits and daily refills." },
+  { title: "Free to start", body: "Plan for free. Verify with GoodDollar for 40 free credits and daily refills." },
   { title: "Your wallet signs", body: "GoodBuild never holds your keys." },
   { title: "Your own address", body: "Publish your app with one link to share." },
 ];

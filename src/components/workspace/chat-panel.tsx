@@ -364,7 +364,7 @@ export function Composer({
         </div>
         </div>
         <div className="ml-auto flex items-center gap-2 sm:gap-3">
-          <span className="text-xs text-grey-400" title="Estimated charge for this request: AI cost + 25%. Planning is free. Verify with GoodDollar for 100 free credits.">
+          <span className="text-xs text-grey-400" title="Estimated charge for this request: AI cost + 25%. Planning is free. Verify with GoodDollar for 40 free credits.">
             ≈ {formatCredits(est)} {running ? "· runs after this build" : ""}
           </span>
           {running && onStop && (

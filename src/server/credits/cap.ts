@@ -44,7 +44,7 @@ export const FUNDING_UNAVAILABLE_MESSAGE = "This build can't start yet. Please t
 export const FREE_RAN_OUT_MESSAGE = "Your free AI ran out before this build started. Retry to run it on your credits.";
 
 /** D112: no free builds. Unverified people are told how to get free credits. */
-export const NEEDS_VERIFICATION_MESSAGE = "Verify with GoodDollar to get 100 free credits, or add credits to keep building.";
+export const NEEDS_VERIFICATION_MESSAGE = "Verify with GoodDollar to get 40 free credits, or add credits to keep building.";
 /** D112: a verified person whose credits are spent. */
 export const OUT_OF_FREE_CREDITS_MESSAGE = "You're out of credits. Claim your daily refill or add credits to keep building.";
 /** D112: today's free plans are used up. */

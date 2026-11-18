@@ -101,7 +101,7 @@ const SECTIONS: Array<{ id: string; title: string; body: ReactNode }> = [
       <>
         <p>Each build shows an estimate of what it costs. A build that starts under that amount can finish, then building pauses for that account.</p>
         <p>
-          Planning is free for everyone, up to 5 plans a day. To get free build credits, verify with GoodDollar, a quick face check: you get 100 credits, once per
+          Planning is free for everyone, up to 5 plans a day. To get free build credits, verify with GoodDollar, a quick face check: you get 40 credits, once per
           person. After that you can claim 10 more credits a day, up to 5 times a month. Free credits have a monthly total, so they can run out before the month ends.
         </p>
         <p>

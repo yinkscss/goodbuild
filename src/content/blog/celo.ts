@@ -94,7 +94,7 @@ export const celoPosts: Post[] = [
       },
       {
         heading: "Try it",
-        paragraphs: ["Start with a small idea in [GoodBuild](/). Planning is free, and verifying with GoodDollar gives you 100 credits, enough for several small builds."],
+        paragraphs: ["Start with a small idea in [GoodBuild](/). Planning is free, and verifying with GoodDollar gives you 40 credits, enough for a few small builds."],
       },
     ],
     related: ["how-to-build-a-dapp-on-celo", "best-ai-dapp-builders-for-web3", "no-code-vs-vibe-coding"],

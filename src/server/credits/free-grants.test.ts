@@ -91,15 +91,15 @@ describe.each(testBackends())("free grants on $name", (backend) => {
     await expect(claimRefill(db, u, verifiedAs(null))).rejects.toMatchObject({ code: "not_verified" });
     expect(await getBalanceMicro(db, u.id)).toBe(0);
     expect(await shouldOfferVerification(db, u.id, ENV)).toBe(true);
-    expect(await freeStatus(db, u.id, NOW, ENV)).toMatchObject({ verified: false, welcomeDone: false, refill: null, welcomeCredits: 100 });
+    expect(await freeStatus(db, u.id, NOW, ENV)).toMatchObject({ verified: false, welcomeDone: false, refill: null, welcomeCredits: 40 });
   });
 
-  it("gives 100 welcome credits once, however often it's asked", async () => {
+  it("gives 40 welcome credits once, however often it's asked", async () => {
     const u = await newUser();
     const r = address();
-    expect(await claimWelcome(db, u, verifiedAs(r))).toEqual({ grantedMicro: 100 * MICRO_PER_CREDIT, done: true });
+    expect(await claimWelcome(db, u, verifiedAs(r))).toEqual({ grantedMicro: 40 * MICRO_PER_CREDIT, done: true });
     expect(await claimWelcome(db, u, verifiedAs(r))).toEqual({ grantedMicro: 0, done: true });
-    expect(credits(await getBalanceMicro(db, u.id))).toBe(100);
+    expect(credits(await getBalanceMicro(db, u.id))).toBe(40);
     const [row] = await db.select({ root: users.goodidRoot, verifiedAt: users.verifiedAt }).from(users).where(eq(users.id, u.id));
     expect(row.root).toBe(r.toLowerCase());
     expect(row.verifiedAt).not.toBeNull();
@@ -126,11 +126,11 @@ describe.each(testBackends())("free grants on $name", (backend) => {
     const use = (userId: string, micro: number) =>
       db.insert(usageEvents).values({ userId, projectId: project.id, callId: randomUUID(), model: "m", inputTokens: 1, outputTokens: 1, providerCostMicro: micro, chargedMicro: micro, markupBps: 0, funding: "free", createdAt: before });
     await use(u.id, 150_000);
-    await use(linked.id, 250_000);
+    await use(linked.id, 100_000);
     // Paid usage and free usage after the start don't count.
     await db.insert(usageEvents).values({ userId: u.id, projectId: project.id, callId: randomUUID(), model: "m", inputTokens: 1, outputTokens: 1, providerCostMicro: 90_000, chargedMicro: 90_000, markupBps: 0, funding: "paid", createdAt: before });
     await db.insert(usageEvents).values({ userId: u.id, projectId: project.id, callId: randomUUID(), model: "m", inputTokens: 1, outputTokens: 1, providerCostMicro: 5_000, chargedMicro: 5_000, markupBps: 0, funding: "free" });
-    expect(credits((await claimWelcome(db, u, verifiedAs(r))).grantedMicro)).toBe(60);
+    expect(credits((await claimWelcome(db, u, verifiedAs(r))).grantedMicro)).toBe(15);
 
     // Someone who used more than the welcome gets nothing, and the welcome still counts as done.
     const heavy = await newUser();
@@ -180,7 +180,7 @@ describe.each(testBackends())("free grants on $name", (backend) => {
     await expect(claimRefill(db, u, verifiedAs(r, new Date(NOW.getTime() - 1000)))).rejects.toMatchObject({ code: "expired" });
     // Verified before, but the chain no longer gives a root: also expired, not "never verified".
     await expect(claimRefill(db, u, verifiedAs(null))).rejects.toMatchObject({ code: "expired" });
-    expect(credits(await getBalanceMicro(db, u.id))).toBe(100);
+    expect(credits(await getBalanceMicro(db, u.id))).toBe(40);
   });
 
   it("stops every grant once the month's budget is spent", async () => {
@@ -222,7 +222,7 @@ describe.each(testBackends())("free grants on $name", (backend) => {
       await claimWelcome(db, a, verifiedAs(address()));
       const started = await startTurn(db, { projectId: a.projectId, userId: a.id, mode: "build", prompt: "Build it" }, ENV);
       expect("job" in started && started.job.funding).toBe("paid");
-      expect("job" in started && started.job.holdMicro).toBe(100 * MICRO_PER_CREDIT);
+      expect("job" in started && started.job.holdMicro).toBe(40 * MICRO_PER_CREDIT);
     });
 
     it("plans for free, unverified too, up to the daily limit", async () => {

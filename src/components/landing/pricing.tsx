@@ -13,7 +13,7 @@ export function Pricing() {
             <p className="display mt-3 text-[58px] font-extrabold text-violet">Free</p>
           </div>
           <p className="max-w-md text-sm text-grey-600">
-            Verify once with GoodDollar for 100 free credits, then claim 10 more a day, up to 5 times
+            Verify once with GoodDollar for 40 free credits, then claim 10 more a day, up to 5 times
             a month. Planning is always free. On a test network, tokens are free and nothing spends real money.
           </p>
         </article>

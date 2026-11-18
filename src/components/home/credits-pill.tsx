@@ -51,11 +51,11 @@ export function CreditsPill({
     return (
       <div
         className={cn("flex items-center gap-2 rounded-full bg-surface py-1.5 pr-4 pl-1.5 text-sm shadow-card", className)}
-        title="Planning is free. Verify with GoodDollar for 100 free credits, then claim a daily refill."
+        title="Planning is free. Verify with GoodDollar for 40 free credits, then claim a daily refill."
       >
         {glyph}
         <b className="font-semibold">Free AI</b>
-        <span className="text-grey-400">· 100 credits when verified</span>
+        <span className="text-grey-400">· 40 credits when verified</span>
       </div>
     );
   }

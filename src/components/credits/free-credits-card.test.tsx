@@ -7,7 +7,7 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 import { FreeCreditsCard, type FreeStatusJson } from "./free-credits-card";
 
-const base: FreeStatusJson = { policy: "verified", verified: false, welcomeDone: false, welcomeCredits: 100, refillCredits: 10, refill: null, budgetFull: false };
+const base: FreeStatusJson = { policy: "verified", verified: false, welcomeDone: false, welcomeCredits: 40, refillCredits: 10, refill: null, budgetFull: false };
 const today = new Date().toISOString().slice(0, 10);
 
 /** Answers each API the card calls, and records the calls. */
@@ -20,10 +20,10 @@ function api(routes: Record<string, () => Response>) {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("FreeCreditsCard", () => {
-  it("asks an unverified person to verify for 100 credits, after checking quietly that they aren't already", async () => {
+  it("asks an unverified person to verify for 40 credits, after checking quietly that they aren't already", async () => {
     const calls = api({ "/api/credits/free": () => Response.json(base), "/api/account/goodid": () => Response.json({ verified: false, welcomeMicro: 0 }) });
     render(<FreeCreditsCard />);
-    expect(await screen.findByText("Get 100 free credits")).toBeInTheDocument();
+    expect(await screen.findByText("Get 40 free credits")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /verify with gooddollar/i })).toBeEnabled();
     await waitFor(() => expect(calls).toHaveBeenCalledWith("/api/account/goodid", expect.objectContaining({ method: "POST" })));
   });
@@ -34,12 +34,12 @@ describe("FreeCreditsCard", () => {
       "/api/credits/free": () => Response.json(verified ? { ...base, verified: true, welcomeDone: true, refill: { state: "available", leftThisWeek: 5, leftThisMonth: 5, nextAt: null, claimedDays: [] } } : base),
       "/api/account/goodid": () => {
         verified = true;
-        return Response.json({ verified: true, welcomeMicro: 1_000_000 });
+        return Response.json({ verified: true, welcomeMicro: 400_000 });
       },
     });
     const onChange = vi.fn();
     render(<FreeCreditsCard onChange={onChange} />);
-    expect(await screen.findByText(/already verified with GoodDollar\. 100 free credits added/)).toBeInTheDocument();
+    expect(await screen.findByText(/already verified with GoodDollar\. 40 free credits added/)).toBeInTheDocument();
     expect(screen.getByText("Daily refill")).toBeInTheDocument();
     expect(onChange).toHaveBeenCalled();
   });
