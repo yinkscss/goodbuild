@@ -1,8 +1,8 @@
 "use client";
 
 import * as React from "react";
-import type { EIP1193Provider } from "viem";
-import { celo, celoSepolia } from "viem/chains";
+import { createWalletClient, custom, numberToHex, type EIP1193Provider } from "viem";
+import { base, celo, celoSepolia } from "viem/chains";
 
 import { shortAddress } from "../../format";
 import { AuthContextProvider } from "../context";
@@ -10,7 +10,7 @@ import { detectInstalled, missingWalletMessage, pickInjected as pickInjectedFrom
 import { isCaip25ScopeError, requestMetaMaskAccount, walletConnectMetadata } from "../metamask";
 import { SignInError, endSession, fetchSession, parseChainId, signInWithEthereum } from "../session-client";
 import type { Attestation, AuthApi, AuthPhase, ExternalWalletId, SessionUser, WalletState } from "../types";
-import { switchWalletChain, walletClientFor } from "../wallet-client";
+import { switchWalletChain, switchWalletTo, walletClientFor } from "../wallet-client";
 
 /**
  * Auth with Magic (D22): email OTP creates an embedded wallet on Celo; MetaMask, MiniPay/Valora
@@ -111,11 +111,13 @@ function MagicBridge({ publishableKey, children }: { publishableKey: string; chi
   const getMagic = React.useCallback((): Promise<MagicInstance> => {
     magicRef.current ??= (async () => {
       const [{ Magic }, { EVMExtension }] = await Promise.all([import("magic-sdk"), import("@magic-ext/evm")]);
-      // Celo mainnet is the default network; Celo Sepolia is selectable for testing. Both RPC hosts
+      // Celo mainnet is the default network; Celo Sepolia is selectable for testing. Base is only ever used for one
+      // signature, the GoodCash top-up permit (D122), and the wallet goes straight back to Celo. All three RPC hosts
       // must be allowed in the Magic dashboard's content security policy.
       const evm = new EVMExtension([
         { rpcUrl: celo.rpcUrls.default.http[0], chainId: celo.id, default: true },
         { rpcUrl: celoSepolia.rpcUrls.default.http[0], chainId: celoSepolia.id },
+        { rpcUrl: base.rpcUrls.default.http[0], chainId: base.id },
       ]);
       return new Magic(publishableKey, { extensions: [evm] }) as unknown as MagicInstance;
     })();
@@ -433,6 +435,38 @@ function MagicBridge({ publishableKey, children }: { publishableKey: string; chi
         return walletClientFor(c.provider, c.address, chainId);
       },
 
+      async signTypedDataOn(chain, typedData) {
+        // The session's own wallet, reconnected if the page lost it (D120); never a different account.
+        const conn = await ensureConnected();
+        const magic = conn.kind === "embedded" ? await getMagic() : null;
+        const before = (await readChainId(conn.provider)) ?? conn.chainId;
+        let moved = false;
+        // Only switch when we know where to come back to.
+        if (before !== null && before !== chain.id) {
+          try {
+            if (magic) await magic.evm.switchChain(chain.id);
+            else await switchWalletTo(walletClientFor(conn.provider, conn.address, before), chain);
+            moved = true;
+          } catch {
+            /* a wallet that can't switch signs without switching; if it refuses, the error below says so */
+          }
+        }
+        try {
+          const client = createWalletClient({ account: conn.address, chain, transport: custom(conn.provider) });
+          const signature = await client.signTypedData({ account: conn.address, ...typedData });
+          if (!/^0x[0-9a-fA-F]{130}$/.test(signature)) throw new Error("The wallet didn't return a signature.");
+          return signature;
+        } finally {
+          if (moved && before !== null) {
+            // Always back to the chain it was on (Celo), so deploys and balances never run on Base.
+            if (magic) await magic.evm.switchChain(before).catch(() => undefined);
+            else await conn.provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: numberToHex(before) }] }).catch(() => undefined);
+            if (connRef.current === conn) connRef.current = { ...conn, chainId: before };
+            setConn((c) => (c && c.provider === conn.provider ? { ...c, chainId: before } : c));
+          }
+        }
+      },
+
       exportKey: conn?.kind === "embedded" ? async () => void (await (await getMagic()).user.revealEVMPrivateKey()) : undefined,
     };
   }, [conn, sessionChecked, user, phase, error, detected, getMagic, fail, signInWith, watch, ensureConnected]);
@@ -468,8 +502,9 @@ async function initWalletConnect(showQrModal: boolean) {
   return EthereumProvider.init({
     projectId,
     chains: [celoSepolia.id],
-    optionalChains: [celo.id],
-    rpcMap: { [celoSepolia.id]: celoSepolia.rpcUrls.default.http[0], [celo.id]: celo.rpcUrls.default.http[0] },
+    // Base only for the GoodCash top-up permit (D122).
+    optionalChains: [celo.id, base.id],
+    rpcMap: { [celoSepolia.id]: celoSepolia.rpcUrls.default.http[0], [celo.id]: celo.rpcUrls.default.http[0], [base.id]: base.rpcUrls.default.http[0] },
     metadata: walletConnectMetadata(window.location.origin, icon),
     showQrModal,
   });
