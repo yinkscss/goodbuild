@@ -39,4 +39,5 @@ it("works out places moved from the previous snapshot, and treats a missing one 
   const { rows } = buildLadder(entries);
   const moved = Object.fromEntries(rows.map((r) => [r.entry.id, r.moved]));
   expect(moved).toEqual({ climber: 2, slider: -1, steady: 0, fresh: 0 });
+  expect(buildLadder([{ ...live("x", 3), stars: [1, 3] }]).rows[0].stars).toEqual([1, 3]);
 });

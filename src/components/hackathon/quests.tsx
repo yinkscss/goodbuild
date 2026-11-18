@@ -5,7 +5,7 @@ import { buildQuests } from "@/lib/hackathon-quests";
 import { MAX_APPROVALS_PER_PERSON, type VoteStatus } from "@/lib/hackathon-vote";
 import { REWARD_SLOTS } from "@/lib/hackathon-rewards";
 
-type Entry = { id: string; liveUrl: string; approvals: number };
+type Entry = { id: string; liveUrl: string; approvals: number; stars?: number[] };
 
 async function get<T>(url: string): Promise<T | null> {
   try {
@@ -50,6 +50,7 @@ export function Quests({ registered, deployClaimed }: { registered: boolean; dep
     approvalsReceived: own?.approvals ?? 0,
     rank: ladder.mine?.entry.rank ?? null,
     prizeSlots: REWARD_SLOTS,
+    risingStarWeeks: own?.stars?.length ?? 0,
   });
 
   return (

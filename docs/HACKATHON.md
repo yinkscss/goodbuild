@@ -87,3 +87,6 @@ The required FlowState step supports direct voting with the existing Magic email
 ## 12. Rank arrows (19 Nov 2026, D134)
 `hackathon_rank_snapshots` (migration 0026) holds each published project's rank once per WAT day, written by `sweepRankSnapshot` in the worker (`src/server/hackathon/ranks.ts`). The leaderboard shows places moved since the previous day's snapshot. Weekly Rising Star can read the same table.
 
+## 13. Weekly Rising Star (19 Nov 2026, D135)
+`src/lib/hackathon-weeks.ts` picks each finished week's winner from the daily snapshots (D134); the leaderboard shows "★ Rising Star" and the owner's badge row gets a Rising Star badge. Weeks end 25 Nov, 2 Dec and 10 Dec and are read from the snapshots dated the next day.
+

@@ -14,6 +14,8 @@ export interface QuestInput {
   /** Their project's rank among published projects, or null without one. */
   rank: number | null;
   prizeSlots: number;
+  /** Weeks their project won Rising Star (D135). */
+  risingStarWeeks: number;
 }
 
 export interface Quest {
@@ -54,6 +56,7 @@ export function buildQuests(i: QuestInput): { quests: Quest[]; badges: Badge[]; 
     { id: "silver", label: "Silver", earned: i.approvalsReceived >= LEAGUE_AT.Silver },
     { id: "gold", label: "Gold", earned: i.approvalsReceived >= LEAGUE_AT.Gold },
     { id: "prize-zone", label: "Prize zone", earned: inZone },
+    { id: "rising-star", label: "Rising Star", earned: i.risingStarWeeks > 0 },
   ];
   return { quests, badges, league, done: quests.filter((q) => q.done).length };
 }
