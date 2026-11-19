@@ -1,7 +1,6 @@
 import Link from "next/link";
 
 import { HackathonTabs } from "@/components/hackathon/home-tabs";
-import { ReferralCapture } from "@/components/hackathon/referral-capture";
 import { styles } from "@/components/hackathon/styles";
 import { AppShell } from "@/components/home/app-shell";
 import "@/components/hackathon/hackathon.css";
@@ -10,7 +9,6 @@ import "@/components/hackathon/hackathon.css";
 export default function HackathonLayout({ children }: { children: React.ReactNode }) {
   return (
     <AppShell active="hackathon" width="max-w-[1000px]">
-      <ReferralCapture />
       <p className="eyebrow">Hackathon</p>
       <h1 className="display mt-3 text-[32px] font-extrabold sm:text-[44px]">Your hackathon</h1>
       <p className="mt-3 max-w-xl text-base text-grey-600">
