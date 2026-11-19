@@ -1,6 +1,6 @@
 import "server-only";
 
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { parseAbi, zeroAddress, type Address, type PublicClient } from "viem";
 import { celo } from "viem/chains";
 
@@ -74,6 +74,27 @@ export async function syncGoodId(db: Db, user: { id: string; wallet: string; ver
   if (user.verifiedAt) return true;
   const root = await readGoodIdRoot(client, user.wallet as Address);
   if (!root) return false;
-  await db.update(users).set({ goodidRoot: root.toLowerCase(), verifiedAt: new Date() }).where(eq(users.id, user.id));
+  await recordGoodIdRoot(db, user.id, root);
   return true;
+}
+
+/** Record a root the chain just gave for this account. Only fills in an account not yet marked verified. */
+export async function recordGoodIdRoot(db: Db, userId: string, root: Address | string): Promise<void> {
+  await db.update(users).set({ goodidRoot: root.toLowerCase(), verifiedAt: new Date() }).where(and(eq(users.id, userId), isNull(users.verifiedAt)));
+}
+
+/**
+ * A root reader for flows that check verification on their own (hackathon votes and approvals). When
+ * it finds the signed-in person's own wallet verified, it records that too, so /stats and the rest of
+ * the app count them. Someone already verified with GoodDollar elsewhere never presses Verify here.
+ * Reads of other wallets (a project owner's) are never recorded against this account.
+ */
+export function recordingRootReader(db: Db, user: { id: string; wallet: string; verifiedAt: Date | null }, client: Pick<PublicClient, "readContract"> = publicClientFor(celo.id)) {
+  return async (wallet: Address): Promise<Address | null> => {
+    const root = await readGoodIdRoot(client, wallet);
+    if (root && !user.verifiedAt && wallet.toLowerCase() === user.wallet.toLowerCase()) {
+      await recordGoodIdRoot(db, user.id, root).catch((error) => console.error("goodid record failed", error));
+    }
+    return root;
+  };
 }

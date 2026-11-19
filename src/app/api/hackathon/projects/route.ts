@@ -4,7 +4,7 @@ import { celo } from "viem/chains";
 import { errorResponse, requireSession } from "@/server/auth/http";
 import { getDb } from "@/server/db/client";
 import { publicClientFor } from "@/server/deploy/service";
-import { readGoodIdRoot } from "@/server/goodid";
+import { recordingRootReader } from "@/server/goodid";
 import {
   approveEntry,
   CommunityError,
@@ -35,13 +35,13 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => null);
     const approval = z.object({ entryId: z.uuid() }).safeParse(body);
     if (approval.success) {
-      const client = publicClientFor(celo.id);
+      const db = await getDb();
       return NextResponse.json(
         await approveEntry(
-          await getDb(),
+          db,
           s.user,
           approval.data.entryId,
-          (wallet) => readGoodIdRoot(client, wallet),
+          recordingRootReader(db, s.user, publicClientFor(celo.id)),
         ),
         { headers },
       );

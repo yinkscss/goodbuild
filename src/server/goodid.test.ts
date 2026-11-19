@@ -1,8 +1,11 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
 import { zeroAddress, type Address } from "viem";
 
-import { readGoodIdentity } from "./goodid";
+import { createTestDb } from "@/server/db/client";
+import { users } from "@/server/db/schema";
+import { readGoodIdentity, recordingRootReader } from "./goodid";
 
 const ROOT = "0x00000000000000000000000000000000000000aa" as Address;
 const WALLET = "0x00000000000000000000000000000000000000bb" as Address;
@@ -31,5 +34,25 @@ describe("readGoodIdentity", () => {
   it("leaves the expiry unknown when the contract can't say, so the root still decides", async () => {
     expect(await readGoodIdentity(client({ getWhitelistedRoot: ROOT, lastAuthenticated: new Error("reverted"), authenticationPeriod: BigInt(180) }), WALLET)).toEqual({ root: ROOT, expiresAt: null });
     expect(await readGoodIdentity(client({ getWhitelistedRoot: ROOT, lastAuthenticated: BigInt(0), authenticationPeriod: BigInt(180) }), WALLET)).toEqual({ root: ROOT, expiresAt: null });
+  });
+});
+
+describe("recordingRootReader", () => {
+  it("records the signed-in wallet's own verification, so /stats counts people verified elsewhere", async () => {
+    const db = await createTestDb();
+    const [user] = await db.insert(users).values({ wallet: WALLET }).returning();
+    expect(await recordingRootReader(db, user, client({ getWhitelistedRoot: ROOT }))(WALLET)).toBe(ROOT);
+    const [row] = await db.select().from(users).where(eq(users.id, user.id));
+    expect(row.verifiedAt).toBeInstanceOf(Date);
+    expect(row.goodidRoot).toBe(ROOT);
+  });
+
+  it("never records another wallet's root (a project owner's) against this account, nor an unverified one", async () => {
+    const db = await createTestDb();
+    const [user] = await db.insert(users).values({ wallet: WALLET }).returning();
+    await recordingRootReader(db, user, client({ getWhitelistedRoot: ROOT }))("0x00000000000000000000000000000000000000cc");
+    await recordingRootReader(db, user, client({ getWhitelistedRoot: zeroAddress }))(WALLET);
+    const [row] = await db.select().from(users).where(eq(users.id, user.id));
+    expect(row.verifiedAt).toBeNull();
   });
 });
