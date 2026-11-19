@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { clearStoredReferral, storedReferral } from "./referral-capture";
 
 /** Mirrors src/server/hackathon/claim.ts (server-only). The server decides what is actually paid. */
 export const START_CREDITS = 20;
@@ -11,6 +12,7 @@ export interface ClaimStatus {
   startCredits: number;
   deployCredits: number;
   deployPending: boolean;
+  referralPending?: boolean;
 }
 
 const EMPTY: ClaimStatus = { registered: false, startCredits: 0, deployCredits: 0, deployPending: false };
@@ -46,10 +48,15 @@ export function useHackathonClaim(userId: string | null, onNewCredits: () => voi
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch("/api/hackathon", { method: "POST" });
+      const ref = storedReferral();
+      const res = await fetch("/api/hackathon", {
+        method: "POST",
+        ...(ref ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ref }) } : {}),
+      });
       const body = (await res.json().catch(() => ({}))) as Partial<ClaimStatus> & { message?: string };
       if (!res.ok) throw new Error(body.message ?? FAILED);
       const next = { ...EMPTY, ...body } as ClaimStatus;
+      if (next.registered) clearStoredReferral();
       const after = next.startCredits + next.deployCredits;
       if (after > total.current) onNewCredits();
       total.current = after;

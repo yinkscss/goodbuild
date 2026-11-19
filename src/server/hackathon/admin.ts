@@ -5,9 +5,10 @@ import { and, desc, eq, gte, isNull, sql } from "drizzle-orm";
 import { MICRO_PER_CREDIT } from "@/lib/credits-math";
 import { IdempotencyConflictError, InsufficientBalanceError, getBalanceMicro, postLedgerEntry } from "@/server/credits/ledger";
 import type { Db } from "@/server/db/client";
-import { hackathonRefusals, hackathonRegistrations } from "@/server/db/hackathon-schema";
+import { hackathonRefusals, hackathonReferrals, hackathonRegistrations } from "@/server/db/hackathon-schema";
 import { ledgerEntries, users } from "@/server/db/schema";
 import { CLAIMS_CLOSE, HACKATHON_ID, budgetCredits } from "./claim";
+import { referralBudgetCredits } from "./referrals";
 
 /** A wallet that signed up this soon before claiming is flagged on the admin page. */
 export const FRESH_WALLET_MS = 10 * 60 * 1000;
@@ -81,6 +82,9 @@ export async function sweepHackathonExpiry(getDb: () => Promise<Db>, now = new D
 export interface HackathonReport {
   budgetCredits: number;
   grantedCredits: number;
+  /** Paid as referral bonuses (D136), from their own pot. */
+  referralCredits: number;
+  referralBudgetCredits: number;
   expiredCredits: number;
   registered: number;
   deployed: number;
@@ -107,6 +111,11 @@ export async function hackathonReport(db: Db, now = new Date(), env: Record<stri
     .from(hackathonRegistrations)
     .where(mine);
 
+  const [ref] = await db
+    .select({ paid: sql<string>`coalesce(sum(${hackathonReferrals.refereeMicro} + ${hackathonReferrals.referrerMicro}), 0)` })
+    .from(hackathonReferrals)
+    .where(eq(hackathonReferrals.hackathon, HACKATHON_ID));
+
   const day = sql<string>`to_char(${hackathonRegistrations.createdAt} at time zone 'UTC', 'YYYY-MM-DD')`;
   const perDay = await db.select({ day, count: sql<number>`count(*)::int` }).from(hackathonRegistrations).where(mine).groupBy(day).orderBy(day);
 
@@ -127,6 +136,8 @@ export async function hackathonReport(db: Db, now = new Date(), env: Record<stri
   return {
     budgetCredits: budgetCredits(env),
     grantedCredits: credits(Number(totals.granted)),
+    referralCredits: credits(Number(ref.paid)),
+    referralBudgetCredits: referralBudgetCredits(env),
     expiredCredits: credits(Number(totals.expired)),
     registered: totals.registered,
     deployed: totals.deployed,

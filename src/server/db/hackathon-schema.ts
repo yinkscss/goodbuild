@@ -29,8 +29,10 @@ export const hackathonRegistrations = pgTable(
     expiredEntryId: uuid("expired_entry_id"),
     expiredMicro: bigint("expired_micro", { mode: "number" }).notNull().default(0),
     expiredAt: timestamp("expired_at", { withTimezone: true }),
+    /** Random invite code (D136), made when the builder first asks for their link. Never derived from the wallet or user id. */
+    referralCode: text("referral_code"),
   },
-  (t) => [uniqueIndex("hackathon_registrations_root_unique").on(t.hackathon, t.goodidRoot), uniqueIndex("hackathon_registrations_user_unique").on(t.hackathon, t.userId)],
+  (t) => [uniqueIndex("hackathon_registrations_referral_code").on(t.referralCode), uniqueIndex("hackathon_registrations_root_unique").on(t.hackathon, t.goodidRoot), uniqueIndex("hackathon_registrations_user_unique").on(t.hackathon, t.userId)],
 );
 
 export type HackathonRegistration = typeof hackathonRegistrations.$inferSelect;
@@ -119,5 +121,33 @@ export const hackathonRankSnapshots = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("hackathon_rank_snapshots_day_entry").on(t.hackathon, t.day, t.entryId)],
+);
+
+/**
+ * Referrals (D136). One row per invited builder, made in the same call that registers them. Paid
+ * once the invited builder has made a real Celo deploy: the invited builder always gets the bonus,
+ * the inviter gets it up to a per-person limit. Unique per invited identity and per invited account.
+ */
+export const hackathonReferrals = pgTable(
+  "hackathon_referrals",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    hackathon: text("hackathon").notNull(),
+    referrerUserId: uuid("referrer_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+    refereeUserId: uuid("referee_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+    /** Lowercased GoodDollar root of the invited builder. */
+    refereeRoot: text("referee_root").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    settledAt: timestamp("settled_at", { withTimezone: true }),
+    refereeEntryId: uuid("referee_entry_id"),
+    refereeMicro: bigint("referee_micro", { mode: "number" }).notNull().default(0),
+    referrerEntryId: uuid("referrer_entry_id"),
+    referrerMicro: bigint("referrer_micro", { mode: "number" }).notNull().default(0),
+  },
+  (t) => [
+    uniqueIndex("hackathon_referrals_referee_root").on(t.hackathon, t.refereeRoot),
+    uniqueIndex("hackathon_referrals_referee_user").on(t.hackathon, t.refereeUserId),
+    index("hackathon_referrals_referrer").on(t.hackathon, t.referrerUserId),
+  ],
 );
 
