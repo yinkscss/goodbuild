@@ -1,4 +1,4 @@
-/** Each verified person (one GoodDollar identity, however many wallets) has this many approvals in total (D132). */
+/** Each verified person (one GoodDollar identity, however many wallets) has this many approvals in total (D155). */
 export const MAX_APPROVALS_PER_PERSON = 3;
 
 export interface VoteStatus {

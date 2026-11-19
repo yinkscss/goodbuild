@@ -154,6 +154,16 @@ async function Stats() {
               the data file
             </a>
             .
+          {stats.registry && (
+              <>
+                {" "}
+                Activity is also written to the{" "}
+                <a href={explorerAddressUrl(stats.registry.chainId, stats.registry.address)} target="_blank" rel="noreferrer" className="font-medium text-violet hover:underline">
+                  GoodBuild Registry
+                </a>{" "}
+                on Celo, with builders and apps shown only as anonymous codes.
+              </>
+            )}
           </p>
         </div>
         {stats.contracts.length === 0 ? (

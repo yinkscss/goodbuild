@@ -30,7 +30,7 @@ function writePending(id: string | null) {
 }
 
 /**
- * Projects people can approve, with the three-approvals rule (D132). Used on the public /hackathon page
+ * Projects people can approve, with the three-approvals rule (D155). Used on the public /hackathon page
  * and in the app's Vote tab. Someone who hasn't finished the steps (email, GoodDollar, FlowState) gets
  * a small pop-up with the steps, then one click to approve. The project they picked is remembered
  * across the GoodDollar trip.

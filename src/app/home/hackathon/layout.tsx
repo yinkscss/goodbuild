@@ -5,7 +5,7 @@ import { styles } from "@/components/hackathon/styles";
 import { AppShell } from "@/components/home/app-shell";
 import "@/components/hackathon/hackathon.css";
 
-/** The hackathon inside the app (D132): Get started, My project, Leaderboard, Vote, each its own page. */
+/** The hackathon inside the app (D155): Get started, My project, Leaderboard, Vote, each its own page. */
 export default function HackathonLayout({ children }: { children: React.ReactNode }) {
   return (
     <AppShell active="hackathon" width="max-w-[1000px]">
