@@ -303,3 +303,6 @@ The hackathon vote's network fee is paid from the gas wallet. The web app reads 
 3. Check the hackathon admin page: the "Network-fee fund" tile shows the balance and no "Off" note.
 4. Remove `GAS_WALLET_PRIVATE_KEY` from `.env.production` and restart web and worker, so the key stops being an environment variable.
 5. To pause grants at once: `insert into app_settings (key, value) values ('gas_grants', 'off') on conflict (key) do update set value = 'off';` Set `'on'` to resume.
+
+### Ambassador program
+Run migration `0032_ambassador_payouts`. Configure `AMBASSADOR_START` (ISO UTC launch timestamp) and `AMBASSADOR_PAYOUT_WALLETS` (comma-separated Celo sender wallets). `ADMIN_WALLETS` controls `/home/referrals/admin`. Rewards are fixed at 5,000 G$ and request minimum is 25,000 G$. Manually transfer the exact requested G$ to the frozen request wallet only after marking Processing. Record the transaction hash and wait 30 blocks before confirmation. Review overdue requests daily; target is 24 hours after submission. Never return a Processing request to review until both mined and pending transfers have been reconciled. Historical referrals earn no G$. Program balances are database liabilities, while completed payments are verified G$ transfers on Celo.

@@ -1,3 +1,4 @@
+import { qualifyAmbassador } from "@/server/ambassador/service";
 import { NextResponse } from "next/server";
 import { and, eq, isNull, lt, or } from "drizzle-orm";
 import { z } from "zod";
@@ -201,6 +202,12 @@ export async function POST(request: Request) {
         // Never fails the vote: the credits card retries the welcome and says why.
         if (!(e instanceof FreeGrantError)) console.error("[flowstate] welcome after vote failed", e instanceof Error ? e.name : "unknown");
       }
+    }
+    try {
+      const identity = await readGoodIdentityOnCelo(wallet);
+      if (identity.root) await qualifyAmbassador(db, s.user.id, identity.root, confirmed.hash ?? undefined);
+    } catch (error) {
+      console.error("[ambassador] qualification failed; retry vote confirmation", error);
     }
     // An invited person's vote also pays the invite bonus (D155): to them, and to whoever invited them.
     let inviteMicro = 0;
