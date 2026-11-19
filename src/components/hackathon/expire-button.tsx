@@ -30,7 +30,7 @@ export function ExpireButton({ closed }: { closed: boolean }) {
     }
   }
 
-  if (!closed) return <p className="text-sm text-grey-600">Unspent credits can be expired once claims close. The worker does it by itself every hour after that.</p>;
+  if (!closed) return <p className="text-sm text-grey-600">Unspent hackathon credits stay usable (D130). This button is a manual tool and nothing runs it automatically.</p>;
 
   return (
     <div className="flex flex-wrap items-center gap-3">

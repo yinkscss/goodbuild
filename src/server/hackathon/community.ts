@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { Address } from "viem";
 import type { Db } from "@/server/db/client";
 import {
+  flowstateVoters,
   hackathonApprovals,
   hackathonEntries,
   hackathonParticipants,
@@ -11,6 +12,7 @@ import {
 } from "@/server/db/hackathon-schema";
 import { users } from "@/server/db/schema";
 import { allocateHackathonRewards } from "@/lib/hackathon-rewards";
+import { MAX_APPROVALS_PER_PERSON, type VoteStatus } from "@/lib/hackathon-vote";
 import { CLAIMS_CLOSE, HACKATHON_ID } from "./claim";
 
 const link = z.union([
@@ -52,19 +54,30 @@ export async function saveParticipant(
   input: z.input<typeof participantInput>,
 ) {
   const data = participantInput.parse(input);
+  // Anyone signed in can vote before signing up (D126). A vote already confirmed on-chain carries over,
+  // so the signup, the submit gate (D131) and the CSV all see it.
+  const [vote] = await db
+    .select({ txHash: flowstateVoters.txHash, votedAt: flowstateVoters.votedAt })
+    .from(flowstateVoters)
+    .where(eq(flowstateVoters.userId, user.id));
+  const voted = vote?.votedAt
+    ? { flowstate: "voted" as const, flowstateTxHash: vote.txHash, flowstateVotedAt: vote.votedAt }
+    : null;
   const [row] = await db
     .insert(hackathonParticipants)
-    .values({ hackathon: HACKATHON_ID, userId: user.id, ...data })
+    .values({ hackathon: HACKATHON_ID, userId: user.id, ...data, ...voted })
     .onConflictDoUpdate({
       target: [hackathonParticipants.hackathon, hackathonParticipants.userId],
       // The first email saved is kept: the signup form shows it locked, and a later request can't swap it.
       set: {
         email: sql`${hackathonParticipants.email}`,
-        ...(data.flowstate
-          ? {
-              flowstate: sql`case when ${hackathonParticipants.flowstate} = 'voted' then 'voted' else ${data.flowstate} end`,
-            }
-          : {}),
+        ...(voted
+          ? voted
+          : data.flowstate
+            ? {
+                flowstate: sql`case when ${hackathonParticipants.flowstate} = 'voted' then 'voted' else ${data.flowstate} end`,
+              }
+            : {}),
       },
     })
     .returning();
@@ -90,9 +103,17 @@ export async function saveEntry(
   if (new Date() >= CLAIMS_CLOSE)
     throw new CommunityError("Submissions are closed.", 410);
   const data = entryInput.parse(input);
-  if (!(await getParticipant(db, user.id)))
+  const participant = await getParticipant(db, user.id);
+  if (!participant)
     throw new CommunityError(
       "Save your signup email before submitting a project.",
+    );
+  // Registration needs verify and vote (D131). "voted" is only ever set by the on-chain vote check,
+  // which also requires a verified wallet, so it covers both.
+  if (participant.flowstate !== "voted")
+    throw new CommunityError(
+      "Verify with GoodDollar and vote first, then submit your project.",
+      403,
     );
   const [entry] = await db
     .insert(hackathonEntries)
@@ -140,6 +161,11 @@ export async function listEntries(db: Db) {
       asc(hackathonEntries.id),
     );
 }
+/**
+ * Approve a published project. Each verified person (one GoodDollar identity) has three approvals in
+ * total (D132), needs a confirmed FlowState vote first, and can't approve their own project. The
+ * count and the insert run under a per-identity lock, so parallel requests can't slip past three.
+ */
 export async function approveEntry(
   db: Db,
   user: Actor,
@@ -153,6 +179,11 @@ export async function approveEntry(
   if (!root)
     throw new CommunityError(
       "Please verify your wallet with GoodDollar before approving.",
+      403,
+    );
+  if (!(await hasVoted(db, user.id)))
+    throw new CommunityError(
+      "Support GoodBuild on FlowState first, then you can approve projects.",
       403,
     );
   const [entry] = await db
@@ -176,12 +207,89 @@ export async function approveEntry(
     throw new CommunityError(
       "This builder needs to publish a live app before receiving approvals.",
     );
-  await db
-    .insert(hackathonApprovals)
-    .values({ entryId, goodidRoot: root.toLowerCase() })
-    .onConflictDoNothing();
-  return { approved: true };
+  const person = root.toLowerCase();
+  return db.transaction(async (raw) => {
+    const tx = raw as unknown as Db;
+    await tx.execute(
+      sql`select pg_advisory_xact_lock(hashtext(${`hackathon:approve:${person}`}))`,
+    );
+    const mine = await approvedEntryIds(tx, person);
+    // Approving the same project again is a no-op and doesn't use another of the three.
+    if (!mine.includes(entryId)) {
+      if (mine.length >= MAX_APPROVALS_PER_PERSON)
+        throw new CommunityError(
+          `You've used all ${MAX_APPROVALS_PER_PERSON} of your approvals.`,
+          403,
+        );
+      await tx
+        .insert(hackathonApprovals)
+        .values({ entryId, goodidRoot: person })
+        .onConflictDoNothing();
+      mine.push(entryId);
+    }
+    return { approved: true, used: mine.length, max: MAX_APPROVALS_PER_PERSON };
+  });
 }
+
+/**
+ * A confirmed FlowState vote, from either record: `flowstate_voters` (D126) or a hackathon signup that
+ * was marked "voted" before that table existed and was never copied over.
+ */
+async function hasVoted(db: Db, userId: string) {
+  const [row] = await db
+    .select({ votedAt: flowstateVoters.votedAt })
+    .from(flowstateVoters)
+    .where(eq(flowstateVoters.userId, userId));
+  if (row?.votedAt) return true;
+  const [signup] = await db
+    .select({ flowstate: hackathonParticipants.flowstate })
+    .from(hackathonParticipants)
+    .where(
+      and(
+        eq(hackathonParticipants.hackathon, HACKATHON_ID),
+        eq(hackathonParticipants.userId, userId),
+      ),
+    );
+  return signup?.flowstate === "voted";
+}
+
+/** The entries one verified person has approved in this hackathon, whichever wallet they used. */
+async function approvedEntryIds(db: Db, root: string) {
+  const rows = await db
+    .select({ entryId: hackathonApprovals.entryId })
+    .from(hackathonApprovals)
+    .innerJoin(hackathonEntries, eq(hackathonEntries.id, hackathonApprovals.entryId))
+    .where(
+      and(
+        eq(hackathonApprovals.goodidRoot, root),
+        eq(hackathonEntries.hackathon, HACKATHON_ID),
+      ),
+    );
+  return rows.map((r) => r.entryId);
+}
+
+/** What the vote buttons need: which steps this person has done, and which approvals they've used. */
+export async function voteStatus(
+  db: Db,
+  user: Actor | null,
+  readRoot: (wallet: Address) => Promise<Address | null>,
+): Promise<VoteStatus> {
+  const empty = {
+    max: MAX_APPROVALS_PER_PERSON,
+    used: 0,
+    entryIds: [] as string[],
+    signedIn: Boolean(user),
+    verified: false,
+    voted: false,
+  };
+  if (!user) return empty;
+  const root = await readRoot(user.wallet as Address).catch(() => null);
+  const voted = await hasVoted(db, user.id);
+  if (!root) return { ...empty, voted };
+  const entryIds = await approvedEntryIds(db, root.toLowerCase());
+  return { ...empty, verified: true, voted, entryIds, used: entryIds.length };
+}
+
 function csvCell(value: unknown) {
   const s = String(value ?? "");
   return `"${(/^[\s]*[=+@\-\t\r]/.test(s) ? "'" + s : s).replaceAll('"', '""')}"`;

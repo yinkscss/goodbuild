@@ -3,8 +3,10 @@ import { Suspense } from "react";
 import { AppShell } from "@/components/home/app-shell";
 import { Greeting, HomePrompt, HomePromptProvider, NewBuildButton } from "@/components/home/home-prompt";
 import { ProjectGrid, ProjectGridSkeleton, ProjectsEmpty, ProjectsError } from "@/components/home/projects";
-import { getCredits } from "@/server/credits";
+import { StartCredits } from "@/components/credits/start-credits";
+import { getCredits, needsStartCredits } from "@/server/credits";
 import { gameTemplateStarters } from "@/server/agent/game-templates";
+import { freePolicy } from "@/server/credits/free-grants";
 import { loadProjects, loadSession } from "@/server/home-data";
 
 export const metadata = { title: "Home · GoodBuild" };
@@ -30,6 +32,9 @@ export default function HomePage() {
         <Suspense fallback={<ProjectGridSkeleton />}>
           <Projects />
         </Suspense>
+        <Suspense fallback={null}>
+          <StartCreditsGate />
+        </Suspense>
       </AppShell>
     </HomePromptProvider>
   );
@@ -46,4 +51,11 @@ async function Projects() {
   if ("error" in result) return <ProjectsError detail={result.error} />;
   if (result.projects.length === 0) return <ProjectsEmpty />;
   return <ProjectGrid projects={result.projects} />;
+}
+
+/** The "get credits" pop-up, for someone with nothing to spend who has never bought any (D131). */
+async function StartCreditsGate() {
+  const session = await loadSession();
+  if (!(await needsStartCredits(session.user.id))) return null;
+  return <StartCredits freeCredits={freePolicy(process.env) === "verified"} />;
 }

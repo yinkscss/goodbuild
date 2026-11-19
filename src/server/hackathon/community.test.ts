@@ -2,9 +2,12 @@
 import { beforeEach, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { createTestDb, type Db } from "@/server/db/client";
+import { eq } from "drizzle-orm";
 import { users } from "@/server/db/schema";
+import { flowstateVoters, hackathonParticipants } from "@/server/db/hackathon-schema";
 import {
   approveEntry,
+  voteStatus,
   listEntries,
   saveEntry,
   saveParticipant,
@@ -16,13 +19,34 @@ beforeEach(async () => {
 });
 const wallet = () =>
   `0x${randomUUID().replaceAll("-", "").padEnd(40, "0")}` as `0x${string}`;
-async function user() {
+async function user({ voted = true, voteRecord = true } = {}) {
   const u = (
     await db.insert(users).values({ wallet: wallet() }).returning()
   )[0];
   await saveParticipant(db, u, { email: "builder@example.com" });
+  // The on-chain vote check is the only thing that sets "voted" (D131).
+  if (voted)
+    await db
+      .update(hackathonParticipants)
+      .set({ flowstate: "voted" })
+      .where(eq(hackathonParticipants.userId, u.id));
+  // Approving needs the confirmed vote in flowstate_voters, which also covers people who never signed up (D126, D132).
+  if (voted && voteRecord) await db.insert(flowstateVoters).values({ userId: u.id, votedAt: new Date(), txHash: "0xabc" });
   return u;
 }
+it("won't take a project until the builder has verified and voted (D131)", async () => {
+  const u = await user({ voted: false });
+  await expect(
+    saveEntry(db, u, { alias: "A", title: "B", pitch: "C", liveUrl: "", sourceUrl: "" }),
+  ).rejects.toThrow(/verify with GoodDollar and vote first/i);
+  await db
+    .update(hackathonParticipants)
+    .set({ flowstate: "voted" })
+    .where(eq(hackathonParticipants.userId, u.id));
+  await expect(
+    saveEntry(db, u, { alias: "A", title: "B", pitch: "C", liveUrl: "", sourceUrl: "" }),
+  ).resolves.toMatchObject({ title: "B" });
+});
 it("keeps signup email before verification and exports safely without exposing it publicly", async () => {
   const u = await user();
   await saveParticipant(db, u, { email: "builder@example.com" });
@@ -128,7 +152,7 @@ it("blocks linked-wallet self approvals even when the owner has no cached verifi
   ).rejects.toThrow(/own/);
 });
 it("persists optional skip without requiring a FlowState vote", async () => {
-  const u = await user();
+  const u = await user({ voted: false });
   await saveParticipant(db, u, {
     email: "builder@example.com",
     flowstate: "skipped",
@@ -196,4 +220,98 @@ it("keeps the first signup email: a later save can't change it", async () => {
   const u = await user(); // saved with builder@example.com
   const row = await saveParticipant(db, u, { email: "second@example.com" });
   expect(row.email).toBe("builder@example.com");
+});
+it("carries a vote made before signing up, so the builder isn't told to vote again (D131)", async () => {
+  const u = (await db.insert(users).values({ wallet: wallet() }).returning())[0];
+  const votedAt = new Date();
+  await db.insert(flowstateVoters).values({ userId: u.id, txHash: "0xabc", votedAt });
+  const row = await saveParticipant(db, u, { email: "late@example.com" });
+  expect(row.flowstate).toBe("voted");
+  await expect(
+    saveEntry(db, u, { alias: "A", title: "B", pitch: "C", liveUrl: "", sourceUrl: "" }),
+  ).resolves.toMatchObject({ title: "B" });
+});
+
+async function liveEntry(label: string) {
+  const owner = await user();
+  return saveEntry(db, owner, { alias: label, title: label, pitch: "A useful app", liveUrl: "https://example.com", sourceUrl: "" });
+}
+/** The chain read: these wallets belong to one verified person; every other wallet (builders) reads as unverified. */
+const rootFor = (root: `0x${string}`, ...wallets: string[]) => async (w: string) => (wallets.includes(w) ? root : null);
+
+it("gives each verified person three approvals in total, and the fourth is refused (D132)", async () => {
+  const voter = await user();
+  const root = wallet();
+  const rootOf = rootFor(root, voter.wallet);
+  const entries = [await liveEntry("a"), await liveEntry("b"), await liveEntry("c"), await liveEntry("d")];
+  for (const e of entries.slice(0, 3)) await approveEntry(db, voter, e.id, rootOf);
+  await expect(approveEntry(db, voter, entries[3].id, rootOf)).rejects.toThrow(/all 3/);
+  expect((await listEntries(db)).find((e) => e.id === entries[3].id)?.approvals).toBe(0);
+});
+
+it("doesn't use up an approval when the same project is approved again", async () => {
+  const voter = await user();
+  const root = wallet();
+  const rootOf = rootFor(root, voter.wallet);
+  const [a, b, c, d] = [await liveEntry("a"), await liveEntry("b"), await liveEntry("c"), await liveEntry("d")];
+  await approveEntry(db, voter, a.id, rootOf);
+  const again = await approveEntry(db, voter, a.id, rootOf);
+  expect(again).toMatchObject({ used: 1, max: 3 });
+  await approveEntry(db, voter, b.id, rootOf);
+  await approveEntry(db, voter, c.id, rootOf);
+  await expect(approveEntry(db, voter, d.id, rootOf)).rejects.toThrow(/all 3/);
+});
+
+it("shares the three between linked wallets that have the same GoodDollar identity", async () => {
+  const first = await user();
+  const second = await user();
+  const root = wallet();
+  const rootOf = rootFor(root, first.wallet, second.wallet);
+  const [a, b, c, d] = [await liveEntry("a"), await liveEntry("b"), await liveEntry("c"), await liveEntry("d")];
+  await approveEntry(db, first, a.id, rootOf);
+  await approveEntry(db, second, b.id, rootOf);
+  await approveEntry(db, first, c.id, rootOf);
+  await expect(approveEntry(db, second, d.id, rootOf)).rejects.toThrow(/all 3/);
+});
+
+it("refuses approvals from someone without a confirmed FlowState vote, even if verified", async () => {
+  const unvoted = await user({ voted: false });
+  const entry = await liveEntry("a");
+  await expect(approveEntry(db, unvoted, entry.id, rootFor(wallet(), unvoted.wallet))).rejects.toThrow(/FlowState/);
+});
+
+it("lets someone who never signed up for the hackathon approve once they have voted", async () => {
+  const voter = (await db.insert(users).values({ wallet: wallet() }).returning())[0];
+  await db.insert(flowstateVoters).values({ userId: voter.id, votedAt: new Date(), txHash: "0xdef" });
+  const entry = await liveEntry("a");
+  await expect(approveEntry(db, voter, entry.id, rootFor(wallet(), voter.wallet))).resolves.toMatchObject({ approved: true, used: 1 });
+});
+
+it("never lets parallel approvals pass three", async () => {
+  const voter = await user();
+  const root = wallet();
+  const rootOf = rootFor(root, voter.wallet);
+  const entries = await Promise.all(["a", "b", "c", "d", "e"].map(liveEntry));
+  const results = await Promise.allSettled(entries.map((e) => approveEntry(db, voter, e.id, rootOf)));
+  expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(3);
+  expect((await voteStatus(db, voter, rootOf)).used).toBe(3);
+});
+
+it("reports the steps done and the approvals used, for the vote buttons", async () => {
+  const voter = await user();
+  const root = wallet();
+  const rootOf = rootFor(root, voter.wallet);
+  const entry = await liveEntry("a");
+  await approveEntry(db, voter, entry.id, rootOf);
+  expect(await voteStatus(db, voter, rootOf)).toMatchObject({ signedIn: true, verified: true, voted: true, used: 1, max: 3, entryIds: [entry.id] });
+  expect(await voteStatus(db, voter, async () => null)).toMatchObject({ verified: false, voted: true, used: 0 });
+  expect(await voteStatus(db, null, async () => null)).toMatchObject({ signedIn: false, verified: false, voted: false });
+});
+
+it("counts a vote recorded only on the hackathon signup, from before flowstate_voters existed", async () => {
+  const early = await user({ voted: true, voteRecord: false });
+  expect(await db.select().from(flowstateVoters).where(eq(flowstateVoters.userId, early.id))).toHaveLength(0);
+  const entry = await liveEntry("a");
+  await expect(approveEntry(db, early, entry.id, rootFor(wallet(), early.wallet))).resolves.toMatchObject({ approved: true, used: 1 });
+  expect(await voteStatus(db, early, async () => null)).toMatchObject({ voted: true });
 });

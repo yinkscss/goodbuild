@@ -8,6 +8,9 @@ import { FAQ, HACKATHON, MARQUEE, PARTNERS, PRIZES, RULES, TIMELINE, TRACKS, typ
 import "@/components/hackathon/hackathon.css";
 import { styles } from "@/components/hackathon/styles";
 import { OnView, SpotlightCard } from "@/components/hackathon/on-view";
+import { Ladder } from "@/components/hackathon/ladder";
+import { VoteList } from "@/components/hackathon/vote-list";
+import { ReferralCapture } from "@/components/hackathon/referral-capture";
 import { PosterTiles } from "@/components/hackathon/poster-tiles";
 import { RegisterSteps } from "@/components/hackathon/register-steps";
 import { SITE_URL } from "@/config/site-url";
@@ -25,6 +28,7 @@ const TRACK_ICONS: Record<TrackIcon, LucideIcon> = { card: CreditCard, clock: Cl
 const NAV = [
   { href: "#prizes", label: "Prizes" },
   { href: "#register", label: "Register" },
+  { href: "#vote", label: "Vote" },
   { href: "/hackathon/projects", label: "Projects & leaderboard" },
   { href: "#tracks", label: "Tracks" },
   { href: "#timeline", label: "Timeline" },
@@ -36,6 +40,7 @@ const NAV = [
 export default function HackathonPage() {
   return (
     <div className={styles.page}>
+      <ReferralCapture />
       <header className={cn(styles.nav, styles.wrap)}>
         <div className={styles.navbar}>
           <Link href="/" className="flex shrink-0 items-center gap-2.5 rounded-full" aria-label="GoodBuild home">
@@ -73,7 +78,7 @@ export default function HackathonPage() {
         <section id="prizes" className={styles.section}>
           <div className={styles.shead}>
             <h2 className={styles.disp}>The prize pool</h2>
-            <p>Build something useful, share it with everyone, and gather verified approvals. The top 10 share a 1,000,000 G$ reserve. Every verified approval adds another 50,000 G$, funded separately.</p>
+            <p>Build something useful, share it with everyone, and gather verified approvals. The top 20 share 700,000 G$ in rank prizes, and 300,000 G$ is shared by approvals, up to 5,000 G$ each. The total never goes over 1,000,000 G$.</p>
           </div>
           <OnView className={styles.prizes} activeClassName={styles.grow}>
             {PRIZES.map((p) => (
@@ -127,10 +132,28 @@ export default function HackathonPage() {
           </div>
         </section>
 
+        <section id="leaderboard" className={styles.section}>
+          <div className={styles.shead}>
+            <h2 className={styles.disp}>Live leaderboard</h2>
+            <p>The top 20 published projects share the rank prizes. It updates as verified people approve.</p>
+          </div>
+          <div className={cn(styles.card, styles.pad32)}>
+            <Ladder mode="web" />
+          </div>
+        </section>
+
+        <section id="vote" className={styles.section}>
+          <div className={styles.shead}>
+            <h2 className={styles.disp}>Vote for a project</h2>
+            <p>Each verified person gets 3 approvals. Pick a project and we’ll walk you through the three steps: connect your email, verify with GoodDollar, support us on FlowState.</p>
+          </div>
+          <VoteList />
+        </section>
+
         <section id="timeline" className={styles.section}>
           <div className={styles.shead}>
             <h2 className={styles.disp}>Timeline</h2>
-            <p>All times West Africa Time. Dates are placeholders until confirmed.</p>
+            <p>All times West Africa Time. Winners are announced on 12 Dec (proposed).</p>
           </div>
           <div className={cn(styles.card, styles.pad32)}>
             <ol className={cn(styles.tl, "list-none p-0 m-0")}>

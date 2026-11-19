@@ -1625,3 +1625,57 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
   - The vote pop-up checks for an existing vote on opening and never asks someone who voted to vote again. The vote button has a fallback colour.
   - While a G$ payment confirms, the button reads "Confirming payment…" with "usually about 30 seconds". The 30-block wait stays.
   - When a build stops for lack of credits, a pop-up opens: pay in G$ (exact amount, one click) or get free credits (only the step that person still needs), then "Continue building" retries. Closing it leaves the inline pill.
+
+### D130. Hackathon runs 18 Nov to 10 Dec 2026, one capped 1,000,000 G$ pool, top 20 paid, credits stay usable (18 Nov 2026; replaces the Jan to Feb draft and the D100 expiry)
+- Decided by: the owner. Built by Claude.
+- **Dates:** registration, submissions and voting all open 18 Nov and close together at the end of 10 Dec (`CLAIMS_CLOSE` = `2026-12-10T23:00:00Z`). Builders are told to submit by 5 Dec for a fair vote window. Winners announced 12 Dec (proposed). The old build-start, mid-point and demo-day stages are gone.
+- **Rewards (`src/lib/hackathon-rewards.ts`):** a fixed 1,000,000 G$ pool that is never exceeded. 700,000 G$ in rank prizes for the top 20 published projects (175k, 105k, 70k, 42k x2, 21k x5, 16.1k x10). The other 300,000 G$ is shared by approvals at `min(5,000, 300,000 / total approvals)` G$ each, rounded down, on every published project. Fewer than 20 eligible entries leave unused rank prizes unpaid. Earnings are estimates until the close.
+- **Replaces:** ten equal 100,000 G$ slots and an uncapped 50,000 G$ per approval funded outside the pool.
+- **Credits:** unspent hackathon credits are no longer expired. The worker's hourly sweep is removed. The manual admin button and `/api/hackathon/expire` remain but nothing runs them.
+- **Built:** the live ladder (`ladder.tsx`, shared by `/hackathon` and the app). **Open:** the winners and payout dates; quests, voter badges, weekly Rising Star and referral are planned, not built.
+
+### D131. Get-credits pop-up on home; verify and vote before submitting a hackathon project (18 Nov 2026)
+- Decided by: the owner (agreed in D126, built now). Built by Claude.
+- **Pop-up:** someone who lands on home with no credits and has never bought any (no deposit in the ledger) sees "Get credits to start building": Add credits, or the free credits card, which shows only the step they still need (verify, then "support our project by voting"; the 40 lands when the vote confirms). It shows once per browser session. A failed check never shows it.
+- **Hackathon:** claiming the hackathon credits already needed verify and a confirmed vote. Submitting or updating a project now needs them too: the server refuses until the signup's vote is confirmed on-chain (only that check sets "voted", and it requires a verified wallet). The form shows "Verify and vote first" with a link to the steps. No project in production was affected (none submitted yet).
+
+### D132. Hackathon in the app becomes four pages; three approvals per verified person; public vote section (19 Nov 2026)
+- Decided by: the owner. Built by Claude.
+- **App (`/home/hackathon`):** Get started, My project, Leaderboard, Vote, each its own page under a shared layout with tabs. People who have registered see a "you're in" summary on Get started (credits, claim the 30 after a deploy, links to the other tabs) and never see the four steps again. My project holds the submit form. Leaderboard is the shared ladder.
+- **Voting rule:** each verified person (one GoodDollar identity, so linked wallets share) has **3 approvals in total** in this hackathon, replacing "one per project, no limit". Approving the same project again is a no-op. The count and insert run under a per-identity advisory lock, so parallel requests can't pass three. Existing approvals count toward the three; nobody loses any, but anyone already over three can't add more.
+- **Eligibility, enforced on the server:** a verified GoodDollar identity **and** a confirmed on-chain FlowState vote (`flowstate_voters.voted_at`). A hackathon signup is not needed, so people who only vote can still approve (D126).
+- **Public `/hackathon`:** a Vote section, and `/hackathon/projects` uses the same list. Picking a project when the steps aren't done opens a small pop-up (connect email, verify with GoodDollar, support on FlowState), then one click to approve. The picked project survives the GoodDollar trip (session storage, return to `#vote`).
+- **New:** `GET /api/hackathon/votes` (steps done, approvals used and which), `src/lib/hackathon-vote.ts`, `vote-list.tsx`, `get-started.tsx`, `home-tabs.tsx`. The old gallery in `community.tsx` is removed.
+- **Not verified in a browser:** the dev server wouldn't run in this environment (Turbopack file watching is blocked by the sandbox, and the webpack fallback chokes on Tailwind's native module). Server rules are covered by tests; the pages are typechecked and linted only.
+
+### D133. Quests and badges on Get started (19 Nov 2026)
+- Decided by: the owner (asked for quests next). Built by Claude.
+- **What:** a quest list and badge row for registered builders on `/home/hackathon` (`quests.tsx`, rules in `src/lib/hackathon-quests.ts`). Six quests: register (+20 credits), deploy (+30 credits), publish, use your 3 approvals, get 5 approvals (Bronze), reach the top 20. Badges: First approval, Full ballot, Published, Bronze, Silver, Gold, Prize zone.
+- **No new tables, no new money.** Everything is read from what exists: the registration claim, `GET /api/hackathon/votes`, and the public entry list. The only credits are the 20 + 30 the existing claims already pay. Badges never pay G$ (no incentive to farm votes).
+- **Changed from the preview:** the "Talent spotter (5 approvals)" badge is gone, because D132 caps approvals at 3. "Scout" (approved a project that finished top 20) needs final rankings, so it is not built.
+- **League levels (owner, 19 Nov):** Bronze 5, Silver 15, Gold 30 approvals received, lowered from 10/40/100 because each person has only 3 approvals (about 300 in total at 100 builders). One constant, `LEAGUE_AT` in `src/lib/hackathon-ladder.ts`, also drives the leaderboard chips.
+- **Not built:** weekly Rising Star (needs a snapshot job), referral credits (new rules and tables), rank-movement arrows (need a daily rank snapshot).
+
+### D134. Leaderboard rank arrows from a daily snapshot (19 Nov 2026)
+- Decided by: the owner (picked rank arrows next). Built by Claude.
+- **What:** each published project shows "▲ 3" or "▼ 2" next to its name on the leaderboard: places gained or lost since the last day's snapshot. No arrow for a project with no earlier snapshot, or no change.
+- **How:** new table `hackathon_rank_snapshots` (migration `0026`). The worker (`scripts/worker.ts`, the separate container in production) calls `sweepRankSnapshot` hourly; the first run of each West Africa day writes that day's ranks and later runs change nothing. `GET /api/hackathon/projects` adds `prevRank` from the latest snapshot dated before today. Snapshots run through the day after the close (the final ranking) and then stop.
+- **Limits:** the snapshot is taken at the worker's first run each WAT day, normally within an hour of midnight, so the arrow means "since about midnight". With no worker running (local PGlite) there are no arrows. The first arrows appear the day after the first snapshot.
+- **Migration number:** `0026` was the next free number on main on 19 Nov. If another branch adds `0026` first, renumber one of them.
+- **Not built:** weekly Rising Star (can reuse these snapshots), referral credits.
+
+### D135. Weekly Rising Star badge (19 Nov 2026)
+- Decided by: the owner (picked Rising Star next). Built by Claude. The three weeks are the ones from the preview and are Claude's proposal until confirmed.
+- **What:** the published project with the most new approvals in each week gets a "★ Rising Star" badge on the leaderboard and on its owner's badge row. Weeks: 18 to 25 Nov, 26 Nov to 2 Dec, 3 to 10 Dec. No money, so a project far down the ladder can still win. Ties go to the earlier submission; a week with no new approvals has no winner.
+- **How:** derived from the daily rank snapshots (D134), no new tables. A week ends at the snapshot dated the day after it (26 Nov, 3 Dec, 11 Dec), so the first star appears on 26 Nov. `src/lib/hackathon-weeks.ts` holds the rules; `GET /api/hackathon/projects` adds `stars` (week numbers) per project.
+- **Limits:** needs the worker to have written the boundary-day snapshot. If it missed a day, the next snapshot is used; if a week can't be measured it is skipped, not guessed.
+- **Not built:** referral credits.
+
+
+### D136. Referral credits (19 Nov 2026)
+- Decided by: the owner (picked referrals next). Built by Claude. The 1,000-credit referral pot and the 3-friend limit were confirmed by the owner (19 Nov).
+- **What:** every registered builder has an invite link (`/hackathon?ref=CODE`) on Get started. When someone registers through it and later makes their first Celo deploy, the invited builder and the inviter each get 10 build credits.
+- **Rules:** one bonus per GoodDollar identity (keyed on the invited person's root, so a second account can't claim it again). The invited builder is always paid; an inviter is paid for up to 3 friends. Codes are random, never derived from a wallet or user id. A code only counts in the call that creates the registration: someone already registered who opens a link gets nothing. A bad, unknown, self or same-identity code is ignored and registration goes ahead as normal. Nothing is paid after the close (10 Dec).
+- **Money:** a separate pot (`HACKATHON_REFERRAL_BUDGET_CREDITS`, default 1,000 credits) checked in the same hackathon lock, so referrals can't use up the 20 start credits promised to new builders. Both bonuses are paid together or not at all. If the pot is short the referral is held, the invited builder sees "Claim your invite bonus" on Get started, and a later claim pays it once the pot is topped up. Ledger entries are `adjust` with per-identity idempotency keys. The admin report shows referral credits paid against that pot.
+- **How:** new table `hackathon_referrals` and `referral_code` on registrations (migration `0027`; renumber if another branch takes it). `POST /api/hackathon` takes an optional `{ ref }`; `GET /api/hackathon/referral` returns the code and counts. The link is kept in localStorage from `?ref=` until the person registers.
+- **Not verified in a browser** (see D132).

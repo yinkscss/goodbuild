@@ -9,6 +9,8 @@ import type { Db } from "@/server/db/client";
 import { deployments } from "@/server/db/deploy-schema";
 import { hackathonRefusals, hackathonRegistrations, type HackathonRegistration } from "@/server/db/hackathon-schema";
 import { users } from "@/server/db/schema";
+import { CLAIMS_CLOSE, HACKATHON_ID } from "./ids";
+import { recordReferral, referralHeld, settleReferral } from "./referrals";
 
 /**
  * Hackathon credits (D99). Every grant is keyed to a GoodDollar identity root that is read from the
@@ -16,13 +18,12 @@ import { users } from "@/server/db/schema";
  * Paid in two parts: START_CREDITS on registering, DEPLOY_CREDITS after the first Celo deploy made
  * after registering. Both are ledger `adjust` entries with root-based idempotency keys.
  */
-export const HACKATHON_ID = "million-2027";
+export { HACKATHON_ID };
 export const START_CREDITS = 20;
 export const DEPLOY_CREDITS = 30;
 /** Default cap on everything granted: 100 builders x 50 credits. HACKATHON_BUDGET_CREDITS overrides. */
 export const DEFAULT_BUDGET_CREDITS = 5_000;
-/** Claims stop when submissions close (DRAFT date, matches content.ts). */
-export const CLAIMS_CLOSE = new Date("2027-02-08T23:00:00Z");
+export { CLAIMS_CLOSE };
 /** Celo mainnet and Celo Sepolia. */
 export const DEPLOY_CHAINS = [42220, 11142220];
 
@@ -43,11 +44,15 @@ export interface HackathonStatus {
   deployCredits: number;
   /** True when the deploy part is still to come. */
   deployPending: boolean;
+  /** Present and true only while a referral bonus is held for the referral pot (D136). */
+  referralPending?: boolean;
 }
 
 export interface ClaimDeps {
   /** The wallet's GoodDollar root, read fresh from the Identity contract, or null. */
   readRoot: (wallet: Address) => Promise<Address | null>;
+  /** An invite code from the link this person came in by (D136). Anything unusable is ignored. */
+  ref?: unknown;
   now?: Date;
   env?: Record<string, string | undefined>;
 }
@@ -74,7 +79,8 @@ export async function hackathonStatus(db: Db, userId: string): Promise<Hackathon
     .from(hackathonRegistrations)
     .where(and(eq(hackathonRegistrations.hackathon, HACKATHON_ID), eq(hackathonRegistrations.userId, userId)))
     .limit(1);
-  return statusOf(row);
+  const status = statusOf(row);
+  return (await referralHeld(db, userId)) ? { ...status, referralPending: true } : status;
 }
 
 /**
@@ -94,7 +100,7 @@ export async function claimHackathon(db: Db, user: { id: string; wallet: string 
   const root = rootAddress.toLowerCase();
 
   try {
-    return await grantInLock(db, user, root, now, env);
+    return await grantInLock(db, user, root, now, env, deps.ref);
   } catch (error) {
     // Kept for the admin page. Written after the rollback, so it survives it.
     if (error instanceof HackathonError && (error.code === "claimed_elsewhere" || error.code === "budget_spent")) {
@@ -107,7 +113,7 @@ export async function claimHackathon(db: Db, user: { id: string; wallet: string 
   }
 }
 
-function grantInLock(db: Db, user: { id: string; wallet: string }, root: string, now: Date, env: Record<string, string | undefined>): Promise<HackathonStatus> {
+function grantInLock(db: Db, user: { id: string; wallet: string }, root: string, now: Date, env: Record<string, string | undefined>, ref: unknown): Promise<HackathonStatus> {
   return db.transaction(async (raw) => {
     const tx = raw as unknown as Db;
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`hackathon:${HACKATHON_ID}`}))`);
@@ -154,14 +160,18 @@ function grantInLock(db: Db, user: { id: string; wallet: string }, root: string,
         .values({ hackathon: HACKATHON_ID, userId: user.id, goodidRoot: root, wallet: user.wallet.toLowerCase(), createdAt: now, startEntryId: posted.entry.id, startMicro: amount })
         .returning();
       left -= amount;
+      // Only the call that creates the registration can note a referral (D136).
+      await recordReferral(tx, { code: ref, refereeUserId: user.id, refereeRoot: root, now });
     }
 
+    // A deploy made after registering, read from the server's own records. Pays the deploy credits and any referral.
+    const [deployed] = await tx
+      .select({ id: deployments.id })
+      .from(deployments)
+      .where(and(eq(deployments.userId, user.id), inArray(deployments.chainId, DEPLOY_CHAINS), gte(deployments.createdAt, row.createdAt)))
+      .limit(1);
+
     if (!row.deployEntryId) {
-      const [deployed] = await tx
-        .select({ id: deployments.id })
-        .from(deployments)
-        .where(and(eq(deployments.userId, user.id), inArray(deployments.chainId, DEPLOY_CHAINS), gte(deployments.createdAt, row.createdAt)))
-        .limit(1);
       const amount = DEPLOY_CREDITS * MICRO_PER_CREDIT;
       // Out of budget for the second part: the registration stands, the part just isn't paid.
       if (deployed && left >= amount) {
@@ -181,6 +191,9 @@ function grantInLock(db: Db, user: { id: string; wallet: string }, root: string,
       }
     }
 
-    return statusOf(row);
+    await settleReferral(tx, { userId: user.id, deployed: Boolean(deployed), now, env });
+
+    const status = statusOf(row);
+    return (await referralHeld(tx, user.id)) ? { ...status, referralPending: true } : status;
   });
 }

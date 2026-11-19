@@ -44,7 +44,7 @@ it.each(["pending", "visited", "skipped"])(
   "does not grant initial credits for %s progress",
   async (flowstate) => {
     mocks.participant.mockResolvedValue({ flowstate });
-    expect((await POST()).status).toBe(403);
+    expect((await POST(new Request("http://x/api/hackathon", { method: "POST" }))).status).toBe(403);
     expect(mocks.claim).not.toHaveBeenCalled();
   },
 );
@@ -53,18 +53,30 @@ it("rechecks on-chain support rather than trusting a stored voted flag", async (
   mocks.support.mockRejectedValue(
     new FlowstateError("No settled support", 409),
   );
-  expect((await POST()).status).toBe(409);
+  expect((await POST(new Request("http://x/api/hackathon", { method: "POST" }))).status).toBe(409);
   expect(mocks.claim).not.toHaveBeenCalled();
 });
 it("grants initial credits after positive settled support", async () => {
   mocks.participant.mockResolvedValue({ flowstate: "voted" });
-  expect((await POST()).status).toBe(200);
+  expect((await POST(new Request("http://x/api/hackathon", { method: "POST" }))).status).toBe(200);
   expect(mocks.support).toHaveBeenCalledOnce();
   expect(mocks.claim).toHaveBeenCalledOnce();
 });
 it("keeps the already-earned deploy credit entitlement after registration", async () => {
   mocks.status.mockResolvedValue({ registered: true });
-  expect((await POST()).status).toBe(200);
+  expect((await POST(new Request("http://x/api/hackathon", { method: "POST" }))).status).toBe(200);
   expect(mocks.support).not.toHaveBeenCalled();
+  expect(mocks.claim).toHaveBeenCalledOnce();
+});
+it("passes an invite code through to the claim", async () => {
+  mocks.participant.mockResolvedValue({ flowstate: "voted" });
+  const req = new Request("http://x/api/hackathon", { method: "POST", body: JSON.stringify({ ref: "ABCDEFGH" }) });
+  expect((await POST(req)).status).toBe(200);
+  expect(mocks.claim).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.objectContaining({ ref: "ABCDEFGH" }));
+});
+it("still registers when the body is malformed", async () => {
+  mocks.participant.mockResolvedValue({ flowstate: "voted" });
+  const req = new Request("http://x/api/hackathon", { method: "POST", body: "{" });
+  expect((await POST(req)).status).toBe(200);
   expect(mocks.claim).toHaveBeenCalledOnce();
 });

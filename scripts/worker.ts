@@ -4,8 +4,8 @@
 import { getDb } from "../src/server/db/client";
 import { modelClient, visionClient } from "../src/server/agent";
 import { TurnWorker } from "../src/server/jobs/worker";
-import { sweepHackathonExpiry } from "../src/server/hackathon/admin";
 import { sweepFreeExpiry } from "../src/server/credits/free-expiry";
+import { sweepRankSnapshot } from "../src/server/hackathon/ranks";
 
 if (!process.env.DATABASE_URL) {
   console.error("pnpm worker needs DATABASE_URL (Postgres). PGlite can't be shared with the web server.");
@@ -15,15 +15,17 @@ if (!process.env.DATABASE_URL) {
 const worker = new TurnWorker({ getDb, model: modelClient, namer: visionClient }).start();
 console.log(`[worker] ${worker.id} waiting for turn jobs`);
 
-// Hourly: once hackathon claims close, remove unspent hackathon credits (D100). Safe to repeat.
-const sweep = () => void sweepHackathonExpiry(getDb).catch((e) => console.warn(`[worker] hackathon expiry: ${(e as Error).message}`));
-setInterval(sweep, 60 * 60 * 1000).unref();
-sweep();
+// Hackathon credits are NOT expired automatically (D130): builders keep what they haven't spent.
 
 // Hourly: take back free credits not spent within FREE_CREDITS_EXPIRE_DAYS (D123). Safe to repeat.
 const sweepFree = () => void sweepFreeExpiry(getDb).catch((e) => console.warn(`[worker] free credit expiry: ${(e as Error).message}`));
 setInterval(sweepFree, 60 * 60 * 1000).unref();
 sweepFree();
+
+// Hourly: record today's hackathon ranks once per WAT day, for the leaderboard arrows (D134). Safe to repeat.
+const sweepRanks = () => void sweepRankSnapshot(getDb).catch((e) => console.warn(`[worker] hackathon rank snapshot: ${(e as Error).message}`));
+setInterval(sweepRanks, 60 * 60 * 1000).unref();
+sweepRanks();
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, () => {
