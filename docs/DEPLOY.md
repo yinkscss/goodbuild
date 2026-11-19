@@ -303,3 +303,4 @@ The hackathon vote's network fee is paid from the gas wallet. The web app reads 
 3. Check the hackathon admin page: the "Network-fee fund" tile shows the balance and no "Off" note.
 4. Remove `GAS_WALLET_PRIVATE_KEY` from `.env.production` and restart web and worker, so the key stops being an environment variable.
 5. To pause grants at once: `insert into app_settings (key, value) values ('gas_grants', 'off') on conflict (key) do update set value = 'off';` Set `'on'` to resume.
+6. **Mainnet deploy fees (D156)** use the same key and wallet. Deploy this release so migration 0031 runs; no new setup. Pause only deploy top-ups: `insert into app_settings (key, value) values ('gas_deploy_grants', 'off') on conflict (key) do update set value = 'off';`. Watch the "Deploy fees today" tile. Limits are constants at the top of `src/server/gas-grant/deploy-grant.ts`.

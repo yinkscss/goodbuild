@@ -4,6 +4,8 @@ import { z } from "zod";
 import { errorResponse, requireSession } from "@/server/auth/http";
 import { getDb } from "@/server/db/client";
 import { DeployError, prepareDeploy } from "@/server/deploy/service";
+import { sponsorDeployFee } from "@/server/gas-grant/deploy-grant";
+import { gasGrantDeps } from "@/server/gas-grant/runtime";
 import { getOwnedProject } from "@/server/projects";
 
 export const maxDuration = 60;
@@ -20,7 +22,10 @@ export async function POST(request: Request, ctx: RouteContext<"/api/projects/[i
     const db = await getDb();
     if (!(await getOwnedProject(db, id, session.user.id))) return NextResponse.json({ error: "not_found" }, { status: 404 });
     try {
-      return NextResponse.json({ plan: await prepareDeploy(db, { ...parsed.data, projectId: id, wallet: session.user.wallet }) });
+      const plan = await prepareDeploy(db, { ...parsed.data, projectId: id, wallet: session.user.wallet });
+      // D156: silently cover the network fee of a mainnet deploy. It never fails or slows a deploy past its wait.
+      await sponsorDeployFee(db, session.user, plan, gasGrantDeps());
+      return NextResponse.json({ plan });
     } catch (error) {
       if (error instanceof DeployError) return NextResponse.json({ error: error.code, message: error.message, details: error.details }, { status: 422 });
       throw error;
