@@ -627,6 +627,36 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       }
     }
 
+    // D138: a big build (a game reshaped from a template, say) can end its pass with the plan half done and
+    // say so ("it isn't finished yet, still to come are..."). Checking it then fails on missing parts, or a
+    // fix pass patches the half-built app. Instead, build again on the same model, up to MORE_BUILD_PASSES
+    // times, while the builder's own reply says work is left. Each pass is fitted to the credit left like
+    // any call, and a free build still stops at its ceiling.
+    if (input.mode === "build" && !intake && finished) {
+      const passes = moreBuildPasses();
+      for (let pass = 1; pass <= passes; pass++) {
+        const last = replies.at(-1);
+        if (!last || !soundsUnfinished(last) || atFreeCeiling()) break;
+        stopIfRequested();
+        log(`· the builder said the plan isn't finished; building the rest (pass ${pass + 1})`);
+        step({ id: `more:${pass}`, label: "Building the rest of the plan", detail: `pass ${pass + 1} of ${passes + 1}`, status: "running" });
+        convo.push({ role: "user", content: MORE_BUILD_MESSAGE });
+        const replied = replies.length;
+        const textBefore = text;
+        const done = await phase(TIER_FOR.build);
+        const fresh = replies.length > replied ? replies.at(-1)! : "";
+        // What they read is the latest summary, not "it isn't finished yet" followed by it.
+        if (fresh.trim()) {
+          text = fresh.trim();
+          out({ type: "text_set", text });
+        } else if (text !== textBefore) {
+          out({ type: "text_set", text });
+        }
+        step({ id: `more:${pass}`, label: "Building the rest of the plan", detail: fresh && !soundsUnfinished(fresh) ? "done" : `pass ${pass + 1} of ${passes + 1}`, status: "done" });
+        if (!done || !fresh) break;
+      }
+    }
+
     // The user's house style: no em dashes in what they read (the prompt asks too; models slip).
     const styled = plainDashes(text);
     if (styled !== text) {
@@ -1311,6 +1341,27 @@ async function finish(db: Db, id: string, text: string, record: TurnRecord) {
     .update(messages)
     .set({ content: text.trim(), status, meta: record as unknown as Record<string, unknown> })
     .where(eq(messages.id, id));
+}
+
+/** Extra build passes when the builder says the plan isn't finished (D138). MORE_BUILD_PASSES overrides; 0 turns it off. */
+export const MORE_BUILD_PASSES = 2;
+
+export function moreBuildPasses(env: Record<string, string | undefined> = process.env): number {
+  const raw = env.MORE_BUILD_PASSES;
+  const value = Number(raw);
+  return raw !== undefined && raw !== "" && Number.isSafeInteger(value) && value >= 0 ? Math.min(value, 5) : MORE_BUILD_PASSES;
+}
+
+const MORE_BUILD_MESSAGE =
+  "Your last reply says the work isn't finished. Keep building now: write every part of the plan that is still missing, one file per create_file call, under about 250 lines each. Don't redo what's already written. When everything in the plan is written, reply to the user as instructed with what the app does now. If everything was already written, reply in one line that it's done.";
+
+/**
+ * A reply that says the plan isn't done yet (D138): "it isn't finished yet", "still to come are...", "the next
+ * pass will add...". Phrases about the person's own next steps ("once you deploy") don't count.
+ */
+export function soundsUnfinished(reply: string): boolean {
+  const t = reply.replace(/[’‘]/g, "'");
+  return /\b(?:isn't|is not|aren't|are not|not yet|wasn't)\s+(?:yet\s+)?(?:finished|done|complete|ready|built|written)\b|\bstill to (?:come|do|build|write)\b|\b(?:next|another|second|following|later)\s+(?:pass|step|turn|round of work)\s+(?:will|to)\b|\b(?:still|yet) (?:need|needs|have|has) to (?:be )?(?:write|written|build|built|add|added|wire|wired)\b|\bhaven't (?:yet )?(?:written|built|added|wired)\b|\b(?:the )?remaining (?:parts|pieces|files|work|screens|pages)\b|\bpartially (?:built|done|written)\b|\bwork in progress\b/i.test(t);
 }
 
 /**
