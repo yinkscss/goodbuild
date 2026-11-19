@@ -48,6 +48,7 @@ export function gameTemplateStarters() {
     label: name,
     description: fits,
     examplePrompt: `Build a ${name.toLowerCase()} game using GoodBuild's ${name} game template. ${fits}.`,
+    thumbnail: `/games/${id}.webp`,
     game: { dims, style },
   }));
 }

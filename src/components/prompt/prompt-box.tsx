@@ -318,12 +318,15 @@ export function PromptBox({
                     <DropdownMenuLabel>Game templates</DropdownMenuLabel>
                     {gameTemplates.map((t) => (
                       <DropdownMenuRadioItem key={t.id} value={t.id}>
-                        <span className="min-w-0">
-                          <span className="flex items-center gap-2 font-medium">
-                            {t.label}
-                            {t.game && <span className="text-[10px] font-normal uppercase tracking-wide text-grey-400">{t.game.dims} · {t.game.style}</span>}
+                        <span className="flex min-w-0 items-center gap-3">
+                          {t.thumbnail && <span className="relative block aspect-video w-14 shrink-0 overflow-hidden rounded-tip bg-tint"><Image src={t.thumbnail} alt="" fill sizes="56px" className="object-cover" /></span>}
+                          <span className="min-w-0">
+                            <span className="flex items-center gap-2 font-medium">
+                              {t.label}
+                              {t.game && <span className="text-[10px] font-normal uppercase tracking-wide text-grey-400">{t.game.dims} · {t.game.style}</span>}
+                            </span>
+                            <span className="block truncate text-xs text-grey-600">{t.description}</span>
                           </span>
-                          <span className="block truncate text-xs text-grey-600">{t.description}</span>
                         </span>
                       </DropdownMenuRadioItem>
                     ))}

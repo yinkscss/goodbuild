@@ -1,6 +1,7 @@
 "use client";
 
 import { ArrowRight, Gamepad2 } from "lucide-react";
+import Image from "next/image";
 
 import type { StarterTemplate } from "@/config/templates";
 import { fillLandingPrompt } from "./landing-prompt";
@@ -28,16 +29,13 @@ export function GameTemplateGallery({ templates }: { templates: StarterTemplate[
               aria-label={`Use the ${template.label} game template`}
               className="group flex w-full flex-col overflow-hidden rounded-card bg-surface text-left shadow-card outline-none transition-shadow duration-200 ease-gb hover:shadow-pop focus-visible:shadow-focus"
             >
-              <span className="relative flex h-36 items-center justify-center overflow-hidden bg-gradient-to-br from-violet/15 via-tint to-canvas">
-                <span className="absolute -right-8 -bottom-16 size-48 rounded-full border border-violet/15" />
-                <span className="absolute -right-2 -bottom-10 size-32 rounded-full border border-violet/20" />
-                <span className="grid size-16 place-items-center rounded-[22px] bg-surface text-violet shadow-card transition-transform duration-200 ease-gb group-hover:-translate-y-1">
-                  <Gamepad2 className="size-8" aria-hidden />
-                </span>
-                <span className="absolute top-3 left-3 rounded-full bg-surface/90 px-2.5 py-1 text-[11px] font-semibold text-grey-600">
+              <span className="relative block aspect-video w-full overflow-hidden bg-grey-800">
+                {template.thumbnail ? <Image src={template.thumbnail} alt="" fill sizes="(min-width: 1024px) 420px, (min-width: 640px) 50vw, 100vw" className="object-cover transition-transform duration-300 ease-gb group-hover:scale-105" /> : <Gamepad2 className="absolute top-1/2 left-1/2 size-8 -translate-x-1/2 -translate-y-1/2 text-white" aria-hidden />}
+                <span className="absolute inset-0 bg-gradient-to-t from-black/35 to-transparent" />
+                <span className="absolute top-3 left-3 rounded-full bg-black/50 px-2.5 py-1 text-[11px] font-semibold text-white">
                   {template.game?.dims.toUpperCase() ?? "GAME"} · {template.game?.style ?? "STARTER"}
                 </span>
-                <span className="absolute top-3 right-3 font-mono text-xs text-grey-400">{String(index + 1).padStart(2, "0")}</span>
+                <span className="absolute top-3 right-3 rounded-full bg-black/50 px-2 py-1 font-mono text-xs text-white">{String(index + 1).padStart(2, "0")}</span>
               </span>
               <span className="flex flex-1 flex-col gap-4 p-5">
                 <span>
