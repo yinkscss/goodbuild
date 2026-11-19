@@ -25,9 +25,10 @@ import { postLedgerEntry } from "./ledger";
 /**
  * The least a paid build needs free to start: 10 credits, one daily refill (D123, owner 18 Nov 2026).
  * It was 35 credits (D49), one worst-case call to the strong model on a large project. At 10, a
- * build on the fast model runs (its worst-case call is about 5 credits), but a strong-model fix on
- * a small balance can fail the check before that call, and the build then stops with "your credits
- * ran out". The checks before each call keep spending safe at any size. PAID_MIN_START_MICRO overrides.
+ * build on the fast model runs (its worst-case call is about 5 credits). A strong-model fix on a small
+ * balance used to fail the check and stop the build; since D138 the call is fitted instead (fitCall:
+ * the fast model, then a lower output limit), and a build that still can't go on pauses with its files
+ * saved as a draft. The checks before each call keep spending safe at any size. PAID_MIN_START_MICRO overrides.
  */
 export const PAID_MIN_START_MICRO = 100_000;
 
@@ -50,6 +51,9 @@ export const CREDIT_HELD_MESSAGE = "Your credit is set aside for builds in progr
 
 /** A paid build stopped because the next call could cost more than is left. */
 export const OUT_OF_CREDITS_BUILD_MESSAGE = "This build stopped because your credits ran out. Your project is unchanged. Top up, then retry.";
+
+/** A paid build that ran low after writing files: what it made is saved as a draft (D138). */
+export const CREDITS_PAUSED_MESSAGE = "This build paused because your credits ran low. What it made so far is saved as a draft that doesn't pass every check yet. Top up, then press Continue to pick up from here.";
 
 /** Thrown at the safe point before a model call that the user's credit can't cover. */
 export class OutOfCreditsError extends Error {
@@ -172,6 +176,63 @@ export async function ensureHold(tx: Db, jobId: string, worstMicro: number): Pro
   // The trigger adds the extension to balances.reserved_micro.
   await tx.update(turnJobs).set({ holdMicro: worstMicro }).where(eq(turnJobs.id, jobId));
   return true;
+}
+
+/**
+ * What a paid job could spend on its next call: its hold plus the rest of the user's balance that
+ * no other build has set aside. Null for a job that isn't paid (nothing to fit). 0 for a job that has
+ * ended. Locks the job's row, then the balances row (the usual order). Moves no money.
+ */
+export async function headroomMicro(tx: Db, jobId: string): Promise<number | null> {
+  const [job] = await tx.select({ userId: turnJobs.userId, holdMicro: turnJobs.holdMicro, funding: turnJobs.funding, status: turnJobs.status }).from(turnJobs).where(eq(turnJobs.id, jobId)).for("update");
+  if (!job || job.funding !== "paid") return null;
+  if (job.status !== "queued" && job.status !== "running") return 0;
+  const balance = await lockBalance(tx, job.userId);
+  return job.holdMicro + Math.max(0, balance.availableMicro);
+}
+
+/**
+ * The fewest output tokens worth asking for when a call is shrunk to fit the credit left (D138). Below
+ * this the build model can't write a file of any size, so the build pauses instead. A call that asks
+ * for less than this to begin with (the plan questions) keeps its own limit.
+ */
+export const MIN_FITTED_OUTPUT_TOKENS = 4_000;
+
+export interface FittedCall {
+  tier: "strong" | "cheap";
+  maxTokens: number;
+}
+
+/**
+ * Fit a model call to the credit left (D138), instead of refusing it outright as D49 did:
+ * 1. as asked, if its worst case fits;
+ * 2. else on the fast model (when `cheaper` allows and the call asked for the strong one);
+ * 3. else with a lower output limit, down to MIN_FITTED_OUTPUT_TOKENS.
+ * Null when not even that fits: the build pauses there. The worst case is still the D49 estimate, so a
+ * fitted call can never be charged more than `headroom`, and the balance still can't go below zero
+ * (the provider never writes past the output limit it was given).
+ */
+export function fitCall(
+  request: { tier: "strong" | "cheap"; messages: readonly EstimatedMessage[]; tools?: readonly unknown[]; maxTokens: number },
+  headroom: number,
+  modelFor: (tier: "strong" | "cheap") => string,
+  options: { cheaper: boolean } = { cheaper: true },
+): FittedCall | null {
+  const worst = (tier: "strong" | "cheap", maxTokens: number) => worstCaseCallMicro(modelFor(tier), { ...request, maxTokens });
+  if (worst(request.tier, request.maxTokens) <= headroom) return { tier: request.tier, maxTokens: request.maxTokens };
+  const tier = request.tier === "strong" && options.cheaper ? "cheap" : request.tier;
+  if (worst(tier, request.maxTokens) <= headroom) return { tier, maxTokens: request.maxTokens };
+  const floor = Math.min(MIN_FITTED_OUTPUT_TOKENS, request.maxTokens);
+  if (worst(tier, floor) > headroom) return null;
+  // The estimate grows with the output limit: find the largest limit that still fits.
+  let lo = floor;
+  let hi = request.maxTokens;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (worst(tier, mid) <= headroom) lo = mid;
+    else hi = mid - 1;
+  }
+  return { tier, maxTokens: lo };
 }
 
 /** One ledger key per usage row, so a replayed or resumed call is never charged twice. */

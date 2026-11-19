@@ -6,7 +6,7 @@ import { starterFiles } from "../template";
 import { typeCheck } from "../type-check";
 
 import { detectKits, kitIdsOf, withKit } from "./index";
-import { MINIPAY_CHECKLIST, miniApp, miniPayChecklist } from "./mini-app";
+import { MINIPAY_CHECKLIST, fillMiniApp, miniApp, miniPayChecklist } from "./mini-app";
 
 const PAGE = `import { HashRouter, Route, Routes } from "react-router-dom";
 import { InfoPage, INFO_ROUTES } from "./minipay/InfoPages";
@@ -107,5 +107,27 @@ describe("the MiniPay kit", { timeout: 120_000 }, () => {
     expect(checkApp(withoutRoutes).errors.map((e) => e.message).join()).toMatch(/INFO_ROUTES/);
     const untouched = { ...project(), "src/minipay/app.ts": withKit(starterFiles(), miniApp)["src/minipay/app.ts"] };
     expect(checkApp(untouched).errors.map((e) => e.message).join()).toMatch(/Fill in MINI_APP/);
+  });
+});
+
+describe("fillMiniApp (D138)", () => {
+  const kitFile = withKit(starterFiles(), miniApp)["src/minipay/app.ts"];
+  const info = { name: "Shadow Crew", tagline: "Fix the station before the saboteur wins.", howTo: ["Open the game in MiniPay.", "Tap Play."] };
+
+  it("fills the kit's placeholders from the plan, so the check stops asking for them", () => {
+    const filled = fillMiniApp(kitFile, info);
+    expect(filled).toContain('name: "Shadow Crew"');
+    expect(filled).toContain('tagline: "Fix the station before the saboteur wins."');
+    expect(filled).toContain('publisher: "The Shadow Crew team"');
+    expect(filled).toContain('howTo: ["Open the game in MiniPay.","Tap Play."]');
+    const project = { ...withKit(starterFiles(), miniApp), "src/minipay/app.ts": filled };
+    expect(checkApp(project).errors.map((e) => e.message).join()).not.toMatch(/Fill in MINI_APP/);
+  });
+
+  it("never touches a MINI_APP someone already wrote, and keeps $ and quotes literal", () => {
+    const written = kitFile.replace('name: "My app"', 'name: "Tip Jar"');
+    expect(fillMiniApp(written, info)).toBe(written);
+    expect(fillMiniApp(kitFile, { name: 'Cash $& "Co"', tagline: "" })).toContain('name: "Cash $& \\"Co\\""');
+    expect(fillMiniApp(kitFile, { name: "  ", tagline: "x" })).toBe(kitFile);
   });
 });

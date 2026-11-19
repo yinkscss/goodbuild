@@ -34,7 +34,8 @@ export function scriptedModel(replies: ScriptedReply[], model: Partial<Record<Mo
         type: "usage",
         model: model[req.tier] ?? (req.tier === "strong" ? "claude-sonnet-5-5" : "deepseek-flash"),
         inputTokens: reply.usage?.input ?? 1000,
-        outputTokens: reply.usage?.output ?? 200,
+        // A provider never writes past the limit it was given (D138 fits calls to the credit left by lowering it).
+        outputTokens: Math.min(reply.usage?.output ?? 200, req.maxTokens),
         cachedInputTokens: 0,
         callId: `fake-${i}-${Math.random().toString(36).slice(2)}`,
       };

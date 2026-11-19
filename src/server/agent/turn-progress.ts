@@ -3,6 +3,7 @@ import type { FundingSource } from "@/server/db/schema";
 import type { TurnRecord } from "@/lib/turn-types";
 import type { ContractCheckOptions } from "./checks";
 import type { ChatMessage, ToolCall } from "./model";
+import type { MiniAppInfo } from "./kits/mini-app";
 
 /**
  * Resumable turns (P18, user decision: option C). A turn saves what setup produced once, then
@@ -47,6 +48,8 @@ export interface TurnSetup {
   /** The record after setup (start-of-turn log lines). */
   recordAtStart: TurnRecord;
   text: string;
+  /** The app's name and line from the plan, for the MiniPay kit's MINI_APP (D138). Missing on older saves. */
+  appInfo?: MiniAppInfo;
 }
 
 export interface LoggedUsage {

@@ -126,7 +126,9 @@ export function DeployCard({ record, chainId }: { record: TurnRecord; chainId: n
 
 /** Inline error card (DESIGN_SYSTEM §4): danger dot, plain cause, Try fix, expandable logs. */
 export function TurnError({ record, onFix, disabled }: { record: TurnRecord; onFix: () => void; disabled: boolean }) {
-  const needsFix = record.status === "needs_fix";
+  // Paused for credits (D138): its files are a saved draft, and Continue picks up from them.
+  const paused = record.paused === "credits";
+  const needsFix = record.status === "needs_fix" && !paused;
   const autofix = record.steps.find((s) => s.id === "autofix")?.detail;
   return (
     <div className="mt-4 rounded-block bg-canvas p-4" role="alert">
@@ -135,7 +137,7 @@ export function TurnError({ record, onFix, disabled }: { record: TurnRecord; onF
           <span className="mt-1.5 size-2 shrink-0 rounded-full bg-danger" aria-hidden />
           <div>
             <p className="text-sm font-medium">
-              {needsFix ? `Auto-fix ${autofix ? autofix.charAt(0).toLowerCase() + autofix.slice(1) : "couldn't fix every error"}` : "This build stopped"}
+              {paused ? "Paused: your credits ran low" : needsFix ? `Auto-fix ${autofix ? autofix.charAt(0).toLowerCase() + autofix.slice(1) : "couldn't fix every error"}` : "This build stopped"}
             </p>
             <p className="text-sm text-grey-600">
               {needsFix ? "Your files are saved. Ask for a fix, or describe the change differently." : record.error ?? "Something went wrong."}
@@ -144,7 +146,7 @@ export function TurnError({ record, onFix, disabled }: { record: TurnRecord; onF
         </div>
         <Button variant="chipSelected" size="sm" onClick={onFix} disabled={disabled}>
           <RotateCw />
-          {needsFix ? "Try fix" : "Try again"}
+          {paused ? "Continue" : needsFix ? "Try fix" : "Try again"}
         </Button>
       </div>
       {record.log.length > 0 && (
