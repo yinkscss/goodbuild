@@ -1846,7 +1846,6 @@ The owner approved implementing all five parts of the first-build fix and openin
 - **Live smoke run, 19 Nov 2026, DeepSeek only:** a local production build with `HARNESS_V2=on`, the run check on and no Anthropic key, so every strong call fell back to `deepseek-flash`. Sonnet itself is still **UNVERIFIED**; that is the owner's canary.
   - Turn 1, the G$ tip jar's interface milestone ($0.086, 238 s): the spec had 2 pages, 0 contracts (the milestone defers them) and 7 acceptance flows. The builder called `open_app` three times by itself, changed files after reading the outline, ran `run_checks` once, and the milestone's browser acceptance passed. No fix attempts.
   - Turn 2, the payments milestone ($0.087, 223 s): the spec named TipJar. The contracts phase wrote the contract, 6 tests and `deploy.json`, fixed two test compile errors through `run_tests`, and reached 6 of 6 passing. The front end read the ABI module, opened the app twice, and fixed 9 type errors that `run_checks` showed it. The turn ended ready with no fix attempts.
-- **Checked:** unit and scripted-runner tests (`harness-v2.test.ts`); every existing agent, pricing and credit test passes. **UNVERIFIED** with real models; that is the owner's canary in HARNESS_V2_PLAN.md.
 
 ### D154. Solitaire's run check deals from a fixed seed (19 Nov 2026; fixes a flaky template check)
 - Date: 19 Nov 2026 · Decided by: the owner (chose the seeded deal over loosening the score rule) · Built by: Claude
