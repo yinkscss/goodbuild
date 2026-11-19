@@ -589,13 +589,15 @@ export function checkApp(files: Record<string, string>, opts: { assets?: string[
           const kit = kitForPackage(pkg);
           // A package a kit stands in for (an animation or charting library): say which kit, so the fix is one step.
           // The v2 packages (D152) are only addable in a v2 build; elsewhere they read as not allowed, as before.
-          const addable = pkg in ALLOWED_DEPENDENCIES && (opts.v2 || !(pkg in V2_PACKAGES || Object.values(COMPANION_PACKAGES).some((c) => pkg in c)));
+          // A companion (react-is, @dnd-kit/utilities) comes with the package that needs it, so that is the one to add.
+          const parent = Object.entries(COMPANION_PACKAGES).find(([, c]) => pkg in c)?.[0];
+          const addable = pkg in ALLOWED_DEPENDENCIES && (opts.v2 || !(pkg in V2_PACKAGES || parent));
           const instead = kit || addable ? undefined : kitReplacing(pkg);
           const hint =
             kit && !kitsOf(files).includes(kit)
               ? ` It comes with the ${kit.id} kit: call add_kit("${kit.id}") first.`
               : addable
-                ? ` Call add_dependency("${pkg}") first.`
+                ? ` Call add_dependency("${parent && !(pkg in V2_PACKAGES) ? parent : pkg}") first${parent && !(pkg in V2_PACKAGES) ? `, which installs ${pkg} with it` : ""}.`
                 : instead
                   ? ` It isn't on the allowed package list. The ${instead.id} kit does this with no package: ${kitsOf(files).includes(instead) ? `follow its guide (read_guide "kit-${instead.id}")` : `call add_kit("${instead.id}")`} and use its files.`
                   : " It isn't on the allowed package list.";

@@ -169,6 +169,9 @@ describe("the vetted v2 packages (D152 WS4)", () => {
     expect(v1?.message).toContain("The dashboard kit does this with no package");
     const v2 = checkApp(files, { v2: true }).errors.find((i) => i.message.includes("recharts"));
     expect(v2?.message).toContain('Call add_dependency("recharts") first.');
+    // A companion is added through the package that needs it.
+    const dnd = { ...starterFiles(), "src/App.tsx": 'import { CSS } from "@dnd-kit/utilities";\nexport default function App() { return <p>{String(CSS)}</p>; }\n' };
+    expect(checkApp(dnd, { v2: true }).errors.find((i) => i.message.includes("@dnd-kit/utilities"))?.message).toContain('Call add_dependency("@dnd-kit/core") first, which installs @dnd-kit/utilities with it.');
   });
 
   it("type-check against the pinned versions, as the guide uses them", { timeout: 120_000 }, async () => {

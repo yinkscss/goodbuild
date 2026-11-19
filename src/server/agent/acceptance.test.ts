@@ -4,7 +4,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { acceptanceIssues, acceptanceSummary, formatFlowResults, parseFlows } from "./acceptance";
 import { CHECK_WALLET_SHORT } from "./game-check";
 import { closeRunCheckBrowser, runCheck } from "./run-check";
-import { parseSpec } from "./spec";
+import { SPEC_PATH, parseSpec, specBlock } from "./spec";
 import { starterFiles } from "./template";
 
 afterAll(() => closeRunCheckBrowser());
@@ -25,6 +25,8 @@ export default function App() {
       <button onClick={() => setSent(amount)}>Send tip</button>
       <button onClick={() => setBroken(true)}>Break it</button>
       {sent && <p>Thanks for {sent} G$</p>}
+      <p hidden>Shown twice</p>
+      <p>Shown twice</p>
       <a href="#/about">About</a>
     </main>
   );
@@ -64,6 +66,7 @@ describe("parseFlows (D152)", () => {
       { name: "Needs", needs: "server", steps: [{ goto: "/" }] },
       { name: "Empty", steps: [] },
       { name: "Long", steps: Array.from({ length: 21 }, () => ({ goto: "/" })) },
+      { name: "Listed", needs: ["deployed"], steps: [{ goto: "/" }] },
     ]);
     expect(flows).toEqual([]);
     expect(problems).toEqual([
@@ -73,6 +76,7 @@ describe("parseFlows (D152)", () => {
       '"Needs": needs is local, wallet or deployed',
       '"Empty": needs at least one step',
       '"Long": at most 20 steps',
+      '"Listed": needs is local, wallet or deployed',
     ]);
   });
   it("makes the spec call fix a flow that can't run", () => {
@@ -80,6 +84,20 @@ describe("parseFlows (D152)", () => {
     const parsed = parseSpec(spec);
     expect(parsed.ok).toBe(false);
     expect(!parsed.ok && parsed.error).toContain('"Tip" step 1');
+    // acceptance must be an array; an empty one is fine.
+    expect(parseSpec({ ...spec, acceptance: { name: "Tip", steps: [] } })).toMatchObject({ ok: false, error: expect.stringContaining("acceptance: an array") });
+    expect(parseSpec({ ...spec, acceptance: [] }).ok).toBe(true);
+  });
+
+  it("shows a long spec compact with its flows first, and says when it was cut off", () => {
+    const flows = [{ name: "Tip", steps: [{ expect: { text: "Tips" } }] }];
+    const big = { summary: "s", direction: "d", contracts: [], acceptance: flows, pages: Array.from({ length: 12 }, (_, i) => ({ route: `/p${i}`, purpose: "p".repeat(300), elements: Array.from({ length: 20 }, () => "e".repeat(160)) })) };
+    const block = specBlock({ [SPEC_PATH]: JSON.stringify(big, null, 2) });
+    expect(block.indexOf('"acceptance"')).toBeLessThan(block.indexOf('"pages"'));
+    expect(block).toContain('"name":"Tip"');
+    expect(block).toContain(`read_file ${SPEC_PATH} for all of it`);
+    const small = { ...big, pages: [] };
+    expect(specBlock({ [SPEC_PATH]: JSON.stringify(small, null, 2) })).toContain(JSON.stringify(small, null, 2));
   });
 });
 
@@ -133,5 +151,11 @@ describe("acceptance flows in a real browser (D152)", { timeout: 120_000 }, () =
     expect(result.ran, result.note).toBe(true);
     expect(result.acceptance?.map((r) => [r.name, r.status])).toEqual([["invalid flow", "fail"], ["Break it", "fail"]]);
     expect(result.acceptance?.[1].reason).toContain("the app crashed: the tip list blew up");
+  });
+
+  it("fails expect hidden when any match is still visible, not just the first", async () => {
+    const result = await runCheck(files, { acceptance: { flows: [{ name: "Gone", steps: [{ expect: { hidden: "Shown twice" } }] }, { name: "Never there", steps: [{ expect: { hidden: "Not on the page" } }] }] } });
+    expect(result.ran, result.note).toBe(true);
+    expect(result.acceptance?.map((r) => [r.name, r.status])).toEqual([["Gone", "fail"], ["Never there", "pass"]]);
   });
 });

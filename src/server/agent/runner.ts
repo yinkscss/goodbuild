@@ -162,6 +162,8 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
   let chainId: number | undefined;
   /** v2 (D152): the run check also runs the spec's acceptance flows; set once the setup says v2. */
   let acceptanceOn = false;
+  /** v2: this turn's spec step wrote the spec, so its flows describe this turn's request. */
+  let specThisTurn = false;
   /** The flows' results from the latest run check, for run_checks to show when they fail (ACCEPTANCE=warn). */
   let lastAcceptance: FlowResult[] | undefined;
   const open = openWith ? async (files: Record<string, string>) => {
@@ -170,8 +172,11 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     runtimeRan = result.ran;
     lastAcceptance = result.acceptance;
     const failing = result.acceptance ? acceptanceIssues(result.acceptance) : [];
-    if (result.acceptance) log(`acceptance: ${acceptanceSummary(result.acceptance)}${failing.length && acceptanceMode() === "warn" ? " (warn: not blocking)" : ""}`);
-    const enforce = failing.length > 0 && acceptanceMode() === "enforce";
+    // Flows are enforced on the turn whose spec wrote them. A later turn may change what they check (a renamed
+    // heading), so there they only warn: the builder sees them, and nothing sends it back to the old wording.
+    const enforcing = acceptanceMode() === "enforce" && specThisTurn;
+    if (result.acceptance) log(`acceptance: ${acceptanceSummary(result.acceptance)}${failing.length && !enforcing ? ` (${acceptanceMode() === "enforce" ? "the spec is from an earlier turn" : "warn"}: not blocking)` : ""}`);
+    const enforce = failing.length > 0 && enforcing;
     deliveryVerified = result.deliveryVerified === true && !enforce;
     return enforce ? { ...result, issues: [...result.issues, ...failing] } : result;
   } : undefined;
@@ -544,8 +549,12 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
           try { const parsed = JSON.parse(call.arguments); if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) args = parsed; } catch { /* Workspace reports malformed arguments. */ }
           const allowed = !delivery || job.deliveryIndex === undefined || milestoneAllows(delivery, job.deliveryIndex, call.name, args);
           // v2: a phase may only write its own files (contracts in the contracts phase, the front end after it).
-          const gated = opts.gate && EDIT_TOOLS.includes(call.name) ? [args.path, args.from, args.to].map((p) => (typeof p === "string" ? opts.gate!(p) : null)).find(Boolean) : null;
-          const outcome = gated ? { ok: false, result: `Error: ${gated}` } : allowed ? ws.execute(call.name, call.arguments, input.mode) : { ok: false, result: "This feature belongs to a later saved milestone. Finish the current interface; do not add contracts or live payments yet." };
+          // add_kit writes the kit's starter files, so they pass the same gate.
+          const kitPaths = call.name === "add_kit" ? Object.keys(kitById(String(args.name ?? "").trim())?.files ?? {}) : [];
+          const gated = opts.gate && (EDIT_TOOLS.includes(call.name) || call.name === "add_kit") ? [args.path, args.from, args.to, ...kitPaths].map((p) => (typeof p === "string" ? opts.gate!(p) : null)).find(Boolean) : null;
+          // v2: only the tools this phase offers run (write_spec belongs to the spec step alone).
+          const offered = !v2 || tools.some((t) => t.function.name === call.name);
+          const outcome = !offered ? { ok: false, result: `Error: ${call.name} isn't available in this step.` } : gated ? { ok: false, result: `Error: ${gated}` } : allowed ? ws.execute(call.name, call.arguments, input.mode) : { ok: false, result: "This feature belongs to a later saved milestone. Finish the current interface; do not add contracts or live payments yet." };
           const path = String(args.path ?? call.name);
           if (!outcome.ok && ["edit_file", "create_file"].includes(call.name)) {
             const count = (failures.get(path) ?? 0) + 1;
@@ -555,7 +564,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
               log(`· repeated edit failure in ${path}; supplied current contents and requested a different strategy`);
             }
           } else if (outcome.change) failures.delete(path);
-          if (call.name === "write_spec" && outcome.ok) specWritten = true;
+          if (call.name === "write_spec" && outcome.ok) specWritten = specThisTurn = true;
           if (opts.endOn === call.name && outcome.ok) ended = true;
           if (outcome.guides?.length) log(`guides: ${outcome.guides.join(", ")}`);
           if (outcome.access) log(`· ${outcome.access}`);
@@ -652,8 +661,8 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       checked = { key: filesKey(ws.files), report };
       latestReport = report;
       const found = [...report.errors, ...(report.notes ?? [])];
-      // ACCEPTANCE=warn (D152): failing flows don't block the build, but the builder sees them and can fix them.
-      const flowsFailing = acceptanceMode() === "warn" ? ((lastAcceptance as FlowResult[] | undefined) ?? []).filter((r) => r.status === "fail") : [];
+      // Flows that don't block (ACCEPTANCE=warn, or a spec from an earlier turn, D152): the builder still sees them.
+      const flowsFailing = !(acceptanceMode() === "enforce" && specThisTurn) ? ((lastAcceptance as FlowResult[] | undefined) ?? []).filter((r) => r.status === "fail") : [];
       if (flowsFailing.length) return `${found.length ? `The checks found problems:\n${formatIssues(found)}\n\n` : ""}These acceptance flows from the spec fail (they show what doesn't work yet; fix the app, then run_acceptance):\n${formatFlowResults(flowsFailing)}`;
       if (!found.length) return "All checks pass. Don't run them again unless you edit more files.";
       return `${report.ok ? "Nothing blocks the build, but these are worth fixing" : "The checks found problems"}. Fix them with edit_file (read a file before editing it), then run_checks again if you changed more than a line or two:\n${formatIssues(found)}`;
@@ -1042,6 +1051,8 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
           step({ id: "review:fix", label: "Fixing what it saw", status: "running" });
           const before = { ...ws.files };
           const beforeKey = filesKey(before);
+          // What the browser check said about these files, restored with them if the fixes are rolled back.
+          const verifiedBefore = { runtimeRan, deliveryVerified, lastAcceptance };
           convo.push({ role: "user", content: reviewFixMessage(verdict.issues) });
           await phase(TIER_FOR.build, true, { gate: uiGate });
           keepTheme();
@@ -1056,6 +1067,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
             // A fix that breaks a check isn't worth a second round of fixing: the page goes back to how it was.
             for (const path of Object.keys(ws.files)) delete ws.files[path];
             Object.assign(ws.files, before);
+            ({ runtimeRan, deliveryVerified, lastAcceptance } = verifiedBefore);
             checked = undefined;
             record.review = { ok: false, issues: verdict.issues, fixed: false };
             log(untouched ? "· review: the builder changed nothing" : "! review: the fixes broke a check, so the page was left as it was");

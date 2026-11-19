@@ -124,7 +124,7 @@ export function parseFlows(raw: unknown): { flows: Flow[]; problems: string[] } 
     const name = str(f.name, 120);
     if (!name) problems.push(`${label}: needs a name`);
     const needs = f.needs === undefined ? "local" : f.needs;
-    if (!["local", "wallet", "deployed"].includes(String(needs))) problems.push(`${label}: needs is local, wallet or deployed`);
+    if (typeof needs !== "string" || !["local", "wallet", "deployed"].includes(needs)) problems.push(`${label}: needs is local, wallet or deployed`);
     const rawSteps = Array.isArray(f.steps) ? f.steps : [];
     if (!rawSteps.length) problems.push(`${label}: needs at least one step`);
     if (rawSteps.length > MAX_STEPS) problems.push(`${label}: at most ${MAX_STEPS} steps`);
@@ -214,7 +214,8 @@ async function runFlow(flow: Flow, runner: FlowRunner, deadline: number): Promis
         if (why) throw new Error(why);
       } else {
         const e = step.expect;
-        if ("hidden" in e) await page.getByText(e.hidden).first().waitFor({ state: "hidden", timeout });
+        // Every match, not just the first: a hidden "Error" before a visible one mustn't pass.
+        if ("hidden" in e) await page.getByText(e.hidden).filter({ visible: true }).first().waitFor({ state: "detached", timeout });
         else if ("route" in e) await page.waitForFunction((r) => (window.location.hash.replace(/^#/, "") || "/") === r, e.route, { timeout });
         else await locate(page, e).waitFor({ state: "visible", timeout });
       }
@@ -225,10 +226,20 @@ async function runFlow(flow: Flow, runner: FlowRunner, deadline: number): Promis
     const message = String((error as Error)?.message ?? error).split("\n")[0].replace(/^[a-zA-Z.]+: /, "").slice(0, 300);
     const step = flow.steps[at - 1];
     const reason = crashes.length ? `the app crashed: ${crashes[0]}` : step ? `step ${at} (${describeStep(step)}) failed: ${message}` : `the app didn't open: ${message}`;
-    return { ...base, status: "fail", ...(at ? { step: at } : {}), reason, outline: await runner.outline(page).catch(() => undefined) };
+    // A page whose main thread is stuck mustn't hold the failure back: the outline and the close are bounded.
+    return { ...base, status: "fail", ...(at ? { step: at } : {}), reason, outline: await within(runner.outline(page), OUTLINE_MS) };
   } finally {
-    await page.close().catch(() => undefined);
+    await within(page.close(), OUTLINE_MS);
   }
+}
+
+/** How long a failed flow waits for the page outline, and for the page to close. */
+const OUTLINE_MS = 3000;
+
+/** The promise's value, or undefined once `ms` pass or it fails. */
+function within<T>(promise: Promise<T>, ms: number): Promise<T | undefined> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return Promise.race([promise.catch(() => undefined), new Promise<undefined>((resolve) => { timer = setTimeout(() => resolve(undefined), ms); })]).finally(() => clearTimeout(timer));
 }
 
 /** Run each flow on its own fresh page, within ALL_FLOWS_MS in all. `only` runs the flows whose name contains it. */

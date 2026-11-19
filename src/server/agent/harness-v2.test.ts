@@ -14,7 +14,8 @@ import { toSdkMessages, type ChatMessage } from "./model";
 import { requestView } from "./request-view";
 import { fixTierByWriter, runTurn } from "./runner";
 import { SPEC_PATH, parseSpec, readSpec } from "./spec";
-import { loadFiles } from "./store";
+import { loadFiles, saveFiles } from "./store";
+import { starterFiles } from "./template";
 import { Workspace } from "./workspace";
 import type { RunCheckResult } from "./run-check";
 
@@ -108,6 +109,8 @@ describe("Anthropic caching and billing (D152)", () => {
     expect(costMicro("claude-sonnet-5-5", { inputTokens: 1_000_000, outputTokens: 0, cacheWriteTokens: 1_000_000 })).toBe(2_500_000);
     expect(costMicro("claude-sonnet-5-5", { inputTokens: 1_000_000, outputTokens: 0, cachedInputTokens: 600_000, cacheWriteTokens: 400_000 })).toBe(60_000 + 1_000_000);
     expect(costMicro("deepseek-flash", { inputTokens: 1_000_000, outputTokens: 0, cacheWriteTokens: 1_000_000 })).toBe(costMicro("deepseek-flash", { inputTokens: 1_000_000, outputTokens: 0 }));
+    // An unknown model is priced like the most expensive one, cache writes included.
+    expect(costMicro("some-new-model", { inputTokens: 1_000_000, outputTokens: 0, cacheWriteTokens: 1_000_000 })).toBe(2_500_000);
   });
 });
 
@@ -195,10 +198,10 @@ describe("runTurn with harness v2", { timeout: 120_000 }, () => {
     process.env.HARNESS_V2 = "on";
     const { client, requests } = scriptedModel([
       { tools: [{ name: "write_spec", args: SPEC }] },
-      { tools: [{ name: "create_file", args: { path: "contracts/TipJar.sol", content: TIP_JAR } }, { name: "create_file", args: { path: "src/App.tsx", content: "nope" } }] },
+      { tools: [{ name: "create_file", args: { path: "contracts/TipJar.sol", content: TIP_JAR } }, { name: "create_file", args: { path: "src/App.tsx", content: "nope" } }, { name: "add_kit", args: { name: "motion" } }] },
       { tools: [{ name: "run_tests", args: {} }] },
       { text: "TipJar is written." },
-      { tools: [{ name: "create_file", args: { path: "src/App.tsx", content: APP } }, { name: "create_file", args: { path: "contracts/Other.sol", content: TIP_JAR } }] },
+      { tools: [{ name: "create_file", args: { path: "src/App.tsx", content: APP } }, { name: "create_file", args: { path: "contracts/Other.sol", content: TIP_JAR } }, { name: "write_spec", args: { ...SPEC, summary: "Rewritten by the builder" } }] },
       { tools: [{ name: "open_app", args: { route: "/" } }] },
       { text: "Built a tip jar for the club." },
     ]);
@@ -218,6 +221,9 @@ describe("runTurn with harness v2", { timeout: 120_000 }, () => {
     const toolResults = (i: number) => requests[i].messages.filter((m) => m.role === "tool").map((m) => String(m.content));
     expect(toolResults(2).some((c) => c.includes("This is the contracts phase"))).toBe(true);
     expect(toolResults(5).some((c) => c.includes("contracts/ can't change now"))).toBe(true);
+    // add_kit's starter files pass the phase gate, and a tool the phase doesn't offer is refused.
+    expect(toolResults(2).filter((c) => c.includes("This is the contracts phase")).length).toBe(2);
+    expect(toolResults(5)).toContain("Error: write_spec isn't available in this step.");
     // run_tests compiled the contract; the front end was told the ABI is ready; open_app showed the page.
     expect(toolResults(3).some((c) => c.includes("Compiled TipJar with no errors"))).toBe(true);
     expect(String(requests[4].messages.at(-1)?.content)).toContain('import { <Name>Abi, <Name>Address } from "./contracts" for TipJar');
@@ -227,6 +233,7 @@ describe("runTurn with harness v2", { timeout: 120_000 }, () => {
 
     const files = await loadFiles(db, projectId);
     expect(readSpec(files)?.summary).toBe(SPEC.summary);
+    expect(Object.keys(files).some((p) => p.includes("motion"))).toBe(false);
     expect(files["contracts/TipJar.sol"]).toBe(TIP_JAR);
     expect(files["contracts/Other.sol"]).toBeUndefined();
     expect(files["src/App.tsx"]).toBe(APP);
@@ -340,6 +347,20 @@ describe("acceptance flows in a v2 build (D152 PR 2)", { timeout: 120_000 }, () 
     expect(record.steps.find((s) => s.id === "fix:1")).toMatchObject({ status: "done" });
     const files = await loadFiles(db, projectId);
     expect(files["src/App.tsx"]).toBe(withTips);
+  });
+
+  it("enforce: flows from an earlier turn's spec only warn, so a later change can reword the page", async () => {
+    process.env.ACCEPTANCE = "enforce";
+    await saveFiles(db, projectId, { ...starterFiles(), [SPEC_PATH]: JSON.stringify(spec) });
+    const { client, requests } = scriptedModel([
+      { tools: [{ name: "create_file", args: { path: "src/App.tsx", content: withoutTips } }, { name: "run_checks", args: {} }] },
+      { text: "Renamed the heading." },
+    ]);
+    const record = await runTurn({ db, model: client, runCheck: flowCheck }, { projectId, userId, mode: "build", userMessageId: queuedId }, () => {});
+    expect(record.status).toBe("ready");
+    expect(requests.map((r) => r.tier)).toEqual(["cheap", "cheap"]);
+    expect(requests[1].messages.filter((m) => m.role === "tool").some((m) => String(m.content).includes("These acceptance flows from the spec fail"))).toBe(true);
+    expect(record.log.some((l) => l.startsWith("acceptance: 0 of 1 flows pass") && l.endsWith("(the spec is from an earlier turn: not blocking)"))).toBe(true);
   });
 
   it("v1 never runs acceptance flows, even with a spec file", async () => {

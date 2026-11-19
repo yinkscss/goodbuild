@@ -81,9 +81,10 @@ export function parseSpec(raw: Record<string, unknown>): { ok: true; spec: AppSp
   const bad = contracts.find((c) => !/^[A-Z][A-Za-z0-9]*$/.test(c.name));
   if (bad) return { ok: false, error: `Contract names are PascalCase and become the file name: "${bad.name}" isn't.` };
   // A flow that can't run is sent back to the spec call to fix while it still has the plan in mind.
-  const { flows: acceptance, problems } = parseFlows(Array.isArray(raw.acceptance) ? raw.acceptance : []);
+  if (!Array.isArray(raw.acceptance)) return { ok: false, error: "write_spec needs acceptance: an array of flows (an empty array when nothing can be checked in a browser)." };
+  const { flows: acceptance, problems } = parseFlows(raw.acceptance);
   if (problems.length) return { ok: false, error: `Some acceptance flows can't run: ${problems.slice(0, 6).join("; ")}.` };
-  if (Array.isArray(raw.acceptance) && raw.acceptance.length > MAX_FLOWS) return { ok: false, error: `At most ${MAX_FLOWS} acceptance flows.` };
+  if (raw.acceptance.length > MAX_FLOWS) return { ok: false, error: `At most ${MAX_FLOWS} acceptance flows.` };
   return {
     ok: true,
     spec: {
@@ -118,11 +119,22 @@ export function specPlan(spec: AppSpec): { summary: string; steps: string[] } {
   return { summary: spec.summary.slice(0, 400), steps };
 }
 
-/** The spec as the context block shows it on later turns. */
+/** How much of the spec the context block shows. */
+const SPEC_BLOCK_CHARS = 12_000;
+
+/**
+ * The spec as the context block shows it. A spec too long to show whole is shown compact with the acceptance
+ * flows first, so they are never the part cut off, and the block says it was shortened.
+ */
 export function specBlock(files: Record<string, string>): string {
   const raw = files[SPEC_PATH];
   if (raw === undefined) return "";
-  return `The app's spec (${SPEC_PATH}, written by the planner; follow it, and if it is wrong say so in your reply instead of working around it):\n${raw.slice(0, 12_000)}`;
+  const head = `The app's spec (${SPEC_PATH}, written by the planner; follow it, and if it is wrong say so in your reply instead of working around it):`;
+  if (raw.length <= SPEC_BLOCK_CHARS) return `${head}\n${raw}`;
+  const spec = readSpec(files);
+  const compact = spec ? JSON.stringify({ acceptance: spec.acceptance, summary: spec.summary, direction: spec.direction, contracts: spec.contracts, data: spec.data, outOfScope: spec.outOfScope, pages: spec.pages }) : raw;
+  if (compact.length <= SPEC_BLOCK_CHARS) return `${head}\n${compact}`;
+  return `${head}\n${compact.slice(0, SPEC_BLOCK_CHARS)}\n[The spec is longer than this and was cut off here. read_file ${SPEC_PATH} for all of it.]`;
 }
 
 /** The user message that starts the spec call. */

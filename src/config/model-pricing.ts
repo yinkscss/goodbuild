@@ -33,6 +33,7 @@ export const FALLBACK_PRICE: ModelPrice = {
   inputPerMTok: 2,
   cachedInputPerMTok: 2,
   outputPerMTok: 10,
+  cacheWritePerMTok: 2.5,
 };
 
 /** D13: actual LLM cost + 25%. In basis points. */
