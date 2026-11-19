@@ -4,13 +4,23 @@ import { kitById, withKit } from "../kits/index";
 import { brickBreaker } from "./brick-breaker";
 import { caveFlyer } from "./cave-flyer";
 import { catchDodge } from "./catch-dodge";
+import { fourInARow } from "./four-in-a-row";
+import { higherLower } from "./higher-lower";
+import { lastCard } from "./last-card";
 import { kartTrack } from "./kart-track";
 import { laneRacer } from "./lane-racer";
 import { matchGrid } from "./match-grid";
+import { memoryPairs } from "./memory-pairs";
+import { platformHop } from "./platform-hop";
 import { mazeEscape } from "./maze-escape";
 import { quickQuiz } from "./quick-quiz";
 import { runner3d } from "./runner-3d";
+import { rhythmLanes } from "./rhythm-lanes";
+import { saboteurParty } from "./saboteur-party";
 import { skyRings } from "./sky-rings";
+import { solitaire } from "./solitaire";
+import { triviaBattle } from "./trivia-battle";
+import { wordHunt } from "./word-hunt";
 
 /**
  * Game templates (D114): working, tested games the builder reshapes to the plan, instead of writing a
@@ -37,9 +47,16 @@ export interface GameTemplate {
   title: { from: string; name: string };
   /** What the builder is told about it. */
   brief: string;
+  /**
+   * Played by several real people at once, in a shared room (D139). Only these may start a multiplayer
+   * or social game; every other template is one player, and parseGameBrief drops it for such a game.
+   */
+  multiplayer?: boolean;
+  /** Collections it needs in src/lib/dataRules.json (a room's rooms, seats and moves), added if missing. */
+  rules?: Record<string, unknown>;
 }
 
-export const GAME_TEMPLATES: GameTemplate[] = [laneRacer, catchDodge, caveFlyer, brickBreaker, matchGrid, quickQuiz, runner3d, kartTrack, mazeEscape, skyRings];
+export const GAME_TEMPLATES: GameTemplate[] = [laneRacer, catchDodge, caveFlyer, brickBreaker, matchGrid, quickQuiz, runner3d, kartTrack, mazeEscape, skyRings, fourInARow, triviaBattle, saboteurParty, solitaire, higherLower, memoryPairs, lastCard, wordHunt, rhythmLanes, platformHop];
 
 /** Safe, small descriptions for the app's template picker. Keep game source files on the server. */
 export function gameTemplateStarters() {
@@ -99,7 +116,7 @@ export function gameTemplateById(id: string | undefined | null): GameTemplate | 
 
 /** One line per template, for the planner. */
 export function gameTemplateCatalog(): string {
-  return GAME_TEMPLATES.map((t) => `- ${t.id} (${t.dims.toUpperCase()}, ${t.style}): ${t.fits}`).join("\n");
+  return GAME_TEMPLATES.map((t) => `- ${t.id} (${t.dims.toUpperCase()}, ${t.style}, ${t.multiplayer ? "several players in a room" : "one player"}): ${t.fits}`).join("\n");
 }
 
 /**
@@ -126,15 +143,18 @@ export function withGameTemplate(files: Record<string, string>, template: GameTe
       .replace("const board = useLeaderboard();", "const board = useLeaderboard({ chain: miniPayBoard });")
       .replace("\nexport default function Game()", "\n// Inside MiniPay scores go to the leaderboard contract: MiniPay allows no sign-in signature.\nconst miniPayBoard = gameBoard(GameBoardAbi, GameBoardAddress[chain.id]);\n\nexport default function Game()");
   }
-  if (template.leaderboard) {
+  const needed: Record<string, unknown> = { ...(template.rules ?? {}) };
+  if (template.leaderboard) needed.scores = (JSON.parse("{" + SCORES_RULE_JSON + "}") as { scores: unknown }).scores;
+  if (Object.keys(needed).length) {
     let rules: { collections?: Record<string, unknown> } & Record<string, unknown> = {};
     try {
       rules = JSON.parse(out["src/lib/dataRules.json"] ?? "{}") as typeof rules;
     } catch {
       rules = {};
     }
-    const scores = (JSON.parse("{" + SCORES_RULE_JSON + "}") as { scores: unknown }).scores;
-    if (!rules.collections?.scores) out["src/lib/dataRules.json"] = JSON.stringify({ ...rules, collections: { ...(rules.collections ?? {}), scores } }, null, 2) + "\n";
+    // Only the ones missing: a collection the person already has keeps its own rule.
+    const missing = Object.entries(needed).filter(([name]) => !rules.collections?.[name]);
+    if (missing.length) out["src/lib/dataRules.json"] = JSON.stringify({ ...rules, collections: { ...(rules.collections ?? {}), ...Object.fromEntries(missing) } }, null, 2) + "\n";
   }
   return out;
 }

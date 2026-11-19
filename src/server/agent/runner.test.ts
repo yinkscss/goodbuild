@@ -13,7 +13,7 @@ import { FREE_BUILD_CEILING_MICRO, freeBuildCeilingMicro, runTurn, TurnBusyError
 import { claimTurn, listVersions, loadFiles, revertTo, saveFiles } from "./store";
 import { starterFiles } from "./template";
 import { fallbackIntake } from "./plan-intake";
-import { fixTier, isRepeat, plainDashes } from "./runner";
+import { fixTier, isRepeat, miniAppInfo, moreBuildPasses, plainDashes, soundsUnfinished } from "./runner";
 
 describe("plainDashes", () => {
   it("turns em dashes into commas in replies", () => {
@@ -81,9 +81,70 @@ describe("fixTier (D19 amendment)", () => {
     expect(fixTier(2, [t])).toBe("strong");
     expect(fixTier(1, [])).toBe("strong");
   });
+  it("sends a first attempt at missing wiring or placeholders to the cheap tier (D138)", () => {
+    const paths = { file: "src/minipay/app.ts", message: "Fill in MINI_APP", source: "paths" as const };
+    const types = { file: "src/App.tsx", message: "Type 'string' is not assignable", source: "types" as const };
+    expect(fixTier(1, [paths])).toBe("cheap");
+    expect(fixTier(1, [paths, types])).toBe("cheap");
+    expect(fixTier(1, [paths, solc])).toBe("strong");
+    expect(fixTier(2, [paths])).toBe("strong");
+  });
+});
+
+describe("miniAppInfo (D138)", () => {
+  const game = { name: "Shadow Crew", pitch: "A 3D station where a hidden saboteur lurks. Every body starts a vote.", loop: "move around tasks, fix sabotage, report bodies", lose: "x", harder: "y", extras: [] };
+  it("takes a game's name, the first sentence of its pitch and its loop as a step", () => {
+    expect(miniAppInfo({ summary: "s", questions: [], answers: {}, game }, "Wallet Crew Sabotage")).toEqual({
+      name: "Shadow Crew",
+      tagline: "A 3D station where a hidden saboteur lurks.",
+      howTo: ["Open the game in MiniPay.", "Tap Play to start a round.", "Move around tasks, fix sabotage, report bodies."],
+    });
+  });
+  it("falls back to the project's name and the plan's summary, and to nothing without a real name", () => {
+    expect(miniAppInfo({ summary: "A tip jar for a club. With stablecoins.", questions: [], answers: {} }, "Club Tips")).toEqual({ name: "Club Tips", tagline: "A tip jar for a club." });
+    expect(miniAppInfo(null, "Untitled build")).toBeUndefined();
+    expect(miniAppInfo(null, null)).toBeUndefined();
+  });
 });
 
 describe("runTurn", { timeout: 120_000 }, () => {
+  it("builds the rest when its reply says the plan isn't finished, and shows the last summary (D138)", async () => {
+    const { client, requests } = scriptedModel([
+      { tools: [{ name: "create_file", args: { path: "src/App.tsx", content: PAGE } }] },
+      { text: "I've started the rebuild but it isn't finished yet. Still to come are the vote panel and the rooms." },
+      { tools: [{ name: "create_file", args: { path: "src/Vote.tsx", content: "export function Vote() { return null; }\n" } }] },
+      { text: "Shadow Crew is ready: fix tasks, report bodies and vote." },
+    ]);
+    const record = await runTurn({ db, model: client }, { projectId, userId, mode: "build", userMessageId: queuedId }, () => {});
+    const files = await loadFiles(db, projectId);
+    expect(record.status).toBe("ready");
+    expect(files["src/Vote.tsx"]).toBeDefined();
+    expect(requests).toHaveLength(4);
+    expect(requests.map((r) => r.tier)).toEqual(["cheap", "cheap", "cheap", "cheap"]);
+    expect(String(requests[2].messages.at(-1)?.content)).toMatch(/Keep building now/);
+    expect(record.steps.find((s) => s.id === "more:1")).toMatchObject({ status: "done", detail: "done" });
+    const [assistant] = (await db.select().from(messages).where(eq(messages.projectId, projectId))).filter((m) => m.role === "assistant");
+    expect(assistant.content).toBe("Shadow Crew is ready: fix tasks, report bodies and vote.");
+  });
+
+  it("stops building more after its passes, and not at all when they're off (D138)", async () => {
+    const unfinished = (n: number) => ({ text: `Part ${n} is written, but it isn't finished yet; the next pass will add the rooms.` });
+    const { client, requests } = scriptedModel([{ tools: [{ name: "create_file", args: { path: "src/App.tsx", content: PAGE } }] }, unfinished(1), unfinished(2), unfinished(3), unfinished(4)]);
+    const record = await runTurn({ db, model: client }, { projectId, userId, mode: "build", userMessageId: queuedId }, () => {});
+    // The build, its reply, then two more passes that each only replied.
+    expect(requests).toHaveLength(4);
+    expect(record.status).toBe("ready");
+    expect(record.steps.filter((s) => s.id.startsWith("more:"))).toHaveLength(2);
+    const before = process.env.MORE_BUILD_PASSES;
+    process.env.MORE_BUILD_PASSES = "0";
+    try {
+      expect(moreBuildPasses()).toBe(0);
+    } finally {
+      if (before === undefined) delete process.env.MORE_BUILD_PASSES;
+      else process.env.MORE_BUILD_PASSES = before;
+    }
+  });
+
   it("seeds the selected project chain into generated helpers and model context", async () => {
     await db.update(projects).set({ chainId: 42220 }).where(eq(projects.id, projectId));
     const { client, requests } = scriptedModel([
@@ -229,7 +290,7 @@ describe("runTurn", { timeout: 120_000 }, () => {
 
   it("stops a build on free AI at its spending ceiling, then replies and saves what it made (D82)", async () => {
     const { client, requests } = scriptedModel([
-      { text: "Planning.", tools: [{ name: "set_plan", args: { summary: "A page.", steps: ["Page"] } }, { name: "create_file", args: { path: "src/App.tsx", content: PAGE } }], usage: { input: 1_000_000, output: 1_000_000 } }, // about $1.9 charged: over the ceiling, under the hard stop
+      { text: "Planning.", tools: [{ name: "set_plan", args: { summary: "A page.", steps: ["Page"] } }, { name: "create_file", args: { path: "src/App.tsx", content: PAGE } }], usage: { input: 4_000_000, output: 16_000 } }, // about $1.5 charged: over the ceiling, under the hard stop (output is capped at the call's limit)
       { text: "I built the page; it ran out of room to do more." },
     ]);
     const record = await runTurn({ db, model: client }, { projectId, userId, mode: "build", userMessageId: queuedId }, () => {});
@@ -863,5 +924,21 @@ describe("contract readiness", () => {
     expect(record.status).toBe("needs_fix");
     expect(record.checks?.errors).toBe(1);
     expect(record.steps.some((step) => step.detail?.includes("you can still deploy"))).toBe(false);
+  });
+});
+
+describe("soundsUnfinished (D138)", () => {
+  it("hears a builder saying the plan isn't done", () => {
+    expect(soundsUnfinished("I've started the rebuild but it isn’t finished yet, so the app won't run as Shadow Crew until the next pass.")).toBe(true);
+    expect(soundsUnfinished("Still to come are the round rules and the vote panel.")).toBe(true);
+    expect(soundsUnfinished("The next pass will add the lobby.")).toBe(true);
+    expect(soundsUnfinished("I haven't written the scene page yet.")).toBe(true);
+  });
+  it("doesn't hear a finished build, or the person's own next steps", () => {
+    expect(soundsUnfinished("Built Shadow Crew: fix tasks, report bodies and vote. Deploy the leaderboard contract to post scores in MiniPay.")).toBe(false);
+    expect(soundsUnfinished("Done. Want a lobby screen next?")).toBe(false);
+    expect(moreBuildPasses({})).toBe(2);
+    expect(moreBuildPasses({ MORE_BUILD_PASSES: "9" })).toBe(5);
+    expect(moreBuildPasses({ MORE_BUILD_PASSES: "x" })).toBe(2);
   });
 });

@@ -3,12 +3,12 @@
 import * as React from "react";
 import { ArrowUp, ChevronDown, FileIcon, Loader2, Square } from "lucide-react";
 
-import { formatCredits } from "@/lib/credits-math";
+import { formatCredits, formatCreditsShort } from "@/lib/credits-math";
 import { isDeployableSource } from "@/lib/deploy/test-file";
 import type { AssetInfo, AssetKind } from "@/server/agent/assets";
 import { DRAFT_PLAN_TEXT, nextQuestion, PLAN_OTHER_MAX, planBuildPrompt, START_BUILDING_TEXT } from "@/lib/plan";
 import { OutOfCredits } from "./out-of-credits";
-import { FIX_PROMPT } from "@/lib/preview-errors";
+import { CONTINUE_PROMPT, FIX_PROMPT } from "@/lib/preview-errors";
 import { isSubmitShortcut } from "@/lib/prompt";
 import { isNearBottom } from "@/lib/scroll";
 import type { TurnMode, TurnRecord } from "@/lib/turn-types";
@@ -83,8 +83,8 @@ export function ChatPanel({
   const draftOpen = Boolean(lastRecord?.mode === "plan" && lastRecord.plan && !lastRecord.intake && !running);
   // The prompt the newest turn answered, for "Try again" on a failed or interrupted build.
   const retryRecord = (record?: TurnRecord | null) => {
-    if (record?.jobId) ws.retry(record.jobId);
-    else send(FIX_PROMPT, "build");
+    if (record?.jobId) ws.retry(record.jobId, record.paused === "credits");
+    else send(record?.paused === "credits" ? CONTINUE_PROMPT : FIX_PROMPT, "build");
   };
   const continueAfterCredits = () => {
     ws.clearNeedsCredits();
@@ -93,6 +93,7 @@ export function ChatPanel({
     if (record?.jobId) ws.retry(record.jobId, true);
     else retryRecord(record);
   };
+  const continueCost = { needMicro: state.estimate.buildMicro, haveMicro: state.availableMicro };
   return (
     <section aria-label="Chat" className="flex min-h-0 flex-col rounded-card bg-surface shadow-card">
       <div ref={listRef} onScroll={onListScroll} className="min-h-0 flex-1 space-y-5 overflow-x-hidden overflow-y-auto overscroll-contain p-3 sm:p-5" aria-live="polite">
@@ -146,6 +147,7 @@ export function ChatPanel({
               chainId={state.project.chainId}
               live={false}
               onFix={() => retryRecord(record)}
+              continueCost={m.id === lastAssistantId ? continueCost : undefined}
               fixDisabled={running}
               onSuggest={!live && canSuggest && m.id === lastAssistantId ? suggest : undefined}
               checking={m.id === lastAssistantId && ws.checking}
@@ -173,6 +175,7 @@ export function ChatPanel({
             chainId={state.project.chainId}
             live={live.phase === "running"}
             onFix={() => retryRecord(live?.record)}
+            continueCost={continueCost}
             fixDisabled={live.phase === "running"}
             onSuggest={live.phase === "done" && state.jobs.length <= 1 ? suggest : undefined}
             onSkipPlan={live.phase === "running" && !live.record.intake && planning ? ws.skipPlan : undefined}
@@ -230,6 +233,7 @@ export function ChatPanel({
         uploading={ws.uploading}
         running={running}
         estimate={state.estimate}
+        availableMicro={state.availableMicro}
         onSend={onComposerSend}
         onStop={ws.stop}
         focusCue={composerCue}
@@ -258,6 +262,7 @@ export function Composer({
   uploading,
   running,
   estimate,
+  availableMicro = null,
   onSend,
   onStop,
   placeholder,
@@ -272,6 +277,8 @@ export function Composer({
   uploading: boolean;
   running: boolean;
   estimate: { buildMicro: number; planMicro: number };
+  /** What the person can spend now (paid plus free); null when unknown. Below a build's estimate, the composer says so (D138). */
+  availableMicro?: number | null;
   onSend: (prompt: string, mode: TurnMode) => void;
   onStop?: () => Promise<void>;
   placeholder: string;
@@ -306,6 +313,8 @@ export function Composer({
   }
 
   const est = mode === "plan" ? estimate.planMicro : estimate.buildMicro;
+  // D138: a build bigger than the balance still starts (it pauses and saves if it runs low), but the person knows first.
+  const short = mode === "build" && availableMicro !== null && est > 0 && availableMicro < est;
   const [dragging, setDragging] = React.useState(false);
   // Chips are the files going with the next message. Files already sent live in their messages,
   // and stay reachable under "Project files" to remove or re-classify.
@@ -400,9 +409,15 @@ export function Composer({
         </div>
         </div>
         <div className="ml-auto flex items-center gap-2 sm:gap-3">
-          <span className="text-xs text-grey-400" title="Estimated charge for this request: AI cost + 25%. Planning is free. Verify with GoodDollar for 40 free credits.">
-            ≈ {formatCredits(est)} {running ? "· runs after this build" : ""}
-          </span>
+          {short ? (
+            <span className="text-xs text-warning" role="status" title="This build may cost more than you have. If your credits run low it pauses, saves what it made, and Continue picks up from there after a top-up.">
+              ≈ {formatCredits(est)} · you have {formatCreditsShort(availableMicro ?? 0)}, it may pause {running ? "· runs after this build" : ""}
+            </span>
+          ) : (
+            <span className="text-xs text-grey-400" title="Estimated charge for this request: AI cost + 25%. Planning is free. Verify with GoodDollar for 40 free credits.">
+              ≈ {formatCredits(est)} {running ? "· runs after this build" : ""}
+            </span>
+          )}
           {running && onStop && (
             // Secondary pill (DESIGN_SYSTEM §3): white, shadow-card, no border.
             <button

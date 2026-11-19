@@ -263,3 +263,31 @@ export const miniApp: Kit = {
   guide: GUIDE,
   checks: miniAppChecks,
 };
+
+/** What GoodBuild knows about an app from its plan, for MINI_APP (D138). */
+export interface MiniAppInfo {
+  name: string;
+  tagline: string;
+  /** Short steps in plain words. Missing: the kit's own steps stay. */
+  howTo?: string[];
+}
+
+/**
+ * Fill MINI_APP's placeholders from the plan (D138). The check that asks for them ("Fill in MINI_APP")
+ * used to send a build to the strong model just to copy the app's name and one line, and on a small
+ * balance that fix is what stopped the build. Only the kit's own placeholder text is replaced, so a
+ * MINI_APP the builder or the person already wrote is never touched. Returns the source unchanged when
+ * there's nothing to fill.
+ */
+export function fillMiniApp(source: string, info: MiniAppInfo): string {
+  const name = info.name.trim().slice(0, 60);
+  if (!name || !/name:\s*"My app"/.test(source)) return source;
+  const tagline = info.tagline.trim().slice(0, 140);
+  // Replacement functions, so a "$" in a name is never read as a replacement pattern.
+  let out = source.replace(/name:\s*"My app"/, () => `name: ${JSON.stringify(name)}`);
+  if (tagline) out = out.replace(/tagline:\s*"What this app does, in one line\."/, () => `tagline: ${JSON.stringify(tagline)}`);
+  out = out.replace(/publisher:\s*"Your name or team"/, () => `publisher: ${JSON.stringify(`The ${name} team`)}`);
+  const steps = (info.howTo ?? []).map((s) => s.trim()).filter(Boolean).slice(0, 4);
+  if (steps.length) out = out.replace(/howTo:\s*\["Open the app in MiniPay\.", "Choose what you want\.", "Confirm the payment in your wallet\."\]/, () => `howTo: ${JSON.stringify(steps)}`);
+  return out;
+}

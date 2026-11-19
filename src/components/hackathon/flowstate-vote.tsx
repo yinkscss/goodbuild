@@ -95,6 +95,7 @@ export function FlowstateVote({ onConfirmed }: { onConfirmed?: () => void }) {
     }
     applyStatus(next);
     setConfirmed(true);
+    setTxHash(null);
     localStorage.removeItem(storageKey);
     onConfirmed?.();
   }
@@ -114,6 +115,7 @@ export function FlowstateVote({ onConfirmed }: { onConfirmed?: () => void }) {
   async function load() {
     setOpen(true);
     setConfirmed(false);
+    setStatus(null);
     setTxHash(null);
     setError("");
     setDiscardArmed(false);
@@ -125,9 +127,9 @@ export function FlowstateVote({ onConfirmed }: { onConfirmed?: () => void }) {
         return;
       }
       const next: FlowstateStatus = await request();
-      applyStatus(next);
       // Already voted for us (here, on /hackathon, or on FlowState itself)? Don't ask again: confirm it.
       if (next.verified && BigInt(next.support) > BigInt(0)) await confirmExisting();
+      else applyStatus(next);
     });
   }
   /** Confirms the vote already on-chain and marks it done. Throws if it isn't settled yet. */
@@ -141,6 +143,19 @@ export function FlowstateVote({ onConfirmed }: { onConfirmed?: () => void }) {
   }
   async function acceptExisting() {
     await perform("Checking your vote…", confirmExisting);
+  }
+  async function checkEligibilityAgain() {
+    await perform("Checking your available votes…", async () => {
+      const next: FlowstateStatus = await request();
+      applyStatus(next);
+      if (
+        next.verified &&
+        next.registered &&
+        BigInt(next.available) > BigInt(0)
+      ) {
+        setConfirmed(false);
+      }
+    });
   }
   async function signer() {
     if (!wallet) throw new Error("Connect with your email first.");
@@ -262,6 +277,17 @@ export function FlowstateVote({ onConfirmed }: { onConfirmed?: () => void }) {
           {confirmed ? (
             <div className="space-y-4 text-center">
               <p className="text-lg font-semibold">✓ Thank you for voting!</p>
+              {status && BigInt(status.available) <= BigInt(0) && (
+                <p className="text-sm">You have no votes available right now.</p>
+              )}
+              <button
+                type="button"
+                className={`${styles.btnV} w-full`}
+                disabled={Boolean(busy)}
+                onClick={() => void checkEligibilityAgain()}
+              >
+                Check for new eligibility to vote again
+              </button>
               <button type="button" className={`${styles.btnV} w-full`} onClick={() => setOpen(false)}>
                 Continue
               </button>

@@ -31,6 +31,9 @@ export const DEFAULT_LIMITS = {
   anonWritesPerIpPerMinute: 10,
   anonWritesPerProjectPerMinute: 60,
   requestsPerProjectPerMinute: 1_500,
+  /** The dealer (D141): deals a host asks for, and draws a player makes, per wallet in one app. */
+  dealsPerWalletPerMinute: 30,
+  drawsPerWalletPerMinute: 120,
   noncesPerIpPerMinute: 30,
   noncesPerProjectPerMinute: 300,
   signInsPerIpPerMinute: 20,

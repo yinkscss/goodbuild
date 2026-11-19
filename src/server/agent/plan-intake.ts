@@ -174,7 +174,7 @@ const GAME_BRIEF_FIELD = {
     template: {
       type: "string",
       enum: [...GAME_TEMPLATES.map((t) => t.id), "none"],
-      description: `The working GoodBuild game to start from, when one fits how this game is played (the builder reshapes its look, name and contents to the plan), else "none":\n${gameTemplateCatalog()}`,
+      description: `The working GoodBuild game to start from, else "none". Pick one only when a round of this game plays the same way: the same controls, the same goal, and the same way to win or lose. The builder then reshapes its look, name and contents to the plan. Never pick one just because it shares a camera (3D, top-down), a setting (a maze, a ship, space) or a way of moving: a game with other real people, rooms, voting or hidden roles is a different game from any one-player template. When in doubt, "none": starting from scratch is better than rebuilding the wrong game.\n${gameTemplateCatalog()}`,
     },
   },
   required: ["name", "pitch", "loop", "lose", "harder"],
@@ -379,7 +379,10 @@ function parseGameBrief(raw: unknown, request = ""): GameBrief | undefined {
     extras: (Array.isArray(b.extras) ? b.extras : []).map((e) => clean(e, 100)).filter(Boolean).slice(0, 3),
   };
   // Only a template GoodBuild has: an id the model made up is dropped, and the build starts from scratch.
-  const template = gameTemplateById(typeof b.template === "string" ? b.template : undefined);
+  // A multiplayer or social game never starts from a one-player template (D139): they share too little.
+  const picked = gameTemplateById(typeof b.template === "string" ? b.template : undefined);
+  const social = isMultiplayerGame([request, brief.name, brief.pitch, brief.loop, brief.lose].join("\n"));
+  const template = picked && (!social || picked.multiplayer) ? picked : undefined;
   if (template) {
     brief.template = template.id;
     brief.templateName = template.name;
@@ -388,6 +391,40 @@ function parseGameBrief(raw: unknown, request = ""): GameBrief | undefined {
   const said = b.style === "action" || b.style === "puzzle" || b.style === "turns" ? b.style : undefined;
   brief.style = template?.style ?? said ?? styleFromWords(request);
   return brief.name && brief.pitch ? brief : undefined;
+}
+
+/**
+ * Words that mean other real people play together (D139): online or multiplayer play, rooms, lobbies
+ * and join codes, voting someone out, an imposter or saboteur, hidden roles, social deduction, or a
+ * player count above one. An escape room or a room in a maze is a place, not a game room.
+ */
+const MULTIPLAYER_WORDS: RegExp[] = [
+  /\bmulti[- ]?players?\b/i,
+  /\bpvp\b/i,
+  /\bonline (?:with|against|vs\.?|versus)\b/i,
+  /\b(?:with|against) (?:my |your |their )?friends,? online\b/i,
+  /\breal (?:people|players|humans|friends)\b/i,
+  /\b(?:play|plays|playing|against|versus|vs\.?)\s+(?:with\s+|against\s+)?other (?:people|players|humans)\b/i,
+  /\blobb(?:y|ies)\b/i,
+  /\b(?:room|join|game|invite|party|lobby) codes?\b/i,
+  /\b(?:create|creates|join|joins|host|hosts|open|opens|make|makes|start|starts)\s+(?:a |an |the |their |your |his |her )?(?:private |public |game |online )?rooms?\b/i,
+  /\brooms? (?:with|for) (?:friends|players|people|others)\b/i,
+  /\bfriends? (?:can |could )?join\b/i,
+  /\bvot(?:e|es|ing|ed)\b(?:\s+\S+){0,3}?\s+(?:out|off)\b/i,
+  /\bvot(?:e|es|ing) (?:on |for )?(?:who|which player)\b/i,
+  /\bimpost[eo]rs?\b/i,
+  /\bsaboteurs?\b/i,
+  /\btraitors?\b/i,
+  /\b(?:hidden|secret) (?:roles?|identit(?:y|ies))\b/i,
+  /\bsocial deduction\b/i,
+  /\b(?:werewolf|mafia) game\b/i,
+  /\bamong us\b/i,
+  /(?<!\b(?:top|best|first|last) )\b(?:[2-9]|1\d|two|three|four|five|six|seven|eight|nine|ten)(?:\s*(?:-|–|to)\s*\d+)?[- ]players?\b/i,
+];
+
+/** A game played by several real people together, so no one-player template fits it (D139). */
+export function isMultiplayerGame(text: string): boolean {
+  return MULTIPLAYER_WORDS.some((re) => re.test(text));
 }
 
 /** A game, for the plan: the game kit's words, or "game" in a request that isn't a website. */

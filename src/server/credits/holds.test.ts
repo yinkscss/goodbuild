@@ -5,11 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { and, eq, sql } from "drizzle-orm";
 
 import type { Db } from "@/server/db/client";
-import { balances, ledgerEntries, messages, projects, turnJobCalls, turnJobs, usageEvents, users, type TurnJob } from "@/server/db/schema";
+import { buildDrafts, balances, ledgerEntries, messages, projects, turnJobCalls, turnJobs, usageEvents, users, type TurnJob } from "@/server/db/schema";
 import { scriptedModel, type ScriptedReply } from "@/server/agent/fake-model";
 import { MODEL_IDS, type ModelClient } from "@/server/agent/model";
 import { nameProject } from "@/server/agent/project-name";
-import { runTurn } from "@/server/agent/runner";
+import { runTurn, type TurnDeps } from "@/server/agent/runner";
+import type { CheckReport } from "@/server/agent/checks";
 import { loadFiles, recordUsage } from "@/server/agent/store";
 import { LeaseLostError } from "@/server/agent/turn-progress";
 import { HOLD_MAX_RUN_MS, HOLD_STUCK_LEASE_MS, HOLD_STUCK_QUEUED_MS, MAX_ATTEMPTS, checkHolds, claimJob, failJob, jobContext, startTurn, stopProject, type StartResult } from "@/server/jobs/jobs";
@@ -17,7 +18,9 @@ import { TurnWorker } from "@/server/jobs/worker";
 import { chargedMicro, costMicro } from "@/lib/pricing";
 import { BUDGET_MESSAGE, CAP_MESSAGE, FREE_RAN_OUT_MESSAGE, VERIFIED_CAP_MESSAGE, checkAiAllowance, decideDirectFunding } from "./cap";
 import {
+  CREDITS_PAUSED_MESSAGE,
   CREDIT_HELD_MESSAGE,
+  MIN_FITTED_OUTPUT_TOKENS,
   OUT_OF_CREDITS_BUILD_MESSAGE,
   OUT_OF_CREDITS_MESSAGE,
   PAID_HOLD_MICRO,
@@ -25,6 +28,7 @@ import {
   PAID_MIN_START_MICRO,
   ensureHold,
   findReservationMismatches,
+  fitCall,
   repairReservations,
   usageKey,
   worstCaseCallMicro,
@@ -140,7 +144,7 @@ describe.each(testBackends())("holds and charging on $name", (backend) => {
   }
 
   /** Claim a job and run it as the worker does. `crashAfter` kills the worker before that commit. */
-  async function runJob(jobId: string, client: ModelClient, crashAfter = Infinity) {
+  async function runJob(jobId: string, client: ModelClient, crashAfter = Infinity, extra: Partial<TurnDeps> = {}) {
     const owner = `worker-${randomUUID().slice(0, 8)}`;
     const claimed = await claimJob(db, owner);
     expect(claimed?.id).toBe(jobId);
@@ -151,7 +155,7 @@ describe.each(testBackends())("holds and charging on $name", (backend) => {
       if (++commits > crashAfter) throw new LeaseLostError();
       return real(fn);
     };
-    const record = await runTurn({ db, model: client, job: ctx, runCheck: async () => ({ ran: true, deliveryVerified: true, issues: [], note: "Accounting fixture acceptance; browser behavior is covered separately", ms: 0 }) }, { projectId: claimed!.projectId, userId: claimed!.userId, mode: "build", userMessageId: claimed!.userMessageId }, () => undefined);
+    const record = await runTurn({ db, model: client, job: ctx, runCheck: async () => ({ ran: true, deliveryVerified: true, issues: [], note: "Accounting fixture acceptance; browser behavior is covered separately", ms: 0 }), ...extra }, { projectId: claimed!.projectId, userId: claimed!.userId, mode: "build", userMessageId: claimed!.userMessageId }, () => undefined);
     return record;
   }
 
@@ -513,26 +517,95 @@ describe.each(testBackends())("holds and charging on $name", (backend) => {
         usage: { input: 2_000, output: 16_000 },
       }));
 
-    it("stops before the call it can't cover, however much the calls cost, with the balance never below zero", async () => {
+    it("stops before the call it can't cover, however much the calls cost, with the balance never below zero, and keeps what it wrote (D138)", async () => {
       const a = await payer(PAID_MIN_START_MICRO);
       const job = queued(await start(a.userId, a.projectId));
       const model = scriptedModel(costly(25));
       const record = await runJob(job.id, model.client);
       const m = await money(a.userId);
-      expect(record.status).toBe("error");
-      expect(record.error).toBe(OUT_OF_CREDITS_BUILD_MESSAGE);
+      expect(record.status).toBe("needs_fix");
+      expect(record.paused).toBe("credits");
+      expect(record.error).toBe(CREDITS_PAUSED_MESSAGE);
+      expect(record.version).toBeUndefined();
+      expect(record.draftSaved).toBe(true);
       expect(model.requests.length).toBeLessThan(25);
       expect(m.charged).toBeGreaterThan(0);
       expect(m.balance).toBeGreaterThanOrEqual(0);
       expect(m.charged).toBeLessThanOrEqual(PAID_MIN_START_MICRO);
       expect(m.reserved).toBe(0);
       const row = await jobRow(job.id);
-      expect([row.status, row.error, row.holdMicro]).toEqual(["error", OUT_OF_CREDITS_BUILD_MESSAGE, 0]);
+      expect([row.status, row.error, row.holdMicro]).toEqual(["error", CREDITS_PAUSED_MESSAGE, 0]);
       expect(row.releasedMicro).toBe(PAID_MIN_START_MICRO - m.charged);
-      // It stops cleanly: nothing half-written reaches the project, and its turn lock is free.
+      // Credit pauses preserve recovery work without replacing the last working checkpoint.
       expect(await loadFiles(db, a.projectId)).toEqual({});
-      expect((await db.select().from(projects).where(eq(projects.id, a.projectId)))[0].turnStartedAt).toBeNull();
+      const [draft] = await db.select().from(buildDrafts).where(eq(buildDrafts.jobId, job.id));
+      expect(draft.files["src/App.tsx"]).toBe(APP);
+      expect(draft.files["src/components/F1.tsx"]).toContain("function F1");
+      const [p] = await db.select().from(projects).where(eq(projects.id, a.projectId));
+      expect([p.turnStartedAt, p.status]).toEqual([null, "needs_fix"]);
       await expectBooksBalance(a.userId);
+    });
+
+    it("a call shrunk to fit the credit left is never charged more than was left (D138)", async () => {
+      const a = await payer(PAID_MIN_START_MICRO);
+      const job = queued(await start(a.userId, a.projectId));
+      const model = scriptedModel(costly(25));
+      await runJob(job.id, model.client);
+      // Every call that ran was asked for at most what fit, and some were shrunk on the way down.
+      expect(model.requests.every((r) => r.maxTokens >= MIN_FITTED_OUTPUT_TOKENS && r.maxTokens <= 16_000)).toBe(true);
+      expect(model.requests.some((r) => r.maxTokens < 16_000)).toBe(true);
+      expect((await money(a.userId)).balance).toBeGreaterThanOrEqual(0);
+      await expectBooksBalance(a.userId);
+    });
+
+    it("a fix the strong model can't be afforded for runs on the fast model instead (D138)", async () => {
+      // The app check fails once with an error only the strong tier would get, then passes.
+      let lints = 0;
+      const lintOnce = (() => {
+        lints++;
+        return lints === 1
+          ? ({ ok: false, errors: [{ file: "src/App.tsx", message: "Broken import", source: "lint" }], warnings: [], contracts: [] } as unknown as CheckReport)
+          : ({ ok: true, errors: [], warnings: [], contracts: [] } as CheckReport);
+      }) as TurnDeps["checkApp"];
+      const fixed: ScriptedReply[] = [...OK_BUILD, { tools: [{ name: "create_file", args: { path: "src/App.tsx", content: APP.replace("Club", "Club!") } }] }, { text: "Fixed." }];
+
+      const rich = await payer(5_000_000);
+      const richModel = scriptedModel(fixed);
+      await runJob(queued(await start(rich.userId, rich.projectId)).id, richModel.client, Infinity, { checkApp: lintOnce });
+      expect(richModel.requests.slice(3).map((r) => r.tier)).toContain("strong");
+
+      lints = 0;
+      const low = await payer(PAID_MIN_START_MICRO);
+      const lowModel = scriptedModel(fixed);
+      const record = await runJob(queued(await start(low.userId, low.projectId)).id, lowModel.client, Infinity, { checkApp: lintOnce });
+      expect(lowModel.requests.slice(3).map((r) => r.tier)).not.toContain("strong");
+      expect(record.log.some((l) => l.includes("uses the fast model instead"))).toBe(true);
+      expect(record.status).toBe("ready");
+      expect((await money(low.userId)).balance).toBeGreaterThanOrEqual(0);
+      await expectBooksBalance(low.userId);
+    });
+
+    it("fitCall: as asked when it fits, then the fast model, then a lower limit, then nothing (D138)", () => {
+      const ids = (t: "strong" | "cheap") => MODEL_IDS[t];
+      const request = { tier: "strong" as const, messages: [{ role: "user", content: "x".repeat(20_000) }], maxTokens: 16_000 };
+      const strongWorst = worstCaseCallMicro(MODEL_IDS.strong, request);
+      const cheapWorst = worstCaseCallMicro(MODEL_IDS.cheap, request);
+      expect(fitCall(request, strongWorst, ids)).toEqual({ tier: "strong", maxTokens: 16_000 });
+      expect(fitCall(request, strongWorst - 1, ids)).toEqual({ tier: "cheap", maxTokens: 16_000 });
+      expect(fitCall(request, strongWorst - 1, ids, { cheaper: false })?.tier).toBe("strong");
+      const shrunk = fitCall(request, cheapWorst - 1, ids)!;
+      expect(shrunk.tier).toBe("cheap");
+      expect(shrunk.maxTokens).toBeLessThan(16_000);
+      expect(shrunk.maxTokens).toBeGreaterThanOrEqual(MIN_FITTED_OUTPUT_TOKENS);
+      // The largest limit that fits: one token more would not.
+      expect(worstCaseCallMicro(MODEL_IDS.cheap, { ...request, maxTokens: shrunk.maxTokens })).toBeLessThanOrEqual(cheapWorst - 1);
+      expect(worstCaseCallMicro(MODEL_IDS.cheap, { ...request, maxTokens: shrunk.maxTokens + 1 })).toBeGreaterThan(cheapWorst - 1);
+      const floorWorst = worstCaseCallMicro(MODEL_IDS.cheap, { ...request, maxTokens: MIN_FITTED_OUTPUT_TOKENS });
+      expect(fitCall(request, floorWorst, ids)).toEqual({ tier: "cheap", maxTokens: MIN_FITTED_OUTPUT_TOKENS });
+      expect(fitCall(request, floorWorst - 1, ids)).toBeNull();
+      // A call that asked for less than the floor keeps its own limit.
+      const small = { ...request, tier: "cheap" as const, maxTokens: 2_000 };
+      expect(fitCall(small, worstCaseCallMicro(MODEL_IDS.cheap, small), ids)).toEqual({ tier: "cheap", maxTokens: 2_000 });
     });
 
     it("a hold that runs out is extended from the rest of the balance", async () => {
@@ -556,7 +629,7 @@ describe.each(testBackends())("holds and charging on $name", (backend) => {
       // Claim the one under test, leaving the other queued with its hold.
       await db.update(turnJobs).set({ createdAt: sql`now() + interval '1 hour'` }).where(eq(turnJobs.id, other.id));
       const record = await runJob(job.id, scriptedModel(costly(25)).client);
-      expect(record.error).toBe(OUT_OF_CREDITS_BUILD_MESSAGE);
+      expect(record.error).toBe(CREDITS_PAUSED_MESSAGE);
       const m = await money(a.userId);
       expect(m.charged).toBeLessThanOrEqual(400_000);
       expect((await jobRow(other.id)).holdMicro).toBe(1_000_000);
@@ -601,7 +674,7 @@ describe.each(testBackends())("holds and charging on $name", (backend) => {
       // The cheap tier reporting a name not in the price table is billed at the strong fallback price.
       const record = await runJob(job.id, scriptedModel(costly(25), { cheap: "deepseek-unknown" }).client);
       const m = await money(a.userId);
-      expect(record.error).toBe(OUT_OF_CREDITS_BUILD_MESSAGE);
+      expect(record.error).toBe(CREDITS_PAUSED_MESSAGE);
       expect(m.reserved).toBe(0);
       expect(m.charged).toBeLessThanOrEqual(PAID_MIN_START_MICRO + chargedMicro(costMicro("deepseek-unknown", { inputTokens: 2_000, outputTokens: 16_000 })));
       await expectBooksBalance(a.userId);

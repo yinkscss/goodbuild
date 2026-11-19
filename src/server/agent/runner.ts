@@ -26,7 +26,9 @@ import { INTAKE_MAX_TOKENS, INTAKE_PROMPT, PLAN_ASK_TOOL_NAME, askedJustBefore, 
 import { BUILD_TOOLS, contextWithPicks, planTools, systemPrompt } from "./prompt";
 import { checkpoint, claimTurn, loadFiles, recordUsage, releaseTurn } from "./store";
 import { decideFunding } from "@/server/credits/cap";
-import { OutOfCreditsError, ensureHold, worstCaseCallMicro } from "@/server/credits/holds";
+import { CREDITS_PAUSED_MESSAGE, OutOfCreditsError, ensureHold, fitCall, headroomMicro, worstCaseCallMicro } from "@/server/credits/holds";
+import { fillMiniApp, type MiniAppInfo } from "./kits/mini-app";
+import { formatCredits } from "@/lib/credits-math";
 import { deploymentsBlock, loadDeployedAddresses } from "@/server/deploy/addresses";
 import { isUpgradeableProject, liveStorage, upgradeChecksFor } from "@/server/deploy/upgradeable";
 import { upgradeableRules } from "./upgradeable-rules";
@@ -49,7 +51,7 @@ import { Workspace, type FileChange } from "./workspace";
 import { requestGithubSync } from "@/server/github/sync";
 
 import { applyPalette, ensureReadable, paletteById } from "@/lib/palettes";
-import type { Step, TurnEvent, TurnMode, TurnRecord } from "@/lib/turn-types";
+import type { PlanIntake, Step, TurnEvent, TurnMode, TurnRecord } from "@/lib/turn-types";
 
 export type { Step, TurnEvent, TurnMode, TurnRecord };
 
@@ -118,6 +120,8 @@ export function freeBuildCeilingMicro(env: Record<string, string | undefined> = 
 /** How often the builder may ask for the checks in one turn (the run_checks tool, D68). Each costs seconds of server time. */
 export const MAX_TOOL_CHECKS = 3;
 const MAX_TOKENS = 16_000;
+/** The MiniPay kit's app details (D138: filled from the plan). */
+const MINI_APP_FILE = "src/minipay/app.ts";
 
 export class TurnBusyError extends Error {
   constructor() {
@@ -204,7 +208,8 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
   let draftPersisted = false;
   let runtimeRan = false;
   let deliveryVerified = false;
-  const saveDraft = async (diagnostics = "") => {
+  let savePausedDraft: (() => Promise<boolean>) | undefined;
+  const persistDraft = async (diagnostics = "") => {
     if (!workspace || !job.jobId || input.mode !== "build") return;
     const files = { ...workspace.files };
     await job.commit(async (tx) => {
@@ -265,6 +270,25 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     // side: a question of its own (the review's screenshots), not part of the build's conversation. It is
     // saved and replayed like any other call, so a resumed build doesn't ask or pay for it twice.
     let sideReply = "";
+    /**
+     * D138: on a paid build, fit the call to what the person has left instead of refusing it: the fast
+     * model if the strong one's worst case doesn't fit, then a lower output limit. Pauses (OutOfCreditsError)
+     * only when not even that fits. The hold check in checkedAgainstHold still runs on the fitted call.
+     */
+    const fitToCredit = async <R extends { tier: ModelTier; messages: ChatMessage[]; tools?: unknown[]; maxTokens: number }>(asked: R): Promise<R> => {
+      const jobId = job.jobId;
+      if (funding !== "paid" || !jobId) return asked;
+      const room = await job.commit((tx) => headroomMicro(tx, jobId));
+      if (room === null) return asked;
+      const fit = fitCall(asked, room, (t) => MODEL_IDS[t]);
+      if (!fit) {
+        log(`! credits are low: ${formatCredits(room)} left, not enough for the next step`);
+        throw new OutOfCreditsError();
+      }
+      if (fit.tier !== asked.tier) log(`! credits are low (${formatCredits(room)} left): this step uses the fast model instead`);
+      if (fit.maxTokens < asked.maxTokens) log(`! credits are low (${formatCredits(room)} left): this step's reply is limited to ${fit.maxTokens.toLocaleString("en-US")} tokens`);
+      return fit.tier === asked.tier && fit.maxTokens === asked.maxTokens ? asked : { ...asked, tier: fit.tier, maxTokens: fit.maxTokens };
+    };
     const callModel = async (tier: ModelTier, quiet = false, wrapUp = false, side?: { messages: ChatMessage[]; maxTokens: number }) => {
       if (side) quiet = true;
       stopIfRequested();
@@ -318,9 +342,13 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
         let usage: Array<Extract<ModelEvent, { type: "usage" }>> = [];
         // One retry when the provider fails mid-response (e.g. the SDK couldn't parse a chunk):
         // nothing from the failed attempt has been executed, so drop its partial text and calls.
+        // A side call (the review reads pictures) only runs on the model it asked for; build, fix and
+        // wrap-up calls are fitted to the credit left (D138). The saved call keeps the tier it was asked
+        // for, so a resumed build replays it however it was fitted.
+        const asked = side ? { tier, messages: side.messages, maxTokens: side.maxTokens } : { tier, messages: convo, tools, maxTokens: intake ? INTAKE_MAX_TOKENS : MAX_TOKENS, ...(intake ? { noThinking: true } : {}) };
+        const ask = side ? asked : await fitToCredit(asked);
         for (let attempt = 0; ; attempt++) {
           try {
-            const ask = side ? { tier, messages: side.messages, maxTokens: side.maxTokens } : { tier, messages: convo, tools, maxTokens: intake ? INTAKE_MAX_TOKENS : MAX_TOKENS, ...(intake ? { noThinking: true } : {}) };
             for await (const ev of model.stream({ ...ask, signal: job.signal })) {
               if (ev.type === "text") {
                 deltas.push(ev.delta);
@@ -500,7 +528,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
           }
           convo.push({ role: "tool", tool_call_id: call.id, content: outcome.result });
         }
-        await saveDraft();
+        await persistDraft();
         const roundKey = JSON.stringify(toolCalls.map((c) => [c.name, c.arguments]));
         const editsOnly = toolCalls.length > 0 && toolCalls.every((c) => ["edit_file", "create_file"].includes(c.name));
         if (filesKey(ws.files) === beforeRound && !final && input.mode === "build" && (editsOnly || roundKey === lastRoundKey)) idleRounds++;
@@ -525,8 +553,17 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       return false;
     };
 
-    // The person's colours stay, whatever the model wrote to the page (D32).
+    // The person's colours stay, whatever the model wrote to the page (D32). The MiniPay kit's MINI_APP
+    // placeholders are filled from the plan here too (D138), before any check can ask a model to do it.
     const keepTheme = () => {
+      const info = ws.files[MINI_APP_FILE];
+      if (info !== undefined && setup.appInfo) {
+        const filled = fillMiniApp(info, setup.appInfo);
+        if (filled !== info) {
+          ws.files[MINI_APP_FILE] = filled;
+          log(`· filled in MINI_APP from the plan ("${setup.appInfo.name}")`);
+        }
+      }
       const html = ws.files["public/index.html"];
       if (html === undefined) return;
       const palette = paletteById(setup.paletteId);
@@ -542,6 +579,8 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
      */
     let toolChecks = 0;
     let checked: { key: string; report: CheckReport } | undefined;
+    /** The last checks run this turn, for a draft's contract modules (D138). */
+    let latestReport: CheckReport | undefined;
     const checkForTheBuilder = async (): Promise<string> => {
       if (input.mode === "plan") return "Error: plan mode can't run the checks.";
       if (toolChecks >= MAX_TOOL_CHECKS) return `You have already run the checks ${MAX_TOOL_CHECKS} times this turn. Finish the work and reply; GoodBuild checks everything again when you're done.`;
@@ -550,6 +589,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       log(`· run_checks (${toolChecks} of ${MAX_TOOL_CHECKS})`);
       const report = await runChecks(ws.files, compile, lint, step, log, `check${toolChecks}`, contractOptions, runContractTests, stopIfRequested, open, types);
       checked = { key: filesKey(ws.files), report };
+      latestReport = report;
       const found = [...report.errors, ...(report.notes ?? [])];
       if (!found.length) return "All checks pass. Don't run them again unless you edit more files.";
       return `${report.ok ? "Nothing blocks the build, but these are worth fixing" : "The checks found problems"}. Fix them with edit_file (read a file before editing it), then run_checks again if you changed more than a line or two:\n${formatIssues(found)}`;
@@ -560,7 +600,51 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
         log("· checks: nothing changed since the builder's last check, using that result");
         return checked.report;
       }
-      return runChecks(ws.files, compile, lint, step, log, attempt, contractOptions, runContractTests, stopIfRequested, open, types);
+      latestReport = await runChecks(ws.files, compile, lint, step, log, attempt, contractOptions, runContractTests, stopIfRequested, open, types);
+      return latestReport;
+    };
+
+    /** Platform-owned contract modules: ABIs the front end imports (addresses come in M5). */
+    const writeContractModules = async (r: CheckReport) => {
+      if (!r.contracts.length) return;
+      const names = r.contracts.map((c) => c.name);
+      // Deployed addresses live in the deployments table (P3), so a rebuild never wipes them (M5).
+      const deployed = await loadDeployedAddresses(db, input.projectId, Object.fromEntries(r.contracts.map((c) => [c.name, c.abi])));
+      for (const c of r.contracts) ws.files[`${PLATFORM_DIR}${c.name}.ts`] = contractModule(c.name, c.abi, deployed[c.name] ?? {});
+      ws.files[`${PLATFORM_DIR}index.ts`] = contractsIndex(names);
+      record.contracts = r.contracts.map(({ name, file, bytecodeBytes }) => ({ name, file, bytecodeBytes }));
+    };
+
+    /**
+     * D138: a paid build that can't afford its next step keeps what it wrote. Saved as a version like a
+     * build that ends with errors (needs_fix), marked paused, so the preview and code show it and Continue
+     * picks up from these files instead of starting over. Nothing written: nothing to save (false).
+     */
+    savePausedDraft = async () => {
+      if (input.mode !== "build" || (!ws.changed() && !job.draft)) return false;
+      keepTheme();
+      if (latestReport) await writeContractModules(latestReport);
+      record.status = "needs_fix";
+      record.paused = "credits";
+      record.error = CREDITS_PAUSED_MESSAGE;
+      record.changes = ws.netChanges().filter((c) => !c.path.startsWith(PLATFORM_DIR));
+      log("■ paused: credits ran low; what this build made is saved as a draft");
+      await persistDraft(CREDITS_PAUSED_MESSAGE);
+      record.draftSaved = draftPersisted;
+      record.jobId = job.jobId;
+      await job.commit(async (tx) => {
+        if (!job.jobId) record.version = await checkpoint(tx, { projectId: input.projectId, files: ws.files, summary: "Draft: paused when credits ran low", messageId: assistantId });
+        await finish(tx, assistantId, text, record);
+        await markImagesAttached(tx, setup);
+        if (job.lockHeld) await releaseTurn(tx, input.projectId, "needs_fix");
+        await job.complete(tx, "error", CREDITS_PAUSED_MESSAGE);
+      });
+      finalStatus = "needs_fix";
+      requestGithubSync(deps.db, input.projectId);
+      emit({ type: "snapshot", text, record: structuredClone(record) });
+      if (!job.jobId) { emit({ type: "files", files: ws.files }); emit({ type: "version", number: record.version! }); }
+      emit({ type: "done", status: "needs_fix", summary: firstLine(text) || "Draft saved." });
+      return true;
     };
 
     // Plan first (D32): one call and no tool rounds. The answers start the next turn, so nothing
@@ -611,6 +695,36 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       if (!text.trim() && record.plan?.summary) {
         text = record.plan.summary;
         out({ type: "text_set", text });
+      }
+    }
+
+    // D138: a big build (a game reshaped from a template, say) can end its pass with the plan half done and
+    // say so ("it isn't finished yet, still to come are..."). Checking it then fails on missing parts, or a
+    // fix pass patches the half-built app. Instead, build again on the same model, up to MORE_BUILD_PASSES
+    // times, while the builder's own reply says work is left. Each pass is fitted to the credit left like
+    // any call, and a free build still stops at its ceiling.
+    if (input.mode === "build" && !intake && !delivery && finished) {
+      const passes = moreBuildPasses();
+      for (let pass = 1; pass <= passes; pass++) {
+        const last = replies.at(-1);
+        if (!last || !soundsUnfinished(last) || atFreeCeiling()) break;
+        stopIfRequested();
+        log(`· the builder said the plan isn't finished; building the rest (pass ${pass + 1})`);
+        step({ id: `more:${pass}`, label: "Building the rest of the plan", detail: `pass ${pass + 1} of ${passes + 1}`, status: "running" });
+        convo.push({ role: "user", content: MORE_BUILD_MESSAGE });
+        const replied = replies.length;
+        const textBefore = text;
+        const done = await phase(TIER_FOR.build);
+        const fresh = replies.length > replied ? replies.at(-1)! : "";
+        // What they read is the latest summary, not "it isn't finished yet" followed by it.
+        if (fresh.trim()) {
+          text = fresh.trim();
+          out({ type: "text_set", text });
+        } else if (text !== textBefore) {
+          out({ type: "text_set", text });
+        }
+        step({ id: `more:${pass}`, label: "Building the rest of the plan", detail: fresh && !soundsUnfinished(fresh) ? "done" : `pass ${pass + 1} of ${passes + 1}`, status: "done" });
+        if (!done || !fresh) break;
       }
     }
 
@@ -759,15 +873,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     if (delivery && job.deliveryIndex !== undefined && (!runtimeRan || (["interface", "wallet"].includes(delivery.milestones[job.deliveryIndex].id) && !deliveryVerified) || isStarterApp(ws.files["src/App.tsx"]))) {
       report = { ...report, ok: false, errors: [...report.errors, { file: "src/App.tsx", source: "runtime", message: !runtimeRan || !deliveryVerified ? "The milestone's browser acceptance has not passed; progress is saved for recovery." : "The first interface is still the starter app." }] };
     }
-    // Platform-owned contract modules: ABIs the front end imports (addresses come in M5).
-    if (report.contracts.length) {
-      const names = report.contracts.map((c) => c.name);
-      // Deployed addresses live in the deployments table (P3), so a rebuild never wipes them (M5).
-      const deployed = await loadDeployedAddresses(db, input.projectId, Object.fromEntries(report.contracts.map((c) => [c.name, c.abi])));
-      for (const c of report.contracts) ws.files[`${PLATFORM_DIR}${c.name}.ts`] = contractModule(c.name, c.abi, deployed[c.name] ?? {});
-      ws.files[`${PLATFORM_DIR}index.ts`] = contractsIndex(names);
-      record.contracts = report.contracts.map(({ name, file, bytecodeBytes }) => ({ name, file, bytecodeBytes }));
-    }
+    await writeContractModules(report);
     record.checks = { errors: report.errors.length, warnings: report.warnings.length };
     record.status = report.ok ? "ready" : "needs_fix";
     const endStatus = record.status;
@@ -778,7 +884,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     }
     let summary = firstLine(text) || (report.ok ? "Build updated." : "Build has errors to fix.");
     const save = (ws.changed() || firstBuild) && (report.ok || !job.jobId);
-    await saveDraft(formatIssues(report.errors));
+    await persistDraft(formatIssues(report.errors));
     record.draftSaved = Boolean(job.jobId && !report.ok);
     record.jobId = job.jobId;
     if (delivery && job.deliveryIndex !== undefined) {
@@ -826,6 +932,15 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       emit({ type: "done", status: "stopped", summary: text.trim() });
       return record;
     }
+    if (error instanceof OutOfCreditsError && savePausedDraft && assistantId) {
+      // D138: keep what it made. If even the draft can't be saved, fall through to the plain stop.
+      const drafted = await savePausedDraft().catch((e) => {
+        rethrowLease(e);
+        return false;
+      });
+      if (drafted) return record;
+      delete record.paused;
+    }
     const message =
       error instanceof ResumeFailedError
         ? `This build was interrupted and couldn't continue: ${error.message} Retry to run it again.`
@@ -834,7 +949,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
           : error instanceof Error
             ? error.message
             : "The build failed unexpectedly.";
-    await saveDraft(message).catch(rethrowLease);
+    await persistDraft(message).catch(rethrowLease);
     record.jobId = job.jobId;
     record.draftSaved = draftPersisted;
     record.status = "error";
@@ -949,7 +1064,9 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     // The plan's answers carry into every later turn. The first build also gets the palette, in
     // place before the model reads the page.
     const chat = await db.select({ id: messages.id, role: messages.role, meta: messages.meta }).from(messages).where(eq(messages.projectId, input.projectId)).orderBy(asc(messages.createdAt));
-    const brief = planBrief(latestIntake(chat), firstBuild);
+    const latest = latestIntake(chat);
+    const brief = planBrief(latest, firstBuild);
+    const appInfo = input.mode === "build" ? miniAppInfo(latest, project.name) : undefined;
     // Plan mode may ask its own questions, but never twice in a row (D103). This turn's own messages are already in the chat.
     const canAsk = input.mode === "plan" && !askedJustBefore(chat.filter((m) => m.id !== assistantId && m.id !== userMessageId));
     const chosenPalette = firstBuild ? paletteById(brief.paletteId) : undefined;
@@ -1094,6 +1211,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       imageAssetIds,
       recordAtStart: structuredClone(record),
       text,
+      ...(appInfo ? { appInfo } : {}),
     };
     await job.commit((tx) => job.saveSetup(tx, result));
     return result;
@@ -1325,6 +1443,53 @@ async function finish(db: Db, id: string, text: string, record: TurnRecord) {
     .where(eq(messages.id, id));
 }
 
+/** Extra build passes when the builder says the plan isn't finished (D138). MORE_BUILD_PASSES overrides; 0 turns it off. */
+export const MORE_BUILD_PASSES = 2;
+
+export function moreBuildPasses(env: Record<string, string | undefined> = process.env): number {
+  const raw = env.MORE_BUILD_PASSES;
+  const value = Number(raw);
+  return raw !== undefined && raw !== "" && Number.isSafeInteger(value) && value >= 0 ? Math.min(value, 5) : MORE_BUILD_PASSES;
+}
+
+const MORE_BUILD_MESSAGE =
+  "Your last reply says the work isn't finished. Keep building now: write every part of the plan that is still missing, one file per create_file call, under about 250 lines each. Don't redo what's already written. When everything in the plan is written, reply to the user as instructed with what the app does now. If everything was already written, reply in one line that it's done.";
+
+/**
+ * A reply that says the plan isn't done yet (D138): "it isn't finished yet", "still to come are...", "the next
+ * pass will add...". Phrases about the person's own next steps ("once you deploy") don't count.
+ */
+export function soundsUnfinished(reply: string): boolean {
+  const t = reply.replace(/[’‘]/g, "'");
+  return /\b(?:isn't|is not|aren't|are not|not yet|wasn't)\s+(?:yet\s+)?(?:finished|done|complete|ready|built|written)\b|\bstill to (?:come|do|build|write)\b|\b(?:next|another|second|following|later)\s+(?:pass|step|turn|round of work)\s+(?:will|to)\b|\b(?:still|yet) (?:need|needs|have|has) to (?:be )?(?:write|written|build|built|add|added|wire|wired)\b|\bhaven't (?:yet )?(?:written|built|added|wired)\b|\b(?:the )?remaining (?:parts|pieces|files|work|screens|pages)\b|\bpartially (?:built|done|written)\b|\bwork in progress\b/i.test(t);
+}
+
+/**
+ * The app's name and one line for the MiniPay kit's MINI_APP (D138), from the plan card: a game's own name
+ * and pitch, else the project's name and what the planner understood. Undefined with no usable name.
+ */
+export function miniAppInfo(intake: PlanIntake | null, projectName: string | null | undefined): MiniAppInfo | undefined {
+  const game = intake?.game;
+  const named = projectName && projectName !== "Untitled build" ? projectName : "";
+  const name = (game?.name || named).trim();
+  if (!name) return undefined;
+  const tagline = firstSentence(game?.pitch || intake?.summary || "");
+  const howTo = game ? ["Open the game in MiniPay.", "Tap Play to start a round.", sentence(game.loop)].filter(Boolean) : undefined;
+  return { name, tagline, ...(howTo ? { howTo } : {}) };
+}
+
+function firstSentence(text: string): string {
+  const t = text.trim().replace(/\s+/g, " ");
+  const m = /^.+?[.!?](?=\s|$)/.exec(t);
+  return (m ? m[0] : t).slice(0, 140);
+}
+
+/** "dodge, collect, survive" → "Dodge, collect, survive." */
+function sentence(text: string): string {
+  const t = text.trim().replace(/[.!?]+$/, "");
+  return t ? `${t.charAt(0).toUpperCase()}${t.slice(1)}.` : "";
+}
+
 /**
  * D19 amendment: when the only failures are contract tests, the cheap model gets the first
  * fix attempt (TIER_FOR.testFix); anything else, or a later attempt, goes to TIER_FOR.fix.
@@ -1334,7 +1499,9 @@ async function finish(db: Db, id: string, text: string, record: TurnRecord) {
 export function fixTier(attempt: number, errors: CheckIssue[]): ModelTier {
   // Third D19 amendment (D68): type errors alone also get the cheap model first. They name the line and say what is wrong.
   const onlyTypes = errors.length > 0 && errors.every((i) => i.source === "types");
-  return attempt === 1 && (onlyTestFailures(errors) || onlyTypes) ? TIER_FOR.testFix : TIER_FOR.fix;
+  // D138: missing kit wiring and placeholders ("paths": a footer, a route, MINI_APP) say exactly what to add.
+  const onlySimple = errors.length > 0 && errors.every((i) => i.source === "types" || i.source === "paths");
+  return attempt === 1 && (onlyTestFailures(errors) || onlyTypes || onlySimple) ? TIER_FOR.testFix : TIER_FOR.fix;
 }
 
 /** Every remaining error is a contract test failing or a test file that won't compile: nothing is wrong with the contract or the app themselves. */

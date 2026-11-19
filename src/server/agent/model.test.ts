@@ -51,6 +51,43 @@ async function collect(client: ModelClient, req: ModelRequest = request()): Prom
 }
 
 describe("aiSdkClient", () => {
+  it("ends a stream that goes quiet as a retryable failure, and leaves a steady one alone (D138)", async () => {
+    // Sends its start, then nothing, until it's aborted.
+    const silent = new MockLanguageModelV4({
+      modelId: "deepseek-flash",
+      doStream: async (options: { abortSignal?: AbortSignal }) => ({
+        stream: new ReadableStream({
+          start(controller) {
+            controller.enqueue({ type: "stream-start", warnings: [] });
+            options.abortSignal?.addEventListener("abort", () => controller.error(options.abortSignal?.reason ?? new Error("aborted")));
+          },
+        }) as never,
+      }),
+    });
+    const err = await collect(aiSdkClient({ strong: silent, cheap: silent }, 50), request({ tier: "cheap" })).catch((e) => e);
+    expect(err).toBeInstanceOf(ModelUnavailableError);
+    expect(String(err.message)).toMatch(/sent nothing for/);
+    // Chunks 20 ms apart never trip a 50 ms limit, however long the whole call takes.
+    const steady = new MockLanguageModelV4({
+      modelId: "deepseek-flash",
+      doStream: async () => ({
+        stream: simulateReadableStream({
+          chunks: [
+            { type: "stream-start", warnings: [] },
+            { type: "text-start", id: "t" },
+            ...Array.from({ length: 8 }, () => ({ type: "text-delta", id: "t", delta: "a" })),
+            { type: "text-end", id: "t" },
+            { type: "finish", usage, finishReason: { unified: "stop", raw: "stop" } },
+          ],
+          chunkDelayInMs: 20,
+        }) as never,
+      }),
+    });
+    const events = await collect(aiSdkClient({ strong: steady, cheap: steady }, 50), request({ tier: "cheap" }));
+    expect(events.filter((e) => e.type === "text").length).toBe(8);
+    expect(events.at(-1)).toEqual({ type: "done", finishReason: "stop" });
+  });
+
   it("maps text, tool calls, usage and done", async () => {
     const strong = mockModel();
     const events = await collect(aiSdkClient({ strong, cheap: mockModel({ modelId: "deepseek-flash" }) }), request({ tools }));
@@ -217,4 +254,17 @@ describe("withFallback", () => {
     await expect(collect(withFallback(failing(), replying("c", calls)), request({ signal: ctrl.signal }))).rejects.toThrow("strong down");
     expect(calls).toHaveLength(0);
   });
+});
+
+
+it("sponsored requests disable SDK retries while retaining provider error mapping", async () => {
+  let attempts = 0;
+  const provider = new MockLanguageModelV4({ modelId: "deepseek-flash", doStream: async () => {
+    attempts++;
+    throw new APICallError({ message: "unavailable", url: "https://provider.test", requestBodyValues: {}, statusCode: 503, isRetryable: true });
+  } });
+  const client = aiSdkClient({ cheap: provider, strong: provider });
+  const collect = async () => { for await (const event of client.stream({ tier: "cheap", messages: [{ role: "user", content: "Build" }], maxTokens: 1000, noRetries: true })) void event; };
+  await expect(collect()).rejects.toBeInstanceOf(ModelUnavailableError);
+  expect(attempts).toBe(1);
 });

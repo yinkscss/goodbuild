@@ -13,7 +13,8 @@ import { turnJobs, turnJobCalls } from "@/server/db/schema";
 import { ModelUnavailableError, type ModelClient } from "@/server/agent/model";
 import { runTurn } from "@/server/agent/runner";
 import { loadFiles } from "@/server/agent/store";
-import { getBalanceMicro } from "@/server/credits/ledger";
+import { OutOfCreditsError } from "@/server/credits/holds";
+import { getBalanceMicro, postLedgerEntry } from "@/server/credits/ledger";
 import { recordUsage } from "@/server/agent/store";
 import { sponsorshipCanCall } from "@/server/credits/build-sponsorship";
 import { claimJob, jobContext, startTurn } from "./jobs";
@@ -216,6 +217,39 @@ describe("first delivery and recovery", () => {
     expect(record.draftSaved).toBe(true);
     expect((await db.select().from(buildDrafts).where(eq(buildDrafts.jobId, source.id)))[0].files["src/App.tsx"]).toContain("Local/demo 46");
     expect(await loadFiles(db, projectId)).toEqual({});
+  });
+
+  it("does not treat deferred features as permission to build another milestone automatically", async () => {
+    await start();
+    const model = scriptedModel([writeApp, { text: "The local interface is done. Still to come are wallet connection and staking." }]);
+    const record = await run(model.client);
+    expect(record.status).toBe("ready");
+    expect(model.requests).toHaveLength(2);
+    expect(record.delivery?.remaining).toContain("Wallet connection");
+  });
+
+  it("keeps paid pauses and explicit continuations separate from sponsorship, even without a new edit", async () => {
+    await postLedgerEntry(db, { userId, kind: "adjust", amountMicro: 1_000_000, idempotencyKey: "paid-pause-fixture" });
+    const env = { ...ENV, FREE_POLICY: "verified" };
+    const started = await startTurn(db, { projectId, userId, mode: "build", prompt: GOAL }, env);
+    if (!("job" in started)) throw new Error("Paid build refused");
+    expect(started.job.funding).toBe("paid");
+    const write = scriptedModel([writeApp]);
+    let n = 0;
+    const paused: ModelClient = { async *stream(req) { if (n++ === 0) yield* write.client.stream(req); else throw new OutOfCreditsError(); } };
+    expect((await run(paused)).paused).toBe("credits");
+    expect(await loadFiles(db, projectId)).toEqual({});
+    const retry = await startTurn(db, { projectId, userId, mode: "build", retryOfJobId: started.job.id, useCredits: true }, env, identity);
+    if (!("job" in retry)) throw new Error("Paid continuation refused");
+    expect(retry.job.funding).toBe("paid");
+    const insufficient: ModelClient = { async *stream() { throw new OutOfCreditsError(); } };
+    const again = await run(insufficient);
+    expect(again.paused).toBe("credits");
+    expect(again.draftSaved).toBe(true);
+    expect(await db.select().from(buildSponsorships)).toHaveLength(0);
+    const next = await startTurn(db, { projectId, userId, mode: "build", retryOfJobId: retry.job.id, useCredits: true }, env, identity);
+    expect("job" in next && next.job.funding).toBe("paid");
+    expect((await run(scriptedModel([{ text: "Resumed" }]).client)).status).toBe("ready");
   });
 
 });

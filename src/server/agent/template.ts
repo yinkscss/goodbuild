@@ -382,12 +382,13 @@ const savePreview = (records: Stored[]) => {
     // Private windows may refuse. Nothing else depends on it.
   }
 };
-type Rule = { create: string; read: string[]; public: string[]; fields: Record<string, string> | null; unique: string[] };
+type Rule = { create: string; read: string[]; public: string[]; fields: Record<string, string> | null; unique: string[]; dealt?: boolean };
 /** The same reading of dataRules.json as the server's, for the preview. */
 function ruleOf(name: string): Rule {
   const raw = (rules as { collections?: Record<string, unknown> }).collections?.[name];
   const base: Rule = { create: "signed-in", read: ["writer"], public: [], fields: null, unique: [] };
   if (raw === "public-read") return { ...base, read: ["anyone"] };
+  if (raw === "dealt") return { ...base, dealt: true };
   if (!raw || typeof raw !== "object") return base;
   const r = raw as Partial<Record<keyof Rule, unknown>>;
   const arr = (v: unknown, d: string[]) => (typeof v === "string" ? [v] : Array.isArray(v) ? (v as string[]) : d);
@@ -431,9 +432,10 @@ function requirePreviewWallet(): string {
   return previewWallet;
 }
 
-function previewPut<T>(collection: string, key: string, value: T): DbRecord<T> {
+function previewPut<T>(collection: string, key: string, value: T, dealtTo?: string): DbRecord<T> {
   const rule = ruleOf(collection);
-  const owner = previewSubject() ?? (rule.create === "anyone" ? PREVIEW_ANON : requirePreviewWallet());
+  if (rule.dealt && !dealtTo) throw new DbError("forbidden", "Only GoodBuild's dealer writes here. Use deal() instead.", 403);
+  const owner = dealtTo ?? previewSubject() ?? (rule.create === "anyone" ? PREVIEW_ANON : requirePreviewWallet());
   showPreviewNote();
   const now = new Date().toISOString();
   const all = previewRecords();
@@ -451,12 +453,20 @@ function previewPut<T>(collection: string, key: string, value: T): DbRecord<T> {
   return record;
 }
 
-/** In the preview you are the owner, so you see what the owner would. */
+/**
+ * In the preview you are the owner, so you see what the owner would. A record you can't read in full
+ * shows only its public fields, without who wrote it, as on the server.
+ */
 function previewVisible(collection: string, owner?: string): DbRecord[] {
   const rule = ruleOf(collection);
   return previewRecords()
     .filter((r) => r.collection === collection)
-    .map((r) => (rule.read.some((x) => x === "anyone" || x === "owner" || (x === "signed-in" && previewSubject()) || (x === "writer" && r.owner === (previewSubject() ?? PREVIEW_ANON))) ? r : null))
+    .map((r): Stored | null => {
+      if (rule.read.some((x) => x === "anyone" || (x === "owner" && !rule.dealt) || (x === "signed-in" && previewSubject()) || (x === "writer" && r.owner === (previewSubject() ?? PREVIEW_ANON)))) return r;
+      const v = r.value as Record<string, unknown> | null;
+      if (!rule.public.length || !v || typeof v !== "object" || Array.isArray(v)) return null;
+      return { ...r, owner: null, value: Object.fromEntries(rule.public.filter((f) => f in v).map((f) => [f, v[f]])) };
+    })
     .filter((r): r is Stored => r !== null && (!owner || r.owner === owner.toLowerCase()));
 }
 
@@ -586,6 +596,103 @@ export async function deleteMyData(): Promise<void> {
     return;
   }
   await api("/me", { method: "DELETE" });
+}
+
+// --- The dealer -----------------------------------------------------------------------------------
+
+/** A deal's receipt: who is in it and how many items each holds. Never the items. */
+export interface DealReceipt {
+  id: string;
+  room: string;
+  /** The wallet that asked for the deal. Check it is the room's host before trusting a deal id. */
+  host: string;
+  players: string[];
+  hands: number[];
+  drawn: number[];
+  /** Items left to draw. */
+  stock: number;
+}
+
+/** What each player reads from the dealt collection: the deal it came from and their items. */
+export interface DealtHand {
+  deal: string;
+  room: string;
+  items: string[];
+}
+
+const PREVIEW_DEALS = "goodbuild-preview-deals";
+type PreviewDeal = DealReceipt & { left: string[] };
+const previewDeals = (): PreviewDeal[] => {
+  try {
+    return JSON.parse(localStorage.getItem(PREVIEW_DEALS) ?? "[]") as PreviewDeal[];
+  } catch {
+    return [];
+  }
+};
+const savePreviewDeals = (deals: PreviewDeal[]) => {
+  try {
+    localStorage.setItem(PREVIEW_DEALS, JSON.stringify(deals));
+  } catch {
+    // Private windows may refuse.
+  }
+};
+const receiptOf = (d: PreviewDeal): DealReceipt => ({ id: d.id, room: d.room, host: d.host, players: d.players, hands: d.hands, drawn: d.drawn, stock: d.left.length });
+
+/**
+ * GoodBuild's dealer: the server shuffles deck and gives each player hand items, written to the
+ * "dealt" collection so that only that player can read theirs (not other players, not you, not the
+ * app's owner). The rest stays with the server as the stock, for draw(). Declare the collection in
+ * dataRules.json as "hands": "dealt". players are wallet addresses (2 to 10), deck 1 to 120 short texts.
+ * In the preview everyone is in this browser, so nothing is secret there.
+ */
+export async function deal(collectionName: string, input: { room: string; players: string[]; deck: string[]; hand: number }): Promise<DealReceipt> {
+  if (isPreview) {
+    showPreviewNote("Preview: dealt hands stay in this browser and aren't secret here. Once published, only each player sees theirs.");
+    const host = requirePreviewWallet();
+    const players = input.players.map((p) => p.toLowerCase());
+    if (players.length < 2 || input.hand < 1 || players.length * input.hand > input.deck.length) throw new DbError("invalid_deal", "Each player needs a hand, and the deck must be big enough.", 400);
+    const deck = [...input.deck];
+    for (let i = deck.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [deck[i], deck[j]] = [deck[j], deck[i]];
+    }
+    const id = newRecordKey();
+    players.forEach((p, i) => previewPut<DealtHand>(collectionName, id, { deal: id, room: input.room, items: deck.slice(i * input.hand, (i + 1) * input.hand) }, p));
+    const made: PreviewDeal = { id, room: input.room, host, players, hands: players.map(() => input.hand), drawn: players.map(() => 0), stock: 0, left: deck.slice(players.length * input.hand) };
+    savePreviewDeals([...previewDeals(), made]);
+    return receiptOf(made);
+  }
+  return api<DealReceipt>("/deal/" + encodeURIComponent(collectionName), { method: "POST", body: JSON.stringify(input) });
+}
+
+/** A deal's receipt, for its host and players. */
+export async function dealInfo(collectionName: string, id: string): Promise<DealReceipt> {
+  if (isPreview) {
+    const found = previewDeals().find((d) => d.id === id);
+    if (!found) throw new DbError("not_found", "There's no such deal.", 404);
+    return receiptOf(found);
+  }
+  return api<DealReceipt>("/deal/" + encodeURIComponent(collectionName) + "/" + encodeURIComponent(id));
+}
+
+/** Take count (1 to 10) items from the top of the stock, for you only. Saved as another record in the dealt collection. */
+export async function draw(collectionName: string, id: string, count = 1): Promise<{ items: string[]; deal: DealReceipt }> {
+  if (isPreview) {
+    const me = requirePreviewWallet();
+    const deals = previewDeals();
+    const found = deals.find((d) => d.id === id);
+    const seat = found ? found.players.indexOf(me) : -1;
+    if (!found || seat < 0) throw new DbError("not_found", "There's no such deal.", 404);
+    if (!found.left.length) throw new DbError("stock_empty", "There's nothing left to draw.", 409);
+    const items = found.left.slice(0, count);
+    found.left = found.left.slice(items.length);
+    found.drawn[seat]++;
+    found.hands[seat] += items.length;
+    savePreviewDeals(deals);
+    previewPut<DealtHand>(collectionName, id + ".d" + found.drawn[seat], { deal: id, room: found.room, items }, me);
+    return { items, deal: receiptOf(found) };
+  }
+  return api<{ items: string[]; deal: DealReceipt }>("/deal/" + encodeURIComponent(collectionName) + "/" + encodeURIComponent(id) + "/draw", { method: "POST", body: JSON.stringify({ count }) });
 }
 
 /** One named collection. Names use lowercase letters, numbers, - and _, and start with a letter. */

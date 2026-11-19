@@ -1,5 +1,5 @@
 {
-  "id": "863cce83-660c-4841-8640-47fd47eacf25",
+  "id": "3f8aaf31-3cec-4811-b60a-5db3ef469038",
   "prevId": "09c03237-4c72-4ca7-91c9-806b7d9a6e92",
   "version": "7",
   "dialect": "postgresql",
@@ -59,181 +59,6 @@
         "balances_reserved_check": {
           "name": "balances_reserved_check",
           "value": "\"balances\".\"reserved_micro\" >= 0"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.build_deliveries": {
-      "name": "build_deliveries",
-      "schema": "",
-      "columns": {
-        "project_id": {
-          "name": "project_id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "plan": {
-          "name": "plan",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "build_deliveries_project_id_projects_id_fk": {
-          "name": "build_deliveries_project_id_projects_id_fk",
-          "tableFrom": "build_deliveries",
-          "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.build_drafts": {
-      "name": "build_drafts",
-      "schema": "",
-      "columns": {
-        "job_id": {
-          "name": "job_id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "project_id": {
-          "name": "project_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "base_version": {
-          "name": "base_version",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "files": {
-          "name": "files",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "diagnostics": {
-          "name": "diagnostics",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "''"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "build_drafts_job_id_turn_jobs_id_fk": {
-          "name": "build_drafts_job_id_turn_jobs_id_fk",
-          "tableFrom": "build_drafts",
-          "tableTo": "turn_jobs",
-          "columnsFrom": [
-            "job_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "build_drafts_project_id_projects_id_fk": {
-          "name": "build_drafts_project_id_projects_id_fk",
-          "tableFrom": "build_drafts",
-          "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.build_sponsorships": {
-      "name": "build_sponsorships",
-      "schema": "",
-      "columns": {
-        "job_id": {
-          "name": "job_id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "allowance_key": {
-          "name": "allowance_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "limit_micro": {
-          "name": "limit_micro",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "spent_micro": {
-          "name": "spent_micro",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "build_sponsorships_allowance_key_unique": {
-          "name": "build_sponsorships_allowance_key_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "allowance_key"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "build_sponsorship_amounts": {
-          "name": "build_sponsorship_amounts",
-          "value": "\"build_sponsorships\".\"limit_micro\" >= 0 AND \"build_sponsorships\".\"spent_micro\" >= 0"
         }
       },
       "isRLSEnabled": false
@@ -1038,25 +863,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "retry_of_job_id": {
-          "name": "retry_of_job_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "base_version": {
-          "name": "base_version",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "delivery_index": {
-          "name": "delivery_index",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
         "assistant_message_id": {
           "name": "assistant_message_id",
           "type": "uuid",
@@ -1220,21 +1026,6 @@
           "columns": [
             {
               "expression": "user_message_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "turn_jobs_retry_idx": {
-          "name": "turn_jobs_retry_idx",
-          "columns": [
-            {
-              "expression": "retry_of_job_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -2375,6 +2166,137 @@
         "publications_project_id_projects_id_fk": {
           "name": "publications_project_id_projects_id_fk",
           "tableFrom": "publications",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.app_data_deals": {
+      "name": "app_data_deals",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "collection": {
+          "name": "collection",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "host": {
+          "name": "host",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "room": {
+          "name": "room",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "players": {
+          "name": "players",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "stock": {
+          "name": "stock",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "hands": {
+          "name": "hands",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "drawn": {
+          "name": "drawn",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "app_data_deals_project_idx": {
+          "name": "app_data_deals_project_idx",
+          "columns": [
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "collection",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "app_data_deals_host_idx": {
+          "name": "app_data_deals_host_idx",
+          "columns": [
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "host",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "app_data_deals_project_id_projects_id_fk": {
+          "name": "app_data_deals_project_id_projects_id_fk",
+          "tableFrom": "app_data_deals",
           "tableTo": "projects",
           "columnsFrom": [
             "project_id"

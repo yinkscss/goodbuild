@@ -123,6 +123,7 @@ export async function startTurn(db: Db, args: QueueArgs, env: Record<string, str
       if (existing) return { job: existing };
     }
     let source: TurnJob | undefined;
+    let creditPaused = false;
     if (args.retryOfJobId) {
       [source] = await tx.select().from(turnJobs).where(and(eq(turnJobs.id, args.retryOfJobId), eq(turnJobs.projectId, args.projectId), eq(turnJobs.userId, args.userId)));
       if (!source) throw new Error("retry_not_found");
@@ -130,6 +131,7 @@ export async function startTurn(db: Db, args: QueueArgs, env: Record<string, str
       if (existing) return { job: existing };
       const [reply] = source.assistantMessageId ? await tx.select().from(messages).where(eq(messages.id, source.assistantMessageId)) : [];
       const needsFix = (reply?.meta as { status?: string } | null)?.status === "needs_fix";
+      creditPaused = reply?.meta?.paused === "credits";
       if (!["error", "stopped"].includes(source.status) && !needsFix) throw new Error("retry_not_failed");
       if (source.baseVersion !== project.currentVersion) throw new Error("retry_stale");
       if ((await activeJobs(tx, project.id)).length) throw new Error("retry_busy");
@@ -165,7 +167,7 @@ export async function startTurn(db: Db, args: QueueArgs, env: Record<string, str
     }
 
     const settings = sponsorshipSettings(env);
-    const key = root && source && !source.retryOfJobId && source.mode === "build" && source.status !== "stopped" && source.startedAt ? `repair:${root}:${new Date().toISOString().slice(0, 7)}` : root && project.currentVersion === 0 && args.mode === "build" ? `first:${root}` : null;
+    const key = root && source && !source.retryOfJobId && source.mode === "build" && source.status !== "stopped" && !creditPaused && !args.useCredits && source.startedAt ? `repair:${root}:${new Date().toISOString().slice(0, 7)}` : !source && !args.useCredits && root && project.currentVersion === 0 && args.mode === "build" ? `first:${root}` : null;
     const limit = source ? settings.repair : settings.first;
     const sponsored = key && await reserveSponsorship(tx, key, limit, env);
     if (source && source.mode === "build" && source.status !== "stopped" && !sponsored && !args.useCredits) return { refused: { allowed: false, reason: "funding_unavailable", message: "The included repair allowance is unavailable or used up. Your progress is saved. You can request a smaller change using credits in the composer." } };

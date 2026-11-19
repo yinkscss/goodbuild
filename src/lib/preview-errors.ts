@@ -31,3 +31,6 @@ export function shouldAutoFix(args: { error: PreviewError; version: number; elig
 
 /** What "Try fix" sends after a build with errors left. */
 export const FIX_PROMPT = "Fix the remaining errors from the last build.";
+
+/** What Continue sends after a build paused for credits (D138): pick up from the saved draft, don't start over. */
+export const CONTINUE_PROMPT = "Continue the last build from where it paused: the files it wrote are saved. Finish what the plan still needs, then fix the errors the checks report. Don't start over.";

@@ -18,8 +18,9 @@ export function hasMiniPayKit(files: Record<string, string>): boolean {
 export function miniAppChecks(files: Record<string, string>): CheckIssue[] {
   const issues: CheckIssue[] = [];
   for (const [file, content] of Object.entries(files)) {
-    // src/game/leaderboard.ts signs in only outside MiniPay, and posts to the contract inside it (D93).
-    if (!/^src\/.*\.(tsx?|jsx?)$/.test(file) || file.startsWith("src/lib/") || file.startsWith("src/minipay/") || file === "src/game/leaderboard.ts") continue;
+    // src/game/leaderboard.ts signs in only outside MiniPay, and posts to the contract inside it (D93). The room
+    // template's lobby (D139) shows no rooms inside MiniPay, so its sign-in never runs there.
+    if (!/^src\/.*\.(tsx?|jsx?)$/.test(file) || file.startsWith("src/lib/") || file.startsWith("src/minipay/") || file === "src/game/leaderboard.ts" || file === "src/room/Lobby.tsx") continue;
     const line = (re: RegExp) => content.slice(0, content.search(re)).split("\n").length;
     if (/\b(signMessage|personal_sign|signTypedData|eth_sign)\b/.test(content)) {
       issues.push({ file, line: line(/\b(signMessage|personal_sign|signTypedData|eth_sign)\b/), source: "guardrail", message: "MiniPay doesn't allow asking for a signature to log in. Use the wallet address as the person's identity and remove the signing." });

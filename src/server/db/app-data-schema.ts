@@ -132,3 +132,33 @@ export const appDataEmailCodes = pgTable(
   },
   (t) => [index("app_data_email_codes_lookup_idx").on(t.projectId, t.email, t.createdAt), index("app_data_email_codes_created_idx").on(t.createdAt), index("app_data_email_codes_ip_idx").on(t.ipHash, t.createdAt)],
 );
+
+/**
+ * Deals made by GoodBuild's dealer (D141, docs/APP_DATA.md "The dealer"). Each player's share is a record
+ * in app_data_records under that player; this row keeps who is in the deal and the stock still to draw,
+ * which no API ever returns. Its counts are what everyone in the deal may see.
+ */
+export const appDataDeals = pgTable(
+  "app_data_deals",
+  {
+    id: uuid("id").primaryKey(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    /** The dealt collection the hands were written to. */
+    collection: text("collection").notNull(),
+    /** Who asked for the deal: a lowercase wallet, from the session. */
+    host: text("host").notNull(),
+    /** A label from the app, such as the room code. */
+    room: text("room").notNull(),
+    players: jsonb("players").$type<string[]>().notNull(),
+    /** What's left to draw, top first. Never returned by any route. */
+    stock: jsonb("stock").$type<string[]>().notNull(),
+    /** How many items each player holds (dealt plus drawn), in the order of players. */
+    hands: jsonb("hands").$type<number[]>().notNull(),
+    /** How many times each player has drawn. */
+    drawn: jsonb("drawn").$type<number[]>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("app_data_deals_project_idx").on(t.projectId, t.collection), index("app_data_deals_host_idx").on(t.projectId, t.host)],
+);
