@@ -1746,3 +1746,25 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
   - Only wallets can be dealt to; email sign-ins can't.
   - 30 deals and 120 draws a minute per wallet in one app.
 - **UNVERIFIED:** on Postgres under real concurrency (the parallel-draw test ran on PGlite, which serialises), and on a published app in a real browser with a real wallet.
+
+### D142. A crew and saboteur party game template, on the room and the dealer (19 Nov 2026; PR 7 of D139)
+- Decided by: the owner (D139's plan). Built by Claude. Original throughout: shown as "Deep Station", an undersea research station with its own tasks, names and look. No other game's name, characters or art; a test checks the files for the best-known one.
+- **The game** (`saboteur-party`, 4 to 10 players):
+  - Roles come from the dealer (D141): one saboteur for 4 to 6 players, two for 7 to 10. Everyone knows how many, nobody knows who. The host deals once per round and puts the deal id in a signed move. Each player reads only their own role, and trusts only a deal whose receipt names the room's host.
+  - **Tasks:** the crew taps numbered tiles in order. Every task done wins it for the crew.
+  - **Sabotage:** the oxygen fails, and the crew has 30 s to fix it or the saboteurs win.
+  - **Knock-out:** a saboteur knocks someone out, at most every 30 s. That calls a **meeting**: 45 s to talk in the room and vote, or skip. The most votes puts a player out (a tie or skip puts nobody out). Whoever is voted out shows their role.
+  - **Endings:** the crew wins when every saboteur is out or every task is done. The saboteurs win when they equal the crew or the oxygen runs out.
+- **How it stays fair without a server referee:** knock-outs, sabotage, tasks and fixes go in an `events` collection whose fields are public but whose writer is not (D34 `public` fields with `read: ["writer"]`), so nobody sees who knocked someone out. Votes and shown roles are signed moves. Every screen works out the phase, who is out and who won from the same records with the same code (`station()` in `rules.ts`), using the server's record times.
+- **Play the computer:** you and four computer players with a random role. It's shorter (3 tasks each, 10 s meetings), and it's what the run check plays.
+- **Preview fix:** the preview's stand-in store now shows another writer's record by its public fields only, as the server does. Before this it showed nothing, so a game using public fields looked empty in the preview.
+- **Tests:**
+  - The rules on their own: a knock-out too early does nothing; a meeting, the vote and the reveal; a tie; sabotage fixed or not; all tasks done; the saboteurs equalling the crew; the role counts.
+  - Four players in a room on the preview: exactly one saboteur is dealt, each player sees only their own role, the knock-out calls a meeting on all four screens, and voting the saboteur out shows "The crew wins" everywhere.
+  - The app, type and run checks, with and without MiniPay, plus a slow touch phone and a copy whose task tiles do nothing.
+- **Limits:**
+  - A role someone shows when they're out is their own word: the dealer keeps hands private and has no reveal. Someone who leaves without showing theirs counts as crew after 10 s.
+  - The events' writers are hidden, but a modified client can still send one. That is the same "between friends" limit as every room game.
+  - A meeting's clock and the cooldowns are measured on each device against the server's record times, so they can be a few seconds apart.
+  - With polling, actions take up to 3 s to reach the other screens.
+- **UNVERIFIED:** on a real phone, on a published app with real signatures, and with a real model building from it.
