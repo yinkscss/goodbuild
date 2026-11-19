@@ -222,13 +222,13 @@ function Gallery() {
                   {entry.totalGd.toLocaleString("en-US")} G$ estimated earnings
                 </p>
                 <p className="mt-1">
-                  {entry.baseGd.toLocaleString("en-US")} G$ base +{" "}
-                  {entry.topupGd.toLocaleString("en-US")} G$ approval top-ups
+                  {entry.baseGd.toLocaleString("en-US")} G$ rank prize +{" "}
+                  {entry.topupGd.toLocaleString("en-US")} G$ from approvals
                 </p>
                 <p className="mt-2 text-xs">
-                  Top 10 published projects: 100,000 G$ base each. Every
-                  approval adds 50,000 G$ outside the shared reserve. Rankings
-                  can change until approvals close; payment is separate.
+                  Top 20 published projects earn a rank prize. Every approval
+                  pays up to 5,000 G$, less when there are many. Rankings can
+                  change until voting closes on 10 Dec; payment is separate.
                 </p>
               </div>
             </article>

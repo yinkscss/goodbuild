@@ -22,7 +22,7 @@ export const DEPLOY_CREDITS = 30;
 /** Default cap on everything granted: 100 builders x 50 credits. HACKATHON_BUDGET_CREDITS overrides. */
 export const DEFAULT_BUDGET_CREDITS = 5_000;
 /** Claims stop when submissions close (DRAFT date, matches content.ts). */
-export const CLAIMS_CLOSE = new Date("2027-02-08T23:00:00Z");
+export const CLAIMS_CLOSE = new Date("2026-12-10T23:00:00Z");
 /** Celo mainnet and Celo Sepolia. */
 export const DEPLOY_CHAINS = [42220, 11142220];
 

@@ -1626,6 +1626,14 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
   - While a G$ payment confirms, the button reads "Confirming payment…" with "usually about 30 seconds". The 30-block wait stays.
   - When a build stops for lack of credits, a pop-up opens: pay in G$ (exact amount, one click) or get free credits (only the step that person still needs), then "Continue building" retries. Closing it leaves the inline pill.
 
+### D130. Hackathon runs 18 Nov to 10 Dec 2026, one capped 1,000,000 G$ pool, top 20 paid, credits stay usable (18 Nov 2026; replaces the Jan to Feb draft and the D100 expiry)
+- Decided by: the owner. Built by Claude.
+- **Dates:** registration, submissions and voting all open 18 Nov and close together at the end of 10 Dec (`CLAIMS_CLOSE` = `2026-12-10T23:00:00Z`). Builders are told to submit by 5 Dec for a fair vote window. Winners announced 12 Dec (proposed). The old build-start, mid-point and demo-day stages are gone.
+- **Rewards (`src/lib/hackathon-rewards.ts`):** a fixed 1,000,000 G$ pool that is never exceeded. 700,000 G$ in rank prizes for the top 20 published projects (175k, 105k, 70k, 42k x2, 21k x5, 16.1k x10). The other 300,000 G$ is shared by approvals at `min(5,000, 300,000 / total approvals)` G$ each, rounded down, on every published project. Fewer than 20 eligible entries leave unused rank prizes unpaid. Earnings are estimates until the close.
+- **Replaces:** ten equal 100,000 G$ slots and an uncapped 50,000 G$ per approval funded outside the pool.
+- **Credits:** unspent hackathon credits are no longer expired. The worker's hourly sweep is removed. The manual admin button and `/api/hackathon/expire` remain but nothing runs them.
+- **Built:** the live ladder (`ladder.tsx`, shared by `/hackathon` and the app). **Open:** the winners and payout dates; quests, voter badges, weekly Rising Star and referral are planned, not built.
+
 ### D131. Get-credits pop-up on home; verify and vote before submitting a hackathon project (18 Nov 2026)
 - Decided by: the owner (agreed in D126, built now). Built by Claude.
 - **Pop-up:** someone who lands on home with no credits and has never bought any (no deposit in the ledger) sees "Get credits to start building": Add credits, or the free credits card, which shows only the step they still need (verify, then "support our project by voting"; the 40 lands when the vote confirms). It shows once per browser session. A failed check never shows it.

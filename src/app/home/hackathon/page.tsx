@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { ProjectGallery, SubmissionForm } from "@/components/hackathon/community";
+import { Ladder } from "@/components/hackathon/ladder";
 import { RegisterSteps } from "@/components/hackathon/register-steps";
 import { styles } from "@/components/hackathon/styles";
 import { AppShell } from "@/components/home/app-shell";
@@ -10,6 +11,7 @@ export const metadata = { title: "Hackathon · GoodBuild" };
 
 const SECTIONS = [
   { id: "progress", label: "Progress" },
+  { id: "ladder", label: "Leaderboard" },
   { id: "project", label: "My project" },
   { id: "vote", label: "Vote on projects" },
 ];
@@ -47,6 +49,15 @@ export default function HackathonDashboardPage() {
           </h2>
           <div className="mt-5">
             <RegisterSteps />
+          </div>
+        </section>
+        <section id="ladder" aria-labelledby="hk-ladder" className="scroll-mt-20 pt-14">
+          <h2 id="hk-ladder" className="display text-[22px] font-bold">
+            Leaderboard
+          </h2>
+          <p className="mt-2 text-sm text-grey-600">The top 20 share the rank prizes. Approvals close at the end of 10 Dec.</p>
+          <div className="mt-5 rounded-card bg-surface p-6 shadow-card">
+            <Ladder mode="app" />
           </div>
         </section>
         <section id="project" aria-labelledby="hk-project" className="scroll-mt-20 pt-14">

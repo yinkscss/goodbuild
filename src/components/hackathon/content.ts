@@ -7,8 +7,7 @@ export const HACKATHON = {
   name: "GoodBuild Hackathon",
   poolGd: 1_000_000,
   /** DRAFT dates (West Africa Time). */
-  window: "8 Jan to 8 Feb 2027",
-  buildStartsIso: "2027-01-08T11:00:00Z",
+  window: "18 Nov to 10 Dec 2026",
 } as const;
 
 export interface Prize {
@@ -19,18 +18,18 @@ export interface Prize {
 export const PRIZES: Prize[] = [
   {
     id: "reserve",
-    label: "1,000,000 G$ shared reserve",
-    note: "The top 10 published projects share the reserve through equal base rewards. Rankings follow verified community approvals.",
+    label: "1,000,000 G$ total pool",
+    note: "A fixed pool that is never exceeded. 700,000 G$ goes to rank prizes and 300,000 G$ is shared by approvals.",
   },
   {
     id: "base",
-    label: "100,000 G$ base reward",
-    note: "Each of the top 10 published projects earns a 100,000 G$ base. With fewer than 10 eligible projects, unused slots stay in reserve.",
+    label: "Top 20 rank prizes",
+    note: "175,000 G$ for 1st, 105,000 for 2nd, 70,000 for 3rd, 42,000 each for 4th and 5th, 21,000 each for 6th to 10th, 16,100 each for 11th to 20th. Unused slots stay unpaid.",
   },
   {
     id: "approvals",
-    label: "+50,000 G$ per approval",
-    note: "Every verified approval adds 50,000 G$ to a published project’s estimated earnings, including projects outside the top 10. These top-ups are funded separately, outside the 1,000,000 G$ reserve.",
+    label: "Up to 5,000 G$ per approval",
+    note: "Every verified approval pays up to 5,000 G$ on any published project, including those outside the top 20. The rate drops if approvals would overrun the 300,000 G$ approval pool.",
   },
 ];
 
@@ -84,7 +83,7 @@ export const MARQUEE = [
   "Public goods",
 ];
 
-/** DRAFT timeline, in order. `now` marks the current stage. */
+/** Timeline, in order (D130). `now` marks the current stage. */
 export const TIMELINE: Array<{
   when: string;
   title: string;
@@ -92,30 +91,25 @@ export const TIMELINE: Array<{
   now?: boolean;
 }> = [
   {
-    when: "1 Dec",
-    title: "Registration opens",
-    body: "Connect, verify, get credits.",
+    when: "18 Nov",
+    title: "Registration, submissions and voting open",
+    body: "Connect, verify, get credits, submit and approve projects.",
     now: true,
   },
   {
-    when: "8 Jan",
-    title: "Building starts",
-    body: "Kickoff stream and track briefs.",
+    when: "5 Dec",
+    title: "Submit by now for a fair vote",
+    body: "Late projects have less time to collect approvals.",
   },
   {
-    when: "25 Jan",
-    title: "Mid-point check-in",
-    body: "Optional demo for mentor feedback.",
+    when: "10 Dec",
+    title: "Submissions and voting close",
+    body: "Deployed on Celo with a live link. Ranking is fixed at midnight.",
   },
   {
-    when: "8 Feb",
-    title: "Submissions close",
-    body: "Deployed on Celo with a live link.",
-  },
-  {
-    when: "22 Feb",
-    title: "Demo day",
-    body: "Builders demo. Rewards follow the published terms.",
+    when: "12 Dec",
+    title: "Winners announced",
+    body: "Rewards follow the published terms.",
   },
 ];
 
@@ -159,7 +153,7 @@ export const RULES: Array<{ ok: boolean; text: string }> = [
     ok: true,
     text: "Start your entry on GoodBuild: its first commit comes from GoodBuild. Then connect GitHub and keep building wherever you like.",
   },
-  { ok: true, text: "New work started after 8 Jan. Open source is welcome." },
+  { ok: true, text: "New work started after 18 Nov. Open source is welcome." },
   { ok: false, text: "No betting, gambling or sports-betting apps." },
   { ok: false, text: "Not open to US persons." },
 ];
@@ -179,7 +173,7 @@ export const FAQ: Array<{ q: string; a: string }> = [
   },
   {
     q: "How do rewards work?",
-    a: "The top 10 published projects receive 100,000 G$ each from the 1,000,000 G$ shared reserve. Every verified approval adds 50,000 G$ separately, outside that reserve, even beyond the top 10. Fewer than 10 eligible entries leave unused reserve slots. Ties go to the earlier submission. Earnings are estimates until rankings close and rewards are settled; they are not your build-credit balance.",
+    a: "The total pool is 1,000,000 G$ and is never exceeded. 700,000 G$ goes to the top 20 published projects by verified approvals: 175,000 G$ for 1st, 105,000 for 2nd, 70,000 for 3rd, 42,000 each for 4th and 5th, 21,000 each for 6th to 10th and 16,100 each for 11th to 20th. The other 300,000 G$ is shared by approvals: each pays up to 5,000 G$, less if there are many approvals, and applies to every published project. Fewer than 20 eligible entries leave unused rank prizes unpaid. Ties go to the earlier submission. Earnings are estimates until voting closes on 10 Dec; they are not your build-credit balance.",
   },
   {
     q: "Do I have to vote on FlowState to get credits?",

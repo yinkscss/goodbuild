@@ -1,6 +1,6 @@
 # GoodBuild Hackathon
 
-Status: email onboarding, required in-app FlowState support, public submissions, verified approvals, leaderboard and admin CSV built (18 Nov 2026). The top 10 published projects receive 100,000 G$ base each from a 1,000,000 G$ reserve; every verified approval adds 50,000 G$ outside that reserve. Earnings are estimates until settlement. Page built (D98). Credit claims built (D99): 20 credits on registering, 30 after the first Celo deploy, one grant per GoodDollar root. Expiry of unspent credits and the admin page at `/hackathon/admin` are built too (D100).
+Status: **Dates, prizes and credits changed by D130 (18 Nov 2026): 18 Nov to 10 Dec, 1,000,000 G$ capped (700k top-20 rank prizes + 300k shared by approvals at up to 5,000 G$ each), credits stay usable. Section 7 below describes the older top-10 design.** email onboarding, required in-app FlowState support, public submissions, verified approvals, leaderboard and admin CSV built (18 Nov 2026). The top 10 published projects receive 100,000 G$ base each from a 1,000,000 G$ reserve; every verified approval adds 50,000 G$ outside that reserve. Earnings are estimates until settlement. Page built (D98). Credit claims built (D99): 20 credits on registering, 30 after the first Celo deploy, one grant per GoodDollar root. Expiry of unspent credits and the admin page at `/hackathon/admin` are built too (D100).
 
 ## 1. The page (`/hackathon`)
 - Code: `src/app/hackathon/page.tsx`, pieces in `src/components/hackathon/`. All copy and numbers live in `content.ts`. Prize split, dates, tracks, team size and partner links there are **DRAFT** until the owner confirms. The confirmed total pool is 1,000,000 G$. Podium prizes have been replaced with a top-10 shared reserve and separately funded approval top-ups.
@@ -17,7 +17,7 @@ What stops abuse is that **every grant is keyed to a GoodDollar identity root, n
 3. **One grant per human.** Post one ledger entry with `idempotencyKey = hackathon-2027:<root>`. The ledger already refuses a reused key: a replay changes nothing, and a second account linked to the same root gets `IdempotencyConflictError`. Add a `hackathon_registrations` table with a unique index on `goodid_root` as a second lock, and to list who registered.
 4. **Credits only buy AI on GoodBuild.** They can't be withdrawn, sent or swapped (true of the ledger today). That leaves farming accounts worth little.
 5. **Give it in two parts.** A first tranche at registration, the rest after the first real build or first Celo deploy from that account. Someone who verifies only to collect gets the small part.
-6. **Expire them.** Unused hackathon credits lapse when submissions close (a dated `adjust` entry), so they aren't a standing liability.
+6. **Credits stay usable (D130).** Unused hackathon credits are not expired. The old expiry sweep is off.
 7. **Budget kill switch.** A total cap for the whole hackathon (`HACKATHON_BUDGET_CREDITS`). Claims stop with a clear message once it's spent, in the same way as D29.
 8. **Watch it.** An admin view of claims per day, with duplicate-root attempts and claims from wallets created minutes earlier. Blocking stays manual.
 
@@ -39,8 +39,8 @@ The owner puts 1,000,000 G$ at about ₦150,000 (12 Nov 2026). So the page and a
 - `hackathon_registrations` (migration 0018), unique per hackathon on the GoodDollar root and on the account.
 - `claimHackathon` reads the root from the Identity contract, then takes a hackathon-wide advisory lock. Inside it, it checks the budget and posts `adjust` ledger entries keyed `hackathon:million-2027:start:<root>` and `...:deploy:<root>`.
 - **The deploy part** needs a row in `deployments` on Celo or Celo Sepolia, made after registering. Those rows are written only after the server reads the receipt, so a browser can't fake one.
-- **Switches:** `HACKATHON_CLAIMS=off` pauses claims. They stop by themselves at `CLAIMS_CLOSE` (8 Feb 2027, DRAFT).
-- **Expiry (D100):** after `CLAIMS_CLOSE`, the worker runs a sweep every hour. Admins can also run it from `/hackathon/admin`.
+- **Switches:** `HACKATHON_CLAIMS=off` pauses claims. They stop by themselves at `CLAIMS_CLOSE` (10 Dec 2026, D130).
+- **Expiry (D100, switched off by D130):** the worker no longer sweeps. `expireUnusedCredits` and the admin button remain as a manual tool only.
   - AI usage since registering counts against the grant first, so only the unspent part of the 50 is removed (a negative `adjust` keyed `...:expire:<root>`).
   - Bought credits are never removed, and no balance goes below zero.
   - A row whose balance moved during the sweep is left for the next run.
@@ -74,3 +74,7 @@ The owner puts 1,000,000 G$ at about ₦150,000 (12 Nov 2026). So the page and a
 ## 8. In-app FlowState support (18 Nov 2026)
 
 The required FlowState step supports direct voting with the existing Magic email wallet. See [FLOWSTATE.md](./FLOWSTATE.md) for verified protocol targets, review/signature/confirmation rules, gas requirements and remaining live checks. Migration `0023_flowstate_vote_proof` adds durable claim throttling and confirmation evidence. CSV export now distinguishes an external link visit from a server-confirmed vote, and includes its transaction hash/confirmation time. Existing supporters can confirm their actual ballot without spending another network fee.
+
+## 9. Live ladder (18 Nov 2026, D130)
+`src/components/hackathon/ladder.tsx` is the one leaderboard, used on `/hackathon` (`mode="web"`) and in the app at `/home/hackathon` (`mode="app"`). It reads the public `/api/hackathon/projects` list every minute and ranks it with `src/lib/hackathon-ladder.ts`, which wraps `allocateHackathonRewards`, so ranks and estimates match the project cards and the CSV. Top 20 are the prize zone; leagues are Bronze 10+, Silver 40+, Gold 100+ approvals (badge only). In the app it highlights the builder's own project and says how many approvals reach the prize zone, ties included. **Not built:** rank movement arrows (needs a daily rank snapshot), quests, voter badges, weekly Rising Star, referral.
+
