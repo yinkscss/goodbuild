@@ -2,12 +2,13 @@ import { check, index, integer, pgTable, text, timestamp, uuid } from "drizzle-o
 import { sql } from "drizzle-orm";
 
 /**
- * Outbox for the on-chain GoodBuild Registry (D132). A row is one activity event waiting to be written to Celo
+ * Outbox for the on-chain GoodBuild Registry (D155). A row is one activity event waiting to be written to Celo
  * mainnet. `key` is unique per event and subject, so enqueueing twice (a retry, or the backfill) is harmless.
  * `builder` and `app` are salted hashes, never wallets or ids. The worker sends pending rows in batches.
  *
  *   pending   waiting for the next batch
- *   sending   in a batch that is being sent; a row stuck here is put back to pending after 10 minutes
+ *   sending   in a batch that was sent; `batch_tx` is saved the moment it is broadcast, and the next sweep looks up
+ *             its receipt instead of sending again. Rows with no `batch_tx` after 10 minutes go back to pending.
  *   sent      mined successfully in `batch_tx`
  *   failed    the batch reverted; the owner looks
  */
@@ -22,6 +23,8 @@ export const registryEvents = pgTable(
     app: text("app").notNull(),
     target: text("target").notNull(),
     txHash: text("tx_hash").notNull(),
+    /** When it happened. Live events: now. Backfilled history: the source row's own time. */
+    occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull().defaultNow(),
     status: text("status").notNull().default("pending"),
     batchTx: text("batch_tx"),
     error: text("error"),

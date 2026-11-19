@@ -162,8 +162,8 @@ export async function publishApp(db: Db, project: Project, slug: string, deps: {
     if (isUniqueViolation(error)) throw new PublishError("slug_taken", "That address is taken. Try another.");
     throw error;
   }
-  // Once per publish (a re-publish after unpublishing counts again): the event key carries the publish time.
-  await enqueueForProject(db, { kind: "AppPublished", key: `published:${project.id}:${Date.now()}`, projectId: project.id });
+  // Only when the app goes from not live to live: publishing a new version of a live app isn't a new app.
+  if (!existing || existing.unpublishedAt) await enqueueForProject(db, { kind: "AppPublished", key: `published:${project.id}:${Date.now()}`, projectId: project.id });
   return publishStatus(db, project);
 }
 

@@ -30,7 +30,7 @@ async function user({ voted = true, voteRecord = true } = {}) {
       .update(hackathonParticipants)
       .set({ flowstate: "voted" })
       .where(eq(hackathonParticipants.userId, u.id));
-  // Approving needs the confirmed vote in flowstate_voters, which also covers people who never signed up (D126, D132).
+  // Approving needs the confirmed vote in flowstate_voters, which also covers people who never signed up (D126, D155).
   if (voted && voteRecord) await db.insert(flowstateVoters).values({ userId: u.id, votedAt: new Date(), txHash: "0xabc" });
   return u;
 }
@@ -239,7 +239,7 @@ async function liveEntry(label: string) {
 /** The chain read: these wallets belong to one verified person; every other wallet (builders) reads as unverified. */
 const rootFor = (root: `0x${string}`, ...wallets: string[]) => async (w: string) => (wallets.includes(w) ? root : null);
 
-it("gives each verified person three approvals in total, and the fourth is refused (D132)", async () => {
+it("gives each verified person three approvals in total, and the fourth is refused (D155)", async () => {
   const voter = await user();
   const root = wallet();
   const rootOf = rootFor(root, voter.wallet);

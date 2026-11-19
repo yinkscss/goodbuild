@@ -1,4 +1,4 @@
-// Deploys GoodBuildRegistry (D132). Dry run by default: prints what it would do and touches nothing.
+// Deploys GoodBuildRegistry (D155). Dry run by default: prints what it would do and touches nothing.
 //
 //   node scripts/compile-credits.mjs        (also compiles the registry)
 //   REGISTRY_RECORDER=0x… DEPLOYER_PRIVATE_KEY=0x… CONFIRM_MAINNET=yes REGISTRY_NETWORK=celo \

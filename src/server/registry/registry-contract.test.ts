@@ -25,9 +25,9 @@ describe("GoodBuildRegistry", () => {
   it("lets only the recorder write, and emits one typed event per entry", async () => {
     const { chain, abi, call } = await deploy();
     const entries = [
-      { kind: 0, builder: B, app: zeroHash, target: zeroAddress, txHash: zeroHash },
-      { kind: 2, builder: B, app: A, target: T, txHash: A },
-      { kind: 5, builder: zeroHash, app: A, target: T, txHash: zeroHash },
+      { kind: 0, builder: B, app: zeroHash, target: zeroAddress, txHash: zeroHash, at: 1 },
+      { kind: 2, builder: B, app: A, target: T, txHash: A, at: 1 },
+      { kind: 5, builder: zeroHash, app: A, target: T, txHash: zeroHash, at: 1 },
     ];
     expect(chain.receipts.get(await call(STRANGER, "recordBatch", [entries]))!.status).toBe("reverted");
     const ok = chain.receipts.get(await call(RECORDER, "recordBatch", [entries]))!;
@@ -37,7 +37,7 @@ describe("GoodBuildRegistry", () => {
   });
   it("caps a batch at 100 and lets only the owner replace the recorder", async () => {
     const { chain, call } = await deploy();
-    const one = { kind: 0, builder: B, app: zeroHash, target: zeroAddress, txHash: zeroHash };
+    const one = { kind: 0, builder: B, app: zeroHash, target: zeroAddress, txHash: zeroHash, at: 1 };
     expect(chain.receipts.get(await call(RECORDER, "recordBatch", [Array(101).fill(one)]))!.status).toBe("reverted");
     expect(chain.receipts.get(await call(RECORDER, "recordBatch", [Array(100).fill(one)]))!.status).toBe("success");
     expect(chain.receipts.get(await call(STRANGER, "setRecorder", [STRANGER]))!.status).toBe("reverted");

@@ -7,7 +7,7 @@ import { publicClientFor } from "@/server/deploy/service";
 import { readGoodIdRoot, recordingRootReader } from "@/server/goodid";
 import { voteStatus } from "@/server/hackathon/community";
 
-/** The signed-in person's vote steps and approvals used (D132). Signed out: nothing is done or used. */
+/** The signed-in person's vote steps and approvals used (D155). Signed out: nothing is done or used. */
 export async function GET() {
   try {
     const session = await currentSession();

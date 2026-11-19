@@ -3,7 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createTestDb, type Db } from "@/server/db/client";
 import { registryEvents } from "@/server/db/registry-schema";
 import { projects, users } from "@/server/db/schema";
-import { backfillRegistry, enqueueDeployment, enqueueForProject, enqueueRegistryEvent, flushRegistry, opaqueId } from "./outbox";
+import { publications } from "@/server/db/publish-schema";
+import { backfillRegistry, enqueueTakedowns, enqueueDeployment, enqueueForProject, enqueueRegistryEvent, flushRegistry, opaqueId } from "./outbox";
 
 vi.mock("server-only", () => ({}));
 
@@ -47,22 +48,43 @@ describe("registry outbox", () => {
     await enqueueDeployment(db, { ...d, chainId: 11142220, txHash: `0x${"b".repeat(64)}` });
     expect((await all()).map((r) => r.kind).sort()).toEqual([2, 5]);
   });
-  it("sends pending rows in one batch and marks them sent", async () => {
+  it("sends pending rows in one batch, with their times, and settles it from the receipt", async () => {
     await enqueueForProject(db, { kind: "AppGenerated", key: "g", projectId });
-    await enqueueForProject(db, { kind: "AppPublished", key: "p", projectId });
+    await enqueueForProject(db, { kind: "AppPublished", key: "p", projectId, at: new Date("2026-11-01T00:00:00Z") });
     const send = vi.fn().mockResolvedValue(`0x${"c".repeat(64)}`);
-    const out = await flushRegistry(db, { send, confirm: async () => true });
-    expect(out).toEqual({ sent: 2, failed: 0 });
+    const receipt = vi.fn().mockResolvedValue(true);
+    expect(await flushRegistry(db, { send, receipt })).toEqual({ sent: 0, failed: 0 });
     expect(send.mock.calls[0][0]).toHaveLength(2);
-    expect((await all()).every((r) => r.status === "sent" && r.batchTx === `0x${"c".repeat(64)}`)).toBe(true);
-    expect(await flushRegistry(db, { send, confirm: async () => true })).toEqual({ sent: 0, failed: 0 });
+    expect(send.mock.calls[0][0].map((e: { at: bigint }) => e.at)).toContain(BigInt(Date.parse("2026-11-01T00:00:00Z") / 1000));
+    expect((await all()).every((r) => r.status === "sending" && r.batchTx)).toBe(true);
+    expect(await flushRegistry(db, { send, receipt })).toEqual({ sent: 2, failed: 0 });
+    expect(send).toHaveBeenCalledTimes(1);
+    expect((await all()).every((r) => r.status === "sent")).toBe(true);
   });
-  it("puts rows back after a send error and fails a reverted batch", async () => {
+  it("never resends a batch whose receipt is slow", async () => {
     await enqueueForProject(db, { kind: "AppGenerated", key: "g", projectId });
-    await flushRegistry(db, { send: async () => { throw new Error("rpc down"); }, confirm: async () => true });
+    const send = vi.fn().mockResolvedValue(`0x${"e".repeat(64)}`);
+    const receipt = vi.fn().mockResolvedValue(null);
+    await flushRegistry(db, { send, receipt });
+    await enqueueForProject(db, { kind: "AppPublished", key: "p", projectId });
+    await flushRegistry(db, { send, receipt });
+    await flushRegistry(db, { send, receipt, now: () => new Date(Date.now() + 3_600_000) });
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+  it("puts rows back after a refused send and fails a reverted batch", async () => {
+    await enqueueForProject(db, { kind: "AppGenerated", key: "g", projectId });
+    await flushRegistry(db, { send: async () => { throw new Error("rpc down"); }, receipt: async () => true });
     expect((await all())[0]).toMatchObject({ status: "pending", attempts: 1 });
-    await flushRegistry(db, { send: async () => `0x${"d".repeat(64)}`, confirm: async () => false });
+    const send = async () => `0x${"d".repeat(64)}` as const;
+    await flushRegistry(db, { send, receipt: async () => false });
+    await flushRegistry(db, { send, receipt: async () => false });
     expect((await all())[0].status).toBe("failed");
+  });
+  it("queues a takedown once", async () => {
+    await db.insert(publications).values({ projectId, slug: "tips", versionNumber: 1, disabledAt: new Date() });
+    await enqueueTakedowns(db);
+    await enqueueTakedowns(db);
+    expect((await all()).map((r) => r.kind)).toEqual([4]);
   });
   it("backfills builders and apps once", async () => {
     await db.update(projects).set({ currentVersion: 1 });

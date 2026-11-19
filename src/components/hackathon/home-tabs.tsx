@@ -9,7 +9,7 @@ const TABS = [
   { href: "/home/hackathon/vote", label: "Vote" },
 ];
 
-/** The four sections of the hackathon inside the app (D132). Each one is its own page under /home/hackathon. */
+/** The four sections of the hackathon inside the app (D155). Each one is its own page under /home/hackathon. */
 export function HackathonTabs() {
   const path = usePathname().replace(/\/$/, "");
   return (

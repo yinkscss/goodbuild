@@ -71,6 +71,8 @@ services:
     environment:
       <<: *database
       TURN_CONCURRENCY: ${TURN_CONCURRENCY:-6}
+      # GoodBuild Registry (D155): the recorder key as a file, only in the worker, which is the only process that sends.
+      RECORDER_KEY_FILE: /run/secrets/recorder_key
       # The run check (D67): builds are opened in the checker's browser. If it is down, builds skip the check.
       RUN_CHECK_WS_ENDPOINT: ws://checker:3001/
       RUN_CHECK_CONCURRENCY: ${RUN_CHECK_CONCURRENCY:-2}
@@ -79,6 +81,10 @@ services:
       # The review (D87): after a build passes its checks, the strong model looks at screenshots of it and the
       # build model fixes what it lists. Off until the evals have measured it: set VISUAL_REVIEW=1 in .env.production.
       VISUAL_REVIEW: ${VISUAL_REVIEW:-off}
+    volumes:
+      # deploy/install-recorder-key.sh writes /opt/goodbuild-recorder/recorder_key (uid 1000, mode 0400). A different
+      # folder from the gas wallet's, so the worker never sees that key. Missing file: the registry stays off.
+      - /opt/goodbuild-recorder:/run/secrets:ro
     depends_on:
       migrate:
         condition: service_completed_successfully

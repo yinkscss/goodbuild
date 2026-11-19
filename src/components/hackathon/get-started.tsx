@@ -13,7 +13,7 @@ const NEXT = [
 ];
 
 /**
- * "Get started" (D132): the four registration steps until the person has registered, then a short
+ * "Get started" (D155): the four registration steps until the person has registered, then a short
  * summary of where they stand. Registered people never see the steps again.
  */
 export function GetStarted() {

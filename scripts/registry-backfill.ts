@@ -1,4 +1,4 @@
-// Queue events for everything before the registry went live (D132). Safe to run twice. The worker then sends them.
+// Queue events for everything before the registry went live (D155). Safe to run twice. The worker then sends them.
 //   pnpm tsx scripts/registry-backfill.ts      (needs DATABASE_URL and REGISTRY_SALT)
 import { getDb } from "../src/server/db/client";
 import { backfillRegistry, registryEnabled } from "../src/server/registry/outbox";
