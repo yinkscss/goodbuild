@@ -135,6 +135,29 @@ describe("game templates (D114)", { timeout: 180_000 }, () => {
     for (const kind of ["gap", "spike", "beetle", "shield", "double"]) expect(ok.note).toContain(kind);
   });
 
+  it.skipIf(!hasBrowser)("Crane stack: every kind it declares is seen, and a copy whose tap never drops a block is caught", async () => {
+    const ok = await runCheck(built("crane-stack"));
+    expect(ok.issues).toEqual([]);
+    for (const kind of ["wind", "wide", "slow"]) expect(ok.note).toContain(kind);
+    const stuck = await runCheck(built("crane-stack", edit("src/play/Game.tsx", "if (input.actionPressed) {", "if (input.actionPressed && false) {")));
+    expect(stuck.issues.map((i) => i.message).join(" ")).toMatch(/never moved the player/);
+  });
+
+  it.skipIf(!hasBrowser)("Market stall: judged as a game of moves by its buttons, and a copy whose Serve does nothing is caught", async () => {
+    const ok = await runCheck(built("market-stall"));
+    expect(ok.note).toMatch(/puzzle game, \d+ moves/);
+    const dead = await runCheck(built("market-stall", edit("src/play/Game.tsx", "<button type=\"button\" onClick={serve}", "<button type=\"button\" onClick={() => undefined}")));
+    expect(dead.issues.map((i) => i.message).join(" ")).toMatch(/never accepted a move/);
+  });
+
+  it.skipIf(!hasBrowser)("Path guard: every kind it declares is seen, and a copy whose taps never build is caught", async () => {
+    const ok = await runCheck(built("path-guard"));
+    expect(ok.issues).toEqual([]);
+    for (const kind of ["crawler", "runner", "frost"]) expect(ok.note).toContain(kind);
+    const stuck = await runCheck(built("path-guard", edit("src/play/Game.tsx", "if (input.actionPressed) tapAt(input.pointer.x, input.pointer.y);", "")));
+    expect(stuck.issues.map((i) => i.message).join(" ")).toMatch(/never moved the player/);
+  });
+
   // D117: one broken copy per kind of control the new templates add, so the check is shown to catch each.
   it.skipIf(!hasBrowser)("Match grid: judged as a puzzle by its taps, and a copy whose tiles do nothing is caught", async () => {
     const ok = await runCheck(built("match-grid"));
