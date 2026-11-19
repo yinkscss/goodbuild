@@ -23,8 +23,8 @@ export default function TemplatesPage() {
           <LandingPrompt gameTemplates={gameTemplates} />
         </div>
         <div className="[&>section]:mt-12">
-          <TemplateGallery fullPage />
           <GameTemplateGallery templates={gameTemplates} />
+          <TemplateGallery fullPage />
         </div>
         <SiteFooter />
       </main>

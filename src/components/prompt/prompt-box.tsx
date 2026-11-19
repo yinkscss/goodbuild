@@ -301,7 +301,7 @@ export function PromptBox({
             <DropdownMenuTrigger asChild>
               <Button type="button" variant="quiet" size="sm" aria-label="Choose a template">
                 <LayoutTemplate className="size-3.5" />
-                <span className="max-w-[9rem] truncate">{selectedTemplate ? selectedTemplate.label : "Template"}</span>
+                <span className="max-w-[9rem] truncate">{selectedTemplate ? selectedTemplate.label : "Templates"}</span>
                 <ChevronDown className="size-3.5" />
               </Button>
             </DropdownMenuTrigger>
@@ -313,6 +313,22 @@ export function PromptBox({
                   if (t) fillFromTemplate(t);
                 }}
               >
+                {gameTemplates.length > 0 && (
+                  <React.Fragment>
+                    <DropdownMenuLabel>Game templates</DropdownMenuLabel>
+                    {gameTemplates.map((t) => (
+                      <DropdownMenuRadioItem key={t.id} value={t.id}>
+                        <span className="min-w-0">
+                          <span className="flex items-center gap-2 font-medium">
+                            {t.label}
+                            {t.game && <span className="text-[10px] font-normal uppercase tracking-wide text-grey-400">{t.game.dims} · {t.game.style}</span>}
+                          </span>
+                          <span className="block truncate text-xs text-grey-600">{t.description}</span>
+                        </span>
+                      </DropdownMenuRadioItem>
+                    ))}
+                  </React.Fragment>
+                )}
                 {TEMPLATE_CATEGORIES.map((cat) => {
                   const items = PAGE_TEMPLATES.filter((t) => t.category === cat);
                   if (items.length === 0) return null;
@@ -335,22 +351,6 @@ export function PromptBox({
                     </React.Fragment>
                   );
                 })}
-                {gameTemplates.length > 0 && (
-                  <React.Fragment>
-                    <DropdownMenuLabel>Game templates</DropdownMenuLabel>
-                    {gameTemplates.map((t) => (
-                      <DropdownMenuRadioItem key={t.id} value={t.id}>
-                        <span className="min-w-0">
-                          <span className="flex items-center gap-2 font-medium">
-                            {t.label}
-                            {t.game && <span className="text-[10px] font-normal uppercase tracking-wide text-grey-400">{t.game.dims} · {t.game.style}</span>}
-                          </span>
-                          <span className="block truncate text-xs text-grey-600">{t.description}</span>
-                        </span>
-                      </DropdownMenuRadioItem>
-                    ))}
-                  </React.Fragment>
-                )}
               </DropdownMenuRadioGroup>
             </DropdownMenuContent>
           </DropdownMenu>

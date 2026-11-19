@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 
 import { useSendGate } from "@/components/auth/send-gate";
 import { PromptBox, type PromptBoxHandle } from "@/components/prompt/prompt-box";
@@ -48,20 +49,25 @@ export function HomePrompt({ balanceGd, gameTemplates = [] }: { balanceGd: numbe
   const state = creditState(balanceGd);
   const mainnetAllowed = useMainnetAllowed();
   return (
-    <PromptBox
-      ref={ref}
-      chips={chips}
-      gameTemplates={gameTemplates}
-      chipsPlacement="below"
-      hint={state === "preview" ? "Planning is free" : undefined}
-      creditsLabel={undefined}
-      mainnetEnabled={mainnetAllowed}
-      disabled={state === "empty"}
-      disabledReason="Top up to keep building"
-      onSubmit={send}
-      status={sendError ? <span className="text-danger">{sendError}</span> : undefined}
-      className="mt-8"
-    />
+    <div>
+      <PromptBox
+        ref={ref}
+        chips={chips}
+        gameTemplates={gameTemplates}
+        chipsPlacement="below"
+        hint={state === "preview" ? "Planning is free" : undefined}
+        creditsLabel={undefined}
+        mainnetEnabled={mainnetAllowed}
+        disabled={state === "empty"}
+        disabledReason="Top up to keep building"
+        onSubmit={send}
+        status={sendError ? <span className="text-danger">{sendError}</span> : undefined}
+        className="mt-8"
+      />
+      <Link href="/templates#game-templates-heading" className="mt-3 inline-flex rounded-full px-3 py-2 text-sm font-medium text-violet hover:bg-tint focus-visible:outline-none focus-visible:shadow-focus">
+        Browse all {gameTemplates.length} game templates
+      </Link>
+    </div>
   );
 }
 
