@@ -6,7 +6,7 @@ import { ArrowUpRight, Check, Eye, Hexagon, RotateCw, Wrench } from "lucide-reac
 import { DeployButton, useDeployAction } from "@/components/deploy/deploy-trigger";
 import { Button } from "@/components/ui/button";
 import { chainLabel } from "@/lib/deploy/explorer";
-import { formatCredits } from "@/lib/credits-math";
+import { formatCredits, formatCreditsShort } from "@/lib/credits-math";
 import type { Step, TurnRecord } from "@/lib/turn-types";
 import { formatClock, useElapsed, WaitNote, WaveDots } from "@/components/ui/wait";
 import { cn } from "@/lib/utils";
@@ -124,8 +124,14 @@ export function DeployCard({ record, chainId }: { record: TurnRecord; chainId: n
   );
 }
 
+/** A build's estimate against what the person can spend; haveMicro null when unknown (D138). */
+export interface ContinueCost {
+  needMicro: number;
+  haveMicro: number | null;
+}
+
 /** Inline error card (DESIGN_SYSTEM §4): danger dot, plain cause, Try fix, expandable logs. */
-export function TurnError({ record, onFix, disabled }: { record: TurnRecord; onFix: () => void; disabled: boolean }) {
+export function TurnError({ record, onFix, disabled, continueCost }: { record: TurnRecord; onFix: () => void; disabled: boolean; continueCost?: ContinueCost }) {
   // Paused for credits (D138): its files are a saved draft, and Continue picks up from them.
   const paused = record.paused === "credits";
   const needsFix = record.status === "needs_fix" && !paused;
@@ -142,11 +148,17 @@ export function TurnError({ record, onFix, disabled }: { record: TurnRecord; onF
             <p className="text-sm text-grey-600">
               {needsFix ? "Your files are saved. Ask for a fix, or describe the change differently." : record.error ?? "Something went wrong."}
             </p>
+            {paused && continueCost && continueCost.needMicro > 0 && (
+              <p className={cn("mt-1 text-xs", continueCost.haveMicro !== null && continueCost.haveMicro < continueCost.needMicro ? "text-warning" : "text-grey-600")}>
+                Continuing costs about {formatCredits(continueCost.needMicro)}
+                {continueCost.haveMicro !== null ? `; you have ${formatCredits(continueCost.haveMicro)}` : ""}. If it runs low again, it pauses and saves again.
+              </p>
+            )}
           </div>
         </div>
         <Button variant="chipSelected" size="sm" onClick={onFix} disabled={disabled}>
           <RotateCw />
-          {paused ? "Continue" : needsFix ? "Try fix" : "Try again"}
+          {paused ? (continueCost && continueCost.needMicro > 0 ? `Continue · ≈ ${formatCreditsShort(continueCost.needMicro)}` : "Continue") : needsFix ? "Try fix" : "Try again"}
         </Button>
       </div>
       {record.log.length > 0 && (
@@ -297,6 +309,7 @@ export function TurnView({
   plan,
   draft,
   onSkipPlan,
+  continueCost,
 }: {
   text: string;
   record: TurnRecord;
@@ -304,6 +317,8 @@ export function TurnView({
   live: boolean;
   onFix: () => void;
   fixDisabled: boolean;
+  /** What Continue on a build paused for credits would cost, and what the person has (D138). Latest turn only. */
+  continueCost?: ContinueCost;
   /** Set on the latest turn only: shows its suggestion chips. */
   onSuggest?: (prompt: string) => void;
   /** The visual check of this turn's preview is running. */
@@ -339,7 +354,7 @@ export function TurnView({
       {record.intake && <PlanCard intake={record.intake} actions={plan} />}
       {record.mode === "plan" && record.plan && !record.intake && <PlanDraftCard plan={record.plan} actions={!live ? draft : undefined} />}
       {!live && record.status === "ready" && <DeployCard record={record} chainId={chainId} />}
-      {showError && <TurnError record={record} onFix={onFix} disabled={fixDisabled} />}
+      {showError && <TurnError record={record} onFix={onFix} disabled={fixDisabled} continueCost={continueCost} />}
       {!live && record.status === "stopped" && record.mode === "build" && (
         <p className="mt-3 flex items-center gap-2 text-xs text-grey-600" role="status">
           <span className="size-2 shrink-0 rounded-full bg-grey-400" aria-hidden />
