@@ -1,5 +1,6 @@
 import "server-only";
 
+import { checkTicTacToe } from "./delivery-check";
 import type { Browser, BrowserContext, Page, Route } from "playwright-core";
 
 import { buildPublishedApp, moduleStarts, PublishBuildError, type PublishedFile } from "@/server/publish/build";
@@ -24,6 +25,7 @@ const KIT_FILES: Record<string, true> = Object.fromEntries(KITS.flatMap((k) => O
 export interface RunCheckOptions {
   /** Uploaded image names, served as blank placeholders so a real asset isn't reported as broken. */
   assets?: string[];
+  delivery?: { id: string; goal: string; verifyWallet?: boolean };
   /** The project's chain, for the wallet-less RPC stub. */
   chainId?: number;
   /** The project is a game or a 3D scene: start it and play for a moment (set from its kits). */
@@ -58,6 +60,7 @@ export interface RunCheckOptions {
 export interface RunCheckResult {
   /** False when the check couldn't run (no browser, too slow). That is never held against the app. */
   ran: boolean;
+  deliveryVerified?: boolean;
   issues: CheckIssue[];
   /** Why it didn't run, or what it covered, for the build log. */
   note: string;
@@ -367,6 +370,7 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
     await settle(p, 600);
   };
   watch(page);
+  if ((options.delivery?.id === "wallet" || options.delivery?.verifyWallet)) await page.addInitScript(standInWalletScript({ miniPay: false, chainId: options.chainId ?? 11142220 }));
   // A 2D game is played for real (D94): the kit's probe records what happens. Not for the review's pictures.
   let played = Boolean(options.game2d || options.game3d);
   let deep = Boolean(played && !options.screenshots);
@@ -375,6 +379,16 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
   if (played) await page.addInitScript(gameCheckScript(1));
   let pressedPlay = false;
   await open(page);
+  let deliveryVerified = options.delivery?.id === "interface";
+  const deliveryIssues: string[] = [];
+  if (options.delivery && /tic[- ]tac[- ]toe/i.test(options.delivery.goal)) deliveryIssues.push(...await checkTicTacToe(page));
+  if (options.delivery?.id === "wallet" || options.delivery?.verifyWallet) {
+    const wallet = await walletAndBoard(page, { board: false });
+    deliveryIssues.push(...wallet.issues);
+    const walletVerified = wallet.note.includes("a browser wallet connected");
+    if (options.delivery?.id === "wallet") deliveryVerified = walletVerified;
+    if (!walletVerified && !wallet.issues.length) deliveryIssues.push("Wallet milestone: add a working Connect wallet button that asks the browser wallet for an account and displays it.");
+  }
   // A 3D game on a checker with no WebGL shows Scene3D's plain message: there is nothing to play or judge,
   // so it is left alone rather than reported (as D85 does for scenes). Only when the browser really has no
   // WebGL: with WebGL, a game that never shows its scene is played and judged like any other.
@@ -556,6 +570,7 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
     const inside = component ? ` (in <${component}>)` : "";
     return { file, message: `The app crashed when it ran${where}: ${s.message}${inside}`, source: "runtime" };
   });
+  issues.push(...deliveryIssues.map((message) => ({ file: "src/App.tsx", message, source: "runtime" as const })));
   if (blankStart && !issues.length) {
     issues.push({
       file: "src/App.tsx",
@@ -580,7 +595,7 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
   }
   const opened = issues.length ? `${issues.length} problem${issues.length === 1 ? "" : "s"} when the app ran` : `opened ${routes.length === 1 ? "the app" : `${routes.length} pages`} with no errors`;
   const note = gameNotes.length ? `${opened}; ${gameNotes.filter(Boolean).join("; ")}` : opened;
-  return { ran: true, issues, note, ...(screenshots ? { screenshots } : {}) };
+  return { ran: true, deliveryVerified: Boolean(deliveryVerified && !issues.length), issues, note, ...(screenshots ? { screenshots } : {}) };
 }
 
 /** Build the project and open it. Never throws: a check that can't run says so and reports nothing. */
@@ -607,14 +622,15 @@ export async function runCheck(files: Record<string, string>, options: RunCheckO
     const timeout = new Promise<Omit<RunCheckResult, "ms">>((resolve) => {
       timer = setTimeout(() => resolve({ ran: false, issues: [], note: "skipped: the app took too long to open" }), options.timeoutMs ?? (kits.includes("game-2d") ? GAME_TIMEOUT_MS : DEFAULT_TIMEOUT_MS));
     });
-    const game = options.game ?? (kits.includes("game-2d") || kits.includes("three-d"));
+    const ticTacToe = options.delivery?.id === "interface" && /tic[- ]tac[- ]toe/i.test(options.delivery.goal);
+    const game = ticTacToe ? false : options.game ?? (kits.includes("game-2d") || kits.includes("three-d"));
     // The game's own code, so the kit's files (which name GameCanvas and round in comments) don't count.
     const authored = Object.entries(files).filter(([p]) => /^src\/.*\.(tsx?|jsx?)$/.test(p) && !(p in KIT_FILES)).map(([, c]) => c);
     // A Scene3D game that reports to the probe is played like a 2D one (D113). A 3D scene that only borrows the
     // 2D kit's sound is a scene, not a 2D game: it gets the scene check, never the 2D start-screen rules.
     const scene3d = authored.some((c) => /<Scene3D\b/.test(c));
     const game3d = options.game3d ?? (scene3d && kits.includes("game-2d") && authored.some((c) => /\bdeclareGame\s*\(/.test(c)) && Boolean(files["src/three/Scene3D.tsx"]?.includes("checkRound")));
-    const game2d = options.game2d ?? (kits.includes("game-2d") && !scene3d);
+    const game2d = ticTacToe ? false : options.game2d ?? (kits.includes("game-2d") && !scene3d);
     const board = options.board ?? Object.entries(files).some(([p, c]) => p.startsWith("src/") && !p.startsWith("src/game/") && /<PostScore\b/.test(c));
     const miniPay = options.miniPay ?? kits.includes("mini-app");
     const canvas = options.canvas ?? authored.some((c) => /<GameCanvas\b/.test(c));

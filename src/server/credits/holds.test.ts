@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { and, eq, sql } from "drizzle-orm";
 
 import type { Db } from "@/server/db/client";
-import { balances, ledgerEntries, messages, projects, turnJobCalls, turnJobs, usageEvents, users, type TurnJob } from "@/server/db/schema";
+import { buildDrafts, balances, ledgerEntries, messages, projects, turnJobCalls, turnJobs, usageEvents, users, type TurnJob } from "@/server/db/schema";
 import { scriptedModel, type ScriptedReply } from "@/server/agent/fake-model";
 import { MODEL_IDS, type ModelClient } from "@/server/agent/model";
 import { nameProject } from "@/server/agent/project-name";
@@ -155,7 +155,7 @@ describe.each(testBackends())("holds and charging on $name", (backend) => {
       if (++commits > crashAfter) throw new LeaseLostError();
       return real(fn);
     };
-    const record = await runTurn({ db, model: client, job: ctx, ...extra }, { projectId: claimed!.projectId, userId: claimed!.userId, mode: "build", userMessageId: claimed!.userMessageId }, () => undefined);
+    const record = await runTurn({ db, model: client, job: ctx, runCheck: async () => ({ ran: true, deliveryVerified: true, issues: [], note: "Accounting fixture acceptance; browser behavior is covered separately", ms: 0 }), ...extra }, { projectId: claimed!.projectId, userId: claimed!.userId, mode: "build", userMessageId: claimed!.userMessageId }, () => undefined);
     return record;
   }
 
@@ -513,7 +513,7 @@ describe.each(testBackends())("holds and charging on $name", (backend) => {
     /** Calls that each really use their whole output limit, reported as the tier's own model. */
     const costly = (n: number): ScriptedReply[] =>
       Array.from({ length: n }, (_, i) => ({
-        tools: [{ name: "create_file", args: { path: i === 0 ? "src/App.tsx" : `src/F${i}.tsx`, content: i === 0 ? APP : "x" } }],
+        tools: [{ name: "create_file", args: { path: i === 0 ? "src/App.tsx" : `src/components/F${i}.tsx`, content: i === 0 ? APP : `export default function F${i}(){return null}` } }],
         usage: { input: 2_000, output: 16_000 },
       }));
 
@@ -526,7 +526,8 @@ describe.each(testBackends())("holds and charging on $name", (backend) => {
       expect(record.status).toBe("needs_fix");
       expect(record.paused).toBe("credits");
       expect(record.error).toBe(CREDITS_PAUSED_MESSAGE);
-      expect(record.version).toBeGreaterThan(0);
+      expect(record.version).toBeUndefined();
+      expect(record.draftSaved).toBe(true);
       expect(model.requests.length).toBeLessThan(25);
       expect(m.charged).toBeGreaterThan(0);
       expect(m.balance).toBeGreaterThanOrEqual(0);
@@ -535,10 +536,11 @@ describe.each(testBackends())("holds and charging on $name", (backend) => {
       const row = await jobRow(job.id);
       expect([row.status, row.error, row.holdMicro]).toEqual(["error", CREDITS_PAUSED_MESSAGE, 0]);
       expect(row.releasedMicro).toBe(PAID_MIN_START_MICRO - m.charged);
-      // What it wrote before it ran low is the project's newest version, and its turn lock is free.
-      const files = await loadFiles(db, a.projectId);
-      expect(files["src/App.tsx"]).toBe(APP);
-      expect(files["src/F1.tsx"]).toBe("x");
+      // Credit pauses preserve recovery work without replacing the last working checkpoint.
+      expect(await loadFiles(db, a.projectId)).toEqual({});
+      const [draft] = await db.select().from(buildDrafts).where(eq(buildDrafts.jobId, job.id));
+      expect(draft.files["src/App.tsx"]).toBe(APP);
+      expect(draft.files["src/components/F1.tsx"]).toContain("function F1");
       const [p] = await db.select().from(projects).where(eq(projects.id, a.projectId));
       expect([p.turnStartedAt, p.status]).toEqual([null, "needs_fix"]);
       await expectBooksBalance(a.userId);

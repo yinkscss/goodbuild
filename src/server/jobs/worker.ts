@@ -196,7 +196,7 @@ export class TurnWorker {
         return;
       }
     }
-    if (job.attempt === 1 && this.opts.namer) void this.nameIfFirstBuild(db, job, this.opts.namer());
+    if (job.attempt === 1 && job.funding !== "platform" && this.opts.namer) void this.nameIfFirstBuild(db, job, this.opts.namer());
     const controller = new AbortController();
     let lost = false;
     const lease = setInterval(() => {

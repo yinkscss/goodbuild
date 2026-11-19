@@ -1,4 +1,5 @@
 import "server-only";
+import { recordSponsoredUsage } from "@/server/credits/build-sponsorship";
 
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 
@@ -157,6 +158,6 @@ export async function recordUsage(
       .returning({ id: usageEvents.id });
     return rows.length > 0;
   };
-  const inserted = args.funding === "paid" ? await recordPaidUsage(db, { userId: args.userId, jobId, callId: args.callId, chargedMicro: charged, insertUsage }) : await insertUsage(db);
+  const inserted = args.funding === "paid" ? await recordPaidUsage(db, { userId: args.userId, jobId, callId: args.callId, chargedMicro: charged, insertUsage }) : args.funding === "platform" && jobId ? await recordSponsoredUsage(db, jobId, charged, insertUsage) : await insertUsage(db);
   return { providerCostMicro: provider, chargedMicro: charged, inserted };
 }

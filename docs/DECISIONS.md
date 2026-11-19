@@ -1796,3 +1796,7 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - **Checked:** each passes the app check and the type check, alone and with the MiniPay and board kits; the run check plays each, sees every declared kind, and posts a score; a Word hunt whose letters do nothing and a Rhythm lanes whose pad never moves are caught. Run three times in a row with no failures.
 - **Next (part 2):** block stacker, tower defense and an idle clicker. An idle game has no natural end, so its round will be a short shift whose upgrades carry over; this is a proposal until built.
 - **UNVERIFIED** with a real model reshaping them, and on a real phone.
+
+## Progressive first delivery and recoverable builds (19 Nov 2026)
+
+The owner approved implementing all five parts of the first-build fix and opening a PR: explicit retry, durable drafts and loop limits, staged MVP delivery, bounded first-build/repair sponsorship, and contract-test readiness. See [PROGRESSIVE_DELIVERY.md](PROGRESSIVE_DELIVERY.md) for schema, funding caps, behavior, validation and rollout limits. The existing mainnet custody gate remains mandatory. Working interface, saved implementation and verified live capability are distinct states. The default sponsorship limits are reviewable launch caps, not measured completion guarantees.

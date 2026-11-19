@@ -123,6 +123,10 @@ export interface TurnRecord {
   changes: FileChange[];
   version?: number;
   chargedMicro: number;
+  sponsoredMicro?: number;
+  jobId?: string;
+  draftSaved?: boolean;
+  delivery?: { title: string; remaining: string[]; demo: boolean };
   status: "ready" | "needs_fix" | "answered" | "error" | "stopped";
   checks?: { errors: number; warnings: number };
   contracts?: Array<{ name: string; file: string; bytecodeBytes: number }>;

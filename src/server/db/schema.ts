@@ -214,6 +214,9 @@ export const turnJobs = pgTable(
     mode: text("mode").notNull(),
     prompt: text("prompt").notNull(),
     userMessageId: uuid("user_message_id").notNull(),
+    retryOfJobId: uuid("retry_of_job_id"),
+    baseVersion: integer("base_version").notNull().default(0),
+    deliveryIndex: integer("delivery_index"),
     /** Set once the turn has created its assistant message (reused on resume). */
     assistantMessageId: uuid("assistant_message_id"),
     /** queued | running | done | error | stopped | cancelled */
@@ -248,10 +251,42 @@ export const turnJobs = pgTable(
     index("turn_jobs_project_idx").on(t.projectId, t.createdAt),
     uniqueIndex("turn_jobs_one_running_idx").on(t.projectId).where(sql`status = 'running'`),
     uniqueIndex("turn_jobs_user_message_idx").on(t.userMessageId),
+    uniqueIndex("turn_jobs_retry_idx").on(t.retryOfJobId),
     check("turn_jobs_funding_check", sql`${t.funding} IN ('free', 'paid', 'exempt', 'platform')`),
     check("turn_jobs_hold_check", sql`${t.holdMicro} >= 0 AND ${t.releasedMicro} >= 0 AND (${t.funding} = 'paid' OR (${t.holdMicro} = 0 AND ${t.releasedMicro} = 0))`),
   ],
 );
+
+/** Unvalidated work never replaces the project's last working checkpoint. */
+export const buildDrafts = pgTable("build_drafts", {
+  jobId: uuid("job_id").primaryKey().references(() => turnJobs.id, { onDelete: "cascade" }),
+  projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  baseVersion: integer("base_version").notNull(),
+  files: jsonb("files").$type<Record<string, string>>().notNull(),
+  diagnostics: text("diagnostics").notNull().default(""),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export interface DeliveryMilestone {
+  id: "interface" | "wallet" | "multiplayer" | "integrations" | "payments";
+  title: string;
+  acceptance: string[];
+}
+export interface DeliveryPlan { goal: string; milestones: DeliveryMilestone[]; completed: number; verified?: string[]; }
+
+export const buildDeliveries = pgTable("build_deliveries", {
+  projectId: uuid("project_id").primaryKey().references(() => projects.id, { onDelete: "cascade" }),
+  plan: jsonb("plan").$type<DeliveryPlan>().notNull(),
+});
+
+/** Fixed, reserved subsidy for one job. Unique keys bound first delivery and repair lineages. */
+export const buildSponsorships = pgTable("build_sponsorships", {
+  jobId: uuid("job_id").primaryKey(),
+  allowanceKey: text("allowance_key").notNull().unique(),
+  limitMicro: bigint("limit_micro", { mode: "number" }).notNull(),
+  spentMicro: bigint("spent_micro", { mode: "number" }).notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [check("build_sponsorship_amounts", sql`${t.limitMicro} >= 0 AND ${t.spentMicro} >= 0`)]);
 
 /**
  * Each completed model response of a job, committed with its usage rows in one transaction.

@@ -377,6 +377,9 @@ export function TurnView({
       {!live && onSuggest && record.status !== "error" && record.suggestions?.length ? (
         <SuggestionChips items={record.suggestions} onPick={onSuggest} disabled={fixDisabled} />
       ) : null}
+      {!live && record.draftSaved && <p className="mt-3 text-xs text-grey-600">Progress saved for recovery. Your working version is preserved.</p>}
+      {!live && (record.sponsoredMicro ?? 0) > 0 && <p className="mt-3 text-xs text-grey-600">GoodBuild covered {formatCredits(record.sponsoredMicro!)} of AI. No credits deducted for this build.</p>}
+      {!live && record.delivery && <p className="mt-3 text-xs text-grey-600">{record.delivery.demo ? "Local/demo milestone · " : ""}{record.delivery.remaining.length ? `Remaining: ${record.delivery.remaining.join(", ")}` : "All saved milestones completed"}</p>}
       {!live && (record.version || record.chargedMicro > 0) && (
         <p className="mt-2 text-[11px] text-grey-400">
           {record.version ? `Saved as v${record.version}` : ""}

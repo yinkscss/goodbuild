@@ -206,7 +206,7 @@ describe("background turn jobs", { timeout: 60_000 }, () => {
   it("ends with Retry when a replay diverges from the logged responses", async () => {
     const job = await enqueueTurn(db, { projectId, userId, mode: "build", prompt: "Build the club page" });
     // Crash after setup and two logged responses.
-    await expect(runJob(job.id, scriptedModel(SCRIPT).client, 4)).rejects.toBeInstanceOf(LeaseLostError);
+    await expect(runJob(job.id, scriptedModel(SCRIPT).client, 5)).rejects.toBeInstanceOf(LeaseLostError);
     // The code changed between attempts: the second logged call no longer sits where it did.
     const [second] = await db.select().from(turnJobCalls).where(sql`${turnJobCalls.jobId} = ${job.id} and ${turnJobCalls.idx} = 1`);
     await db.update(turnJobCalls).set({ data: { ...(second.data as Record<string, unknown>), convoLen: 99 } }).where(sql`${turnJobCalls.jobId} = ${job.id} and ${turnJobCalls.idx} = 1`);
@@ -326,5 +326,5 @@ async function runJob(jobId: string, model: ModelClient, crashAfter?: number) {
 
 /** The record minus the resume log line; tool step ids depend on the provider's call ids. */
 function withoutResume(r: TurnRecord): TurnRecord {
-  return { ...r, log: r.log.filter((l) => !l.startsWith("↻")), steps: r.steps.map((s) => ({ ...s, id: s.id.replace(/^(tool:\d+):.*$/, "$1") })) };
+  return { ...r, jobId: undefined, log: r.log.filter((l) => !l.startsWith("↻")), steps: r.steps.map((s) => ({ ...s, id: s.id.replace(/^(tool:\d+):.*$/, "$1") })) };
 }

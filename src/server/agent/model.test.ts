@@ -255,3 +255,16 @@ describe("withFallback", () => {
     expect(calls).toHaveLength(0);
   });
 });
+
+
+it("sponsored requests disable SDK retries while retaining provider error mapping", async () => {
+  let attempts = 0;
+  const provider = new MockLanguageModelV4({ modelId: "deepseek-flash", doStream: async () => {
+    attempts++;
+    throw new APICallError({ message: "unavailable", url: "https://provider.test", requestBodyValues: {}, statusCode: 503, isRetryable: true });
+  } });
+  const client = aiSdkClient({ cheap: provider, strong: provider });
+  const collect = async () => { for await (const event of client.stream({ tier: "cheap", messages: [{ role: "user", content: "Build" }], maxTokens: 1000, noRetries: true })) void event; };
+  await expect(collect()).rejects.toBeInstanceOf(ModelUnavailableError);
+  expect(attempts).toBe(1);
+});
