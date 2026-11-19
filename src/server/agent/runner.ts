@@ -155,7 +155,9 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
   const compile: typeof checkContracts = (files, options = {}) => compileWith(files, options.upgradeable ? { ...options, upgradeChecks: upgradeChecksFor(db, input.projectId) } : options);
   const lintWith = deps.checkApp ?? checkApp;
   let assetNames: string[] = [];
-  const lint = (files: Record<string, string>) => lintWith(files, { assets: assetNames });
+  // Harness v2 (D152): the vetted packages are addable, so the import check's hints say so.
+  let packagesV2 = false;
+  const lint = (files: Record<string, string>) => lintWith(files, { assets: assetNames, ...(packagesV2 ? { v2: true } : {}) });
   const openWith = deps.runCheck ?? (runCheckEnabled() ? runCheck : undefined);
   let chainId: number | undefined;
   /** v2 (D152): the run check also runs the spec's acceptance flows; set once the setup says v2. */
@@ -254,7 +256,8 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     }
     assetNames = setup.assetNames;
     chainId = setup.chainId;
-    const ws = new Workspace(setup.baseFiles);
+    packagesV2 = setup.harness === "v2" && input.mode === "build";
+    const ws = new Workspace(setup.baseFiles, { v2: packagesV2 });
     workspace = ws;
     if (job.deliveryIndex !== undefined) delivery = (await db.select().from(buildDeliveries).where(eq(buildDeliveries.projectId, input.projectId)))[0]?.plan;
     const firstBuild = setup.firstBuild;

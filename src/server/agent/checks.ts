@@ -16,7 +16,7 @@ import { assetRefs } from "./assets";
 import { custodyOf, type CustodyReason } from "./custody";
 import { exploitTestIssues } from "./kits/dao-vault";
 import { KIT_MARKER, kitForPackage, kitReplacing, kitsOf, type Kit } from "./kits/registry";
-import { ALLOWED_DEPENDENCIES, PLATFORM_DIR, WALLET_DIR, dependenciesOf, isStarterApp } from "./template";
+import { ALLOWED_DEPENDENCIES, COMPANION_PACKAGES, PLATFORM_DIR, V2_PACKAGES, WALLET_DIR, dependenciesOf, isStarterApp } from "./template";
 
 /** Compiler settings, pinned (CONTRACTS_AND_DEPLOYMENT.md §2, §4). */
 export const SOLC_SETTINGS = {
@@ -560,7 +560,7 @@ function packageName(spec: string): string {
 }
 
 /** Syntax errors and unresolved imports in the generated app. Type errors are left to the preview. */
-export function checkApp(files: Record<string, string>, opts: { assets?: string[] } = {}): CheckReport {
+export function checkApp(files: Record<string, string>, opts: { assets?: string[]; /** Harness v2 (D152): the vetted v2 packages may be added. */ v2?: boolean } = {}): CheckReport {
   const errors: CheckIssue[] = [];
   const deps = new Set(dependenciesOf(files));
   for (const [file, content] of Object.entries(files)) {
@@ -588,11 +588,13 @@ export function checkApp(files: Record<string, string>, opts: { assets?: string[
         if (!deps.has(pkg)) {
           const kit = kitForPackage(pkg);
           // A package a kit stands in for (an animation or charting library): say which kit, so the fix is one step.
-          const instead = kit ? undefined : kitReplacing(pkg);
+          // The v2 packages (D152) are only addable in a v2 build; elsewhere they read as not allowed, as before.
+          const addable = pkg in ALLOWED_DEPENDENCIES && (opts.v2 || !(pkg in V2_PACKAGES || Object.values(COMPANION_PACKAGES).some((c) => pkg in c)));
+          const instead = kit || addable ? undefined : kitReplacing(pkg);
           const hint =
             kit && !kitsOf(files).includes(kit)
               ? ` It comes with the ${kit.id} kit: call add_kit("${kit.id}") first.`
-              : pkg in ALLOWED_DEPENDENCIES
+              : addable
                 ? ` Call add_dependency("${pkg}") first.`
                 : instead
                   ? ` It isn't on the allowed package list. The ${instead.id} kit does this with no package: ${kitsOf(files).includes(instead) ? `follow its guide (read_guide "kit-${instead.id}")` : `call add_kit("${instead.id}")`} and use its files.`

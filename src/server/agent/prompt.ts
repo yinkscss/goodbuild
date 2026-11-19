@@ -3,6 +3,7 @@ import type { ToolSpec } from "./model";
 import { guideCatalog, guideNames } from "./guides";
 import { KITS, kitCatalog } from "./kits/registry";
 import { PLAN_ASK_TOOL } from "./plan-intake";
+import { PACKAGES_GUIDE_NAME, V2_PACKAGE_USES } from "./packages-guide";
 import { BASE_ALLOWED_DEPENDENCIES, PLATFORM_DIR } from "./template";
 import { UI_PRIMITIVE_NAMES } from "./ui-primitives";
 import { SPEC_PATH, WRITE_SPEC_TOOL, specBlock } from "./spec";
@@ -81,8 +82,18 @@ export const RUN_ACCEPTANCE_TOOL = fn("run_acceptance", "Run the spec's acceptan
 
 const V2_RUN_CHECKS = fn("run_checks", "Run every GoodBuild check on the project as it is now: contracts compiled and tested, the app's imports and types, and the built app opened in a browser. Use it last, before you reply.", {}, []);
 
-/** v2 build tools: v1's, with run_checks uncapped and the finer checks added. */
-export const V2_BUILD_TOOLS: ToolSpec[] = [...BUILD_TOOLS.map((t) => (t.function.name === "run_checks" ? V2_RUN_CHECKS : t)), RUN_TESTS_TOOL, OPEN_APP_TOOL, RUN_ACCEPTANCE_TOOL];
+/** v2's add_dependency (D152, WS4): the base list plus the vetted packages, each with what it is for. */
+const V2_ADD_DEPENDENCY = fn(
+  "add_dependency",
+  `Add an npm package to the app. Allowed: ${Object.keys(BASE_ALLOWED_DEPENDENCIES).join(", ")}; and for real work (read_guide "${PACKAGES_GUIDE_NAME}" first): ${Object.entries(V2_PACKAGE_USES).map(([name, use]) => `${name} (${use})`).join(", ")}${KITS.length ? "; and the packages of the kits this project has on" : ""}.`,
+  { name: { type: "string" } },
+  ["name"],
+);
+
+const V2_TOOL_SWAPS: Record<string, ToolSpec> = { run_checks: V2_RUN_CHECKS, add_dependency: V2_ADD_DEPENDENCY };
+
+/** v2 build tools: v1's, with run_checks uncapped, the vetted packages addable and the finer checks added. */
+export const V2_BUILD_TOOLS: ToolSpec[] = [...BUILD_TOOLS.map((t) => V2_TOOL_SWAPS[t.function.name] ?? t), RUN_TESTS_TOOL, OPEN_APP_TOOL, RUN_ACCEPTANCE_TOOL];
 
 /** The spec call's tools (D152): read the project, read guides, write the spec. No edits. */
 export const SPEC_TOOLS: ToolSpec[] = [
@@ -151,6 +162,12 @@ const APP_RULES = `Front end (React 18 + TypeScript in an in-browser bundler):
 - G$ in the UI: read the token address from the contract (e.g. its gd() getter) and decimals() from the token; format with formatAmount or formatUnits/parseUnits. Prefer one-step payments with the token's transferAndCall(to, amount, data) (gdTokenAbi in src/lib/tokens.ts); otherwise approve then call. Show the user's G$ balance where it helps.
 - Saved data: src/lib/useDb.ts gives useDbSession() (wallet sign-in, or email codes for regular apps) and useCollection(name, options); src/lib/dataRules.json sets, per collection, who adds, reads and deletes records (forms can take entries without sign-in for the owner to read), private by default. Load the app-data guide before using them. Never fetch your own "/api/..." routes, third-party databases or form services.
 - Packages: only those in package.json; add allowed ones with add_dependency.`;
+
+/** v2 (D152, WS4): the vetted packages are there for real work; the rest of the front-end rules are v1's. */
+const APP_RULES_V2 = APP_RULES.replace(
+  "- Packages: only those in package.json; add allowed ones with add_dependency.",
+  `- Packages: only those in package.json; add allowed ones with add_dependency. Beyond the base list there are vetted packages for real work: app state (zustand, immer), forms and validation (react-hook-form, zod/mini), interactive charts (recharts), drag and drop (@dnd-kit), 2D physics (matter-js), sound (howler), markdown (react-markdown), search (fuse.js), CSV (papaparse) and ids (nanoid). Read the ${PACKAGES_GUIDE_NAME} guide before adding one; plain React is still the default for small things.`,
+);
 
 const DESIGN_RULES = `Design: make each app look made for its purpose, not like a template.
 - Start from what the user does on the page. Put the main action (tip, save, vote, mint, claim) above the fold on mobile, in its own card, with a clear primary button whose label is the verb ("Send tip", "Save G$"), not "Submit".
@@ -229,7 +246,7 @@ ${CONVERSATION}
 
 ${v2 ? CONTRACT_RULES_V2 : CONTRACT_RULES}
 
-${APP_RULES}
+${v2 ? APP_RULES_V2 : APP_RULES}
 
 ${v2 ? DESIGN_RULES_V2 : DESIGN_RULES}
 

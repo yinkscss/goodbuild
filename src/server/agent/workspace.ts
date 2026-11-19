@@ -5,7 +5,7 @@ import { findSymbol, manifest, readRange, searchCode } from "./codebase";
 import { applyEdits, diffStat, unifiedDiff, type SearchReplace } from "./edits";
 import { loadGuides } from "./guides";
 import { KITS, kitById, kitForPackage, kitIdsOf, kitsOf, packagesFor, withKit } from "./kits";
-import { dependenciesOf, packageJson } from "./template";
+import { COMPANION_PACKAGES, dependenciesOf, packageJson } from "./template";
 import { SPEC_PATH, parseSpec, specPlan } from "./spec";
 
 import type { FileChange } from "@/lib/turn-types";
@@ -40,9 +40,13 @@ export class Workspace {
   private readonly before: Record<string, string>;
   readonly touched = new Set<string>();
 
-  constructor(files: Record<string, string>) {
+  /** Harness v2 (D152): the vetted v2 packages may be added. */
+  private readonly v2: boolean;
+
+  constructor(files: Record<string, string>, { v2 = false }: { v2?: boolean } = {}) {
     this.files = { ...files };
     this.before = { ...files };
+    this.v2 = v2;
   }
 
   changed(): boolean {
@@ -216,7 +220,7 @@ export class Workspace {
       }
       case "add_dependency": {
         const dep = String(args.name ?? "");
-        const allowed = packagesFor(this.files);
+        const allowed = packagesFor(this.files, KITS, { v2: this.v2 });
         if (!(dep in allowed)) {
           const kit = kitForPackage(dep);
           if (kit) return { ok: false, result: `Error: "${dep}" comes with the ${kit.id} kit. Call add_kit("${kit.id}") to turn it on.` };
@@ -225,11 +229,13 @@ export class Workspace {
         const deps = dependenciesOf(this.files);
         if (deps.includes(dep)) return { ok: true, result: `${dep} is already installed.` };
         const prev = this.files["package.json"] ?? "";
-        this.files["package.json"] = packageJson([...deps, dep]);
+        // A package the preview needs installed beside it (recharts needs react-is).
+        const companions = Object.keys(COMPANION_PACKAGES[dep] ?? {});
+        this.files["package.json"] = packageJson([...deps, dep, ...companions]);
         this.touched.add("package.json");
         return {
           ok: true,
-          result: `Added ${dep}@${allowed[dep]}.`,
+          result: `Added ${dep}@${allowed[dep]}${companions.length ? ` (and ${companions.join(", ")}, which it needs)` : ""}.`,
           change: { path: "package.json", op: "edit", ...diffStat(prev, this.files["package.json"]), diff: unifiedDiff("package.json", prev, this.files["package.json"]) },
         };
       }
