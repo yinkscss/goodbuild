@@ -71,7 +71,7 @@ export async function enqueueRegistryEvent(db: Db, e: RegistryEventInput): Promi
 /** Only Celo mainnet counts: callers pass the deployment's chain. */
 export const isRegistryChain = (chainId: number) => chainId === CELO_MAINNET_ID;
 
-const ABI = parseAbi(["function recordBatch((uint8 kind, bytes32 builder, bytes32 app, address target, bytes32 txHash)[] entries)"]);
+export const REGISTRY_ABI = parseAbi(["function recordBatch((uint8 kind, bytes32 builder, bytes32 app, address target, bytes32 txHash, uint64 at)[] entries)"]);
 
 export function loadRecorderKey(path = process.env.RECORDER_KEY_FILE || "/run/secrets/recorder_key"): Hex | null {
   try {
@@ -102,7 +102,7 @@ export function liveFlushDeps(): FlushDeps | null {
   const pub = createPublicClient({ chain: celo, transport });
   const wallet = createWalletClient({ account: privateKeyToAccount(key), chain: celo, transport });
   return {
-    send: (entries) => wallet.writeContract({ address: registry, abi: ABI, functionName: "recordBatch", args: [entries] }),
+    send: (entries) => wallet.writeContract({ address: registry, abi: REGISTRY_ABI, functionName: "recordBatch", args: [entries] }),
     receipt: async (hash) => {
       try {
         return (await pub.getTransactionReceipt({ hash })).status === "success";
