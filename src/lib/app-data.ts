@@ -36,6 +36,11 @@ export interface CollectionRule {
   fields: Record<string, FieldType> | null;
   /** No two records may share these field values. Each must be in `public`, or a refusal would reveal private data. */
   unique: string[];
+  /**
+   * Written only by GoodBuild's dealer (D141): each record is one player's dealt hand or role, readable by
+   * that player alone. Nobody adds, changes or deletes these through the normal routes.
+   */
+  dealt?: true;
 }
 
 /** What a record was saved under. A record is never more visible than this, whatever the rule later says. */
@@ -51,6 +56,11 @@ const FIELD_NAME = /^[A-Za-z][A-Za-z0-9_]{0,47}$/;
 
 export const PRIVATE_RULE: CollectionRule = { create: "signed-in", read: ["writer"], update: ["writer"], delete: ["writer"], public: [], fields: null, unique: [] };
 const PUBLIC_READ_RULE: CollectionRule = { ...PRIVATE_RULE, read: ["anyone"] };
+/** "dealt" (D141): the dealer writes each player's share as that player's own record, read by them alone. */
+export const DEALT_RULE: CollectionRule = { create: "signed-in", read: ["writer"], update: [], delete: [], public: [], fields: null, unique: [], dealt: true };
+
+/** The dealer's limits (D141), shared by the server and the app's helper. */
+export const DEAL_LIMITS = { maxPlayers: 10, maxDeck: 120, itemChars: 40, roomChars: 40, maxDraw: 10 } as const;
 
 const RULE_EXAMPLE = `{"collections": {"notes": "private", "posts": "public-read", "bookings": {"create": "anyone", "read": ["writer", "owner"], "public": ["day"]}}}`;
 
@@ -67,12 +77,15 @@ function list(value: unknown, allowed: readonly string[], where: string, issues:
 function parseRule(name: string, raw: unknown, issues: string[]): CollectionRule | null {
   if (raw === "private") return PRIVATE_RULE;
   if (raw === "public-read") return PUBLIC_READ_RULE;
+  if (raw === "dealt") return DEALT_RULE;
   const at = `Collection "${name}" in ${DATA_RULES_PATH}:`;
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    issues.push(`${at} the rule must be "private", "public-read" or an object like ${RULE_EXAMPLE}.`);
+    issues.push(`${at} the rule must be "private", "public-read", "dealt" or an object like ${RULE_EXAMPLE}.`);
     return null;
   }
   const r = raw as Record<string, unknown>;
+  // Saved at publish in its parsed form, which carries dealt: true. Nothing else about it can be changed.
+  if (r.dealt === true) return DEALT_RULE;
   const known = ["create", "read", "update", "delete", "public", "fields", "unique"];
   const unknown = Object.keys(r).filter((k) => !known.includes(k));
   if (unknown.length) issues.push(`${at} unknown setting ${unknown.map((k) => `"${k}"`).join(", ")}. Use ${known.join(", ")}.`);

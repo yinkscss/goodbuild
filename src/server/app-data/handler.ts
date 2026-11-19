@@ -12,6 +12,7 @@ import { AuthError } from "@/server/auth/errors";
 import { verifySignIn, type VerifySignInInput } from "@/server/auth/siwe";
 import type { Db } from "@/server/db/client";
 import { effectiveHost } from "@/server/edge";
+import { checkDeal, createDeal, dealInfo, drawFromDeal } from "./deal";
 import { emailSender, requestEmailCode, verifyEmailCode, type EmailSender } from "./email";
 import { createRateLimiter, limitsFromEnv, type AppDataLimits, type RateLimiter } from "./limits";
 import {
@@ -431,8 +432,47 @@ async function recordRoute(ctx: Context, method: string, collection: string, key
   return record ? json(record) : fail("not_found", 404, "There's no such record.");
 }
 
+/**
+ * The dealer (D141): POST deal/<collection> shuffles and deals, GET deal/<collection>/<id> is the receipt,
+ * POST deal/<collection>/<id>/draw takes from the stock. Signed in with a wallet only. No route ever
+ * returns another player's items or the stock.
+ */
+async function dealRoute(ctx: Context, method: string, collection: string, id: string | undefined, action: string | undefined): Promise<Response> {
+  checkCollection(collection);
+  const viewer = await requireViewer(ctx);
+  if (!viewer.signedIn || !viewer.subject.startsWith("0x")) fail("unauthenticated", 401, "Sign in with your wallet to use the dealer.");
+  if (id === undefined) {
+    if (method !== "POST") fail("method_not_allowed", 405, "That method isn't allowed here.");
+    limitWrite(ctx, viewer);
+    limit(ctx, `deal:${ctx.app.projectId}:${viewer.subject}`, ctx.limits.dealsPerWalletPerMinute);
+    requireJson(ctx.request);
+    const text = await readBody(ctx.request, 16 * 1024);
+    if (text === null) fail("body_too_large", 413, "That deal is too large.");
+    const input = checkDeal(parseObject(text));
+    await checkSiteRoom(ctx);
+    return json(await createDeal(ctx.db, ctx.app, viewer, collection, input, ctx.limits));
+  }
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id)) fail("not_found", 404, "There's no such deal.");
+  if (action === undefined) {
+    if (method !== "GET") fail("method_not_allowed", 405, "That method isn't allowed here.");
+    limit(ctx, `r:ip:${ctx.ip}`, ctx.limits.readsPerIpPerMinute);
+    return json(await dealInfo(ctx.db, ctx.app, viewer, collection, id));
+  }
+  if (action !== "draw") fail("not_found", 404, "There's nothing here.");
+  if (method !== "POST") fail("method_not_allowed", 405, "That method isn't allowed here.");
+  limitWrite(ctx, viewer);
+  limit(ctx, `draw:${ctx.app.projectId}:${viewer.subject}`, ctx.limits.drawsPerWalletPerMinute);
+  requireJson(ctx.request);
+  const text = await readBody(ctx.request, 1024);
+  if (text === null) fail("body_too_large", 413, "That request is too large.");
+  const count = parseObject(text).count ?? 1;
+  await checkSiteRoom(ctx);
+  return json(await drawFromDeal(ctx.db, ctx.app, viewer, collection, id, typeof count === "number" ? count : NaN, ctx.limits));
+}
+
 function route(ctx: Context, method: string, path: string[]): Promise<Response> {
   const [version, section, a, b, ...extra] = path;
+  if (version === "v1" && section === "deal" && a && extra.length <= 1) return dealRoute(ctx, method, a, b, extra[0]);
   if (version !== "v1" || extra.length) fail("not_found", 404, "There's nothing here.");
   if (section === "session" && a === undefined) return sessionRoute(ctx, method);
   if (section === "session" && a === "nonce" && b === undefined) {
