@@ -5,6 +5,7 @@ import { Greeting, HomePrompt, HomePromptProvider, NewBuildButton } from "@/comp
 import { ProjectGrid, ProjectGridSkeleton, ProjectsEmpty, ProjectsError } from "@/components/home/projects";
 import { StartCredits } from "@/components/credits/start-credits";
 import { getCredits, needsStartCredits } from "@/server/credits";
+import { gameTemplateStarters } from "@/server/agent/game-templates";
 import { freePolicy } from "@/server/credits/free-grants";
 import { loadProjects, loadSession } from "@/server/home-data";
 
@@ -42,7 +43,7 @@ export default function HomePage() {
 async function Prompt() {
   const session = await loadSession();
   const credits = await getCredits(session.user.id);
-  return <HomePrompt balanceGd={credits.balanceGd} />;
+  return <HomePrompt balanceGd={credits.balanceGd} gameTemplates={gameTemplateStarters()} />;
 }
 
 async function Projects() {

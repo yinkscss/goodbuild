@@ -41,6 +41,17 @@ export interface GameTemplate {
 
 export const GAME_TEMPLATES: GameTemplate[] = [laneRacer, catchDodge, caveFlyer, brickBreaker, matchGrid, quickQuiz, runner3d, kartTrack, mazeEscape, skyRings];
 
+/** Safe, small descriptions for the app's template picker. Keep game source files on the server. */
+export function gameTemplateStarters() {
+  return GAME_TEMPLATES.map(({ id, name, dims, style, fits }) => ({
+    id,
+    label: name,
+    description: fits,
+    examplePrompt: `Build a ${name.toLowerCase()} game using GoodBuild's ${name} game template. ${fits}.`,
+    game: { dims, style },
+  }));
+}
+
 /** The app around a template's game inside MiniPay: the game on the home route, the five info pages, the footer. */
 function miniPayApp(template: GameTemplate): string {
   return `import { HashRouter, Outlet, Route, Routes } from "react-router-dom";

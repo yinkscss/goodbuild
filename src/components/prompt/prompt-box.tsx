@@ -51,6 +51,8 @@ export interface PromptBoxProps {
   hint?: React.ReactNode;
   /** Example chips shown under the textarea. */
   chips?: StarterTemplate[];
+  /** Tested game starters, supplied by the server without their source files. */
+  gameTemplates?: StarterTemplate[];
   /** Right-hand hint, e.g. "120 G$". */
   creditsLabel?: string;
   /** Called with a normalised prompt. Return a promise to show a pending state. */
@@ -80,6 +82,7 @@ export function PromptBox({
   chipsPlacement = "inside",
   hint,
   chips = [],
+  gameTemplates = [],
   creditsLabel,
   onSubmit,
   onEnhance,
@@ -171,9 +174,14 @@ export function PromptBox({
 
   React.useImperativeHandle(ref, () => ({ fill: fillFromTemplate, focus: () => textareaRef.current?.focus() }));
 
-  const selectedTemplate = templateId ? getTemplate(templateId) : undefined;
+  const selectedTemplate = templateId ? getTemplate(templateId) ?? gameTemplates.find((t) => t.id === templateId) : undefined;
   const pageTemplate = getPageTemplate(templateId);
-  const placeholder = pageTemplate ? `Say what you want to build with this template, ${TEMPLATE_EXAMPLE[pageTemplate.category]}` : "Describe the dApp you want to build…";
+  const selectedGame = gameTemplates.find((t) => t.id === templateId);
+  const placeholder = pageTemplate
+    ? `Say what you want to build with this template, ${TEMPLATE_EXAMPLE[pageTemplate.category]}`
+    : selectedGame
+      ? "Describe how you want to customize this game…"
+      : "Describe the dApp you want to build…";
   const [previewing, setPreviewing] = React.useState(false);
   const empty = value.length === 0;
 
@@ -301,7 +309,7 @@ export function PromptBox({
               <DropdownMenuRadioGroup
                 value={templateId ?? ""}
                 onValueChange={(v) => {
-                  const t = getTemplate(v);
+                  const t = getTemplate(v) ?? gameTemplates.find((item) => item.id === v);
                   if (t) fillFromTemplate(t);
                 }}
               >
@@ -327,6 +335,22 @@ export function PromptBox({
                     </React.Fragment>
                   );
                 })}
+                {gameTemplates.length > 0 && (
+                  <React.Fragment>
+                    <DropdownMenuLabel>Game templates</DropdownMenuLabel>
+                    {gameTemplates.map((t) => (
+                      <DropdownMenuRadioItem key={t.id} value={t.id}>
+                        <span className="min-w-0">
+                          <span className="flex items-center gap-2 font-medium">
+                            {t.label}
+                            {t.game && <span className="text-[10px] font-normal uppercase tracking-wide text-grey-400">{t.game.dims} · {t.game.style}</span>}
+                          </span>
+                          <span className="block truncate text-xs text-grey-600">{t.description}</span>
+                        </span>
+                      </DropdownMenuRadioItem>
+                    ))}
+                  </React.Fragment>
+                )}
               </DropdownMenuRadioGroup>
             </DropdownMenuContent>
           </DropdownMenu>
