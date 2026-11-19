@@ -3,12 +3,13 @@ import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { dbAssetStore } from "@/server/agent/asset-store";
-import { saveFiles } from "@/server/agent/store";
+import { saveFiles, checkpoint } from "@/server/agent/store";
 import { starterFiles } from "@/server/agent/template";
 import { signInUser } from "@/server/auth/service";
 import { createTestDb, type Db } from "@/server/db/client";
 import { deployments } from "@/server/db/deploy-schema";
 import { publications } from "@/server/db/publish-schema";
+import { registryEvents } from "@/server/db/registry-schema";
 import { projects, type Project } from "@/server/db/schema";
 import { sourceKey } from "@/server/deploy/compile";
 import { createProjectFromPrompt } from "@/server/projects";
@@ -182,5 +183,27 @@ describe("publishedHeaders", () => {
     expect(publishedHeaders("index.html", "text/html", 1)["Cache-Control"]).toBe("no-cache");
     expect(publishedHeaders("app.abc.js", "text/javascript", 1)["Cache-Control"]).toContain("immutable");
     expect(publishedHeaders("assets/a.png", "image/png", 1)["Cache-Control"]).not.toContain("immutable");
+  });
+});
+
+describe("registry events (D156)", () => {
+  it("queues sign-up, the first version, one publish per going live, and a mainnet deploy", async () => {
+    vi.stubEnv("REGISTRY_SALT", "salt");
+    vi.stubEnv("REGISTRY_ADDRESS", "0x3333333333333333333333333333333333333333");
+    const kinds = async () => (await db.select().from(registryEvents)).map((r) => r.kind).sort();
+    const fresh = await signInUser(db, { wallet: "0x7a3000000000000000000000000000000000e41d", walletKind: "external", attestation: { ageOk: true, notUsPerson: true } });
+    const p = await createProjectFromPrompt(db, fresh.id, { prompt: "Tips", network: "celo-sepolia" });
+    await saveFiles(db, p.id, APP_FILES);
+    await checkpoint(db, { projectId: p.id, files: APP_FILES, summary: "first" });
+    const live = { ...p, currentVersion: 1 };
+    await publishApp(db, live, "tips-a", { build: fakeBuild() });
+    await publishApp(db, live, "tips-a", { build: fakeBuild("v2") });
+    expect((await kinds()).filter((k) => k === 3)).toHaveLength(1);
+    await unpublishApp(db, live);
+    await publishApp(db, live, "tips-a", { build: fakeBuild("v3") });
+    expect((await kinds()).filter((k) => k === 3)).toHaveLength(2);
+    expect((await kinds()).filter((k) => k === 4)).toHaveLength(1);
+    expect(await kinds()).toEqual(expect.arrayContaining([0, 1]));
+    vi.unstubAllEnvs();
   });
 });

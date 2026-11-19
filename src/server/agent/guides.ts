@@ -9,6 +9,7 @@
 
 import { CLASSIC_GUIDES } from "./classic-guides";
 import { KITS, kitGuideName } from "./kits/registry";
+import { PACKAGES_GUIDE, PACKAGES_GUIDE_NAME } from "./packages-guide";
 import { UI_GUIDE } from "./ui-primitives";
 
 export interface Guide {
@@ -301,7 +302,10 @@ export const GUIDES: Guide[] = [
 ];
 
 // A kit's guide is a guide like any other, named kit-<id> (D71).
-const BY_NAME = new Map([...GUIDES, ...KITS.map((k) => ({ name: kitGuideName(k.id), when: k.when, body: k.guide }))].map((g) => [g.name, g]));
+// The packages guide is only named to harness v2 builds (D152), but loads like any other.
+const BY_NAME = new Map(
+  [...GUIDES, ...KITS.map((k) => ({ name: kitGuideName(k.id), when: k.when, body: k.guide })), { name: PACKAGES_GUIDE_NAME, when: "", body: PACKAGES_GUIDE }].map((g) => [g.name, g]),
+);
 
 export function guideNames(): string[] {
   return GUIDES.map((g) => g.name);

@@ -6,7 +6,7 @@ import { OWN_BUILD_PACKAGES } from "@/lib/preview-engine";
 
 import { checkApp, pathProblem } from "../checks";
 import { BUILD_TOOLS } from "../prompt";
-import { ALLOWED_DEPENDENCIES, BASE_ALLOWED_DEPENDENCIES, PLATFORM_DEPENDENCIES, dependenciesOf, starterFiles } from "../template";
+import { ALLOWED_DEPENDENCIES, BASE_ALLOWED_DEPENDENCIES, COMPANION_PACKAGES, PLATFORM_DEPENDENCIES, V2_PACKAGES, dependenciesOf, starterFiles } from "../template";
 import { Workspace } from "../workspace";
 import { KITS, KIT_MARKER, detectKits, kitAllowsPath, kitCatalog, kitIdsOf, kitsOf, packagesFor, withKit, withKitHelpers, type Kit } from "./index";
 
@@ -38,7 +38,7 @@ describe("the real kits", () => {
       // Starter files live where the builder may write, and aren't the marker.
       for (const path of Object.keys(kit.files)) expect(pathProblem(path, [kit])).toBeNull();
     }
-    expect(ALLOWED_DEPENDENCIES).toEqual({ ...BASE_ALLOWED_DEPENDENCIES, ...Object.assign({}, ...KITS.map((k) => k.packages)) });
+    expect(ALLOWED_DEPENDENCIES).toEqual({ ...BASE_ALLOWED_DEPENDENCIES, ...V2_PACKAGES, ...Object.assign({}, ...Object.values(COMPANION_PACKAGES)), ...Object.assign({}, ...KITS.map((k) => k.packages)) });
     expect(runtime).toEqual({ ...ALLOWED_DEPENDENCIES, ...PLATFORM_DEPENDENCIES });
   });
 });

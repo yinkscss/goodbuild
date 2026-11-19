@@ -5,6 +5,8 @@ import { afterAll, describe, expect, it } from "vitest";
 import { checkApp, checkContracts } from "../checks";
 import { kitById, kitIdsOf, withKit } from "../kits/index";
 import { closeRunCheckBrowser, runCheck } from "../run-check";
+import { CHECK_SEED, gameCheckScript } from "../game-check";
+import { EXTRAS } from "../kits/game-extras";
 import { PLATFORM_DIR, contractModule, contractsIndex, starterFiles } from "../template";
 import { typeCheck } from "../type-check";
 
@@ -133,6 +135,29 @@ describe("game templates (D114)", { timeout: 180_000 }, () => {
     const ok = await runCheck(built("platform-hop"));
     expect(ok.issues).toEqual([]);
     for (const kind of ["gap", "spike", "beetle", "shield", "double"]) expect(ok.note).toContain(kind);
+  });
+
+  it.skipIf(!hasBrowser)("Crane stack: every kind it declares is seen, and a copy whose tap never drops a block is caught", async () => {
+    const ok = await runCheck(built("crane-stack"));
+    expect(ok.issues).toEqual([]);
+    for (const kind of ["wind", "wide", "slow"]) expect(ok.note).toContain(kind);
+    const stuck = await runCheck(built("crane-stack", edit("src/play/Game.tsx", "if (input.actionPressed) {", "if (input.actionPressed && false) {")));
+    expect(stuck.issues.map((i) => i.message).join(" ")).toMatch(/never moved the player/);
+  });
+
+  it.skipIf(!hasBrowser)("Market stall: judged as a game of moves by its buttons, and a copy whose Serve does nothing is caught", async () => {
+    const ok = await runCheck(built("market-stall"));
+    expect(ok.note).toMatch(/puzzle game, \d+ moves/);
+    const dead = await runCheck(built("market-stall", edit("src/play/Game.tsx", "<button type=\"button\" onClick={serve}", "<button type=\"button\" onClick={() => undefined}")));
+    expect(dead.issues.map((i) => i.message).join(" ")).toMatch(/never accepted a move/);
+  });
+
+  it.skipIf(!hasBrowser)("Path guard: every kind it declares is seen, and a copy whose taps never build is caught", async () => {
+    const ok = await runCheck(built("path-guard"));
+    expect(ok.issues).toEqual([]);
+    for (const kind of ["crawler", "runner", "frost"]) expect(ok.note).toContain(kind);
+    const stuck = await runCheck(built("path-guard", edit("src/play/Game.tsx", "if (input.actionPressed) tapAt(input.pointer.x, input.pointer.y);", "")));
+    expect(stuck.issues.map((i) => i.message).join(" ")).toMatch(/never moved the player/);
   });
 
   // D117: one broken copy per kind of control the new templates add, so the check is shown to catch each.
@@ -545,6 +570,19 @@ describe("the card games (D143)", { timeout: 300_000 }, () => {
     expect(r.move({ ...table, waste: ["5H"] }, { from: "waste" })).toBeNull();
     expect(r.stuck({ ...table, waste: ["5C"], piles: [{ down: ["2C"], up: ["9S"] }, ...table.piles.slice(1, 2).map(() => ({ down: [], up: ["4D"] })), ...Array.from({ length: 5 }, () => ({ down: ["QC"], up: ["QH"] }))] })).toBe(true);
     expect(r.won({ ...table, found: [0, 1, 2, 3].map(() => Array(13).fill("x")) })).toBe(true);
+  });
+
+  it("Solitaire deals the run check a fixed deal that has aces to score with, and real players a random one", async () => {
+    const r = await cardRules("solitaire");
+    const { seededRandom } = await moduleOf(EXTRAS);
+    const checked = r.deal(r.shuffle(r.fullDeck(), seededRandom(CHECK_SEED)));
+    expect(checked).toEqual(r.deal(r.shuffle(r.fullDeck(), seededRandom(CHECK_SEED))));
+    // The check's bot taps at random; aces face up give it a scoring move from the first tap.
+    expect(checked.piles.filter((p: { up: string[] }) => /^A/.test(p.up[0])).length).toBeGreaterThanOrEqual(2);
+    expect(gameCheckScript()).toContain(`seed: ${CHECK_SEED}`);
+    const game = gameTemplateById("solitaire")!.files["src/play/Game.tsx"];
+    expect(game.match(/\bdeal\(/g)).toHaveLength(1);
+    expect(game).toContain("checkSeed()");
   });
 
   it("Last card out replays the moves the same way on every screen", async () => {

@@ -23,6 +23,8 @@ export const users = pgTable("users", {
   walletKind: text("wallet_kind").notNull().default("external"),
   /** GoodID root, filled when face verification lands (CREDITS.md §5). */
   goodidRoot: text("goodid_root"),
+  /** The code in this person's invite link (D155). Random, made on first ask, never derived from the wallet. */
+  referralCode: text("referral_code").unique(),
   verifiedAt: timestamp("verified_at", { withTimezone: true }),
   /** Show the "Built with GoodBuild" badge on this user's published apps. On unless they turn it off in Settings. */
   showBadge: boolean("show_badge").notNull().default(true),

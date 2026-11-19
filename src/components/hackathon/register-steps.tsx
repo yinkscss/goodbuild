@@ -260,7 +260,7 @@ function Registration() {
             {verified && participant ? (
               <>
                 <FlowstateVote
-                  autoSupport
+
                   onConfirmed={() =>
                     setParticipant({ ...participant, flowstate: "voted" })
                   }

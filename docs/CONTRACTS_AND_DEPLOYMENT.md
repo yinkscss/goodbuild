@@ -79,7 +79,7 @@ erDiagram
 | Registry contract: user calls `register(project, addr)` after deploy (emits event) | Public index; counts as an extra tx from a verified user | Extra tx/gas; spammable (filter by FV root) |
 | Factory (CREATE2) per template: user calls `factory.create(params)` | One tx; event per deploy; deterministic addresses; cheap clones (EIP-1167) | Only for templates; factory is a shared, audit-critical contract; clones complicate source verification |
 - On-chain events make deploys measurable for GoodBuilders on-chain metrics (txs, verified users). **Whether GoodDollar counts these UNVERIFIED** (ask, Q9).
-- Lean: DB-only in week 1–4; factory for top templates once stable.
+- Lean: DB-only in week 1–4; factory for top templates once stable. **Update 19 Nov 2026 (D156):** a small events-only `GoodBuildRegistry` is built, written by the server (no user signature); the factory stays for later.
 
 **Source verification:** submit to Sourcify (open, works with Blockscout) and Celoscan (Etherscan v2 multichain API key) after deploy. Sourcify/Blockscout support for Celo Sepolia **UNVERIFIED**; check. Store standard-JSON input so verification is reproducible.
 

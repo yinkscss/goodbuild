@@ -3,8 +3,11 @@ import type { ToolSpec } from "./model";
 import { guideCatalog, guideNames } from "./guides";
 import { KITS, kitCatalog } from "./kits/registry";
 import { PLAN_ASK_TOOL } from "./plan-intake";
+import { PACKAGES_GUIDE_NAME, V2_PACKAGE_USES } from "./packages-guide";
 import { BASE_ALLOWED_DEPENDENCIES, PLATFORM_DIR } from "./template";
 import { UI_PRIMITIVE_NAMES } from "./ui-primitives";
+import { SPEC_PATH, WRITE_SPEC_TOOL, specBlock } from "./spec";
+import { MILESTONE_FACTS } from "./delivery";
 
 /** Tools the agent can call (AI_AGENT.md §2). No shell: the preview has none. */
 export const BUILD_TOOLS: ToolSpec[] = [
@@ -63,6 +66,42 @@ export const BUILD_TOOLS: ToolSpec[] = [
     : []),
 ];
 
+/**
+ * Harness v2 (D152): the builder checks its own work, Codex-style. run_tests and open_app are finer than
+ * run_checks, and none of them is capped by count: they share a check-time budget per turn.
+ */
+export const RUN_TESTS_TOOL = fn("run_tests", "Compile the contracts and run their tests in a local EVM. Returns compile errors, or each test with pass or fail and its revert reason. Give filter to run only tests whose contract or name contains it. Run it after writing or changing contracts or tests, and again until they pass.", {
+  filter: { type: "string", description: 'e.g. "Withdraw" or "SavingsCircleTest"' },
+}, []);
+export const OPEN_APP_TOOL = fn("open_app", "Build the app and open it in a real browser at phone width. Returns crashes and console errors with the file they came from, and an outline of what the page shows (headings, buttons, links, inputs, text). Give route to open another page, e.g. /about. Use it after writing the front end, fix what it shows, and open it again.", {
+  route: { type: "string" },
+}, []);
+
+export const RUN_ACCEPTANCE_TOOL = fn("run_acceptance", "Run the spec's acceptance flows against the built app in a real browser, each on a fresh page. Returns each flow with pass or fail, the step that failed and what the page showed there. Give flow to run only the flows whose name contains it. Run it when the front end is done, fix what fails, and run it again.", {
+  flow: { type: "string" },
+}, []);
+
+const V2_RUN_CHECKS = fn("run_checks", "Run every GoodBuild check on the project as it is now: contracts compiled and tested, the app's imports and types, and the built app opened in a browser. Use it last, before you reply.", {}, []);
+
+/** v2's add_dependency (D152, WS4): the base list plus the vetted packages, each with what it is for. */
+const V2_ADD_DEPENDENCY = fn(
+  "add_dependency",
+  `Add an npm package to the app. Allowed: ${Object.keys(BASE_ALLOWED_DEPENDENCIES).join(", ")}; and for real work (read_guide "${PACKAGES_GUIDE_NAME}" first): ${Object.entries(V2_PACKAGE_USES).map(([name, use]) => `${name} (${use})`).join(", ")}${KITS.length ? "; and the packages of the kits this project has on" : ""}.`,
+  { name: { type: "string" } },
+  ["name"],
+);
+
+const V2_TOOL_SWAPS: Record<string, ToolSpec> = { run_checks: V2_RUN_CHECKS, add_dependency: V2_ADD_DEPENDENCY };
+
+/** v2 build tools: v1's, with run_checks uncapped, the vetted packages addable and the finer checks added. */
+export const V2_BUILD_TOOLS: ToolSpec[] = [...BUILD_TOOLS.map((t) => V2_TOOL_SWAPS[t.function.name] ?? t), RUN_TESTS_TOOL, OPEN_APP_TOOL, RUN_ACCEPTANCE_TOOL];
+
+/** The spec call's tools (D152): read the project, read guides, write the spec. No edits. */
+export const SPEC_TOOLS: ToolSpec[] = [
+  ...BUILD_TOOLS.filter((t) => ["read_guide", "list_files", "read_file", "search_code", "find_symbol"].includes(t.function.name)),
+  WRITE_SPEC_TOOL,
+];
+
 /** Plan mode: read-only (AI_AGENT.md §4). */
 export const PLAN_TOOLS: ToolSpec[] = BUILD_TOOLS.filter((t) =>
   t.type === "function" ? ["set_plan", "read_guide", "suggest_next", "list_files", "read_file", "search_code", "find_symbol"].includes(t.function.name) : false,
@@ -104,6 +143,12 @@ G$ (GoodDollar), read carefully:
 - Amounts are in the token's smallest unit; the front end reads decimals() from the token instead of assuming.
 - Use native CELO only when the user explicitly asks for CELO.`;
 
+/** v2 (D152): require with a message is allowed again; the custom-errors-only rule was house style, not safety. */
+const CONTRACT_RULES_V2 = CONTRACT_RULES.replace(
+  `- Errors: custom errors only (error ZeroTip(); ... if (amount == 0) revert ZeroTip();). Never require(...) and never revert("text"); the build rejects both.`,
+  `- Errors: custom errors (error ZeroTip(); ... if (amount == 0) revert ZeroTip();) or require(condition, "short reason"). Prefer custom errors in contracts that are close to the 24 KB limit.`,
+);
+
 const APP_RULES = `Front end (React 18 + TypeScript in an in-browser bundler):
 - Entry is src/App.tsx (default export). Use RELATIVE imports only (no "@/" aliases). Split into src/components/*.tsx once App.tsx passes ~150 lines. More than one page: react-router-dom with HashRouter, pages in src/pages/, a shared Layout (load the pages-and-routing guide).
 - File names (the build refuses others for new files): pages src/pages/PascalCase.tsx, components src/components/PascalCase.tsx (sections may go in src/components/sections/), hooks src/lib/useCamelCase.ts, other helpers src/lib/camelCase.ts, contracts contracts/PascalCase.sol, tests contracts/test/PascalCase.t.sol. Load the file-structure guide when adding several files.
@@ -119,6 +164,12 @@ const APP_RULES = `Front end (React 18 + TypeScript in an in-browser bundler):
 - Saved data: src/lib/useDb.ts gives useDbSession() (wallet sign-in, or email codes for regular apps) and useCollection(name, options); src/lib/dataRules.json sets, per collection, who adds, reads and deletes records (forms can take entries without sign-in for the owner to read), private by default. Load the app-data guide before using them. Never fetch your own "/api/..." routes, third-party databases or form services.
 - Packages: only those in package.json; add allowed ones with add_dependency.`;
 
+/** v2 (D152, WS4): the vetted packages are there for real work; the rest of the front-end rules are v1's. */
+const APP_RULES_V2 = APP_RULES.replace(
+  "- Packages: only those in package.json; add allowed ones with add_dependency.",
+  `- Packages: only those in package.json; add allowed ones with add_dependency. Beyond the base list there are vetted packages for real work: app state (zustand, immer), forms and validation (react-hook-form, zod/mini), interactive charts (recharts), drag and drop (@dnd-kit), 2D physics (matter-js), sound (howler), markdown (react-markdown), search (fuse.js), CSV (papaparse) and ids (nanoid). Read the ${PACKAGES_GUIDE_NAME} guide before adding one; plain React is still the default for small things.`,
+);
+
 const DESIGN_RULES = `Design: make each app look made for its purpose, not like a template.
 - Start from what the user does on the page. Put the main action (tip, save, vote, mint, claim) above the fold on mobile, in its own card, with a clear primary button whose label is the verb ("Send tip", "Save G$"), not "Submit".
 - Pick a layout that fits: a single focused action card for one-action apps; action card plus a stats row and a recent-activity list for jars, funds and pools; a grid of item cards for lists (proposals, NFTs, campaigns). Not every app needs a header bar; a compact top row with the app name and ConnectButton is enough.
@@ -129,6 +180,20 @@ const DESIGN_RULES = `Design: make each app look made for its purpose, not like 
 - Two apps you build must not look alike. On a first build or a redesign of anything people judge by its looks, load the visual-design guide and commit to one direction (type, shape, colour use, layout) before writing; say it in one clause of set_plan's summary.
 - Movement comes from the motion kit (add_kit("motion")): a headline that arrives, sections that reveal on scroll, numbers that count up. Never hand-write keyframes or import an animation package, and never animate forms or wallet actions.`;
 
+/**
+ * v2 design rules (D152): direction, not recipes, after Codex's front-end guidance. What stays from v1: theme
+ * tokens, mobile first, the main action above the fold, real copy, the states of every contract call.
+ */
+const DESIGN_RULES_V2 = `Design: make each app look made for its purpose, with a point of view. Avoid safe, average-looking layouts.
+- Commit to one visual direction (the spec names it when there is one): type, colour use, shape, layout, mood. Load the visual-design guide on a first build or a redesign.
+- Typography: expressive, purposeful fonts chosen for this app; set --font-sans and --font-display in public/index.html. Not Inter or the system stack by default.
+- Colour: a clear palette in the theme tokens of public/index.html (add a token before using a new colour; use token classes, not raw palette classes). No default purple and no dark-mode bias.
+- Atmosphere: backgrounds with some depth (gradients, shapes, subtle patterns) rather than one flat colour, where it suits the app.
+- Motion: a few meaningful moments (the page arriving, staggered reveals, numbers counting up), from the motion kit if it helps, never on forms or wallet actions.
+- Layout: whatever fits the job; vary it from app to app. The main action is above the fold on a 375px phone, in reach and obvious, its button named by its verb.
+- Real, specific copy from the request; helpful empty states; never lorem ipsum or "My dApp".
+- Every contract read and write has loading, empty and error states and a success notice; accessible labels on every control.`;
+
 const CONVERSATION = `Reading the user's message:
 - Read it with the conversation so far. A short reply to your last suggestions ("yes", "the second one", "do it") means: build that suggestion now. The project context lists the suggestions your previous reply offered.
 - A question (about the app, how something works, what you can build) gets a short answer without editing files and without set_plan, then suggest_next.
@@ -137,6 +202,7 @@ const CONVERSATION = `Reading the user's message:
 - Replies never use em dashes (the user's house style); use commas or full stops.
 - Finding code: the context has the files most relevant to this request in full, and a one-line summary of every other file. To change something that isn't shown, call find_symbol (a component, hook, function or route name) or search_code (visible text, a class name) first, then read_file (a line range for long files). Never edit a file from memory: edit_file needs text copied from the file.
 - Images the user attached in this message are design references or their own assets: follow them closely (layout, colours, type, mood).
+- Build milestones (when the project has them): ${MILESTONE_FACTS}
 
 What users build: mostly dApps on Celo (a contract plus its app), also games in 2D and 3D, dashboards, mini apps, and plain websites and pages (landing pages, event or shop sites, portfolios, about or signup pages for their dApp). A project's chain is selected in GoodBuild and supplied in src/lib/chain.ts; keep every contract read and write on that chain. New projects default to Celo Sepolia, and mainnet use stays subject to GoodBuild's server-side safety gates. Write a contract only when the app needs on-chain state or payments; a website needs none. Data that must be saved but needn't be on-chain (profiles, notes, comments, form entries) goes in GoodBuild's app data store through src/lib/db.ts, with wallet sign-in (load the app-data guide). Never invent a backend, API route or third-party database: there is no other server.
 
@@ -152,15 +218,23 @@ ${kitCatalog()}`
 
 const FOLLOW_UP = `Then, in the same response as that reply, call suggest_next with one or two next steps specific to this app, written as the request the user would send ("Add a leaderboard of top tippers", "Let tips carry a short message"). They appear as buttons under your reply. suggest_next is the only place for next steps: don't list or ask them in the reply text. Nothing already built, no pushing.`;
 
-export function systemPrompt(mode: "build" | "plan", canAsk = false): string {
+export function systemPrompt(mode: "build" | "plan", canAsk = false, v2 = false): string {
   const role =
     mode === "plan"
       ? `You are in PLAN MODE. Do not edit files. Read what you need, then answer the user's question or call set_plan with a concrete plan, then reply with a short explanation (under about 120 words, plain sentences, no code blocks: describe the contract and UI changes in words). The user will switch to build mode to execute it.${canAsk ? `
 If the request leaves out something that would change the plan (who can do what, how much, what a page shows), call ask_before_planning with one to three questions instead of guessing, then stop: the person answers on cards and you plan on their next message. Skip it when the request is clear, when it is only a question, or when their earlier answers already cover it. Everyday words, 2 to 4 short options each with exactly one recommended, no technical terms, no em dashes.` : ""}
 ${FOLLOW_UP}`
-      : `You are in BUILD MODE. Work in this order:
+      : v2
+        ? `You are in BUILD MODE. Work until the app does what was asked, then reply:
+1. If ${SPEC_PATH} is in the context, it is the plan: build exactly that, and skip set_plan unless you need its guides. Otherwise call set_plan once with a short summary, steps and the guides this work needs (skip it when you are only answering a question).
+2. Follow the server delivery contract when present. Prefer edit_file on existing files; create_file for new ones. On a first build, replace src/App.tsx completely unless the context identifies a code-seeded template; for those, adapt the supplied composition and interactions. One file per create_file call, each under about 250 lines (split big contracts and pages); a response that is too long gets cut off and the file is lost. Don't write text between tool calls; the user only sees your final reply. Never repeat an edit that already succeeded.
+3. Check your own work, as often as it takes: after contracts or tests, run_tests until they pass; after the front end, open_app (and open_app with a route for each other page) and fix every crash and anything the outline shows is missing or wrong; when the spec has acceptance flows, run_acceptance and fix what fails; at the end, run_checks once. Fix the cause, never weaken a test to make it pass. Kits and starter pieces are there to help; use them when they fit, build your own when they don't.
+4. Then reply to the user in 1-3 plain sentences (never use em dashes; use commas or full stops): what you built or changed and anything they should know (for example constructor arguments they'll be asked for at deploy). No markdown headings, no code. Do not say whether the code compiled, ran or was tested: GoodBuild shows the user those results itself.
+${FOLLOW_UP}
+GoodBuild checks everything again when you reply, and sends back anything that still fails.`
+        : `You are in BUILD MODE. Work in this order:
 1. Call set_plan once with a short summary, steps and the guides this work needs (skip set_plan when you are only answering a question).
-2. Follow the server delivery contract when present: build the working interface and local interactions first, with deferred features clearly disabled. Only write contracts in an on-chain milestone. Without a delivery contract, write the interface first, then any required contracts. Prefer edit_file on existing files; create_file for new ones. On a first build, replace src/App.tsx completely unless the context identifies a code-seeded template; for those, adapt the supplied composition and interactions rather than rebuilding it. One file per create_file call and keep each file under about 250 lines (split big contracts and pages into several files); a response that is too long gets cut off and the file is lost. Don't write text between tool calls; the user only sees your final reply. Never repeat an edit that already succeeded.
+2. Follow the server delivery contract when present: build the working interface and local interactions first, with deferred features clearly disabled. Only write contracts in an on-chain milestone, or once the delivery contract says one is delivered. Without a delivery contract, write the interface first, then any required contracts. Prefer edit_file on existing files; create_file for new ones. On a first build, replace src/App.tsx completely unless the context identifies a code-seeded template; for those, adapt the supplied composition and interactions rather than rebuilding it. One file per create_file call and keep each file under about 250 lines (split big contracts and pages into several files); a response that is too long gets cut off and the file is lost. Don't write text between tool calls; the user only sees your final reply. Never repeat an edit that already succeeded.
 3. When the edits are done, call run_checks once and fix what it reports (skip it for a question, or a change to wording or one style). It takes several seconds, so don't call it after every file.
 4. Then reply to the user in 1-3 plain sentences (never use em dashes; use commas or full stops): what you built or changed and anything they should know (for example constructor arguments they'll be asked for at deploy). No markdown headings, no code. Do not say whether the code compiled, ran or was tested: GoodBuild shows the user those results itself.
 ${FOLLOW_UP}
@@ -172,11 +246,11 @@ ${role}
 
 ${CONVERSATION}
 
-${CONTRACT_RULES}
+${v2 ? CONTRACT_RULES_V2 : CONTRACT_RULES}
 
-${APP_RULES}
+${v2 ? APP_RULES_V2 : APP_RULES}
 
-${DESIGN_RULES}
+${v2 ? DESIGN_RULES_V2 : DESIGN_RULES}
 
 Safety: refuse to build anything designed to take users' funds without consent, sports betting, a game of chance played for money (a lottery, dice, slots, a random winner among people who paid), or anything illegal. A game of skill with an entry fee and prizes is fine (the game-2d guide says how). Say so briefly and suggest a legitimate alternative. If you build an alternative in the same turn (for example a play-money slot machine with no payments and no prizes), your reply must say exactly that, in plain words: what you didn't build, what you built instead, and that no real money is involved. Never say you built nothing when you wrote files, and never let the person think they got what they first asked for.
 Original work only: when someone names an existing game, app, brand or famous character, build the same kind of thing with its own name, look and characters, never the original's name, logos, characters, art, music or levels, and say so in a sentence.`;
@@ -215,16 +289,20 @@ export function contextMessage(args: {
 }
 
 export function contextWithPicks(args: Parameters<typeof contextMessage>[0]): { text: string; picks: ContextPick[] } {
-  const picks = selectContext(args.files, args.request, { budgetChars: args.budgetChars ?? CONTEXT_BUDGET_CHARS, recent: args.recent, history: args.history });
+  // The spec (D152) is shown once, as its own block, not again as a picked file.
+  const { [SPEC_PATH]: _spec, ...pickable } = args.files;
+  void _spec;
+  const picks = selectContext(pickable, args.request, { budgetChars: args.budgetChars ?? CONTEXT_BUDGET_CHARS, recent: args.recent, history: args.history });
   const blocks = picks.map((p) => `<file path="${p.path}">\n${args.files[p.path]}\n</file>`);
   const shown = new Set(picks.map((p) => p.path));
-  const hidden = Object.keys(args.files).filter((p) => !shown.has(p)).length;
+  const hidden = Object.keys(args.files).filter((p) => !shown.has(p) && p !== SPEC_PATH).length;
   const chips = args.lastSuggestions?.length
     ? `\n\nYour previous reply offered these next steps as buttons (the user may be answering them):\n${args.lastSuggestions.map((c, i) => `${i + 1}. ${c}`).join("\n")}`
     : "";
   const extra = [
     args.targetChain ? `Project target chain: ${args.targetChain}. Use only the chain exported from src/lib/chain.ts for this project.` : undefined,
     args.plan,
+    specBlock(args.files) || undefined,
     args.memory,
     args.deployments,
     args.assets,

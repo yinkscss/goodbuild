@@ -10,7 +10,6 @@ import { styles } from "@/components/hackathon/styles";
 import { OnView, SpotlightCard } from "@/components/hackathon/on-view";
 import { Ladder } from "@/components/hackathon/ladder";
 import { VoteList } from "@/components/hackathon/vote-list";
-import { ReferralCapture } from "@/components/hackathon/referral-capture";
 import { PosterTiles } from "@/components/hackathon/poster-tiles";
 import { RegisterSteps } from "@/components/hackathon/register-steps";
 import { SITE_URL } from "@/config/site-url";
@@ -40,7 +39,6 @@ const NAV = [
 export default function HackathonPage() {
   return (
     <div className={styles.page}>
-      <ReferralCapture />
       <header className={cn(styles.nav, styles.wrap)}>
         <div className={styles.navbar}>
           <Link href="/" className="flex shrink-0 items-center gap-2.5 rounded-full" aria-label="GoodBuild home">

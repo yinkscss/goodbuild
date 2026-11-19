@@ -153,7 +153,8 @@ export function worstCaseCallMicro(model: string, request: { messages: readonly 
   }
   const inputTokens = Math.ceil(chars / WORST_CHARS_PER_TOKEN) + images * IMAGE_TOKENS + request.messages.length * MESSAGE_TOKENS;
   const p = priceFor(model);
-  const usd = (inputTokens * p.inputPerMTok + request.maxTokens * p.outputPerMTok) / 1_000_000;
+  // Every input token could be a cache write, which costs more than plain input on Anthropic (D152).
+  const usd = (inputTokens * Math.max(p.inputPerMTok, p.cacheWritePerMTok ?? 0) + request.maxTokens * p.outputPerMTok) / 1_000_000;
   return chargedMicro(Math.ceil(usd * 1_000_000), MARKUP_BPS);
 }
 

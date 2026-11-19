@@ -59,36 +59,33 @@ async function request(body?: unknown) {
     );
   return data;
 }
+/**
+ * One tap (D155): checks the wallet, turns voting on if it isn't yet, gives all of the person's free
+ * points to GoodBuildIt, and confirms it on-chain. No slider, no amounts.
+ */
 export function FlowstateVote({
   onConfirmed,
-  autoSupport = false,
+  label = "Vote here with your wallet",
+  verifyHref = "/hackathon#register",
 }: {
   onConfirmed?: () => void;
-  /** Check eligibility and use all votes left for hackathon support. */
-  autoSupport?: boolean;
+  label?: string;
+  /** Where "Verify with GoodDollar first" goes, for pages that have their own verify step. */
+  verifyHref?: string;
 }) {
   const auth = useAuth();
   const [open, setOpen] = React.useState(false);
   const [status, setStatus] = React.useState<FlowstateStatus | null>(null);
-  const [quantity, setQuantity] = React.useState("1");
   const [busy, setBusy] = React.useState("");
   const [error, setError] = React.useState("");
   const [helpLink, setHelpLink] = React.useState<string | undefined>();
   const [txHash, setTxHash] = React.useState<string | null>(null);
   const [discardArmed, setDiscardArmed] = React.useState(false);
   const [confirmed, setConfirmed] = React.useState(false);
-  const [autoVoteAfterEnable, setAutoVoteAfterEnable] = React.useState(false);
   const wallet = auth.user?.wallet;
   const storageKey = `gb:flowstate:pending:${wallet}`;
   function applyStatus(next: FlowstateStatus) {
     setStatus(next);
-    setQuantity(
-      BigInt(next.available) > BigInt(Number.MAX_SAFE_INTEGER)
-        ? String(Number.MAX_SAFE_INTEGER)
-        : BigInt(next.available) > BigInt(0)
-          ? next.available
-          : "1",
-    );
   }
   async function check(hash: string) {
     let next;
@@ -134,26 +131,16 @@ export function FlowstateVote({
         await check(saved);
         return;
       }
-      const next: FlowstateStatus = await request();
-      if (autoSupport && next.verified && next.registered) {
-        applyStatus(next);
-        if (BigInt(next.available) > BigInt(0)) {
-          if (next.spreadFull && BigInt(next.support) === BigInt(0)) {
-            throw new Error("Your ballot already supports the maximum number of projects. Manage it on FlowState to make room.");
-          }
-          await submitVote();
-        } else if (next.verified && BigInt(next.support) > BigInt(0)) {
-          await confirmExisting();
-        } else {
-          throw new Error("This wallet has no votes left to allocate to GoodBuildIt.");
-        }
-      } else if (next.verified && BigInt(next.support) > BigInt(0)) {
-        // Existing support counts as complete if there are no remaining votes to add.
+      let next: FlowstateStatus = await request();
+      applyStatus(next);
+      if (!next.verified) return; // the pop-up shows the verify step
+      // Already voted for us (here, on /hackathon, or on FlowState itself)? Don't ask again: confirm it.
+      if (BigInt(next.support) > BigInt(0)) {
         await confirmExisting();
-      } else {
-        applyStatus(next);
-        if (autoSupport && next.verified && !next.registered) setAutoVoteAfterEnable(true);
+        return;
       }
+      if (!next.registered) next = await enable();
+      await castVote(next);
     });
   }
   /** Confirms the vote already on-chain and marks it done. Throws if it isn't settled yet. */
@@ -165,20 +152,14 @@ export function FlowstateVote({
     localStorage.removeItem(storageKey);
     onConfirmed?.();
   }
-  async function acceptExisting() {
-    await perform("Checking your vote…", confirmExisting);
-  }
-  async function checkEligibilityAgain() {
+  /** After an earlier, smaller vote: one more tap gives the points that are left. */
+  async function voteRemaining() {
     await perform("Checking your available votes…", async () => {
       const next: FlowstateStatus = await request();
       applyStatus(next);
-      if (
-        next.verified &&
-        next.registered &&
-        BigInt(next.available) > BigInt(0)
-      ) {
-        setConfirmed(false);
-      }
+      if (!next.verified || !next.registered || BigInt(next.available) <= BigInt(0)) return;
+      setConfirmed(false);
+      await castVote(next);
     });
   }
   async function signer() {
@@ -190,107 +171,65 @@ export function FlowstateVote({
       throw new Error("Switch back to the wallet you signed in with.");
     return { client, account };
   }
-  async function enable() {
-    await perform("Enabling voting…", async () => {
-      const { client, account } = await signer();
-      const issuedAt = Date.now();
-      const signature = await client.signMessage({
-        account,
-        message: flowstateClaimMessage(account, issuedAt),
-      });
-      const next: FlowstateStatus = await request({ action: "eligibility", signature, issuedAt });
-      applyStatus(next);
-      if (autoSupport && autoVoteAfterEnable && next.registered) {
-        setAutoVoteAfterEnable(false);
-        if (BigInt(next.available) > BigInt(0)) {
-          if (next.spreadFull && BigInt(next.support) === BigInt(0)) {
-            throw new Error("Your ballot already supports the maximum number of projects. Manage it on FlowState to make room.");
-          }
-          await submitVote();
-        } else if (BigInt(next.support) > BigInt(0)) {
-          await confirmExisting();
-        } else {
-          throw new Error("This wallet has no votes left to allocate to GoodBuildIt.");
-        }
-      }
+  /** Turns voting on for this wallet (one signature), then waits for FlowState to show it. */
+  async function enable(): Promise<FlowstateStatus> {
+    setBusy("Turning on voting for your wallet…");
+    const { client, account } = await signer();
+    const issuedAt = Date.now();
+    const signature = await client.signMessage({
+      account,
+      message: flowstateClaimMessage(account, issuedAt),
     });
+    let next: FlowstateStatus = await request({ action: "eligibility", signature, issuedAt });
+    for (let i = 0; i < 4 && !next.registered; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 2500));
+      next = await request();
+    }
+    applyStatus(next);
+    if (!next.registered) throw new Error("Voting is still being turned on. Tap again in a moment.");
+    return next;
   }
   /**
-   * One button: switch to Celo, then price the vote (and cover the network fee if the wallet is short),
-   * then the wallet's own confirmation. Pricing runs after every wallet prompt that can move the ballot,
-   * so what the wallet shows is what the server just checked.
+   * Gives every available point to GoodBuildIt: switch to Celo, price the vote (covering the network
+   * fee if the wallet is short), then the wallet's own confirmation. Pricing runs after every wallet
+   * prompt that can move the ballot, so what the wallet shows is what the server just checked.
    */
-  async function submitVote() {
-    await perform("Getting your vote ready… this can take up to 30 seconds.", async () => {
-      let amount = quantity;
-      if (autoSupport) {
-        const latest: FlowstateStatus = await request();
-        applyStatus(latest);
-        if (!latest.verified) throw new Error("Verify with GoodDollar before voting.");
-        if (!latest.registered) throw new Error("Enable voting with this wallet first.");
-        if (BigInt(latest.available) <= BigInt(0)) {
-          if (BigInt(latest.support) > BigInt(0)) {
-            await confirmExisting();
-            return;
-          }
-          throw new Error("This wallet has no votes left to allocate to GoodBuildIt.");
-        }
-        if (latest.spreadFull && BigInt(latest.support) === BigInt(0)) {
-          throw new Error("Your ballot already supports the maximum number of projects. Manage it on FlowState to make room.");
-        }
-        amount = latest.available;
-      }
-      if (!/^[1-9]\d{0,28}$/.test(amount))
-        throw new Error("Choose at least 1 point.");
-      const { client, account } = await signer();
-      const ready: Review = await request({ action: "prepare", additional: amount });
-      setBusy("Confirm the vote in your wallet…");
-      const hash = await client.writeContract({
-        account,
-        chain: celo,
-        address: FLOWSTATE_COUNCIL,
-        abi: FLOWSTATE_ABI,
-        functionName: "vote",
-        args: [[{ recipient: GOODBUILDIT_RECIPIENT, amount: BigInt(ready.after) }]],
-        gas: BigInt(ready.gas),
-        maxFeePerGas: BigInt(ready.maxFeePerGas),
-        maxPriorityFeePerGas: BigInt(ready.maxPriorityFeePerGas),
-      });
-      setTxHash(hash);
-      localStorage.setItem(storageKey, hash);
-      setBusy("Confirming your vote…");
-      // The server confirms sender, target, successful receipt, calldata and live allocation.
-      for (let i = 0; i < 12; i++) {
-        try {
-          await check(hash);
-          return;
-        } catch (e) {
-          if (e instanceof RequestError && (e.status === 400 || e.status === 410)) throw e;
-          if (i === 11)
-            throw new Error("Your vote was sent and is still being checked. Press Check again in a moment; don’t vote again.");
-        }
-        await new Promise((resolve) => setTimeout(resolve, 2500));
-      }
+  async function castVote(current: FlowstateStatus) {
+    if (BigInt(current.available) <= BigInt(0))
+      throw new Error("All your points are already given to other projects.");
+    if (current.spreadFull && BigInt(current.support) === BigInt(0))
+      throw new Error("Your ballot already supports the maximum number of projects. Free a spot on FlowState first.");
+    setBusy("Getting your vote ready… this can take up to 30 seconds.");
+    const { client, account } = await signer();
+    const ready: Review = await request({ action: "prepare", additional: current.available });
+    setBusy("Confirm the vote in your wallet…");
+    const hash = await client.writeContract({
+      account,
+      chain: celo,
+      address: FLOWSTATE_COUNCIL,
+      abi: FLOWSTATE_ABI,
+      functionName: "vote",
+      args: [[{ recipient: GOODBUILDIT_RECIPIENT, amount: BigInt(ready.after) }]],
+      gas: BigInt(ready.gas),
+      maxFeePerGas: BigInt(ready.maxFeePerGas),
+      maxPriorityFeePerGas: BigInt(ready.maxPriorityFeePerGas),
     });
+    setTxHash(hash);
+    localStorage.setItem(storageKey, hash);
+    setBusy("Confirming your vote…");
+    // The server confirms sender, target, successful receipt, calldata and live allocation.
+    for (let i = 0; i < 12; i++) {
+      try {
+        await check(hash);
+        return;
+      } catch (e) {
+        if (e instanceof RequestError && (e.status === 400 || e.status === 410)) throw e;
+        if (i === 11)
+          throw new Error("Your vote was sent and is still being checked. Press Check again in a moment; don’t vote again.");
+      }
+      await new Promise((resolve) => setTimeout(resolve, 2500));
+    }
   }
-  function vote(e: React.FormEvent) {
-    e.preventDefault();
-    void submitVote();
-  }
-  const max = status ? Math.min(Number.MAX_SAFE_INTEGER, Number(status.available)) : 1;
-  const canVote =
-    status !== null &&
-    BigInt(status.available) > BigInt(0) &&
-    (!status.spreadFull || BigInt(status.support) > BigInt(0));
-  const hasSupport = status !== null && BigInt(status.support) > BigInt(0);
-  const canAutoSupport =
-    status !== null &&
-    BigInt(status.available) > BigInt(0) &&
-    (!status.spreadFull || hasSupport);
-  const autoSupportUnavailableMessage =
-    status?.spreadFull && !hasSupport
-      ? "Your ballot already supports the maximum number of projects. Manage it on FlowState to make room."
-      : "This wallet has no votes left to allocate to GoodBuildIt.";
   return (
     <>
       <button
@@ -299,11 +238,7 @@ export function FlowstateVote({
         disabled={!wallet}
         onClick={() => void load()}
       >
-        {confirmed
-          ? "✓ Support confirmed"
-          : autoSupport
-            ? "Support us on GoodBuildIt"
-            : "Vote here with your wallet"}
+        {confirmed ? "✓ Vote confirmed" : label}
       </button>
       <Dialog
         open={open}
@@ -318,10 +253,10 @@ export function FlowstateVote({
           }}
         >
           <DialogTitle className="pr-8 text-2xl font-bold">
-            Support us on GoodBuildIt
+            Support our project
           </DialogTitle>
           <DialogDescription className="sr-only">
-            The app checks your eligibility and uses all votes left on your ballot to support GoodBuildIt. This does not approve a hackathon project.
+            Vote for GoodBuildIt on FlowState with your signed-in wallet.
           </DialogDescription>
           {busy && (
             <p role="status" className="rounded-block bg-tint p-3 text-sm text-violet">
@@ -345,18 +280,19 @@ export function FlowstateVote({
           )}
           {confirmed ? (
             <div className="space-y-4 text-center">
-              <p className="text-lg font-semibold">✓ Thank you for supporting GoodBuildIt!</p>
-              {status && BigInt(status.available) <= BigInt(0) && (
-                <p className="text-sm">You have no votes available right now.</p>
+              <p className="text-lg font-semibold">✓ Thank you for voting!</p>
+              {status && BigInt(status.available) > BigInt(0) ? (
+                <button
+                  type="button"
+                  className={`${styles.btnV} w-full`}
+                  disabled={Boolean(busy)}
+                  onClick={() => void voteRemaining()}
+                >
+                  Vote my remaining points
+                </button>
+              ) : (
+                <p className="text-sm">You have no votes left right now.</p>
               )}
-              <button
-                type="button"
-                className={`${styles.btnV} w-full`}
-                disabled={Boolean(busy)}
-                onClick={() => void checkEligibilityAgain()}
-              >
-                Check for new eligibility to vote again
-              </button>
               <button type="button" className={`${styles.btnV} w-full`} onClick={() => setOpen(false)}>
                 Continue
               </button>
@@ -399,82 +335,10 @@ export function FlowstateVote({
                 </button>
               )}
             </div>
-          ) : status ? (
-            !status.verified ? (
-              <a className={`${styles.btnV} w-full`} href="/hackathon#register">
-                Verify with GoodDollar first
-              </a>
-            ) : !status.registered ? (
-              <button
-                type="button"
-                className={`${styles.btnV} w-full`}
-                disabled={Boolean(busy)}
-                onClick={() => void enable()}
-              >
-                Enable voting with this wallet
-              </button>
-            ) : (
-              <form method="post" action="/api/hackathon/flowstate" className="space-y-5" onSubmit={vote}>
-                {autoSupport ? (
-                  canAutoSupport ? (
-                    <div className="space-y-3">
-                      <p className="text-sm text-grey-600">
-                        We’ll check your eligibility and use all votes left on your ballot for GoodBuildIt. Your wallet will show the vote before you sign. No project approval is included.
-                      </p>
-                      <button
-                        type="button"
-                        className={`${styles.btnV} w-full`}
-                        disabled={Boolean(busy)}
-                        onClick={() => void submitVote()}
-                      >
-                        Support us on GoodBuildIt
-                      </button>
-                    </div>
-                  ) : (
-                    <p className="text-sm">{autoSupportUnavailableMessage}</p>
-                  )
-                ) : canVote && (
-                  <>
-                    <div className="hk-vote-allocation" aria-live="polite">
-                      <output htmlFor="flowstate-votes" className="hk-vote-number">
-                        {quantity}
-                      </output>
-                      <p>of {status.available} points</p>
-                    </div>
-                    <input
-                      id="flowstate-votes"
-                      className="hk-vote-range"
-                      type="range"
-                      aria-label="Votes for GoodBuildIt"
-                      aria-valuetext={`${quantity} points`}
-                      style={{ "--slider-fill": `${max <= 1 ? 100 : ((Number(quantity) - 1) / (max - 1)) * 100}%` } as React.CSSProperties}
-                      name="additional"
-                      min="1"
-                      max={max}
-                      step="1"
-                      value={quantity}
-                      onChange={(e) => setQuantity(e.target.value)}
-                    />
-                    <button className={`${styles.btnV} w-full`} disabled={Boolean(busy)}>
-                      Vote {quantity} {quantity === "1" ? "point" : "points"}
-                    </button>
-                  </>
-                )}
-                {hasSupport && (
-                  <button
-                    type="button"
-                    className={canVote ? "block w-full text-center text-sm text-violet underline" : `${styles.btnV} w-full`}
-                    disabled={Boolean(busy)}
-                    onClick={() => void acceptExisting()}
-                  >
-                    I already voted
-                  </button>
-                )}
-                {!autoSupport && !canVote && !hasSupport && (
-                  <p className="text-sm">All your points are already given to other projects.</p>
-                )}
-              </form>
-            )
+          ) : status && !status.verified ? (
+            <a className={`${styles.btnV} w-full`} href={verifyHref}>
+              Verify with GoodDollar first
+            </a>
           ) : (
             !busy && (
               <button type="button" className={`${styles.btnV} w-full`} onClick={() => void load()}>

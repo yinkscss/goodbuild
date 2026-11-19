@@ -33,6 +33,8 @@ export interface PublicStats {
   contracts: Array<{ name: string; address: string; txHash: string; sourceChecked: boolean; deployedAt: string }>;
   /** Newest first. Live apps only (no unpublished apps, no takedowns). */
   liveApps: Array<{ name: string; slug: string; publishedAt: string }>;
+  /** The on-chain activity registry (D156), once deployed and switched on. Null until REGISTRY_ADDRESS is set. */
+  registry: { chainId: number; address: string } | null;
 }
 
 export const SIGNUP_WEEKS = 12;
@@ -163,5 +165,6 @@ export async function loadPublicStats(db: Db, now = new Date()): Promise<PublicS
     },
     contracts,
     liveApps: appRows.map((a) => ({ name: a.name, slug: a.slug, publishedAt: new Date(a.publishedAt).toISOString() })),
+    registry: /^0x[0-9a-fA-F]{40}$/.test(process.env.REGISTRY_ADDRESS ?? "") ? { chainId: CELO_MAINNET_ID, address: process.env.REGISTRY_ADDRESS as string } : null,
   };
 }

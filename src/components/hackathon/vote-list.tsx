@@ -31,7 +31,7 @@ function writePending(id: string | null) {
 }
 
 /**
- * Projects people can approve, with the three-approvals rule (D132). Used on the public /hackathon page
+ * Projects people can approve, with the three-approvals rule (D155). Used on the public /hackathon page
  * and in the app's Vote tab. Someone who hasn't finished the steps (email, GoodDollar, FlowState) gets
  * a small pop-up with the steps, then one click to approve. The project they picked is remembered
  * across the GoodDollar trip.
@@ -274,7 +274,7 @@ function StepsDialog({
             {verify.note && <p role="alert" className="mt-2 text-xs text-danger">{verify.note}</p>}
           </Step>
           <Step n={3} done={status.voted} title="Support GoodBuildIt on FlowState" note="We check your ballot and use its remaining votes for GoodBuildIt. This does not approve your friend’s project. We cover the network fee.">
-            {status.signedIn && status.verified ? <FlowstateVote autoSupport onConfirmed={() => void refresh()} /> : <p className="text-xs text-grey-600">Finish the steps above first.</p>}
+            {status.signedIn && status.verified ? <FlowstateVote onConfirmed={() => void refresh()} /> : <p className="text-xs text-grey-600">Finish the steps above first.</p>}
           </Step>
         </ol>
         <button

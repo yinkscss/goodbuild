@@ -34,6 +34,8 @@ function compileFile(source, contract) {
 }
 
 export const compileCredits = () => compileFile(SOURCE, "GoodBuildCredits");
+/** The activity registry (D156), compiled the same way. */
+export const compileRegistry = () => compileFile("contracts/GoodBuildRegistry.sol", "GoodBuildRegistry");
 /** The Sepolia stand-in for G$ (ERC-677 transferAndCall, faucet), compiled for tests and the Sepolia rehearsal. */
 export const compileTestGd = () => compileFile("scripts/solidity/goodbuild/TestGoodDollar.sol", "TestGoodDollar");
 
@@ -42,4 +44,7 @@ if (process.argv[1] === import.meta.filename) {
   fs.mkdirSync(path.join(root, "contracts/build"), { recursive: true });
   fs.writeFileSync(path.join(root, "contracts/build/GoodBuildCredits.json"), JSON.stringify(artifact));
   console.log(`GoodBuildCredits compiled: ${(artifact.bytecode.length - 2) / 2} bytes`);
+  const registry = compileRegistry();
+  fs.writeFileSync(path.join(root, "contracts/build/GoodBuildRegistry.json"), JSON.stringify(registry));
+  console.log(`GoodBuildRegistry compiled: ${(registry.bytecode.length - 2) / 2} bytes`);
 }

@@ -127,11 +127,12 @@ export function stuck(t: Table): boolean {
 
 const GAME = `import { useRef, useState } from "react";
 import { CardFace } from "../cards/CardFace";
-import { SUIT_SIGN, SUITS } from "../cards/cards";
+import { SUIT_SIGN, SUITS, fullDeck, shuffle } from "../cards/cards";
 import { GameOver } from "../game/GameOver";
 import { GameSettings } from "../game/GameSettings";
 import { buzz } from "../game/haptics";
-import { declareGame, moved, probe, round } from "../game/probe";
+import { seededRandom } from "../game/extras";
+import { checkSeed, declareGame, moved, probe, round } from "../game/probe";
 import { sfx } from "../game/sound";
 import { bestScore, saveBest } from "../game/storage";
 import { BEST_KEY, GAME_NAME } from "./info";
@@ -146,9 +147,15 @@ const SIZE = 44;
 
 type Screen = "start" | "playing" | "over";
 
+/** A fresh deal: random for players, and GoodBuild's fixed one while it checks the game. */
+function newDeal(): Table {
+  const seed = checkSeed();
+  return deal(seed === undefined ? undefined : shuffle(fullDeck(), seededRandom(seed)));
+}
+
 export default function Game() {
   const [screen, setScreen] = useState<Screen>("start");
-  const [t, setT] = useState<Table>(() => deal());
+  const [t, setT] = useState<Table>(() => newDeal());
   const [best, setBest] = useState(() => bestScore(BEST_KEY));
   const [nudge, setNudge] = useState<string | null>(null);
   const final = useRef(0);
@@ -163,7 +170,7 @@ export default function Game() {
   };
 
   const start = () => {
-    const fresh = deal();
+    const fresh = newDeal();
     setT(fresh);
     setNudge(null);
     final.current = 0;
@@ -277,5 +284,5 @@ export const solitaire: GameTemplate = {
   brief: `This game starts from GoodBuild's Solitaire template, a working, tested Klondike game: src/play/rules.ts (the deal, the moves, the score), src/play/Game.tsx (the table), src/play/info.ts (its name), src/cards/ (the deck and the card face) and src/App.tsx. Reshape it to the plan instead of starting again:
 - Rename it (GAME_NAME, BEST_KEY), restyle the cards (src/cards/CardFace.tsx) and the table to the plan's look, and change the rules the plan asks for in rules.ts (one card at a time instead of three, more passes). Keep the look GoodBuild's own, never a copy of another solitaire app.
 - Points only: never bets or prizes in money or tokens.
-- Keep what makes it work: round(true) at Play and round(false) at the end, moved() on every tap, probe(score) when the score changes, the cards and the deck inside <div data-game-area>, GameOver on the game with Play again, free play with no wallet. It has no leaderboard: a round ends only when the player is stuck, wins or ends it.`,
+- Keep what makes it work: round(true) at Play and round(false) at the end, moved() on every tap, probe(score) when the score changes, every deal through newDeal() (GoodBuild's check deals from a fixed seed), the cards and the deck inside <div data-game-area>, GameOver on the game with Play again, free play with no wallet. It has no leaderboard: a round ends only when the player is stuck, wins or ends it.`,
 };

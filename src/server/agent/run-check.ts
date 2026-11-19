@@ -6,7 +6,8 @@ import type { Browser, BrowserContext, Page, Route } from "playwright-core";
 import { buildPublishedApp, moduleStarts, PublishBuildError, type PublishedFile } from "@/server/publish/build";
 
 import type { CheckIssue } from "./checks";
-import { checkControls, GAME_CHECK_SPEED, gameCanvas, gameCheckScript, insideMiniPay, judgeRounds, playRounds, probeReport, standInWalletScript, walletAndBoard } from "./game-check";
+import { CHECK_WALLET_SHORT, checkControls, GAME_CHECK_SPEED, gameCanvas, gameCheckScript, insideMiniPay, judgeRounds, pickBrowserWallet, playRounds, probeReport, standInWalletScript, walletAndBoard } from "./game-check";
+import { ALL_FLOWS_MS, parseFlows, runFlows, type FlowResult } from "./acceptance";
 import { KITS, kitIdsOf } from "./kits/registry";
 
 /** Every file a kit ships, so the game's own code can be told apart from GoodBuild's. */
@@ -46,6 +47,10 @@ export interface RunCheckOptions {
   scene?: boolean;
   /** Also return screenshots at phone and desktop width. */
   screenshots?: boolean;
+  /** Also return a text outline of a page (D152: the builder's open_app tool). route defaults to the home page. */
+  outline?: { route?: string };
+  /** Run the spec's acceptance flows (D152), each on a fresh page; `only` runs the flows whose name contains it. */
+  acceptance?: { flows: unknown[]; only?: string };
   timeoutMs?: number;
   /** Tests: a browser to use instead of the shared one. */
   browser?: Browser;
@@ -67,6 +72,10 @@ export interface RunCheckResult {
   ms: number;
   /** For a 2D game, the first is the start screen and the second is a moment into play (phone width). */
   screenshots?: Array<{ width: number; png: Uint8Array; shows?: "start" | "playing" }>;
+  /** What the page shows, as text: headings, buttons, links, inputs and the start of its text (options.outline). */
+  outline?: string;
+  /** Each acceptance flow's result (options.acceptance). Reported, never turned into issues here: the runner decides. */
+  acceptance?: FlowResult[];
 }
 
 export const PHONE = { width: 375, height: 812 };
@@ -541,6 +550,45 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
     }
   }
 
+  // The spec's acceptance flows (D152), each on its own fresh page in this context, so the app is served the same way.
+  let acceptance: FlowResult[] | undefined;
+  if (options.acceptance) {
+    const { flows, problems } = parseFlows(options.acceptance.flows);
+    acceptance = [
+      ...problems.map((reason) => ({ name: "invalid flow", needs: "local" as const, status: "fail" as const, reason })),
+      ...(await runFlows(flows, {
+        newPage: async (wallet) => {
+          const p = await context.newPage();
+          if (wallet) await p.addInitScript(standInWalletScript({ miniPay: false, chainId: options.chainId ?? 11142220 }));
+          return p;
+        },
+        open,
+        connectWallet: async (p) => {
+          const button = p.getByRole("button", { name: /connect( a| your)? wallet/i }).first();
+          if (!(await button.isVisible().catch(() => false))) return "there is no Connect wallet button";
+          await button.click({ timeout: 1_500 });
+          await pickBrowserWallet(p);
+          const shown = await p.waitForFunction((short) => document.body.innerText.includes(short), CHECK_WALLET_SHORT, { timeout: 3_000 }).then(() => true).catch(() => false);
+          return shown ? null : "the wallet connected but the page didn't show its address";
+        },
+        outline: (p) => p.evaluate(pageOutline),
+      }, options.acceptance.only)),
+    ];
+  }
+
+  // The builder's own look at a page (D152). Before the issues are read, so a crash on that route is reported too.
+  let outline: string | undefined;
+  if (options.outline) {
+    const target = options.outline.route?.trim().replace(/^#/, "") || "/";
+    route = target.startsWith("/") ? target : `/${target}`;
+    await page.evaluate((r) => {
+      document.documentElement.setAttribute("data-fx", "off");
+      window.location.hash = `#${r}`;
+    }, route).catch(() => undefined);
+    await settle(page, 500);
+    outline = await page.evaluate(pageOutline).catch((error) => `couldn't read the page: ${String((error as Error)?.message ?? error).slice(0, 160)}`);
+  }
+
   let screenshots: RunCheckResult["screenshots"];
   if (options.screenshots) {
     await page.evaluate(() => {
@@ -595,7 +643,37 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
   }
   const opened = issues.length ? `${issues.length} problem${issues.length === 1 ? "" : "s"} when the app ran` : `opened ${routes.length === 1 ? "the app" : `${routes.length} pages`} with no errors`;
   const note = gameNotes.length ? `${opened}; ${gameNotes.filter(Boolean).join("; ")}` : opened;
-  return { ran: true, deliveryVerified: Boolean(deliveryVerified && !issues.length), issues, note, ...(screenshots ? { screenshots } : {}) };
+  return { ran: true, deliveryVerified: Boolean(deliveryVerified && !issues.length), issues, note, ...(screenshots ? { screenshots } : {}), ...(outline !== undefined ? { outline } : {}), ...(acceptance ? { acceptance } : {}) };
+}
+
+/** Runs in the page: what a person sees, as short lines (open_app, D152). Self-contained, it is serialised. */
+function pageOutline(): string {
+  const clean = (s: string | null | undefined, max = 80) => (s ?? "").replace(/\s+/g, " ").trim().slice(0, max);
+  const visible = (el: Element) => {
+    const r = el.getBoundingClientRect();
+    const st = getComputedStyle(el);
+    return r.width > 0 && r.height > 0 && st.visibility !== "hidden" && st.display !== "none";
+  };
+  const lines: string[] = [`route: ${window.location.hash.replace(/^#/, "") || "/"}`, `title: ${clean(document.title)}`];
+  document.querySelectorAll("h1, h2, h3").forEach((h) => {
+    if (visible(h)) lines.push(`${h.tagName.toLowerCase()}: ${clean(h.textContent)}`);
+  });
+  document.querySelectorAll("button, [role=button]").forEach((b) => {
+    if (!visible(b)) return;
+    const name = clean(b.getAttribute("aria-label") || b.textContent) || "(no text)";
+    lines.push(`button: ${name}${(b as HTMLButtonElement).disabled ? " (disabled)" : ""}`);
+  });
+  document.querySelectorAll("a[href]").forEach((a) => {
+    if (visible(a)) lines.push(`link: ${clean(a.getAttribute("aria-label") || a.textContent) || "(no text)"} -> ${clean(a.getAttribute("href"), 60)}`);
+  });
+  document.querySelectorAll("input, textarea, select").forEach((el) => {
+    if (!visible(el)) return;
+    const id = el.getAttribute("id");
+    const label = (id && document.querySelector(`label[for="${CSS.escape(id)}"]`)?.textContent) || el.closest("label")?.textContent || el.getAttribute("aria-label") || el.getAttribute("placeholder");
+    lines.push(`${el.tagName.toLowerCase()}${el.getAttribute("type") ? ` (${el.getAttribute("type")})` : ""}: ${clean(label) || "(no label)"}`);
+  });
+  lines.push(`text: ${clean(document.body?.innerText, 900)}`);
+  return lines.join("\n").slice(0, 4000);
 }
 
 /** Build the project and open it. Never throws: a check that can't run says so and reports nothing. */
@@ -620,7 +698,8 @@ export async function runCheck(files: Record<string, string>, options: RunCheckO
     const kits = kitIdsOf(files);
     context = await browser.newContext({ viewport: PHONE, hasTouch: Boolean(options.phone), serviceWorkers: "block", acceptDownloads: false, permissions: [] });
     const timeout = new Promise<Omit<RunCheckResult, "ms">>((resolve) => {
-      timer = setTimeout(() => resolve({ ran: false, issues: [], note: "skipped: the app took too long to open" }), options.timeoutMs ?? (kits.includes("game-2d") ? GAME_TIMEOUT_MS : DEFAULT_TIMEOUT_MS));
+      // Acceptance flows (D152) get their own time on top: ALL_FLOWS_MS bounds them.
+      timer = setTimeout(() => resolve({ ran: false, issues: [], note: "skipped: the app took too long to open" }), (options.timeoutMs ?? (kits.includes("game-2d") ? GAME_TIMEOUT_MS : DEFAULT_TIMEOUT_MS)) + (options.acceptance ? ALL_FLOWS_MS : 0));
     });
     const ticTacToe = options.delivery?.id === "interface" && /tic[- ]tac[- ]toe/i.test(options.delivery.goal);
     const game = ticTacToe ? false : options.game ?? (kits.includes("game-2d") || kits.includes("three-d"));

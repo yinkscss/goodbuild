@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth/context";
-import { InviteCard } from "./invite-card";
+import { InviteFriendsCard } from "@/components/referral/invite-card";
 import { Quests } from "./quests";
 import { RegisterSteps } from "./register-steps";
 import { DEPLOY_CREDITS, START_CREDITS, useHackathonClaim } from "./use-hackathon-claim";
@@ -13,7 +13,7 @@ const NEXT = [
 ];
 
 /**
- * "Get started" (D132): the four registration steps until the person has registered, then a short
+ * "Get started" (D155): the four registration steps until the person has registered, then a short
  * summary of where they stand. Registered people never see the steps again.
  */
 export function GetStarted() {
@@ -52,7 +52,7 @@ function Signed({ userId }: { userId: string }) {
         {claim.error && <p role="alert" className="mt-3 text-sm">{claim.error}</p>}
       </div>
       <Quests registered deployClaimed={deployCredits > 0} />
-      <InviteCard />
+      <InviteFriendsCard />
       <div className="grid gap-4 sm:grid-cols-3">
         {NEXT.map((n) => (
           <Link key={n.href} href={n.href} className="rounded-card bg-surface p-6 shadow-card outline-none hover:shadow-pop focus-visible:shadow-focus">

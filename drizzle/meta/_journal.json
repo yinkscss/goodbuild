@@ -215,8 +215,22 @@
     {
       "idx": 30,
       "version": "7",
-      "when": 1795115883758,
-      "tag": "0030_multi_project_approvals",
+      "when": 1795119561989,
+      "tag": "0030_referrals",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1795125429425,
+      "tag": "0031_registry_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1795125429426,
+      "tag": "0032_multi_project_approvals",
       "breakpoints": true
     }
   ]

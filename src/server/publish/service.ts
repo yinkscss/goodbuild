@@ -10,6 +10,7 @@ import { isStarterApp, withCurrentDataHelpers, withCurrentWalletHelpers } from "
 import { slugFromName, slugProblem } from "@/lib/published-host";
 import { dbAssetStore } from "@/server/agent/asset-store";
 import { loadFiles } from "@/server/agent/store";
+import { enqueueForProject } from "@/server/registry/outbox";
 import type { Db } from "@/server/db/client";
 import { publicationFiles, publications, type Publication } from "@/server/db/publish-schema";
 import { users, type Project } from "@/server/db/schema";
@@ -161,6 +162,8 @@ export async function publishApp(db: Db, project: Project, slug: string, deps: {
     if (isUniqueViolation(error)) throw new PublishError("slug_taken", "That address is taken. Try another.");
     throw error;
   }
+  // Only when the app goes from not live to live: publishing a new version of a live app isn't a new app.
+  if (!existing || existing.unpublishedAt) await enqueueForProject(db, { kind: "AppPublished", key: `published:${project.id}:${Date.now()}`, projectId: project.id });
   return publishStatus(db, project);
 }
 
@@ -172,6 +175,7 @@ export async function unpublishApp(db: Db, project: Project): Promise<PublishSta
     await tx.update(publications).set({ unpublishedAt: new Date() }).where(eq(publications.id, existing.id));
     await tx.delete(publicationFiles).where(eq(publicationFiles.publicationId, existing.id));
   });
+  await enqueueForProject(db, { kind: "AppUnpublished", key: `unpublished:${project.id}:${Date.now()}`, projectId: project.id });
   return publishStatus(db, project);
 }
 

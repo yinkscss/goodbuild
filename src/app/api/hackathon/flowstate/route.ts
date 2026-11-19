@@ -22,6 +22,7 @@ import { gasGrantDeps } from "@/server/gas-grant/runtime";
 import { SUPPORT_TELEGRAM_URL } from "@/config/site-links";
 import { FreeGrantError, claimWelcome, freePolicy } from "@/server/credits/free-grants";
 import { readGoodIdentityOnCelo, syncGoodId } from "@/server/goodid";
+import { hasUnsettledInvite, settleInviteOnVote } from "@/server/referrals/referrals";
 import type { ResolvedSession } from "@/server/auth/service";
 const headers = { "Cache-Control": "no-store" };
 /**
@@ -201,7 +202,18 @@ export async function POST(request: Request) {
         if (!(e instanceof FreeGrantError)) console.error("[flowstate] welcome after vote failed", e instanceof Error ? e.name : "unknown");
       }
     }
-    return NextResponse.json({ ...confirmed, welcomeMicro }, { headers });
+    // An invited person's vote also pays the invite bonus (D155): to them, and to whoever invited them.
+    let inviteMicro = 0;
+    try {
+      if (await hasUnsettledInvite(db, s.user.id)) {
+        const identity = await readGoodIdentityOnCelo(wallet);
+        if (identity.root) inviteMicro = (await settleInviteOnVote(db, { userId: s.user.id, root: identity.root, env: process.env })).paidMicro;
+      }
+    } catch (e) {
+      // Never fails the vote: the next confirmation tries again.
+      console.error("[flowstate] invite bonus after vote failed", e instanceof Error ? e.name : "unknown");
+    }
+    return NextResponse.json({ ...confirmed, welcomeMicro, inviteMicro }, { headers });
   } catch (e) {
     return failure(e);
   }

@@ -1,3 +1,4 @@
+import { SPEC_PATH } from "./spec";
 import { TEMPLATE_IMAGE_MODULE } from "@/config/page-templates";
 import "server-only";
 
@@ -15,7 +16,7 @@ import { assetRefs } from "./assets";
 import { custodyOf, type CustodyReason } from "./custody";
 import { exploitTestIssues } from "./kits/dao-vault";
 import { KIT_MARKER, kitForPackage, kitReplacing, kitsOf, type Kit } from "./kits/registry";
-import { ALLOWED_DEPENDENCIES, PLATFORM_DIR, WALLET_DIR, dependenciesOf, isStarterApp } from "./template";
+import { ALLOWED_DEPENDENCIES, COMPANION_PACKAGES, PLATFORM_DIR, V2_PACKAGES, WALLET_DIR, dependenciesOf, isStarterApp } from "./template";
 
 /** Compiler settings, pinned (CONTRACTS_AND_DEPLOYMENT.md §2, §4). */
 export const SOLC_SETTINGS = {
@@ -30,7 +31,7 @@ export interface CheckIssue {
   file: string;
   line?: number;
   message: string;
-  source: "solc" | "guardrail" | "syntax" | "imports" | "paths" | "test" | "manifest" | "runtime" | "types";
+  source: "solc" | "guardrail" | "syntax" | "imports" | "paths" | "test" | "manifest" | "runtime" | "types" | "acceptance";
 }
 
 export interface CompiledContract {
@@ -93,6 +94,7 @@ export function pathProblem(p: string, kits: Kit[] = []): string | null {
     return `${WALLET_DIR} is GoodBuild's wallet layer (wallet list, WalletConnect, MiniPay). Use connectWallet / writeContract from src/lib/chain.ts, useWallet and ConnectButton instead of changing it.`;
   }
   if (p.startsWith("src/assets/")) return "src/assets/ is written by GoodBuild from the user's uploads. Import { assets } from it, or use the /assets/<name> path.";
+  if (p === SPEC_PATH) return `${SPEC_PATH} is the app's spec, written by GoodBuild's planner. Follow it; if it is wrong, say so in your reply instead of changing it.`;
   if (/^contracts\/[A-Za-z0-9_]+\.sol$/.test(p) || p === MANIFEST_PATH) return null;
   if (/^contracts\/test\/[A-Za-z0-9_]+\.t\.sol$/.test(p)) return null;
   if (/^src\/[A-Za-z0-9_\-/.]+\.(tsx?|css|json)$/.test(p)) return null;
@@ -198,7 +200,7 @@ function lineAt(content: string | undefined, offset: number): number | undefined
  * house-style ones (require strings, a token calling its own transfer), for the re-check at deploy time:
  * a safe but untidy older project must still be able to deploy.
  */
-export function guardrailIssues(file: string, ast: Json, content?: string, { upgradeable = false, securityOnly = false }: { upgradeable?: boolean; securityOnly?: boolean } = {}): CheckIssue[] {
+export function guardrailIssues(file: string, ast: Json, content?: string, { upgradeable = false, securityOnly = false, allowRequire = false }: { upgradeable?: boolean; securityOnly?: boolean; /** Harness v2 (D152): require(cond, "text") and revert("text") are allowed. */ allowRequire?: boolean } = {}): CheckIssue[] {
   const issues: CheckIssue[] = [];
   const at = (node: Json) => {
     const start = Number(String(node.src ?? "").split(":")[0]);
@@ -250,7 +252,7 @@ export function guardrailIssues(file: string, ast: Json, content?: string, { upg
         let callee = n.expression as Json | undefined;
         const args = (n.arguments as Json[]) ?? [];
         // Custom errors only: no require(...) without an error, no revert("text").
-        if (!securityOnly && callee?.nodeType === "Identifier" && callee.name === "require") {
+        if (!securityOnly && !allowRequire && callee?.nodeType === "Identifier" && callee.name === "require") {
           const reason = args[1];
           const customError = reason?.nodeType === "FunctionCall";
           if (!customError) flag(n, "Use a custom error instead of require: declare `error Name();` and write `if (!condition) revert Name();`.");
@@ -261,7 +263,7 @@ export function guardrailIssues(file: string, ast: Json, content?: string, { upg
         if (!securityOnly && inErc20 && callee?.nodeType === "Identifier" && (callee.name === "transferFrom" || callee.name === "transfer")) {
           flag(n, `Don't call this token's own public ${String(callee.name)}() from inside the contract: msg.sender is still the user, so it spends their allowance to themselves and reverts. Use _transfer(from, to, amount).`);
         }
-        if (!securityOnly && callee?.nodeType === "Identifier" && callee.name === "revert") {
+        if (!securityOnly && !allowRequire && callee?.nodeType === "Identifier" && callee.name === "revert") {
           flag(n, 'Use a custom error instead of revert("..."): `revert Name();`.');
         }
         if (callee?.nodeType === "FunctionCallOptions") callee = callee.expression as Json;
@@ -435,6 +437,8 @@ export interface ContractCheckOptions {
   upgradeable?: boolean;
   /** Safety and storage checks for an upgradeable project, run after a clean compile. */
   upgradeChecks?: (files: Record<string, string>) => Promise<CheckIssue[]>;
+  /** Harness v2 (D152): require(cond, "text") and revert("text") pass; every security guardrail still applies. */
+  allowRequire?: boolean;
 }
 
 /** True when a request explicitly asks for native CELO (the word CELO, not "Celo" the network). */
@@ -481,7 +485,7 @@ export async function checkContracts(files: Record<string, string>, options: Con
     // Tests never deploy, so deploy guardrails don't apply to them (and a test touching
     // IERC20 mustn't satisfy the G$ "handles a token" check for the real contracts).
     if (!file.startsWith("contracts/") || isTestFile(file)) continue;
-    errors.push(...guardrailIssues(file, src.ast, files[file], { upgradeable: options.upgradeable }));
+    errors.push(...guardrailIssues(file, src.ast, files[file], { upgradeable: options.upgradeable, allowRequire: options.allowRequire }));
     if (options.upgradeable) errors.push(...upgradeableIssues(file, src.ast, files[file]));
     projectAsts.push({ file, ast: src.ast, content: files[file] });
   }
@@ -556,7 +560,7 @@ function packageName(spec: string): string {
 }
 
 /** Syntax errors and unresolved imports in the generated app. Type errors are left to the preview. */
-export function checkApp(files: Record<string, string>, opts: { assets?: string[] } = {}): CheckReport {
+export function checkApp(files: Record<string, string>, opts: { assets?: string[]; /** Harness v2 (D152): the vetted v2 packages may be added. */ v2?: boolean } = {}): CheckReport {
   const errors: CheckIssue[] = [];
   const deps = new Set(dependenciesOf(files));
   for (const [file, content] of Object.entries(files)) {
@@ -584,12 +588,16 @@ export function checkApp(files: Record<string, string>, opts: { assets?: string[
         if (!deps.has(pkg)) {
           const kit = kitForPackage(pkg);
           // A package a kit stands in for (an animation or charting library): say which kit, so the fix is one step.
-          const instead = kit ? undefined : kitReplacing(pkg);
+          // The v2 packages (D152) are only addable in a v2 build; elsewhere they read as not allowed, as before.
+          // A companion (react-is, @dnd-kit/utilities) comes with the package that needs it, so that is the one to add.
+          const parent = Object.entries(COMPANION_PACKAGES).find(([, c]) => pkg in c)?.[0];
+          const addable = pkg in ALLOWED_DEPENDENCIES && (opts.v2 || !(pkg in V2_PACKAGES || parent));
+          const instead = kit || addable ? undefined : kitReplacing(pkg);
           const hint =
             kit && !kitsOf(files).includes(kit)
               ? ` It comes with the ${kit.id} kit: call add_kit("${kit.id}") first.`
-              : pkg in ALLOWED_DEPENDENCIES
-                ? ` Call add_dependency("${pkg}") first.`
+              : addable
+                ? ` Call add_dependency("${parent && !(pkg in V2_PACKAGES) ? parent : pkg}") first${parent && !(pkg in V2_PACKAGES) ? `, which installs ${pkg} with it` : ""}.`
                 : instead
                   ? ` It isn't on the allowed package list. The ${instead.id} kit does this with no package: ${kitsOf(files).includes(instead) ? `follow its guide (read_guide "kit-${instead.id}")` : `call add_kit("${instead.id}")`} and use its files.`
                   : " It isn't on the allowed package list.";

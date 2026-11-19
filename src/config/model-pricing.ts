@@ -4,7 +4,7 @@
  *
  * Prices are USD per million tokens, checked 4 Nov 2026:
  * - Claude Sonnet 5.5: https://platform.claude.com/docs/en/models/overview
- *   ($2 input, $10 output; cache reads 5% of input).
+ *   ($2 input, $10 output; cache reads 5% of input; 5-minute cache writes 1.25x input, rechecked 19 Nov 2026).
  * - DeepSeek Flash: https://api-docs.deepseek.com/quick_start/pricing
  *   (peak $0.30 input cache miss, $0.006 cache hit, $1.20 output). We always use peak
  *   prices, which can only over-estimate (off-peak is half).
@@ -17,10 +17,12 @@ export interface ModelPrice {
   inputPerMTok: number;
   cachedInputPerMTok: number;
   outputPerMTok: number;
+  /** Prompt tokens written to the provider's cache, when that costs more than plain input (D152). */
+  cacheWritePerMTok?: number;
 }
 
 export const MODEL_PRICES: ModelPrice[] = [
-  { match: /claude-sonnet-5-5/, label: "Claude Sonnet 5.5", inputPerMTok: 2, cachedInputPerMTok: 0.1, outputPerMTok: 10 },
+  { match: /claude-sonnet-5-5/, label: "Claude Sonnet 5.5", inputPerMTok: 2, cachedInputPerMTok: 0.1, outputPerMTok: 10, cacheWritePerMTok: 2.5 },
   { match: /deepseek-(flash|v4-flash|chat)/, label: "DeepSeek Flash", inputPerMTok: 0.3, cachedInputPerMTok: 0.006, outputPerMTok: 1.2 },
 ];
 
@@ -31,6 +33,7 @@ export const FALLBACK_PRICE: ModelPrice = {
   inputPerMTok: 2,
   cachedInputPerMTok: 2,
   outputPerMTok: 10,
+  cacheWritePerMTok: 2.5,
 };
 
 /** D13: actual LLM cost + 25%. In basis points. */
