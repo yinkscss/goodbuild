@@ -84,15 +84,34 @@ function defaultModels(): Record<ModelTier, LanguageModel> {
   };
 }
 
+/** How long a model stream may send nothing before it counts as dropped (D138). MODEL_IDLE_MS overrides; default 2 minutes. */
+export const MODEL_IDLE_MS = 120_000;
+
+export function modelIdleMs(env: Record<string, string | undefined> = process.env): number {
+  const value = Number(env.MODEL_IDLE_MS);
+  return Number.isSafeInteger(value) && value > 0 ? value : MODEL_IDLE_MS;
+}
+
 /**
  * Vercel AI SDK client (D18). Provider keys come from ANTHROPIC_API_KEY and DEEPSEEK_API_KEY
  * in the server environment. Tools have no `execute`, so the SDK only returns the calls and
  * the runner applies the edits. `models` is injectable for tests.
  */
-export function aiSdkClient(models?: Record<ModelTier, LanguageModel>): ModelClient {
+export function aiSdkClient(models?: Record<ModelTier, LanguageModel>, idleMs = modelIdleMs()): ModelClient {
   return {
     async *stream(req: ModelRequest) {
       const tier = req.tier;
+      // D138: a stream that sends nothing at all (no text, thinking or tool input) for idleMs is treated as a
+      // dropped connection. It ends as ModelUnavailableError, which the runner retries once, instead of
+      // the build sitting on "Thinking" for as long as the provider holds the socket.
+      const idle = new AbortController();
+      let idleTimer: ReturnType<typeof setTimeout> | undefined;
+      const touch = () => {
+        clearTimeout(idleTimer);
+        idleTimer = setTimeout(() => idle.abort(), idleMs);
+      };
+      const signal = req.signal ? AbortSignal.any([req.signal, idle.signal]) : idle.signal;
+      touch();
       let result;
       try {
         const model = (models ?? defaultModels())[tier];
@@ -104,16 +123,18 @@ export function aiSdkClient(models?: Record<ModelTier, LanguageModel>): ModelCli
           tools: toSdkTools(req.tools),
           maxOutputTokens: req.maxTokens,
           maxRetries: 1,
-          abortSignal: req.signal,
+          abortSignal: signal,
           ...(req.noThinking ? { providerOptions: { deepseek: { thinking: { type: "disabled" } } } } : {}),
         });
       } catch (error) {
+        clearTimeout(idleTimer);
         throw new ModelUnavailableError(describe(error, tier));
       }
 
       let finishReason: string | null = null;
       try {
         for await (const part of result.fullStream) {
+          touch();
           switch (part.type) {
             case "text-delta":
               if (part.text) yield { type: "text", delta: part.text } as const;
@@ -141,8 +162,13 @@ export function aiSdkClient(models?: Record<ModelTier, LanguageModel>): ModelCli
               break;
           }
         }
+        // An abort ends the SDK's stream quietly (an "abort" part), so the idle stop is checked here too.
+        if (idle.signal.aborted && !req.signal?.aborted) throw idle.signal.reason;
       } catch (error) {
+        if (idle.signal.aborted && !req.signal?.aborted) throw new ModelUnavailableError(`The AI provider sent nothing for ${Math.round(idleMs / 1000)} seconds.`);
         throw new ModelUnavailableError(describe(error, tier));
+      } finally {
+        clearTimeout(idleTimer);
       }
       yield { type: "done", finishReason } as const;
     },
