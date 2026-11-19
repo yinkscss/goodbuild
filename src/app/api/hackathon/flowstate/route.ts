@@ -21,8 +21,19 @@ import { ensureGas, GasGrantError } from "@/server/gas-grant/grant";
 import { gasGrantDeps } from "@/server/gas-grant/runtime";
 import { SUPPORT_TELEGRAM_URL } from "@/config/site-links";
 import { FreeGrantError, claimWelcome, freePolicy } from "@/server/credits/free-grants";
-import { readGoodIdentityOnCelo } from "@/server/goodid";
+import { readGoodIdentityOnCelo, syncGoodId } from "@/server/goodid";
+import type { ResolvedSession } from "@/server/auth/service";
 const headers = { "Cache-Control": "no-store" };
+/**
+ * FlowState reads verification straight from the chain, so someone verified with GoodDollar elsewhere
+ * never passes through Verify. Record it the first time we see it, so they're counted (/stats).
+ */
+async function recordVerified(s: ResolvedSession, verified: boolean) {
+  if (!verified || s.user.verifiedAt) return;
+  await syncGoodId(await getDb(), s.user).catch((e) =>
+    console.error("[flowstate] goodid record failed", e instanceof Error ? e.name : "unknown"),
+  );
+}
 const bodySchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("eligibility"),
@@ -66,13 +77,12 @@ function failure(e: unknown) {
 export async function GET() {
   try {
     const s = await requireSession();
-    return NextResponse.json(
-      await flowstateStatus(
-        publicClientFor(FLOWSTATE_CHAIN_ID),
-        s.user.wallet as Address,
-      ),
-      { headers },
+    const status = await flowstateStatus(
+      publicClientFor(FLOWSTATE_CHAIN_ID),
+      s.user.wallet as Address,
     );
+    await recordVerified(s, status.verified);
+    return NextResponse.json(status, { headers });
   } catch (e) {
     return failure(e);
   }
@@ -109,6 +119,7 @@ export async function POST(request: Request) {
     }
     if (body.data.action === "eligibility") {
       const status = await flowstateStatus(client, wallet);
+      await recordVerified(s, status.verified);
       if (!status.verified)
         throw new FlowstateError(
           "Verify with GoodDollar before enabling voting.",
@@ -146,6 +157,7 @@ export async function POST(request: Request) {
       body.data.action === "existing"
         ? await confirmExistingFlowstateSupport(client, wallet)
         : await confirmFlowstateVote(client, wallet, body.data.hash as Hex);
+    await recordVerified(s, confirmed.verified);
     if (!confirmed.verified || BigInt(confirmed.support) <= BigInt(0))
       throw new FlowstateError(
         "This wallet does not currently have verified support for GoodBuildIt.",

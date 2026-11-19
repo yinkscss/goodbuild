@@ -40,9 +40,17 @@ vi.mock("@/server/flowstate/service", async (original) => ({
   confirmFlowstateVote: mocks.confirm,
   confirmExistingFlowstateSupport: mocks.existing,
 }));
-vi.mock("@/server/goodid", () => ({
-  readGoodIdentityOnCelo: async () => ({ root: "0x" + "ab".repeat(20) }),
-}));
+vi.mock("@/server/goodid", async (original) => {
+  const real = await original<typeof import("@/server/goodid")>();
+  return {
+    readGoodIdentityOnCelo: async () => ({ root: "0x" + "ab".repeat(20) }),
+    // The chain says verified: record it, as the real one does.
+    syncGoodId: async (d: Db, u: { id: string }) => {
+      await real.recordGoodIdRoot(d, u.id, "0x" + "ab".repeat(20));
+      return true;
+    },
+  };
+});
 vi.mock("@/server/flowstate/eligibility", () => ({
   claimFlowstateEligibility: mocks.claim,
 }));
@@ -148,4 +156,16 @@ it("posts the 40 welcome credits as soon as the vote is confirmed, once", async 
     .from(ledgerEntries)
     .where(and(eq(ledgerEntries.userId, session!.user.id), eq(ledgerEntries.refType, "welcome")));
   expect(rows).toHaveLength(1);
+});
+it("records a wallet already verified with GoodDollar elsewhere, so /stats counts it", async () => {
+  expect((await GET()).status).toBe(200);
+  const [row] = await db.select({ verifiedAt: users.verifiedAt, root: users.goodidRoot }).from(users).where(eq(users.id, session!.user.id));
+  expect(row.verifiedAt).toBeInstanceOf(Date);
+  expect(row.root).toBe("0x" + "ab".repeat(20));
+});
+it("records nothing when the chain says the wallet isn't verified", async () => {
+  mocks.status.mockResolvedValue({ ...state, verified: false });
+  await GET();
+  const [row] = await db.select({ verifiedAt: users.verifiedAt }).from(users).where(eq(users.id, session!.user.id));
+  expect(row.verifiedAt).toBeNull();
 });
