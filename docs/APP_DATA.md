@@ -43,7 +43,7 @@ For apps whose visitors may have no wallet. Off unless the app's `dataRules.json
 ## Who can read and write
 Rules come from `src/lib/dataRules.json` in the project. The agent writes them for each app (D34). They're validated by the agent's checks and when publishing, and saved with the publication. Nothing in a request can change them.
 
-A rule is `"private"`, `"public-read"`, or an object:
+A rule is `"private"`, `"public-read"`, `"dealt"` (written only by the dealer, see The dealer), or an object:
 
 | Setting | Values | Default |
 |---|---|---|
@@ -74,6 +74,39 @@ A rule is `"private"`, `"public-read"`, or an object:
 Published apps are same-site with each other, so the browser sends a visitor's cookie with requests from another app's page, whatever SameSite says. So the data routes refuse any request whose `Sec-Fetch-Site` or `Origin` shows it came from another page, require `application/json` on writes, and never send a CORS header.
 
 **A limit this can't fix:** any page can ask a wallet to sign any text, including a sign-in message for another app. Wallets show the domain and some warn on a mismatch, but a visitor who signs anyway has handed over a session for that app. The main site's own sign-in has the same limit. A separate registrable domain for apps wouldn't change this one.
+
+## The dealer (D141)
+
+Games with hidden roles or hands need something no player controls: someone has to shuffle, and each player must see only their own share. A player's own device can't do it fairly, and the host can't either, because whoever shuffles knows the deal. So GoodBuild's server shuffles and deals.
+
+### What it does
+1. A collection is marked `"dealt"` in `dataRules.json`: `{"collections": {"hands": "dealt"}}` (saved at publish as `{"dealt": true}`). Only the server writes it. Each record belongs to one player (`owner_wallet` = that player) and is saved with the grant `{read: ["writer"], public: []}`, so the D34 rules apply unchanged: only that player reads it, never other players, the host or the app's owner. Nobody can add, change or delete a record there through the normal routes (403), so a player can't write themselves a better hand.
+2. `POST deal/<collection>` from any signed-in wallet (the host) with `{room, players, deck, hand}`:
+   - `players`: 2 to 10 distinct wallets (lowercase `0x` addresses).
+   - `deck`: 1 to 120 items, each a string of 1 to 40 printable characters (role names, card ids).
+   - `hand`: how many items each player gets (1 or more; `players × hand ≤ deck`).
+   - `room`: a label up to 40 characters, kept with the deal.
+   The server shuffles with `crypto.randomInt` (Fisher–Yates), writes one record per player (key = the deal id, value `{deal, room, items}`), and keeps the rest as the deal's stock, which nobody can read. It answers with a receipt: the deal id, the players and how many each got. Never the items.
+3. `POST deal/<collection>/<id>/draw` `{count}` (1 to 10) from a player in that deal: the server takes the top of the stock and writes it as a new record for that player only (key `<id>.d<n>`). It answers with the items, which only that player sees.
+4. `GET deal/<collection>/<id>` from the host or a player: the receipt, plus how many each has drawn and how many are left in the stock. No items.
+
+### What it doesn't do
+- It doesn't know whose turn it is. A player can draw out of turn; everyone sees the draw counts, so the game can show it. Played cards are ordinary public moves.
+- It can't prove fairness to the players: they trust GoodBuild's server, the same as for every record. The host can't choose who gets what, and doesn't learn it.
+- The host knows what was in the deck (for example 1 saboteur among 6).
+
+### Limits
+30 deals and 120 draws a minute per wallet in one app, on top of the write limits. Each player's hand records count against that player's own quota. Players must be wallets: visitors signed in by email can't be dealt to yet.
+
+### A known limit
+Anyone signed in can ask for a deal naming any wallets, so a stranger could put junk hands into a player's dealt collection in that app. They can't read anything, and they can't touch a real deal. The game reads hands by the deal id the room's host published, and it checks the receipt's `host` against the room's host, so junk is never shown as a hand. The multiplayer guide says so.
+
+### How it's tested
+`src/server/app-data/deal.attack.test.ts` uses the real proxy and handler, on PGlite, with real signatures. It checks every list, lookup, `owner`, `where`, `order` and `since` route, as other players, the host (playing or not), the app's owner (on the app and in the Backend window) and someone not signed in. Only the hand's player ever gets it. Writes, replacements and deletes are refused for everyone. Parallel draws never hand out an item twice. The hands and the stock add up to the deck, and Delete my data removes the records. `deal-helper.test.ts` runs the app's helper in the preview in a real browser.
+
+### Where it lives
+- `app_data_deals` (migration 0028): project, collection, id, host, room, players, stock (JSON), hand sizes, drawn counts. Deleted with the project, the owner's Delete all and a takedown purge. When the host uses Delete my data, their deals go.
+- Preview: the same API in the browser's stand-in. Everyone in the preview is in one browser, so nothing is secret there, and the note says so.
 
 ## Limits
 Set in `src/server/app-data/limits.ts`.
@@ -117,7 +150,7 @@ Nightly backups keep deleted data for up to 7 days (DEPLOY.md). Nothing expires 
 
 ## Known limits
 - **Wallets in published apps** are browser wallets, MiniPay and, once `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` is set, WalletConnect (D36). Magic email wallets still aren't available on an app host, so an owner with an email wallet can't sign in to their own app.
-- Queries are filters, an order and `since` over the newest 500 records (see Queries). No shared records, no live connection (apps poll), and no files or images from visitors (docs/OPEN_QUESTIONS.md).
+- Queries are filters, an order and `since` over the newest 500 records (see Queries). No shared records, no live connection (apps poll), and no files or images from visitors (docs/OPEN_QUESTIONS.md). Hidden hands and roles come from the dealer (D141).
 - **UNVERIFIED:** the helper in the real Sandpack preview. It was run in Chromium on another origin with no server and no `goodbuild-data` tag, which is the same code path, but CodeSandbox's bundler wasn't part of that, so its handling of the JSON import is unchecked.
 - **UNVERIFIED:** Cloudflare passing `/__gb/data/` unchanged and not caching it. Every response says `no-store, private`, and nothing about this path has been tried on the live server.
 - **A few addresses can pause one app.** The limit of 1,500 requests a minute per app can be used up by about 5 addresses at the per-IP read limit, and that app's data API then answers 429 for up to a minute. Other apps aren't affected.
