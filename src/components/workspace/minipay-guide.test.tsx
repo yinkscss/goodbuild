@@ -15,6 +15,7 @@ const info = (over: Partial<PublishInfo> = {}): PublishInfo => ({
   domain: "goodbuildit.xyz",
   live: false,
   disabled: false,
+  addressLocked: false,
   publishedVersion: null,
   currentVersion: 3,
   undeployed: [],

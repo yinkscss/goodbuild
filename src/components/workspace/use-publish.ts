@@ -8,6 +8,7 @@ export interface PublishInfo {
   domain: string;
   live: boolean;
   disabled: boolean;
+  addressLocked: boolean;
   publishedVersion: number | null;
   currentVersion: number;
   undeployed: string[];

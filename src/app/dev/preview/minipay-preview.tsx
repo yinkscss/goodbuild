@@ -13,6 +13,7 @@ export function MiniPayPreview({ state }: { state: string }) {
     domain: "goodbuildit.xyz",
     live: state === "ready",
     disabled: false,
+    addressLocked: state === "ready",
     publishedVersion: state === "ready" ? 3 : null,
     currentVersion: 3,
     undeployed: state === "deploy" ? ["Scores"] : [],
