@@ -509,6 +509,12 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
           // The model-call number keeps step ids unique even if a provider repeats a tool call
           // id across calls (replayed and live calls after a resume, say).
           const stepId = `tool:${calls}:${call.id}`;
+          // Only the tools this step offers run, checked before any of them is handled. In v2 that is the step's
+          // own list (write_spec belongs to the spec step alone); v1 never offers write_spec.
+          if (v2 ? !tools.some((t) => t.function.name === call.name) : call.name === "write_spec") {
+            convo.push({ role: "tool", tool_call_id: call.id, content: `Error: ${call.name} isn't available in this step.` });
+            continue;
+          }
           // Plan mode can't edit; a refused edit attempt isn't worth showing as a failed step.
           const label = input.mode === "plan" ? null : toolLabel(call);
           if (label) step({ id: stepId, label, status: "running" });
@@ -552,9 +558,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
           // add_kit writes the kit's starter files, so they pass the same gate.
           const kitPaths = call.name === "add_kit" ? Object.keys(kitById(String(args.name ?? "").trim())?.files ?? {}) : [];
           const gated = opts.gate && (EDIT_TOOLS.includes(call.name) || call.name === "add_kit") ? [args.path, args.from, args.to, ...kitPaths].map((p) => (typeof p === "string" ? opts.gate!(p) : null)).find(Boolean) : null;
-          // v2: only the tools this phase offers run (write_spec belongs to the spec step alone).
-          const offered = !v2 || tools.some((t) => t.function.name === call.name);
-          const outcome = !offered ? { ok: false, result: `Error: ${call.name} isn't available in this step.` } : gated ? { ok: false, result: `Error: ${gated}` } : allowed ? ws.execute(call.name, call.arguments, input.mode) : { ok: false, result: "This feature belongs to a later saved milestone. Finish the current interface; do not add contracts or live payments yet." };
+          const outcome = gated ? { ok: false, result: `Error: ${gated}` } : allowed ? ws.execute(call.name, call.arguments, input.mode) : { ok: false, result: "This feature belongs to a later saved milestone. Finish the current interface; do not add contracts or live payments yet." };
           const path = String(args.path ?? call.name);
           if (!outcome.ok && ["edit_file", "create_file"].includes(call.name)) {
             const count = (failures.get(path) ?? 0) + 1;

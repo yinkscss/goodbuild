@@ -132,9 +132,13 @@ export function specBlock(files: Record<string, string>): string {
   const head = `The app's spec (${SPEC_PATH}, written by the planner; follow it, and if it is wrong say so in your reply instead of working around it):`;
   if (raw.length <= SPEC_BLOCK_CHARS) return `${head}\n${raw}`;
   const spec = readSpec(files);
-  const compact = spec ? JSON.stringify({ acceptance: spec.acceptance, summary: spec.summary, direction: spec.direction, contracts: spec.contracts, data: spec.data, outOfScope: spec.outOfScope, pages: spec.pages }) : raw;
-  if (compact.length <= SPEC_BLOCK_CHARS) return `${head}\n${compact}`;
-  return `${head}\n${compact.slice(0, SPEC_BLOCK_CHARS)}\n[The spec is longer than this and was cut off here. read_file ${SPEC_PATH} for all of it.]`;
+  const cut = `[The spec is longer than this and was cut off here. read_file ${SPEC_PATH} for all of it.]`;
+  if (!spec) return `${head}\n${raw.slice(0, SPEC_BLOCK_CHARS)}\n${cut}`;
+  // The flows are always shown whole (parseFlows bounds their size); the rest fills what room is left.
+  const flows = JSON.stringify(spec.acceptance);
+  const rest = JSON.stringify({ summary: spec.summary, direction: spec.direction, contracts: spec.contracts, data: spec.data, outOfScope: spec.outOfScope, pages: spec.pages });
+  const room = Math.max(2_000, SPEC_BLOCK_CHARS - flows.length);
+  return `${head}\nAcceptance flows: ${flows}\nThe rest of the spec: ${rest.length <= room ? rest : `${rest.slice(0, room)}\n${cut}`}`;
 }
 
 /** The user message that starts the spec call. */

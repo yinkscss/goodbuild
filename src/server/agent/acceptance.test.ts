@@ -4,7 +4,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { acceptanceIssues, acceptanceSummary, formatFlowResults, parseFlows } from "./acceptance";
 import { CHECK_WALLET_SHORT } from "./game-check";
 import { closeRunCheckBrowser, runCheck } from "./run-check";
-import { SPEC_PATH, parseSpec, specBlock } from "./spec";
+import { SPEC_PATH, parseSpec, readSpec, specBlock } from "./spec";
 import { starterFiles } from "./template";
 
 afterAll(() => closeRunCheckBrowser());
@@ -93,9 +93,15 @@ describe("parseFlows (D152)", () => {
     const flows = [{ name: "Tip", steps: [{ expect: { text: "Tips" } }] }];
     const big = { summary: "s", direction: "d", contracts: [], acceptance: flows, pages: Array.from({ length: 12 }, (_, i) => ({ route: `/p${i}`, purpose: "p".repeat(300), elements: Array.from({ length: 20 }, () => "e".repeat(160)) })) };
     const block = specBlock({ [SPEC_PATH]: JSON.stringify(big, null, 2) });
-    expect(block.indexOf('"acceptance"')).toBeLessThan(block.indexOf('"pages"'));
-    expect(block).toContain('"name":"Tip"');
+    expect(block).toContain('Acceptance flows: [{"name":"Tip"');
+    expect(block.indexOf("Acceptance flows:")).toBeLessThan(block.indexOf('"pages"'));
     expect(block).toContain(`read_file ${SPEC_PATH} for all of it`);
+    // Flows big enough to fill the block on their own are still shown whole.
+    const long = "x".repeat(200);
+    const heavy = { ...big, acceptance: ["One", "Two"].map((name) => ({ name, steps: Array.from({ length: 20 }, () => ({ fill: { label: long }, value: long })) })) };
+    const heavyBlock = specBlock({ [SPEC_PATH]: JSON.stringify(heavy, null, 2) });
+    const shown = readSpec({ [SPEC_PATH]: JSON.stringify(heavy) })!.acceptance;
+    expect(heavyBlock).toContain(`Acceptance flows: ${JSON.stringify(shown)}`);
     const small = { ...big, pages: [] };
     expect(specBlock({ [SPEC_PATH]: JSON.stringify(small, null, 2) })).toContain(JSON.stringify(small, null, 2));
   });

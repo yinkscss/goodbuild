@@ -197,7 +197,7 @@ describe("runTurn with harness v2", { timeout: 120_000 }, () => {
   it("writes the spec and the contracts on the strong model, then the front end on the fast one", async () => {
     process.env.HARNESS_V2 = "on";
     const { client, requests } = scriptedModel([
-      { tools: [{ name: "write_spec", args: SPEC }] },
+      { tools: [{ name: "run_checks", args: {} }, { name: "write_spec", args: SPEC }] },
       { tools: [{ name: "create_file", args: { path: "contracts/TipJar.sol", content: TIP_JAR } }, { name: "create_file", args: { path: "src/App.tsx", content: "nope" } }, { name: "add_kit", args: { name: "motion" } }] },
       { tools: [{ name: "run_tests", args: {} }] },
       { text: "TipJar is written." },
@@ -224,6 +224,8 @@ describe("runTurn with harness v2", { timeout: 120_000 }, () => {
     // add_kit's starter files pass the phase gate, and a tool the phase doesn't offer is refused.
     expect(toolResults(2).filter((c) => c.includes("This is the contracts phase")).length).toBe(2);
     expect(toolResults(5)).toContain("Error: write_spec isn't available in this step.");
+    // The spec step's tools don't include the checks, and they are refused before they run.
+    expect(toolResults(1)).toContain("Error: run_checks isn't available in this step.");
     // run_tests compiled the contract; the front end was told the ABI is ready; open_app showed the page.
     expect(toolResults(3).some((c) => c.includes("Compiled TipJar with no errors"))).toBe(true);
     expect(String(requests[4].messages.at(-1)?.content)).toContain('import { <Name>Abi, <Name>Address } from "./contracts" for TipJar');
@@ -255,6 +257,17 @@ describe("runTurn with harness v2", { timeout: 120_000 }, () => {
     expect(requests.map((r) => r.tier)).toEqual(["strong", "cheap", "cheap", "cheap", "cheap"]);
     expect(record.log).toContain("· fix attempt 1 on the fast model (the files' writer)");
     expect(record.log).not.toContain("phase: contracts (strong model)");
+  });
+
+  it("refuses write_spec in a v1 build", async () => {
+    process.env.HARNESS_V2 = "off";
+    const { client, requests } = scriptedModel([
+      { tools: [{ name: "write_spec", args: SPEC }, { name: "create_file", args: { path: "src/App.tsx", content: APP } }] },
+      { text: "Built it." },
+    ]);
+    await runTurn({ db, model: client, runCheck: async () => opened }, { projectId, userId, mode: "build", userMessageId: queuedId }, () => {});
+    expect(requests[1].messages.filter((m) => m.role === "tool").map((m) => String(m.content))).toContain("Error: write_spec isn't available in this step.");
+    expect((await loadFiles(db, projectId))[SPEC_PATH]).toBeUndefined();
   });
 
   it("stays on v1 for a wallet that isn't an admin in admins mode", async () => {
