@@ -8,7 +8,7 @@ import { decideFunding, decideStart, type CapRefusal } from "@/server/credits/ca
 import { findReservationMismatches, repairReservations, type ReservationMismatch } from "@/server/credits/holds";
 import { LeaseLostError, type LoggedCall, type TurnJobContext, type TurnSetup } from "@/server/agent/turn-progress";
 import { Workspace } from "@/server/agent/workspace";
-import { deliveryFor } from "@/server/agent/delivery";
+import { deliveryFor, extendDelivery } from "@/server/agent/delivery";
 import { reserveSponsorship, sponsorshipSettings } from "@/server/credits/build-sponsorship";
 import type { GoodIdentity } from "@/server/credits/free-grants";
 import type { Address } from "viem";
@@ -148,7 +148,21 @@ export async function startTurn(db: Db, args: QueueArgs, env: Record<string, str
     if (delivery && source && source.deliveryIndex === null) args.deliveryIndex = 0;
     if (delivery && args.mode === "build" && !source) {
       const prompt = args.prompt?.trim() ?? "";
-      const picked = delivery.plan.milestones.findIndex((m) => m.title.toLowerCase() === prompt.toLowerCase());
+      let picked = delivery.plan.milestones.findIndex((m) => m.title.toLowerCase() === prompt.toLowerCase());
+      // D153: a request naming work the plan hasn't delivered (a G$ tip jar on a portfolio site) adds
+      // that milestone if the first message didn't, and builds it, instead of staying scoped forever.
+      // Only once the first interface is delivered (until then every build stays the interface), and
+      // not behind a running build: that one may still advance the plan, and a queued edit keeps queueing.
+      if (picked < 0 && !args.continueDelivery && delivery.plan.completed > 0 && !(await activeJobs(tx, project.id)).length) {
+        const extended = extendDelivery(delivery.plan, prompt);
+        if (extended.picked >= 0) {
+          picked = extended.picked;
+          if (extended.added) {
+            await tx.update(buildDeliveries).set({ plan: extended.plan }).where(eq(buildDeliveries.projectId, project.id));
+            delivery = { ...delivery, plan: extended.plan };
+          }
+        }
+      }
       const advance = args.continueDelivery || /^(continue|continue building|build next|next milestone)[.!]?$/i.test(prompt) || picked >= delivery.plan.completed;
       if (advance && (await activeJobs(tx, project.id)).length) throw new Error("retry_busy");
       if (advance && picked > delivery.plan.completed) {

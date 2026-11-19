@@ -5,6 +5,7 @@ import { KITS, kitCatalog } from "./kits/registry";
 import { PLAN_ASK_TOOL } from "./plan-intake";
 import { BASE_ALLOWED_DEPENDENCIES, PLATFORM_DIR } from "./template";
 import { UI_PRIMITIVE_NAMES } from "./ui-primitives";
+import { MILESTONE_FACTS } from "./delivery";
 
 /** Tools the agent can call (AI_AGENT.md §2). No shell: the preview has none. */
 export const BUILD_TOOLS: ToolSpec[] = [
@@ -137,6 +138,7 @@ const CONVERSATION = `Reading the user's message:
 - Replies never use em dashes (the user's house style); use commas or full stops.
 - Finding code: the context has the files most relevant to this request in full, and a one-line summary of every other file. To change something that isn't shown, call find_symbol (a component, hook, function or route name) or search_code (visible text, a class name) first, then read_file (a line range for long files). Never edit a file from memory: edit_file needs text copied from the file.
 - Images the user attached in this message are design references or their own assets: follow them closely (layout, colours, type, mood).
+- Build milestones (when the project has them): ${MILESTONE_FACTS}
 
 What users build: mostly dApps on Celo (a contract plus its app), also games in 2D and 3D, dashboards, mini apps, and plain websites and pages (landing pages, event or shop sites, portfolios, about or signup pages for their dApp). A project's chain is selected in GoodBuild and supplied in src/lib/chain.ts; keep every contract read and write on that chain. New projects default to Celo Sepolia, and mainnet use stays subject to GoodBuild's server-side safety gates. Write a contract only when the app needs on-chain state or payments; a website needs none. Data that must be saved but needn't be on-chain (profiles, notes, comments, form entries) goes in GoodBuild's app data store through src/lib/db.ts, with wallet sign-in (load the app-data guide). Never invent a backend, API route or third-party database: there is no other server.
 

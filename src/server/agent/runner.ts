@@ -29,6 +29,7 @@ import { decideFunding } from "@/server/credits/cap";
 import { CREDITS_PAUSED_MESSAGE, OutOfCreditsError, ensureHold, fitCall, headroomMicro, worstCaseCallMicro } from "@/server/credits/holds";
 import { fillMiniApp, type MiniAppInfo } from "./kits/mini-app";
 import { formatCredits } from "@/lib/credits-math";
+import { postLedgerEntry } from "@/server/credits/ledger";
 import { deploymentsBlock, loadDeployedAddresses } from "@/server/deploy/addresses";
 import { isUpgradeableProject, liveStorage, upgradeChecksFor } from "@/server/deploy/upgradeable";
 import { upgradeableRules } from "./upgradeable-rules";
@@ -44,7 +45,7 @@ import {
   type TurnJobContext,
   type TurnSetup,
 } from "./turn-progress";
-import { deliveryContext, milestoneAllows } from "./delivery";
+import { deliveryContext, milestoneAllows, scopeRefusal } from "./delivery";
 import { SponsorshipExhaustedError, sponsorshipCanCall } from "@/server/credits/build-sponsorship";
 import type { DeliveryPlan } from "@/server/db/schema";
 import { Workspace, type FileChange } from "./workspace";
@@ -183,6 +184,8 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
   };
 
   const record: TurnRecord = { kind: "turn", mode: input.mode, steps: [], log: [], changes: [], chargedMicro: 0, status: "error" };
+  /** Tool calls refused for milestone scope. A build turn that changed nothing because of them is refunded (D153). */
+  let scopeRefused = 0;
   let assistantId = "";
   let finalStatus = "draft";
   let text = "";
@@ -495,7 +498,8 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
           let args: Record<string, unknown> = {};
           try { const parsed = JSON.parse(call.arguments); if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) args = parsed; } catch { /* Workspace reports malformed arguments. */ }
           const allowed = !delivery || job.deliveryIndex === undefined || milestoneAllows(delivery, job.deliveryIndex, call.name, args);
-          const outcome = allowed ? ws.execute(call.name, call.arguments, input.mode) : { ok: false, result: "This feature belongs to a later saved milestone. Finish the current interface; do not add contracts or live payments yet." };
+          if (!allowed) scopeRefused++;
+          const outcome = allowed ? ws.execute(call.name, call.arguments, input.mode) : { ok: false, result: scopeRefusal(delivery!, job.deliveryIndex!) };
           const path = String(args.path ?? call.name);
           if (!outcome.ok && ["edit_file", "create_file"].includes(call.name)) {
             const count = (failures.get(path) ?? 0) + 1;
@@ -676,7 +680,8 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
           let args: Record<string, unknown> = {};
           try { const parsed = JSON.parse(call.arguments); if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) args = parsed; } catch { /* Workspace reports malformed arguments. */ }
           const allowed = !delivery || job.deliveryIndex === undefined || milestoneAllows(delivery, job.deliveryIndex, call.name, args);
-          const outcome = allowed ? ws.execute(call.name, call.arguments, input.mode) : { ok: false, result: "This feature belongs to a later saved milestone. Finish the current interface; do not add contracts or live payments yet." };
+          if (!allowed) scopeRefused++;
+          const outcome = allowed ? ws.execute(call.name, call.arguments, input.mode) : { ok: false, result: scopeRefusal(delivery!, job.deliveryIndex!) };
           const path = String(args.path ?? call.name);
           if (!outcome.ok && ["edit_file", "create_file"].includes(call.name)) {
             const count = (failures.get(path) ?? 0) + 1;
@@ -744,7 +749,12 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       goLive();
       stopIfRequested();
       record.status = "answered";
+      // D153: the person asked for a change, the server refused it for milestone scope and nothing
+      // was built. They paid for a refusal, so the turn's credits go back.
+      const refund = input.mode === "build" && funding === "paid" && scopeRefused > 0 ? record.chargedMicro : 0;
+      if (refund > 0) record.refundedMicro = refund;
       await job.commit(async (tx) => {
+        if (refund > 0) await postLedgerEntry(tx, { userId: input.userId, kind: "adjust", amountMicro: refund, idempotencyKey: `scope-refund:${job.jobId ?? assistantId}`, refType: "scope_refund", refId: job.jobId ?? assistantId });
         await finish(tx, assistantId, text, record);
         await markImagesAttached(tx, setup);
         if (job.lockHeld) await releaseTurn(tx, input.projectId, finalStatus);
