@@ -4,6 +4,7 @@ import { recordSponsoredUsage } from "@/server/credits/build-sponsorship";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 
 import type { Db } from "@/server/db/client";
+import { enqueueForProject } from "@/server/registry/outbox";
 import { messages, projectFiles, projects, usageEvents, versions, type FundingSource, type Version } from "@/server/db/schema";
 import { withCurrentAddresses } from "@/server/deploy/addresses";
 import { withCurrentWalletHelpers } from "@/server/agent/wallet-template";
@@ -46,6 +47,7 @@ export async function checkpoint(
     revertedFrom: args.revertedFrom,
   });
   await db.update(projects).set({ currentVersion: number }).where(eq(projects.id, args.projectId));
+  if (number === 1) await enqueueForProject(db, { kind: "AppGenerated", key: `generated:${args.projectId}`, projectId: args.projectId });
   return number;
 }
 
