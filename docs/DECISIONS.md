@@ -1727,3 +1727,22 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - **Tests** (`templates.test.ts`): both pass the app check, the type check and the run check (also with the MiniPay kit); two players (two pages with their own wallets on the preview's shared store) make a room, join by code, ready, start, play to a result shown on both screens and rematch; both play cleanly on a slow touch phone (CPU 4x slower); a copy whose columns do nothing is caught; the room's rules pass `parseDataRules`.
 - **Limits:** moves, answers and their timings come from players' own devices, so a result is between friends, never proof for money (D4, D72). A turn takes up to 3 seconds to reach the other screen. A room is found by a query, which reads the newest 500 records of a collection (D79), so in a very busy app an old room code can stop being found. While a round is on, each player makes about 60 queries a minute, half the per-person limit.
 - **UNVERIFIED:** on a real phone, and on a published app with real wallet signatures (tested on the preview's in-browser store, which applies the same rules but no signatures). No real model has built from these templates yet.
+
+### D141. An app-data dealer: the server shuffles and deals, and each player's share is theirs alone (19 Nov 2026; PR 6 of D139; extends D31 and D34)
+- Decided by: the owner (D139's plan: "a room's host can ask GoodBuild's server to shuffle and deal ... not even the host"). Designed and built by Claude. Design in APP_DATA.md, "The dealer".
+- **Why:** hidden roles and card hands can't be fair if a player's device shuffles, and the room's host can't do it either, because whoever shuffles knows the deal. App data could only make a record readable by anyone, its writer or the app's owner, never by one chosen other player.
+- **What:**
+  - A new rule, `"dealt"`. Its records are written only by the server. Each one is stored under the player it belongs to and saved with the grant `{read: ["writer"], public: []}`. Normal adds, replacements and deletes there are refused (403), for the owner too.
+  - `POST deal/<collection>` (signed in with a wallet) takes the players, a deck of short texts and a hand size. The server shuffles with `crypto.randomInt` and writes each player's share. It keeps the rest as a stock nobody can read (`app_data_deals`, migration 0028), and returns only the deal id and counts.
+  - `POST deal/<collection>/<id>/draw` lets a player in the deal take from the stock, for them only. It runs under a row lock, so two draws can't take the same item.
+  - `GET deal/<collection>/<id>` gives the deal's host and players the counts.
+  - The app's helper has `deal()`, `draw()` and `dealInfo()`, with a stand-in in the preview, where nothing is secret and the note says so. The data-rules and multiplayer guides say how to use them.
+- **The D34 model is unchanged.** A hand is an ordinary record whose writer is the player, so every existing read path applies as it was. The new checks are only the refusal of writes to dealt collections and the dealer's own routes. An extra flag on `putRecord` lets only the dealer write there.
+- **Tests:** `deal.attack.test.ts` (12) and `deal-helper.test.ts` (3); see APP_DATA.md "How it's tested".
+- **Limits and trade-offs:**
+  - The server doesn't enforce turns. Draw counts are visible to everyone, so a game can show an out-of-turn draw.
+  - Players trust GoodBuild's server for a fair shuffle, as for every record. Operators running the database can read hands, as with private records (APP_DATA.md).
+  - A stranger could deal junk hands to a player. The receipt names its host, so games check it against the room's host.
+  - Only wallets can be dealt to; email sign-ins can't.
+  - 30 deals and 120 draws a minute per wallet in one app.
+- **UNVERIFIED:** on Postgres under real concurrency (the parallel-draw test ran on PGlite, which serialises), and on a published app in a real browser with a real wallet.

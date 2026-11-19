@@ -6,7 +6,7 @@ import { and, desc, eq, gt, isNull, lt, or, sql } from "drizzle-orm";
 
 import { QUERY_SCAN_LIMIT, applyQuery, grantOf, isQuery, ruleFor, type CollectionRule, type DataRole, type RecordGrant, type RecordQuery } from "@/lib/app-data";
 import type { Db } from "@/server/db/client";
-import { appDataEmailCodes, appDataEmailIdentities, appDataNonces, appDataRecords, appDataSessions, appDataUsage } from "@/server/db/app-data-schema";
+import { appDataDeals, appDataEmailCodes, appDataEmailIdentities, appDataNonces, appDataRecords, appDataSessions, appDataUsage } from "@/server/db/app-data-schema";
 import { publications } from "@/server/db/publish-schema";
 import { projects, users } from "@/server/db/schema";
 import type { AppDataLimits } from "./limits";
@@ -309,9 +309,12 @@ export async function putRecord(
   limits: AppDataLimits,
   now = new Date(),
   viewer: Viewer | null = null,
+  options: { dealer?: boolean } = {},
 ): Promise<PublicRecord> {
   const size = Buffer.byteLength(input.json) + input.collection.length + input.key.length;
   const rule = ruleFor(app.rules, input.collection);
+  // A dealt collection (D141) is written by the dealer only, so nobody can give themselves a better hand.
+  if (rule.dealt && !options.dealer) throw new AppDataError("forbidden", 403, "Only GoodBuild's dealer writes here. Ask it to deal instead.");
   const access = grantOf(rule);
   const isPublic = access.read.includes("anyone");
   const anonymous = isAnonymous(input.owner);
@@ -327,8 +330,8 @@ export async function putRecord(
     const addedRows = existing ? 0 : 1;
     const addedBytes = size - (existing?.size ?? 0);
 
-    if (existing && !rule.update.includes("writer")) throw new AppDataError("forbidden", 403, "Records here can't be changed once they're saved.");
-    if (!existing && !canCreate(rule, viewer ?? { subject: input.owner, signedIn: !anonymous, isOwner: input.owner === app.ownerWallet })) {
+    if (existing && !rule.update.includes("writer") && !options.dealer) throw new AppDataError("forbidden", 403, "Records here can't be changed once they're saved.");
+    if (!existing && !options.dealer && !canCreate(rule, viewer ?? { subject: input.owner, signedIn: !anonymous, isOwner: input.owner === app.ownerWallet })) {
       throw new AppDataError(rule.create === "owner" ? "forbidden" : "unauthenticated", rule.create === "owner" ? 403 : 401, rule.create === "owner" ? "Only this app's owner can add records here." : "Connect your wallet and sign in first.");
     }
     if (anonymous && addedRows) {
@@ -410,6 +413,8 @@ export async function eraseWallet(db: Db, projectId: string, wallet: string): Pr
     if (gone.length) await bumpUsage(tx, projectId, wallet, -gone.length, -bytes);
     if (gone.length && isAnonymous(wallet)) await tx.update(appDataUsage).set({ rows: sql`greatest(${appDataUsage.rows} - ${gone.length}, 0)`, bytes: sql`greatest(${appDataUsage.bytes} - ${bytes}, 0)` }).where(and(eq(appDataUsage.projectId, projectId), eq(appDataUsage.wallet, ANON_TOTAL)));
     await tx.delete(appDataUsage).where(and(eq(appDataUsage.projectId, projectId), eq(appDataUsage.wallet, wallet)));
+    // Deals this wallet hosted go too (D141). Hands it was dealt went with its records above.
+    await tx.delete(appDataDeals).where(and(eq(appDataDeals.projectId, projectId), eq(appDataDeals.host, wallet)));
     await tx.delete(appDataSessions).where(and(eq(appDataSessions.projectId, projectId), eq(appDataSessions.wallet, wallet)));
     if (wallet.startsWith(EMAIL_PREFIX)) {
       // The address goes too, with any codes sent to it in this app.
@@ -445,6 +450,7 @@ export async function projectDataStats(db: Db, projectId: string): Promise<Proje
 export async function deleteProjectData(db: Db, projectId: string): Promise<void> {
   await db.transaction(async (tx) => {
     await tx.delete(appDataRecords).where(eq(appDataRecords.projectId, projectId));
+    await tx.delete(appDataDeals).where(eq(appDataDeals.projectId, projectId));
     await tx.delete(appDataUsage).where(eq(appDataUsage.projectId, projectId));
     await tx.delete(appDataSessions).where(eq(appDataSessions.projectId, projectId));
     await tx.delete(appDataNonces).where(eq(appDataNonces.projectId, projectId));
