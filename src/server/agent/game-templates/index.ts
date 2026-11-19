@@ -7,10 +7,13 @@ import { catchDodge } from "./catch-dodge";
 import { kartTrack } from "./kart-track";
 import { laneRacer } from "./lane-racer";
 import { matchGrid } from "./match-grid";
+import { platformHop } from "./platform-hop";
 import { mazeEscape } from "./maze-escape";
 import { quickQuiz } from "./quick-quiz";
 import { runner3d } from "./runner-3d";
+import { rhythmLanes } from "./rhythm-lanes";
 import { skyRings } from "./sky-rings";
+import { wordHunt } from "./word-hunt";
 
 /**
  * Game templates (D114): working, tested games the builder reshapes to the plan, instead of writing a
@@ -44,7 +47,7 @@ export interface GameTemplate {
   multiplayer?: boolean;
 }
 
-export const GAME_TEMPLATES: GameTemplate[] = [laneRacer, catchDodge, caveFlyer, brickBreaker, matchGrid, quickQuiz, runner3d, kartTrack, mazeEscape, skyRings];
+export const GAME_TEMPLATES: GameTemplate[] = [laneRacer, catchDodge, caveFlyer, brickBreaker, matchGrid, quickQuiz, runner3d, kartTrack, mazeEscape, skyRings, wordHunt, rhythmLanes, platformHop];
 
 /** Safe, small descriptions for the app's template picker. Keep game source files on the server. */
 export function gameTemplateStarters() {
