@@ -33,7 +33,7 @@ export function extendDelivery(plan: DeliveryPlan, request: string): { plan: Del
 
 export function deliveryContext(plan: DeliveryPlan, index: number): string {
   const current = plan.milestones[index];
-  return `DELIVERY CONTRACT (server enforced):\nOriginal request: ${plan.goal}\nBuild ONLY milestone ${index + 1}: ${current.title}.\nAcceptance: ${current.acceptance.join("; ")}\nRemaining after this: ${plan.milestones.slice(index + 1).map((m) => m.title).join(", ") || "none"}.\n${current.id === "interface" ? "Build a usable local/demo interface FIRST. No contracts, staking, wallet transactions, simulated live payments or multiplayer claims. Preserve the full goal for later milestones. Games must be playable locally, with reset and win/draw behaviour where applicable." : "Preserve the working interface. Implement only this milestone and its dependencies."}\n${/tic[- ]tac[- ]toe/i.test(plan.goal) ? 'For the board, use nine button elements data-gb-cell="0" through "8", a data-gb-status element reporting turn and winner/draw, and a button data-gb-restart that resets. Start with X, alternate O, prevent occupied moves and stop after a win. The server will independently play both wins and a draw.' : ""}
+  return `DELIVERY CONTRACT (server enforced):\nOriginal request: ${plan.goal}\nBuild ONLY milestone ${index + 1}: ${current.title}.\nAcceptance: ${current.acceptance.join("; ")}\nRemaining after this: ${plan.milestones.slice(index + 1).map((m) => m.title).join(", ") || "none"}.\n${current.id === "interface" ? "Build a usable local/demo interface FIRST. No contracts, staking, wallet transactions, simulated live payments or multiplayer claims. Preserve the full goal for later milestones. Games must be playable locally, with reset and win/draw behaviour where applicable." : "Preserve the working interface. Implement only this milestone and its dependencies."}${current.id !== "payments" && onChainDelivered(plan) ? "\nThe on-chain milestone is already delivered: contract changes the request asks for are in scope." : ""}\n${/tic[- ]tac[- ]toe/i.test(plan.goal) ? 'For the board, use nine button elements data-gb-cell="0" through "8", a data-gb-status element reporting turn and winner/draw, and a button data-gb-restart that resets. Start with X, alternate O, prevent occupied moves and stop after a win. The server will independently play both wins and a draw.' : ""}
 End by explaining what works and what remains; offer the next saved milestone. Never claim deferred features work.`;
 }
 
@@ -46,10 +46,15 @@ export function scopeRefusal(plan: DeliveryPlan, index: number): string {
   return `Refused by the server: this build is scoped to the "${title}" milestone, which cannot write contract files or wallet/chain wiring, or send transactions. Do not retry it. Keep the feature as a clearly labelled preview. Tell the person how to get it: send a new request that names the on-chain feature (for example "add a G$ tip jar contract"), and GoodBuild will start the on-chain milestone for it. There is no setting to change.`;
 }
 
+/** Whether an on-chain milestone has been delivered: its contract scope then stays on in later milestones. */
+function onChainDelivered(plan: DeliveryPlan): boolean {
+  return plan.milestones.slice(0, plan.completed).some((m) => m.id === "payments");
+}
+
 /** Whether a tool call fits the milestone. On-chain scope, once a payments milestone is current or delivered, stays on. */
 export function milestoneAllows(plan: DeliveryPlan, index: number, name: string, args: Record<string, unknown>): boolean {
   if (plan.milestones[index]?.id === "payments") return true;
-  if (plan.milestones.slice(0, plan.completed).some((m) => m.id === "payments")) return true;
+  if (onChainDelivered(plan)) return true;
   const text = JSON.stringify(args);
   if (/writeContract|sendTransaction|signTransaction|transferAndCall|eth_send|wallet_send|createWalletClient/.test(text)) return false;
   if (["create_file", "edit_file", "delete_file", "rename_file"].includes(name)) {

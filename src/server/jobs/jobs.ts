@@ -147,7 +147,9 @@ export async function startTurn(db: Db, args: QueueArgs, env: Record<string, str
     }
     if (delivery && source && source.deliveryIndex === null) args.deliveryIndex = 0;
     if (delivery && args.mode === "build" && !source) {
-      const prompt = args.prompt?.trim() ?? "";
+      // Answering a queued message names only its id: pick the milestone from that message's text, as the build reads it.
+      const [queued] = args.prompt || !args.userMessageId ? [] : await tx.select({ content: messages.content }).from(messages).where(and(eq(messages.id, args.userMessageId), eq(messages.projectId, project.id))).limit(1);
+      const prompt = (args.prompt ?? queued?.content ?? "").trim();
       let picked = delivery.plan.milestones.findIndex((m) => m.title.toLowerCase() === prompt.toLowerCase());
       // D153: a request naming work the plan hasn't delivered (a G$ tip jar on a portfolio site) adds
       // that milestone if the first message didn't, and builds it, instead of staying scoped forever.

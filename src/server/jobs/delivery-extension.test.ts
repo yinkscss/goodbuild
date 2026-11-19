@@ -3,11 +3,12 @@ import { TIC_TAC_TOE } from "../../../test/fixtures/tic-tac-toe";
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { createTestDb, type Db } from "@/server/db/client";
-import { buildDeliveries, ledgerEntries, users } from "@/server/db/schema";
+import { buildDeliveries, ledgerEntries, messages, users } from "@/server/db/schema";
 import { signInUser } from "@/server/auth/service";
 import { createProjectFromPrompt } from "@/server/projects";
 import { scriptedModel } from "@/server/agent/fake-model";
-import type { ModelClient } from "@/server/agent/model";
+import { ModelUnavailableError, type ModelClient } from "@/server/agent/model";
+import type { TurnEvent } from "@/lib/turn-types";
 import { runTurn } from "@/server/agent/runner";
 import { getBalanceMicro, postLedgerEntry } from "@/server/credits/ledger";
 import { claimJob, jobContext, startTurn } from "./jobs";
@@ -34,11 +35,11 @@ beforeEach(async () => {
   await postLedgerEntry(db, { userId, kind: "adjust", amountMicro: 1_000_000, idempotencyKey: "delivery-extension-fixture" });
 });
 
-async function run(model: ModelClient) {
+async function run(model: ModelClient, events: TurnEvent[] = []) {
   const job = await claimJob(db, "test");
   if (!job) throw new Error("No job");
   const ctx = await jobContext(db, job, "test", new AbortController().signal);
-  return runTurn({ db, model, job: ctx, typeCheckMode: "off", review: false, runCheck: async () => ({ ran: true, issues: [], deliveryVerified: true, note: "Browser fixture", ms: 1 }) }, { projectId, userId, mode: "build", userMessageId: job.userMessageId }, () => {});
+  return runTurn({ db, model, job: ctx, typeCheckMode: "off", review: false, runCheck: async () => ({ ran: true, issues: [], deliveryVerified: true, note: "Browser fixture", ms: 1 }) }, { projectId, userId, mode: "build", userMessageId: job.userMessageId }, (e) => events.push(e));
 }
 async function paidStart(prompt: string) {
   const started = await startTurn(db, { userId, projectId, mode: "build", prompt }, PAID);
@@ -61,6 +62,14 @@ describe("adding milestones after the first delivery (D153)", () => {
     expect(toolResults(model).some((r) => r.includes("Refused by the server"))).toBe(false);
   });
 
+  it("picks the milestone from a queued message's text when the start names only its id", async () => {
+    const [queued] = await db.insert(messages).values({ projectId, role: "user", content: "Add a G$ tip jar contract", status: "queued" }).returning();
+    const started = await startTurn(db, { userId, projectId, mode: "build", userMessageId: queued.id }, PAID);
+    if (!("job" in started)) throw new Error("Paid build refused");
+    expect((await plan()).milestones.map((m) => m.id)).toEqual(["interface", "payments"]);
+    expect(started.job.deliveryIndex).toBe(1);
+  });
+
   it("keeps ordinary edits in the delivered scope", async () => {
     const job = await paidStart("Make the about page heading bigger");
     expect(job.deliveryIndex).toBe(0);
@@ -81,5 +90,29 @@ describe("adding milestones after the first delivery (D153)", () => {
     // The hold and its charges settle against the balance; the refund puts the charge back.
     expect(await getBalanceMicro(db, userId)).toBe(before);
     expect((await db.select().from(ledgerEntries).where(eq(ledgerEntries.refType, "scope_refund")))).toHaveLength(1);
+  });
+
+  it("shows the refund live, before the turn's done event", async () => {
+    await paidStart("Make the tip box real");
+    const events: TurnEvent[] = [];
+    await run(scriptedModel([{ tools: [{ name: "create_file", args: { path: "contracts/TipJar.sol", content: TIP_JAR } }] }, { text: "Still a preview." }]).client, events);
+    const done = events.findIndex((e) => e.type === "done");
+    const refunded = events.findIndex((e) => e.type === "snapshot" && (e.record.refundedMicro ?? 0) > 0);
+    expect(refunded).toBeGreaterThanOrEqual(0);
+    expect(refunded).toBeLessThan(done);
+  });
+
+  it("refunds a refused turn that then ends with a provider error, once", async () => {
+    await paidStart("Make the tip box real");
+    const before = await getBalanceMicro(db, userId);
+    const refused = scriptedModel([{ tools: [{ name: "create_file", args: { path: "contracts/TipJar.sol", content: TIP_JAR } }] }]);
+    let calls = 0;
+    const failing: ModelClient = { async *stream(req) { if (calls++ === 0) yield* refused.client.stream(req); else throw new ModelUnavailableError("The AI provider is unavailable."); } };
+    const record = await run(failing);
+    expect(record.status).toBe("error");
+    expect(record.chargedMicro).toBeGreaterThan(0);
+    expect(record.refundedMicro).toBe(record.chargedMicro);
+    expect(await getBalanceMicro(db, userId)).toBe(before);
+    expect(await db.select().from(ledgerEntries).where(eq(ledgerEntries.refType, "scope_refund"))).toHaveLength(1);
   });
 });

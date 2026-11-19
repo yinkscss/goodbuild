@@ -186,6 +186,25 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
   const record: TurnRecord = { kind: "turn", mode: input.mode, steps: [], log: [], changes: [], chargedMicro: 0, status: "error" };
   /** Tool calls refused for milestone scope. A build turn that changed nothing because of them is refunded (D153). */
   let scopeRefused = 0;
+  /** The turn's workspace, once there is one: the refund needs it on every way a turn ends, the error path included. */
+  let turnWs: Workspace | undefined;
+  /** Whether a scope refund was committed: a rolled-back one must not still show on the turn. */
+  let refundCommitted = false;
+  /**
+   * D153: a paid build turn the server refused for milestone scope, which changed no files, is refunded,
+   * however it ended (answered, after the checks, or with an error). Sets the record before `finish` saves
+   * it; `settleRefund` drops the claim if the transaction holding the credit rolled back.
+   */
+  const scopeRefund = async (tx: Db) => {
+    const amount = input.mode === "build" && funding === "paid" && scopeRefused > 0 && !refundCommitted && turnWs && !turnWs.changed() ? record.chargedMicro : 0;
+    if (amount <= 0) return;
+    record.refundedMicro = amount;
+    await postLedgerEntry(tx, { userId: input.userId, kind: "adjust", amountMicro: amount, idempotencyKey: `scope-refund:${job.jobId ?? record.jobId ?? "turn"}`, refType: "scope_refund", refId: job.jobId ?? undefined });
+  };
+  const settleRefund = (committed: boolean) => {
+    if (committed && record.refundedMicro) refundCommitted = true;
+    else if (!refundCommitted) delete record.refundedMicro;
+  };
   let assistantId = "";
   let finalStatus = "draft";
   let text = "";
@@ -242,6 +261,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     assetNames = setup.assetNames;
     chainId = setup.chainId;
     const ws = new Workspace(setup.baseFiles);
+    turnWs = ws;
     workspace = ws;
     if (job.deliveryIndex !== undefined) delivery = (await db.select().from(buildDeliveries).where(eq(buildDeliveries.projectId, input.projectId)))[0]?.plan;
     const firstBuild = setup.firstBuild;
@@ -749,17 +769,15 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       goLive();
       stopIfRequested();
       record.status = "answered";
-      // D153: the person asked for a change, the server refused it for milestone scope and nothing
-      // was built. They paid for a refusal, so the turn's credits go back.
-      const refund = input.mode === "build" && funding === "paid" && scopeRefused > 0 ? record.chargedMicro : 0;
-      if (refund > 0) record.refundedMicro = refund;
       await job.commit(async (tx) => {
-        if (refund > 0) await postLedgerEntry(tx, { userId: input.userId, kind: "adjust", amountMicro: refund, idempotencyKey: `scope-refund:${job.jobId ?? assistantId}`, refType: "scope_refund", refId: job.jobId ?? assistantId });
+        await scopeRefund(tx);
         await finish(tx, assistantId, text, record);
         await markImagesAttached(tx, setup);
         if (job.lockHeld) await releaseTurn(tx, input.projectId, finalStatus);
         await job.complete(tx, "done");
-      });
+      }).then(() => settleRefund(true), (e) => { settleRefund(false); throw e; });
+      // The live view takes the refund from the record: "done" carries only the status.
+      if (record.refundedMicro) emit({ type: "snapshot", text, record: structuredClone(record) });
       emit({ type: "done", status: "answered", summary: text.trim() });
       return record;
     }
@@ -914,13 +932,15 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     // the turn lock and the job's end state. A crash after it leaves a finished job, never a
     // job that runs again.
     await job.commit(async (tx) => {
+      await scopeRefund(tx);
       if (report.ok && delivery && job.deliveryIndex !== undefined) await tx.update(buildDeliveries).set({ plan: { ...delivery, completed: Math.max(delivery.completed, job.deliveryIndex + 1), verified: [...new Set([...(delivery.verified ?? []), ...(deliveryVerified ? [delivery.milestones[job.deliveryIndex].id] : [])])] } }).where(eq(buildDeliveries.projectId, input.projectId));
       if (save) record.version = await checkpoint(tx, { projectId: input.projectId, files: ws.files, summary, messageId: assistantId });
       await finish(tx, assistantId, text, record);
       await markImagesAttached(tx, setup);
       if (job.lockHeld) await releaseTurn(tx, input.projectId, endStatus);
       await job.complete(tx, "done");
-    });
+    }).then(() => settleRefund(true), (e) => { settleRefund(false); throw e; });
+    if (record.refundedMicro) emit({ type: "snapshot", text, record: structuredClone(record) });
     finalStatus = endStatus;
     if (save) {
       requestGithubSync(deps.db, input.projectId);
@@ -965,8 +985,10 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     record.status = "error";
     record.error = message;
     emit({ type: "snapshot", text, record: structuredClone(record) });
-    if (assistantId) await endWith("error", message).catch(rethrowLease);
-    else
+    if (assistantId) {
+      await endWith("error", message).catch(rethrowLease);
+      if (record.refundedMicro) emit({ type: "snapshot", text, record: structuredClone(record) });
+    } else
       await job
         .commit(async (tx) => {
           if (job.lockHeld) await releaseTurn(tx, input.projectId, finalStatus);
@@ -981,10 +1003,11 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
 
   async function endWith(status: "stopped" | "error", message?: string) {
     await job.commit(async (tx) => {
+      if (status === "error") await scopeRefund(tx);
       await finish(tx, assistantId, text, record);
       if (job.lockHeld) await releaseTurn(tx, input.projectId, finalStatus);
       await job.complete(tx, status, message);
-    });
+    }).then(() => settleRefund(true), (e) => { settleRefund(false); throw e; });
   }
 
   /** First run: record the prompt, create the reply, build the context. Saved once. */

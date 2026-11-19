@@ -43,6 +43,12 @@ describe("extending a delivery plan after the first message (D153)", () => {
     expect(milestoneAllows(plan, 2, "edit_file", { path: "contracts/TipJar.sol" })).toBe(true);
   });
 
+  it("tells the builder contract changes stay in scope after the on-chain milestone, and not before", () => {
+    const delivered = { goal: "x", completed: 2, milestones: [...deliveryFor("tip jar").milestones, ...requestedMilestones("connect wallet")] };
+    expect(deliveryContext(delivered, 2)).toContain("on-chain milestone is already delivered");
+    expect(deliveryContext({ ...deliveryFor("tip jar and wallet"), completed: 1 }, 1)).not.toContain("already delivered");
+  });
+
   it("refuses with how to proceed, and the facts deny any milestone setting", () => {
     const refusal = scopeRefusal(deliveryFor("portfolio"), 0);
     expect(refusal).toContain("Working first interface");
