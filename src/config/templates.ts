@@ -12,6 +12,7 @@ export interface StarterTemplate {
   label: string;
   description: string;
   examplePrompt: string;
+  game?: { dims: "2d" | "3d"; style: "action" | "puzzle" | "turns" };
 }
 
 export const TEMPLATES: StarterTemplate[] = [

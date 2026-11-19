@@ -4,7 +4,7 @@ import * as React from "react";
 
 import { useSendGate } from "@/components/auth/send-gate";
 import { PromptBox, type PromptBoxHandle } from "@/components/prompt/prompt-box";
-import { LANDING_CHIP_IDS, getTemplate } from "@/config/templates";
+import { LANDING_CHIP_IDS, getTemplate, type StarterTemplate } from "@/config/templates";
 import { useMainnetAllowed } from "@/lib/use-mainnet-allowed";
 
 const chips = LANDING_CHIP_IDS.map((id) => getTemplate(id)).filter((t) => t !== undefined);
@@ -20,7 +20,7 @@ export function fillLandingPrompt(templateId: string) {
  * Landing prompt box. Typing is always allowed; Send goes through the gate, which
  * saves the prompt and opens the connect modal when logged out (AUTH.md Flow 2).
  */
-export function LandingPrompt() {
+export function LandingPrompt({ gameTemplates = [] }: { gameTemplates?: StarterTemplate[] }) {
   const { send, sendError } = useSendGate();
   const box = React.useRef<PromptBoxHandle>(null);
   const mainnetAllowed = useMainnetAllowed();
@@ -28,16 +28,18 @@ export function LandingPrompt() {
   React.useEffect(() => {
     const onFill = (e: Event) => {
       const template = getTemplate((e as CustomEvent<string>).detail);
-      if (template) box.current?.fill(template);
+      const selected = template ?? gameTemplates.find((item) => item.id === (e as CustomEvent<string>).detail);
+      if (selected) box.current?.fill(selected);
     };
     window.addEventListener(FILL_EVENT, onFill);
     return () => window.removeEventListener(FILL_EVENT, onFill);
-  }, []);
+  }, [gameTemplates]);
 
   return (
     <PromptBox
       ref={box}
       chips={chips}
+      gameTemplates={gameTemplates}
       hint="Free to start, no card needed"
       mainnetEnabled={mainnetAllowed}
       onSubmit={send}

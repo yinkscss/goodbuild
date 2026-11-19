@@ -42,7 +42,7 @@ export function Greeting() {
   return <p className="eyebrow min-h-[15px]">{text ?? " "}</p>;
 }
 
-export function HomePrompt({ balanceGd }: { balanceGd: number | null }) {
+export function HomePrompt({ balanceGd, gameTemplates = [] }: { balanceGd: number | null; gameTemplates?: StarterTemplate[] }) {
   const ref = usePromptRef();
   const { send, sendError } = useSendGate();
   const state = creditState(balanceGd);
@@ -51,6 +51,7 @@ export function HomePrompt({ balanceGd }: { balanceGd: number | null }) {
     <PromptBox
       ref={ref}
       chips={chips}
+      gameTemplates={gameTemplates}
       chipsPlacement="below"
       hint={state === "preview" ? "Planning is free" : undefined}
       creditsLabel={undefined}

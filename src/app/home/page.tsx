@@ -4,6 +4,7 @@ import { AppShell } from "@/components/home/app-shell";
 import { Greeting, HomePrompt, HomePromptProvider, NewBuildButton } from "@/components/home/home-prompt";
 import { ProjectGrid, ProjectGridSkeleton, ProjectsEmpty, ProjectsError } from "@/components/home/projects";
 import { getCredits } from "@/server/credits";
+import { gameTemplateStarters } from "@/server/agent/game-templates";
 import { loadProjects, loadSession } from "@/server/home-data";
 
 export const metadata = { title: "Home · GoodBuild" };
@@ -37,7 +38,7 @@ export default function HomePage() {
 async function Prompt() {
   const session = await loadSession();
   const credits = await getCredits(session.user.id);
-  return <HomePrompt balanceGd={credits.balanceGd} />;
+  return <HomePrompt balanceGd={credits.balanceGd} gameTemplates={gameTemplateStarters()} />;
 }
 
 async function Projects() {
