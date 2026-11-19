@@ -1,4 +1,4 @@
-import { bigint, index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { bigint, index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 
 import { users } from "./schema";
 
@@ -101,3 +101,23 @@ export const flowstateVoters = pgTable("flowstate_voters", {
   votedAt: timestamp("voted_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/**
+ * One row per published project per day, taken by the worker just after midnight West Africa Time
+ * (D134). Comparing today's rank with the latest earlier snapshot gives the up arrows on the
+ * leaderboard. `day` is the WAT date, YYYY-MM-DD.
+ */
+export const hackathonRankSnapshots = pgTable(
+  "hackathon_rank_snapshots",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    hackathon: text("hackathon").notNull(),
+    day: text("day").notNull(),
+    entryId: uuid("entry_id").notNull().references(() => hackathonEntries.id, { onDelete: "cascade" }),
+    rank: integer("rank").notNull(),
+    approvals: integer("approvals").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("hackathon_rank_snapshots_day_entry").on(t.hackathon, t.day, t.entryId)],
+);
+

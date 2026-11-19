@@ -183,6 +183,13 @@
       "when": 1795031383229,
       "tag": "0025_flowstate_voters",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1795044857810,
+      "tag": "0026_hackathon_rank_snapshots",
+      "breakpoints": true
     }
   ]
 }

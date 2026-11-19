@@ -1656,3 +1656,11 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - **League levels (owner, 19 Nov):** Bronze 5, Silver 15, Gold 30 approvals received, lowered from 10/40/100 because each person has only 3 approvals (about 300 in total at 100 builders). One constant, `LEAGUE_AT` in `src/lib/hackathon-ladder.ts`, also drives the leaderboard chips.
 - **Not built:** weekly Rising Star (needs a snapshot job), referral credits (new rules and tables), rank-movement arrows (need a daily rank snapshot).
 
+### D134. Leaderboard rank arrows from a daily snapshot (19 Nov 2026)
+- Decided by: the owner (picked rank arrows next). Built by Claude.
+- **What:** each published project shows "▲ 3" or "▼ 2" next to its name on the leaderboard: places gained or lost since the last day's snapshot. No arrow for a project with no earlier snapshot, or no change.
+- **How:** new table `hackathon_rank_snapshots` (migration `0026`). The worker (`scripts/worker.ts`, the separate container in production) calls `sweepRankSnapshot` hourly; the first run of each West Africa day writes that day's ranks and later runs change nothing. `GET /api/hackathon/projects` adds `prevRank` from the latest snapshot dated before today. Snapshots run through the day after the close (the final ranking) and then stop.
+- **Limits:** the snapshot is taken at the worker's first run each WAT day, normally within an hour of midnight, so the arrow means "since about midnight". With no worker running (local PGlite) there are no arrows. The first arrows appear the day after the first snapshot.
+- **Migration number:** `0026` was the next free number on main on 19 Nov. If another branch adds `0026` first, renumber one of them.
+- **Not built:** weekly Rising Star (can reuse these snapshots), referral credits.
+

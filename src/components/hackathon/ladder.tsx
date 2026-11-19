@@ -5,7 +5,7 @@ import { useAuth } from "@/lib/auth/context";
 import { buildLadder, type LadderRow } from "@/lib/hackathon-ladder";
 import { RANK_REWARDS_GD } from "@/lib/hackathon-rewards";
 
-type Entry = { id: string; alias: string; title: string; liveUrl: string; sourceUrl: string; approvals: number; pitch: string };
+type Entry = { id: string; alias: string; title: string; liveUrl: string; sourceUrl: string; approvals: number; pitch: string; prevRank?: number | null };
 
 const LEAGUE_STYLE = {
   Gold: "bg-[#fff1cf] text-[#8a5a00]",
@@ -106,7 +106,7 @@ export function Ladder({ mode }: { mode: "web" | "app" }) {
 }
 
 function LadderItem<T extends Entry>({ row, you }: { row: LadderRow<T>; you: boolean }) {
-  const { entry, league } = row;
+  const { entry, league, moved } = row;
   return (
     <li className={`grid grid-cols-[2.5rem_1fr_auto] items-center gap-3 border-t border-ink/5 py-3 first:border-t-0 ${you ? "-mx-3 rounded-block bg-tint px-3" : ""}`}>
       <span className="display text-base font-extrabold text-grey-400 tabular-nums">{entry.rank}</span>
@@ -115,6 +115,12 @@ function LadderItem<T extends Entry>({ row, you }: { row: LadderRow<T>; you: boo
           <span className="truncate">{entry.title}</span>
           {you && <span className="rounded-full bg-violet px-2.5 py-0.5 text-[11px] font-semibold text-white">You</span>}
           {league && <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${LEAGUE_STYLE[league]}`}>{league}</span>}
+          {moved !== 0 && (
+            <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${moved > 0 ? "bg-success/15 text-success" : "bg-warning/15 text-warning"}`}>
+              <span aria-hidden>{moved > 0 ? "▲" : "▼"} {Math.abs(moved)}</span>
+              <span className="sr-only">{moved > 0 ? `Up ${moved}` : `Down ${Math.abs(moved)}`} {Math.abs(moved) === 1 ? "place" : "places"} since yesterday</span>
+            </span>
+          )}
         </p>
         <p className="text-xs text-grey-600">
           by {entry.alias} · est. {gd(entry.totalGd)} G$
