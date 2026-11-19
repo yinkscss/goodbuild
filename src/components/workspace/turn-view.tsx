@@ -124,6 +124,9 @@ export function DeployCard({ record, chainId }: { record: TurnRecord; chainId: n
   );
 }
 
+/** Seconds of quiet (no reply, step or log line) before the chat says the build is still working (D138). */
+const QUIET_NOTE_AFTER_S = 90;
+
 /** A build's estimate against what the person can spend; haveMicro null when unknown (D138). */
 export interface ContinueCost {
   needMicro: number;
@@ -333,8 +336,11 @@ export function TurnView({
   onSkipPlan?: () => void;
 }) {
   const showError = !live && (record.status === "needs_fix" || record.status === "error");
-  const thinking = live && !text && !record.steps.length;
-  const thinkingFor = useElapsed(thinking);
+  // The clock runs whenever nothing has been said yet, and starts again at each new step or log line, so a
+  // long quiet step (a big file being written) shows how long it has been quiet instead of a bare "Thinking" (D138).
+  const thinking = live && !text;
+  const activity = `${record.steps.length}:${record.steps.at(-1)?.status ?? ""}:${record.log.length}`;
+  const thinkingFor = useElapsed(thinking, activity);
   return (
     <div>
       {text ? (
@@ -345,6 +351,11 @@ export function TurnView({
           {thinkingFor > 0 && <span className="font-mono text-[11px]">{formatClock(thinkingFor)}</span>}
         </p>
       ) : null}
+      {live && !text && thinkingFor >= QUIET_NOTE_AFTER_S && (
+        <WaitNote tone="calm" className="mt-2">
+          Still working. A big step, like writing a large file, can take a few minutes. If it goes quiet for too long, GoodBuild retries it.
+        </WaitNote>
+      )}
       {onSkipPlan && (
         <Button variant="ghost" size="sm" className="mt-2 -ml-3.5" onClick={onSkipPlan}>
           Skip, just build it
