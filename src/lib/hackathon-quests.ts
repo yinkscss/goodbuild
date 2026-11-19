@@ -41,10 +41,10 @@ export function buildQuests(i: QuestInput): { quests: Quest[]; badges: Badge[]; 
   const league = leagueFor(i.approvalsReceived);
   const inZone = i.rank !== null && i.rank <= i.prizeSlots;
   const quests: Quest[] = [
-    { id: "register", title: "Register and verify", hint: "Connect, verify with GoodDollar and support us on FlowState.", reward: "+20 credits", done: i.registered },
+    { id: "register", title: "Register and verify", hint: "Connect, verify with GoodDollar and use your remaining FlowState votes to support GoodBuildIt.", reward: "+20 credits", done: i.registered },
     { id: "deploy", title: "Deploy to Celo", hint: "Deploy your first app, then claim your credits.", reward: "+30 credits", done: i.deployClaimed },
     { id: "publish", title: "Publish your project", hint: "Add your live app link so people can approve it.", reward: "Badge", done: i.published },
-    { id: "vote", title: "Use your approvals", hint: `Approve ${i.maxApprovals} projects you’d actually use.`, reward: "Badge", done: i.approvalsGiven >= i.maxApprovals },
+    { id: "vote", title: "Use your approvals", hint: `Assign all ${i.maxApprovals} approvals to projects you’d back. You can put more than one on the same project.`, reward: "Badge", done: i.approvalsGiven >= i.maxApprovals },
     { id: "bronze-quest", title: `Get ${LEAGUE_AT.Bronze} approvals`, hint: "Share your project link with people who’d use it.", reward: "Bronze league", done: i.approvalsReceived >= LEAGUE_AT.Bronze },
     { id: "zone", title: "Reach the prize zone", hint: `Finish in the top ${i.prizeSlots} by approvals.`, reward: "Badge", done: inZone },
   ];

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useAuth } from "@/lib/auth/context";
 import { useSendGate } from "@/components/auth/send-gate";
 import { styles } from "./styles";
+import { ProjectVoteLink } from "./project-vote-link";
 
 async function jsonRequest(url: string, body?: unknown) {
   const res = await fetch(
@@ -51,6 +52,7 @@ function Submission() {
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState("");
   const [saved, setSaved] = React.useState<string | null>(null);
+  const [projectId, setProjectId] = React.useState<string | null>(null);
   /** Submitting needs verify and vote first (D131). */
   const [voted, setVoted] = React.useState(false);
   React.useEffect(() => {
@@ -62,7 +64,10 @@ function Submission() {
     ])
       .then(([entry, participant]) => {
         if (stopped) return;
-        if (entry) setFields(entry);
+        if (entry) {
+          setFields(entry);
+          setProjectId(entry.id);
+        }
         if (participant?.email) {
           setEmail(participant.email);
           setEmailLocked(true);
@@ -91,6 +96,7 @@ function Submission() {
       }
       const entry = await jsonRequest("/api/hackathon/projects", fields);
       setSaved(entry.id);
+      setProjectId(entry.id);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -254,13 +260,14 @@ function Submission() {
           Project saved.{" "}
           <Link
             className={styles.linkGhost}
-            href={`/hackathon/projects#${saved}`}
+            href={`/hackathon/projects?vote=${saved}`}
           >
             View it on the leaderboard →
           </Link>{" "}
           You can return here to update your links.
         </p>
       )}
+      {projectId && <ProjectVoteLink entryId={projectId} />}
     </form>
   );
 }

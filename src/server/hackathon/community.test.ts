@@ -63,7 +63,7 @@ it("keeps signup email before verification and exports safely without exposing i
   expect(entries).toHaveLength(1);
   expect(JSON.stringify(entries)).not.toContain("builder@example.com");
 });
-it("counts one approval per human per published entry, including linked wallets", async () => {
+it("counts approvals from linked wallets under the same GoodDollar identity", async () => {
   const owner = await user();
   const voter = await user();
   const linked = await user();
@@ -81,7 +81,7 @@ it("counts one approval per human per published entry, including linked wallets"
   await approveEntry(db, linked, entry.id, async (w) =>
     w === owner.wallet ? null : root,
   );
-  expect((await listEntries(db))[0].approvals).toBe(1);
+  expect((await listEntries(db))[0].approvals).toBe(2);
   await expect(
     approveEntry(db, owner, entry.id, async () => root),
   ).rejects.toThrow(/own/);
@@ -249,17 +249,18 @@ it("gives each verified person three approvals in total, and the fourth is refus
   expect((await listEntries(db)).find((e) => e.id === entries[3].id)?.approvals).toBe(0);
 });
 
-it("doesn't use up an approval when the same project is approved again", async () => {
+it("lets a voter assign all three approvals to the same project", async () => {
   const voter = await user();
   const root = wallet();
   const rootOf = rootFor(root, voter.wallet);
-  const [a, b, c, d] = [await liveEntry("a"), await liveEntry("b"), await liveEntry("c"), await liveEntry("d")];
+  const a = await liveEntry("a");
+  const d = await liveEntry("d");
   await approveEntry(db, voter, a.id, rootOf);
-  const again = await approveEntry(db, voter, a.id, rootOf);
-  expect(again).toMatchObject({ used: 1, max: 3 });
-  await approveEntry(db, voter, b.id, rootOf);
-  await approveEntry(db, voter, c.id, rootOf);
+  await approveEntry(db, voter, a.id, rootOf);
+  const third = await approveEntry(db, voter, a.id, rootOf);
+  expect(third).toMatchObject({ used: 3, max: 3, entryApprovals: 3 });
   await expect(approveEntry(db, voter, d.id, rootOf)).rejects.toThrow(/all 3/);
+  expect((await listEntries(db)).find((entry) => entry.id === a.id)?.approvals).toBe(3);
 });
 
 it("shares the three between linked wallets that have the same GoodDollar identity", async () => {

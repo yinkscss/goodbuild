@@ -250,12 +250,17 @@ function Registration() {
           aria-current={step === 3 ? "step" : undefined}
         >
           <div className={styles.n}>3</div>
-          <h3>Support us on FlowState</h3>
-          <p>One vote from your wallet. We cover the network fee.</p>
+          <h3>Support GoodBuildIt on FlowState</h3>
+          <p>
+            We’ll check your ballot and ask your wallet to sign all the votes
+            you have left for GoodBuildIt. This supports the hackathon, not a
+            project approval. We cover the network fee.
+          </p>
           <div className={styles.act}>
             {verified && participant ? (
               <>
                 <FlowstateVote
+                  autoSupport
                   onConfirmed={() =>
                     setParticipant({ ...participant, flowstate: "voted" })
                   }

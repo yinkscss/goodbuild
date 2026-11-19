@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { allocateHackathonRewards } from "@/lib/hackathon-rewards";
 import { MAX_APPROVALS_PER_PERSON, type VoteStatus } from "@/lib/hackathon-vote";
 import { FlowstateVote } from "./flowstate-vote";
+import { ProjectVoteLink } from "./project-vote-link";
 
 type Entry = { id: string; alias: string; title: string; pitch: string; liveUrl: string; sourceUrl: string; approvals: number };
 
@@ -44,6 +45,7 @@ export function VoteList() {
   const [busyId, setBusyId] = React.useState<string | null>(null);
   const [error, setError] = React.useState("");
   const [notice, setNotice] = React.useState("");
+  const shareLinkHandled = React.useRef(false);
 
   const loadEntries = React.useCallback(async () => {
     try {
@@ -76,12 +78,24 @@ export function VoteList() {
     if (pending && user) setPicked(pending);
   }, [ready, user, loadStatus]);
 
+  React.useEffect(() => {
+    if (!entries || shareLinkHandled.current) return;
+    shareLinkHandled.current = true;
+    const requested = new URLSearchParams(window.location.search).get("vote");
+    if (requested && entries.some((entry) => entry.id === requested)) {
+      writePending(requested);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- a shared URL selects its project on arrival
+      setPicked(requested);
+    }
+  }, [entries]);
+
   // Published projects first by rank, then ideas that have no live app yet (they can't be approved).
   const ladder = entries ? allocateHackathonRewards(entries).map((entry) => ({ entry })) : [];
   const ready_ = status.signedIn && status.verified && status.voted;
   const left = status.max - status.used;
 
   async function approve(id: string) {
+    const keepDialogOpen = picked === id;
     setBusyId(id);
     setError("");
     setNotice("");
@@ -93,14 +107,17 @@ export function VoteList() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.message ?? "We couldn’t save that approval. Please try again.");
-      setNotice("Approval saved. Thank you for backing this builder.");
+      setNotice(
+        `Approval added. You’ve used ${data.used} of ${data.max} total` +
+          `; ${data.entryApprovals} on this project.`,
+      );
       await Promise.all([loadEntries(), loadStatus()]);
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setBusyId(null);
       writePending(null);
-      setPicked(null);
+      if (!keepDialogOpen) setPicked(null);
     }
   }
 
@@ -127,7 +144,7 @@ export function VoteList() {
             : `Each verified person gets ${status.max} approvals`}
         </p>
         <p className="mt-1 text-grey-600">
-          Approvals are free. Pick the {status.max} projects you’d actually use. Voting closes at the end of 10 Dec.
+          Add one approval at a time. You can put all {status.max} on one project or spread them around. Voting closes at the end of 10 Dec.
         </p>
       </div>
       {error && <p role="alert" className="mt-3 text-sm text-danger">{error}</p>}
@@ -137,12 +154,15 @@ export function VoteList() {
       ) : (
         <ul className="m-0 mt-4 grid list-none gap-3 p-0 sm:grid-cols-2">
           {ladder.map(({ entry }) => {
-            const mine = status.entryIds.includes(entry.id);
-            const out = !mine && status.verified && left <= 0;
+            const mine = status.entryIds.filter((id) => id === entry.id).length;
+            const out = status.verified && left <= 0;
             return (
               <li key={entry.id} id={entry.id} className="flex flex-col gap-3 rounded-card bg-surface p-5 shadow-card">
                 <div className="flex items-start justify-between gap-3">
-                  <small className="text-grey-600">{entry.rank ? `#${entry.rank}` : "Idea"} · by {entry.alias}</small>
+                  <div>
+                    <small className="text-grey-600">{entry.rank ? `#${entry.rank}` : "Idea"} · by {entry.alias}</small>
+                    {mine > 0 && <p className="mt-1 text-xs font-medium text-violet">You: {mine} {mine === 1 ? "approval" : "approvals"} here</p>}
+                  </div>
                   <strong className="whitespace-nowrap text-sm">
                     {entry.approvals} {entry.approvals === 1 ? "approval" : "approvals"}
                   </strong>
@@ -164,14 +184,23 @@ export function VoteList() {
                       Source code ↗
                     </a>
                   )}
+                  <ProjectVoteLink entryId={entry.id} compact />
                 </div>
                 <button
                   type="button"
                   className="mt-auto w-fit rounded-full bg-violet px-5 py-2.5 text-sm font-medium text-white outline-none focus-visible:shadow-focus disabled:opacity-50"
-                  disabled={!entry.liveUrl || mine || out || busyId !== null}
+                  disabled={!entry.liveUrl || out || busyId !== null}
                   onClick={() => choose(entry.id)}
                 >
-                  {busyId === entry.id ? "Saving…" : !entry.liveUrl ? "Not live yet" : mine ? "✓ Approved" : out ? "No approvals left" : "Approve"}
+                  {busyId === entry.id
+                    ? "Saving…"
+                    : !entry.liveUrl
+                      ? "Not live yet"
+                      : out
+                        ? "No approvals left"
+                        : mine > 0
+                          ? "Add 1 more approval"
+                          : "Add 1 approval"}
                 </button>
               </li>
             );
@@ -216,13 +245,24 @@ function StepsDialog({
     () => `${window.location.origin}${window.location.pathname}#vote`,
   );
   const allDone = status.signedIn && status.verified && status.voted;
+  const entryApprovals = entry
+    ? status.entryIds.filter((id) => id === entry.id).length
+    : 0;
+  const approvalsLeft = status.max - status.used;
   return (
     <Dialog open={Boolean(entry)} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="sm:max-w-md">
-        <DialogTitle className="pr-10 text-xl font-semibold">Three quick steps, then vote</DialogTitle>
+        <DialogTitle className="pr-10 text-xl font-semibold">Verify, then approve {entry?.title ?? "this project"}</DialogTitle>
         <DialogDescription className="mt-1 text-sm text-grey-600">
-          This keeps it to one real person, one set of {status.max} approvals.
+          Step 3 supports GoodBuildIt on FlowState. {approvalsLeft > 0
+            ? `You have ${approvalsLeft} approval${approvalsLeft === 1 ? "" : "s"} left. Add one per click; you can put several on ${entry?.title ?? "this project"}.`
+            : `You’ve used all ${status.max} approvals.`}
         </DialogDescription>
+        {entryApprovals > 0 && (
+          <p className="text-sm text-violet">
+            You’ve assigned {entryApprovals} {entryApprovals === 1 ? "approval" : "approvals"} to this project so far.
+          </p>
+        )}
         <ol className="m-0 mt-5 grid list-none gap-3 p-0">
           <Step n={1} done={status.signedIn} title="Connect your email" note="We create your wallet for you.">
             <button type="button" className={BTN} onClick={openConnect}>Connect with email</button>
@@ -233,17 +273,21 @@ function StepsDialog({
             </button>
             {verify.note && <p role="alert" className="mt-2 text-xs text-danger">{verify.note}</p>}
           </Step>
-          <Step n={3} done={status.voted} title="Support us on FlowState" note="One vote from your wallet. We cover the network fee.">
-            {status.signedIn && status.verified ? <FlowstateVote onConfirmed={() => void refresh()} /> : <p className="text-xs text-grey-600">Finish the steps above first.</p>}
+          <Step n={3} done={status.voted} title="Support GoodBuildIt on FlowState" note="We check your ballot and use its remaining votes for GoodBuildIt. This does not approve your friend’s project. We cover the network fee.">
+            {status.signedIn && status.verified ? <FlowstateVote autoSupport onConfirmed={() => void refresh()} /> : <p className="text-xs text-grey-600">Finish the steps above first.</p>}
           </Step>
         </ol>
         <button
           type="button"
           className="mt-5 w-full rounded-full bg-ink px-5 py-3 text-sm font-medium text-white outline-none focus-visible:shadow-focus disabled:opacity-40"
-          disabled={!allDone || busy}
+          disabled={!allDone || busy || approvalsLeft <= 0}
           onClick={onApprove}
         >
-          {allDone ? `Approve ${entry?.title ?? "this project"}` : "Finish the steps to approve"}
+          {approvalsLeft <= 0
+            ? `All ${status.max} approvals used`
+            : allDone
+              ? `${entryApprovals > 0 ? "Add 1 more approval to" : "Add 1 approval to"} ${entry?.title ?? "this project"}`
+              : "Finish verification, then add an approval"}
         </button>
       </DialogContent>
     </Dialog>

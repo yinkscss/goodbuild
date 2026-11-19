@@ -177,7 +177,7 @@ export const FAQ: Array<{ q: string; a: string }> = [
   },
   {
     q: "Do I have to vote on FlowState to get credits?",
-    a: "Yes. First verify with GoodDollar, then complete your GoodBuildIt vote in step 3 here on GoodBuild. Once your support is confirmed on-chain, you can claim free build credits. Your points are selected for you, normally 10; you review and confirm before anything is sent.",
+    a: "Yes. First verify with GoodDollar, then use the support button in step 3. It checks your FlowState ballot and sends your remaining votes to GoodBuildIt for your wallet to sign. This supports the hackathon; approving a project is a separate action. Once support is confirmed on-chain, you can claim free build credits.",
   },
   {
     q: "Can I submit before my app is ready?",
