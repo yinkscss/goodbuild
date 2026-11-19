@@ -64,7 +64,7 @@ export function HomePrompt({ balanceGd, gameTemplates = [] }: { balanceGd: numbe
         status={sendError ? <span className="text-danger">{sendError}</span> : undefined}
         className="mt-8"
       />
-      <Link href="/templates#game-templates-heading" className="mt-3 inline-flex rounded-full px-3 py-2 text-sm font-medium text-violet hover:bg-tint focus-visible:outline-none focus-visible:shadow-focus">
+      <Link href="/templates#games" className="mt-3 inline-flex rounded-full px-3 py-2 text-sm font-medium text-violet hover:bg-tint focus-visible:outline-none focus-visible:shadow-focus">
         Browse all {gameTemplates.length} game templates
       </Link>
     </div>
