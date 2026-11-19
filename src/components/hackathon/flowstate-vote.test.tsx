@@ -1,6 +1,6 @@
 import * as React from "react";
 import { afterEach, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AuthContextProvider, unconfiguredAuth } from "@/lib/auth/context";
 import { FlowstateVote } from "./flowstate-vote";
@@ -63,21 +63,16 @@ function setup() {
   );
   return { client, onConfirmed };
 }
-it("votes with one button: Celo first, then the server's priced vote, then confirms it", async () => {
+it("votes with one tap: Celo first, then all available points priced by the server, then confirms", async () => {
   const { client, onConfirmed } = setup();
-  await userEvent.click(
-    screen.getByRole("button", { name: "Vote here with your wallet" }),
-  );
-  const slider = await screen.findByRole("slider", {
-    name: "Votes for GoodBuildIt",
-  });
-  expect(slider).toHaveValue("10");
-  expect(client.writeContract).not.toHaveBeenCalled();
-  // The fee table, explanations and contract details are gone.
-  expect(screen.queryByText(/Network fee cap/)).not.toBeInTheDocument();
-  expect(screen.queryByText("Voting details")).not.toBeInTheDocument();
-  await userEvent.click(screen.getByRole("button", { name: "Vote 10 points" }));
+  await userEvent.click(screen.getByRole("button", { name: "Vote here with your wallet" }));
   await screen.findByText("✓ Thank you for voting!");
+  // No slider, no amounts to choose.
+  expect(screen.queryByRole("slider")).not.toBeInTheDocument();
+  const prepares = vi.mocked(fetch).mock.calls
+    .map(([, init]) => (init?.body ? JSON.parse(String(init.body)) : null))
+    .filter((b) => b?.action === "prepare");
+  expect(prepares).toEqual([{ action: "prepare", additional: "10" }]);
   expect(client.writeContract).toHaveBeenCalledWith(
     expect.objectContaining({
       address: FLOWSTATE_COUNCIL,
@@ -88,21 +83,6 @@ it("votes with one button: Celo first, then the server's priced vote, then confi
   );
   expect(client.signMessage).not.toHaveBeenCalled();
   expect(onConfirmed).toHaveBeenCalledOnce();
-});
-it("sends what the slider says", async () => {
-  const { client } = setup();
-  await userEvent.click(
-    screen.getByRole("button", { name: "Vote here with your wallet" }),
-  );
-  const slider = await screen.findByRole("slider", { name: "Votes for GoodBuildIt" });
-  fireEvent.change(slider, { target: { value: "4" } });
-  await userEvent.click(screen.getByRole("button", { name: "Vote 4 points" }));
-  await screen.findByText("✓ Thank you for voting!");
-  const prepares = vi.mocked(fetch).mock.calls
-    .map(([, init]) => (init?.body ? JSON.parse(String(init.body)) : null))
-    .filter((b) => b?.action === "prepare");
-  expect(prepares).toEqual([{ action: "prepare", additional: "4" }]);
-  expect(client.writeContract).toHaveBeenCalledOnce();
 });
 it("recovers from a persisted reverted transaction without marking a vote confirmed", async () => {
   localStorage.setItem(`gb:flowstate:pending:${wallet}`, hash);
@@ -130,29 +110,21 @@ it("recovers from a persisted reverted transaction without marking a vote confir
   expect(client.writeContract).not.toHaveBeenCalled();
   expect(onConfirmed).not.toHaveBeenCalled();
 });
-it("selects ten points after a verified wallet enables its community voting rights", async () => {
+it("turns voting on and then votes, all from one tap", async () => {
   const client = {
     getAddresses: vi.fn(async () => [wallet]),
     signMessage: vi.fn(async () => "0x" + "a".repeat(130)),
-    writeContract: vi.fn(),
+    writeContract: vi.fn(async () => hash),
   };
   vi.stubGlobal(
     "fetch",
-    vi.fn(
-      async (_url, init?: RequestInit) =>
-        new Response(
-          JSON.stringify(
-            init?.body
-              ? status
-              : {
-                  ...status,
-                  registered: false,
-                  votingPower: "0",
-                  available: "0",
-                },
-          ),
-        ),
-    ),
+    vi.fn(async (_url, init?: RequestInit) => {
+      const body = init?.body ? JSON.parse(String(init.body)) : null;
+      if (body?.action === "eligibility") return new Response(JSON.stringify(status));
+      if (body?.action === "prepare") return new Response(JSON.stringify(review));
+      if (body?.action === "confirm") return new Response(JSON.stringify({ ...status, support: "10" }));
+      return new Response(JSON.stringify({ ...status, registered: false, votingPower: "0", available: "0" }));
+    }),
   );
   render(
     <AuthContextProvider
@@ -166,20 +138,25 @@ it("selects ten points after a verified wallet enables its community voting righ
       <FlowstateVote />
     </AuthContextProvider>,
   );
-  await userEvent.click(
-    screen.getByRole("button", { name: "Vote here with your wallet" }),
-  );
-  await userEvent.click(
-    await screen.findByRole("button", {
-      name: "Enable voting with this wallet",
-    }),
-  );
-  expect(
-    await screen.findByRole("slider", {
-      name: "Votes for GoodBuildIt",
-    }),
-  ).toHaveValue("10");
+  await userEvent.click(screen.getByRole("button", { name: "Vote here with your wallet" }));
+  await screen.findByText("✓ Thank you for voting!");
   expect(client.signMessage).toHaveBeenCalledOnce();
+  expect(client.writeContract).toHaveBeenCalledOnce();
+});
+it("sends someone who isn't verified to the verify step, without touching the wallet", async () => {
+  const client = { getAddresses: vi.fn(async () => [wallet]), signMessage: vi.fn(), writeContract: vi.fn() };
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ ...status, verified: false, registered: false, available: "0" }))));
+  render(
+    <AuthContextProvider
+      value={{ ...unconfiguredAuth, user: { id: "u", wallet, walletKind: "embedded", verified: false }, switchChain: vi.fn(), getWalletClient: vi.fn(async () => client as never) }}
+    >
+      <FlowstateVote verifyHref="/r/ABCD2345" />
+    </AuthContextProvider>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Vote here with your wallet" }));
+  const link = await screen.findByRole("link", { name: "Verify with GoodDollar first" });
+  expect(link).toHaveAttribute("href", "/r/ABCD2345");
+  expect(client.signMessage).not.toHaveBeenCalled();
   expect(client.writeContract).not.toHaveBeenCalled();
 });
 it("never asks someone who already voted to vote again: it confirms the vote on opening", async () => {
@@ -204,38 +181,27 @@ it("never asks someone who already voted to vote again: it confirms the vote on 
   );
   await userEvent.click(screen.getByRole("button", { name: "Vote here with your wallet" }));
   await screen.findByText("✓ Thank you for voting!");
-  expect(screen.queryByRole("slider")).not.toBeInTheDocument();
   expect(client.writeContract).not.toHaveBeenCalled();
   expect(onConfirmed).toHaveBeenCalledOnce();
 });
 
-it("lets a voter spend the remaining nine points after a one-point vote in the same dialog", async () => {
+it("lets a voter give the remaining points with one more tap after an earlier partial vote", async () => {
   const { client } = setup();
   const remaining = { ...status, allocated: "1", available: "9", support: "1" };
-  let voted = false;
   vi.stubGlobal("fetch", vi.fn(async (_url, init?: RequestInit) => {
     const body = init?.body ? JSON.parse(String(init.body)) : null;
-    const current = voted ? remaining : status;
-    const data = body?.action === "prepare"
-      ? { ...review, ...current, additional: body.additional, after: String(Number(current.support) + Number(body.additional)) }
-      : body?.action === "confirm" ? remaining : current;
-    if (body?.action === "confirm") voted = true;
-    return new Response(JSON.stringify(data));
+    if (body?.action === "existing") return new Response(JSON.stringify(remaining));
+    if (body?.action === "prepare") return new Response(JSON.stringify({ ...review, ...remaining, additional: body.additional, after: "10" }));
+    if (body?.action === "confirm") return new Response(JSON.stringify({ ...remaining, available: "0", support: "10" }));
+    return new Response(JSON.stringify(remaining));
   }));
   await userEvent.click(screen.getByRole("button", { name: "Vote here with your wallet" }));
-  fireEvent.change(await screen.findByRole("slider"), { target: { value: "1" } });
-  await userEvent.click(screen.getByRole("button", { name: "Vote 1 point" }));
-  await screen.findByText("✓ Thank you for voting!");
-  await userEvent.click(screen.getByRole("button", { name: "Check for new eligibility to vote again" }));
-  const slider = await screen.findByRole("slider");
-  expect(slider).toHaveValue("9");
-  expect(slider).toHaveAttribute("max", "9");
-  await userEvent.click(screen.getByRole("button", { name: "Vote 9 points" }));
-  await waitFor(() => expect(client.writeContract).toHaveBeenCalledTimes(2));
+  await userEvent.click(await screen.findByRole("button", { name: "Vote my remaining points" }));
+  await waitFor(() => expect(client.writeContract).toHaveBeenCalledTimes(1));
   expect(client.writeContract).toHaveBeenLastCalledWith(expect.objectContaining({
     args: [[{ recipient: GOODBUILDIT_RECIPIENT, amount: BigInt(10) }]],
   }));
-  await screen.findByText("✓ Thank you for voting!");
+  await screen.findByText("You have no votes left right now.");
 });
 
 it("hides the ballot until existing support has finished checking", async () => {
@@ -250,8 +216,7 @@ it("hides the ballot until existing support has finished checking", async () => 
   vi.stubGlobal("fetch", fetcher);
   await userEvent.click(screen.getByRole("button", { name: "Vote here with your wallet" }));
   await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
-  expect(screen.queryByRole("slider")).not.toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "Vote 9 points" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Vote my remaining points" })).not.toBeInTheDocument();
   resolveExisting(new Response(JSON.stringify({ ...status, available: "9", support: "1" })));
   await screen.findByText("✓ Thank you for voting!");
 });

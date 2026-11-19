@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { AppShell } from "@/components/home/app-shell";
 import { Greeting, HomePrompt, HomePromptProvider, NewBuildButton } from "@/components/home/home-prompt";
 import { ProjectGrid, ProjectGridSkeleton, ProjectsEmpty, ProjectsError } from "@/components/home/projects";
+import { InviteFriendsCard } from "@/components/referral/invite-card";
 import { StartCredits } from "@/components/credits/start-credits";
 import { getCredits, needsStartCredits } from "@/server/credits";
 import { gameTemplateStarters } from "@/server/agent/game-templates";
@@ -32,6 +33,7 @@ export default function HomePage() {
         <Suspense fallback={<ProjectGridSkeleton />}>
           <Projects />
         </Suspense>
+        <InviteFriendsCard />
         <Suspense fallback={null}>
           <StartCreditsGate />
         </Suspense>
