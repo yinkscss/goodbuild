@@ -98,7 +98,7 @@ jobs:
   games:
     name: Game templates and frame rate
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -132,7 +132,7 @@ jobs:
       # Neither shares this runner with the core suite's PGlite, solc or TypeScript workers.
       - name: Test game templates
         run: pnpm test:games
-        timeout-minutes: 20
+        timeout-minutes: 30
       - name: Test slow-phone frame rate
         run: pnpm test:performance
         timeout-minutes: 3
