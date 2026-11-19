@@ -48,6 +48,7 @@
 
 ## Q11. On-chain registry or factory?
 - Ideas so far: DB-only first; CREATE2 factory for top templates later (events count as on-chain activity, if GoodDollar counts them: UNVERIFIED). Pros/cons in CONTRACTS_AND_DEPLOYMENT.md §3.
+- **Update 19 Nov 2026:** now milestone deliverables 3 and 4, so a registry plus Celoscan links are proposed in D132 (the factory stays for later).
 - Claude's input: _TBD_
 
 ## Q12. Gas: who pays, and in what?
