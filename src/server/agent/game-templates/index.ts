@@ -37,6 +37,11 @@ export interface GameTemplate {
   title: { from: string; name: string };
   /** What the builder is told about it. */
   brief: string;
+  /**
+   * Played by several real people at once, in a shared room (D139). Only these may start a multiplayer
+   * or social game; every other template is one player, and parseGameBrief drops it for such a game.
+   */
+  multiplayer?: boolean;
 }
 
 export const GAME_TEMPLATES: GameTemplate[] = [laneRacer, catchDodge, caveFlyer, brickBreaker, matchGrid, quickQuiz, runner3d, kartTrack, mazeEscape, skyRings];
@@ -99,7 +104,7 @@ export function gameTemplateById(id: string | undefined | null): GameTemplate | 
 
 /** One line per template, for the planner. */
 export function gameTemplateCatalog(): string {
-  return GAME_TEMPLATES.map((t) => `- ${t.id} (${t.dims.toUpperCase()}, ${t.style}): ${t.fits}`).join("\n");
+  return GAME_TEMPLATES.map((t) => `- ${t.id} (${t.dims.toUpperCase()}, ${t.style}, ${t.multiplayer ? "several players in a room" : "one player"}): ${t.fits}`).join("\n");
 }
 
 /**

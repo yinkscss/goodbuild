@@ -18,7 +18,7 @@ import type { TurnRecord } from "@/lib/turn-types";
 
 import { demoModel } from "./demo-model";
 import { scriptedModel } from "./fake-model";
-import { GAME_RULES, INTAKE_MAX_TOKENS, INTAKE_PROMPT, INTAKE_TOOLS, INTAKE_TOOLS_GAME, LEADERBOARD_QUESTION_ID, MINIPAY_QUESTION_ID, fallbackIntake, intakeContext, intakeTools, parseIntake, parsePlanQuestions, planBrief, styleFromWords } from "./plan-intake";
+import { GAME_RULES, INTAKE_MAX_TOKENS, INTAKE_PROMPT, INTAKE_TOOLS, INTAKE_TOOLS_GAME, LEADERBOARD_QUESTION_ID, MINIPAY_QUESTION_ID, fallbackIntake, intakeContext, intakeTools, isMultiplayerGame, parseIntake, parsePlanQuestions, planBrief, styleFromWords } from "./plan-intake";
 import { game2d } from "./kits/game-2d";
 import { systemPrompt } from "./prompt";
 import { miniApp } from "./kits/mini-app";
@@ -544,6 +544,71 @@ describe("a game's plan (D93)", () => {
     expect(planBrief(madeUp, true).gameTemplate).toBeUndefined();
     const none = parseIntake(args([card("How do you steer?", ["Tap", "Tilt"])], { game_brief: { ...brief, template: "none" } }), racer)!;
     expect(none.game?.template).toBeUndefined();
+  });
+
+  it("never starts a multiplayer or social game from a one-player template (D139)", () => {
+    const brief = { name: "Shadow Crew", pitch: "Fix the ship before the saboteur wrecks it.", loop: "do tasks, find the saboteur", lose: "the ship breaks", harder: "more sabotage", extras: [] };
+    const crew = "A 3D multiplayer crew vs saboteur game: rooms with a join code, wallet sign-in, voting someone out, hidden roles";
+    // The planner picked the 3D maze because both are 3D and have corridors: dropped, built from scratch.
+    const parsed = parseIntake(args([card("How many players?", ["4", "6"])], { game_brief: { ...brief, template: "maze-escape" } }), crew)!;
+    expect(parsed.game?.name).toBe("Shadow Crew");
+    expect(parsed.game?.template).toBeUndefined();
+    expect(planBrief(parsed, true).gameTemplate).toBeUndefined();
+    // Only the brief says it's social: still dropped.
+    const quiet = parseIntake(args([card("How do you move?", ["Joystick", "Tap"])], { game_brief: { ...brief, pitch: "Find the imposter before they wreck the ship.", template: "maze-escape" } }), "a 3D spaceship game")!;
+    expect(quiet.game?.template).toBeUndefined();
+    // A quiz between real people in a room isn't the one-player quiz either.
+    const battle = parseIntake(args([card("How many questions?", ["10", "20"])], { game_brief: { ...brief, name: "Quiz Clash", pitch: "Answer faster than your friends.", template: "quick-quiz" } }), "A trivia game where friends join a room with a code and race to answer")!;
+    expect(battle.game?.template).toBeUndefined();
+    // A one-player maze keeps its template.
+    const solo = parseIntake(args([card("How do you move?", ["Joystick", "Tap"])], { game_brief: { ...brief, name: "Vault Run", pitch: "Find the key and get out.", loop: "explore, find the key", lose: "the guards catch you", template: "maze-escape" } }), "a 3D escape room maze game where you find the key")!;
+    expect(solo.game?.template).toBe("maze-escape");
+  });
+
+  it("tells multiplayer and social games from one-player ones by their words (D139)", () => {
+    for (const social of [
+      "a multiplayer racing game",
+      "a multi-player snake game",
+      "play chess online with friends",
+      "a ludo game against real people",
+      "friends join a room with a code",
+      "create a room and invite players",
+      "a party game with a lobby",
+      "share the room code so others can play",
+      "everyone votes someone out each round",
+      "players vote on who the spy is",
+      "find the impostor",
+      "a crew vs saboteur game",
+      "a traitor hides among the crew",
+      "hidden roles and a night phase",
+      "a social deduction game",
+      "a mafia game for my class",
+      "like among us but on Celo",
+      "a 2 player card game",
+      "for 4-10 players",
+      "a two-player board game",
+      "PvP arena battles",
+    ])
+      expect(isMultiplayerGame(social), social).toBe(true);
+    for (const solo of [
+      "a 3D maze escape game",
+      "an escape room puzzle where you find the key",
+      "a dungeon with many rooms to explore",
+      "a quiz about Nigerian history with a leaderboard",
+      "show the top 10 players on a leaderboard",
+      "an endless runner where you dodge traffic",
+      "a racer where you overtake a rival car",
+      "beat your best score",
+      "a match-3 puzzle with fruit",
+    ])
+      expect(isMultiplayerGame(solo), solo).toBe(false);
+  });
+
+  it("tells the planner a template must play the same way, not just look alike (D139)", () => {
+    const field = JSON.stringify(INTAKE_TOOLS_GAME);
+    expect(field).toMatch(/same controls, the same goal, and the same way to win or lose/);
+    expect(field).toMatch(/Never pick one just because it shares a camera/);
+    expect(field).toMatch(/maze-escape \(3D, action, one player\)/);
   });
 
   it("tells the kind of game by its words (D115)", () => {
