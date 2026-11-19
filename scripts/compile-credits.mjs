@@ -34,7 +34,7 @@ function compileFile(source, contract) {
 }
 
 export const compileCredits = () => compileFile(SOURCE, "GoodBuildCredits");
-/** The activity registry (D155), compiled the same way. */
+/** The activity registry (D156), compiled the same way. */
 export const compileRegistry = () => compileFile("contracts/GoodBuildRegistry.sol", "GoodBuildRegistry");
 /** The Sepolia stand-in for G$ (ERC-677 transferAndCall, faucet), compiled for tests and the Sepolia rehearsal. */
 export const compileTestGd = () => compileFile("scripts/solidity/goodbuild/TestGoodDollar.sol", "TestGoodDollar");

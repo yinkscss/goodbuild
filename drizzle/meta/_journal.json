@@ -215,8 +215,15 @@
     {
       "idx": 30,
       "version": "7",
-      "when": 1795121584936,
-      "tag": "0030_registry_events",
+      "when": 1795119561989,
+      "tag": "0030_referrals",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1795125429425,
+      "tag": "0031_registry_events",
       "breakpoints": true
     }
   ]

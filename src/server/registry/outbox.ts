@@ -13,7 +13,7 @@ import { deployments } from "@/server/db/deploy-schema";
 import { publications } from "@/server/db/publish-schema";
 import { projects, users } from "@/server/db/schema";
 
-/** Matches GoodBuildRegistry.Kind (D155). */
+/** Matches GoodBuildRegistry.Kind (D156). */
 export const KIND = { BuilderJoined: 0, AppGenerated: 1, ProjectDeployed: 2, AppPublished: 3, AppUnpublished: 4, GdollarIntegrated: 5 } as const;
 export type RegistryKind = keyof typeof KIND;
 
@@ -39,7 +39,7 @@ export interface RegistryEventInput {
   at?: Date;
 }
 
-/** The registry is on only when its salt is set, so dev and tests record nothing. Mainnet only (D155). */
+/** The registry is on only when its salt is set, so dev and tests record nothing. Mainnet only (D156). */
 export function registryEnabled(env = process.env): boolean {
   return Boolean(env.REGISTRY_SALT && env.REGISTRY_ADDRESS);
 }
@@ -177,7 +177,7 @@ export async function enqueueForProject(db: Db, e: Omit<RegistryEventInput, "use
   }
 }
 
-/** Events for a mainnet deployment (D155): the deploy, and G$ use when the G$ token is among its constructor arguments. */
+/** Events for a mainnet deployment (D156): the deploy, and G$ use when the G$ token is among its constructor arguments. */
 export async function enqueueDeployment(db: Db, d: { projectId: string; chainId: number; address: string; txHash: string; constructorArgs: string }, at?: Date): Promise<void> {
   if (!isRegistryChain(d.chainId)) return;
   await enqueueForProject(db, { kind: "ProjectDeployed", key: `deployed:${d.txHash.toLowerCase()}`, projectId: d.projectId, target: d.address, txHash: d.txHash, at });
@@ -188,7 +188,7 @@ export async function enqueueDeployment(db: Db, d: { projectId: string; chainId:
 }
 
 /**
- * Queue events for everything that happened before the registry went live (D155): builders, apps with a first
+ * Queue events for everything that happened before the registry went live (D156): builders, apps with a first
  * version, mainnet deployments (and G$ use), and apps live now. Safe to run twice: keys are the same ones the live
  * hooks use, so nothing is queued again. Returns how many rows were new.
  */

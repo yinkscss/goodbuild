@@ -29,7 +29,7 @@ const sweepRanks = () => void sweepRankSnapshot(getDb).catch((e) => console.warn
 setInterval(sweepRanks, 60 * 60 * 1000).unref();
 sweepRanks();
 
-// Every 2 minutes: write queued activity events to the GoodBuild Registry on Celo (D155). Needs the recorder key
+// Every 2 minutes: write queued activity events to the GoodBuild Registry on Celo (D156). Needs the recorder key
 // file and REGISTRY_ADDRESS; with neither it does nothing. This is the only process that sends them.
 const flush = () => void getDb().then(async (db) => { await enqueueTakedowns(db); return flushRegistry(db); }).catch((e) => console.warn(`[worker] registry: ${(e as Error).message}`));
 setInterval(flush, 2 * 60 * 1000).unref();

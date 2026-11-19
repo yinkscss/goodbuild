@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Puts the GoodBuild Registry recorder key where the worker reads it (D155): /opt/goodbuild-recorder/recorder_key, outside
+# Puts the GoodBuild Registry recorder key where the worker reads it (D156): /opt/goodbuild-recorder/recorder_key, outside
 # /opt/goodbuild (deploy.sh wipes that on every release) and in a different folder from the gas wallet's, so the worker
 # never sees the gas key. Owned by uid 1000, readable only by it. Run ON THE SERVER, in /opt/goodbuild/deploy, by the owner.
 #

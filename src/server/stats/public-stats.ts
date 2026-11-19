@@ -33,7 +33,7 @@ export interface PublicStats {
   contracts: Array<{ name: string; address: string; txHash: string; sourceChecked: boolean; deployedAt: string }>;
   /** Newest first. Live apps only (no unpublished apps, no takedowns). */
   liveApps: Array<{ name: string; slug: string; publishedAt: string }>;
-  /** The on-chain activity registry (D155), once deployed and switched on. Null until REGISTRY_ADDRESS is set. */
+  /** The on-chain activity registry (D156), once deployed and switched on. Null until REGISTRY_ADDRESS is set. */
   registry: { chainId: number; address: string } | null;
 }
 

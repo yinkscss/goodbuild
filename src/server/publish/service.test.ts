@@ -186,7 +186,7 @@ describe("publishedHeaders", () => {
   });
 });
 
-describe("registry events (D155)", () => {
+describe("registry events (D156)", () => {
   it("queues sign-up, the first version, one publish per going live, and a mainnet deploy", async () => {
     vi.stubEnv("REGISTRY_SALT", "salt");
     vi.stubEnv("REGISTRY_ADDRESS", "0x3333333333333333333333333333333333333333");

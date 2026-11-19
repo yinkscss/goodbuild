@@ -76,7 +76,7 @@ async function submit(t: Target, d: Pick<Deployment, "stdJsonInput" | "compilerV
 }
 
 /**
- * Submit a mainnet deployment to Celoscan (D155). Best effort: it never changes the Sourcify result, and
+ * Submit a mainnet deployment to Celoscan (D156). Best effort: it never changes the Sourcify result, and
  * with no key or on testnet it does nothing. A proxied contract is two submissions (code and proxy).
  */
 export async function verifyOnCeloscan(

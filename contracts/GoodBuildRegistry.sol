@@ -4,7 +4,7 @@ pragma solidity ^0.8.28;
 import {Ownable2Step, Ownable} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 
 /**
- * GoodBuild Registry on Celo (D155).
+ * GoodBuild Registry on Celo (D156).
  *
  * A public, append-only log of GoodBuild activity: builders who joined, apps generated, contracts deployed, apps
  * published or taken offline, and apps that use G$. It only emits events. It holds no funds, takes no payments,

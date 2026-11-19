@@ -2,7 +2,7 @@ import { check, index, integer, pgTable, text, timestamp, uuid } from "drizzle-o
 import { sql } from "drizzle-orm";
 
 /**
- * Outbox for the on-chain GoodBuild Registry (D155). A row is one activity event waiting to be written to Celo
+ * Outbox for the on-chain GoodBuild Registry (D156). A row is one activity event waiting to be written to Celo
  * mainnet. `key` is unique per event and subject, so enqueueing twice (a retry, or the backfill) is harmless.
  * `builder` and `app` are salted hashes, never wallets or ids. The worker sends pending rows in batches.
  *
