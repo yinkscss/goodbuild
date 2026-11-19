@@ -174,7 +174,7 @@ const GAME_BRIEF_FIELD = {
     template: {
       type: "string",
       enum: [...GAME_TEMPLATES.map((t) => t.id), "none"],
-      description: `The working GoodBuild game to start from, when one fits how this game is played (the builder reshapes its look, name and contents to the plan), else "none":\n${gameTemplateCatalog()}`,
+      description: `The working GoodBuild game to start from, else "none". Pick one only when a round of this game plays the same way as the template: the same controls, the same goal and the same way to win or lose. The builder changes its look, name, theme and contents, so those don't matter. A shared camera, setting or way of moving is not enough (a 3D game about something else is not a 3D maze game). Games between several real people (rooms, lobbies, join codes, taking turns with friends, voting someone out, hidden roles, a saboteur or imposter) only start from a template marked multiplayer, else "none". When in doubt, "none": building from scratch is better than reshaping the wrong game.\n${gameTemplateCatalog()}`,
     },
   },
   required: ["name", "pitch", "loop", "lose", "harder"],
@@ -379,7 +379,10 @@ function parseGameBrief(raw: unknown, request = ""): GameBrief | undefined {
     extras: (Array.isArray(b.extras) ? b.extras : []).map((e) => clean(e, 100)).filter(Boolean).slice(0, 3),
   };
   // Only a template GoodBuild has: an id the model made up is dropped, and the build starts from scratch.
-  const template = gameTemplateById(typeof b.template === "string" ? b.template : undefined);
+  // A game between real people never starts from a one-player template (D139): it shares too little to save work.
+  const picked = gameTemplateById(typeof b.template === "string" ? b.template : undefined);
+  const together = isMultiplayerGame([request, brief.pitch, brief.loop, brief.lose, ...brief.extras].join("\n"));
+  const template = picked && (!together || picked.multiplayer) ? picked : undefined;
   if (template) {
     brief.template = template.id;
     brief.templateName = template.name;
@@ -388,6 +391,14 @@ function parseGameBrief(raw: unknown, request = ""): GameBrief | undefined {
   const said = b.style === "action" || b.style === "puzzle" || b.style === "turns" ? b.style : undefined;
   brief.style = template?.style ?? said ?? styleFromWords(request);
   return brief.name && brief.pitch ? brief : undefined;
+}
+
+/**
+ * A game several real people play together (D139): rooms, lobbies and join codes, playing with or against
+ * friends online, voting someone out, hidden roles. Computer rivals ("race against rivals") don't count.
+ */
+export function isMultiplayerGame(text: string): boolean {
+  return /\b(?:multi-?player|multiplayer|online (?:with|against|together)|play(?:ing)? (?:with|against) (?:friends|other (?:real )?(?:people|players))|other (?:real )?(?:people|players) (?:can )?join|friends? (?:can )?join|join (?:a|the|their|my) (?:room|game|lobby)|join(?:s|ing)? (?:with|by) (?:a )?code|(?:room|game|join|lobby) codes?|lobby|lobbies|start a (?:room|game) with a code|vote (?:out|on|for) (?:who|the|a|someone)|votes? who|imposters?|impostors?|saboteurs?|hidden roles?|social deduction|party game|pass[- ]and[- ]play)\b/i.test(text);
 }
 
 /** A game, for the plan: the game kit's words, or "game" in a request that isn't a website. */

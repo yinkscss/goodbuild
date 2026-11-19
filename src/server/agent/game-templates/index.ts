@@ -31,6 +31,8 @@ export interface GameTemplate {
   kits: string[];
   /** Its files, written over the starter's on the first build. */
   files: Record<string, string>;
+  /** Several real people play it together in a room (D139). Only these may start a multiplayer game. */
+  multiplayer?: boolean;
   /** It has the kit's leaderboard, so it needs the scores rule in dataRules.json. */
   leaderboard?: boolean;
   /** Where the game's name comes from, for the app around it: the import line and the name to show. */
@@ -99,7 +101,7 @@ export function gameTemplateById(id: string | undefined | null): GameTemplate | 
 
 /** One line per template, for the planner. */
 export function gameTemplateCatalog(): string {
-  return GAME_TEMPLATES.map((t) => `- ${t.id} (${t.dims.toUpperCase()}, ${t.style}): ${t.fits}`).join("\n");
+  return GAME_TEMPLATES.map((t) => `- ${t.id} (${t.dims.toUpperCase()}, ${t.style}${t.multiplayer ? ", multiplayer" : ", one player"}): ${t.fits}`).join("\n");
 }
 
 /**

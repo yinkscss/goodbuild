@@ -18,7 +18,7 @@ import type { TurnRecord } from "@/lib/turn-types";
 
 import { demoModel } from "./demo-model";
 import { scriptedModel } from "./fake-model";
-import { GAME_RULES, INTAKE_MAX_TOKENS, INTAKE_PROMPT, INTAKE_TOOLS, INTAKE_TOOLS_GAME, LEADERBOARD_QUESTION_ID, MINIPAY_QUESTION_ID, fallbackIntake, intakeContext, intakeTools, parseIntake, parsePlanQuestions, planBrief, styleFromWords } from "./plan-intake";
+import { GAME_RULES, INTAKE_MAX_TOKENS, INTAKE_PROMPT, INTAKE_TOOLS, INTAKE_TOOLS_GAME, LEADERBOARD_QUESTION_ID, MINIPAY_QUESTION_ID, fallbackIntake, intakeContext, intakeTools, isMultiplayerGame, parseIntake, parsePlanQuestions, planBrief, styleFromWords } from "./plan-intake";
 import { game2d } from "./kits/game-2d";
 import { systemPrompt } from "./prompt";
 import { miniApp } from "./kits/mini-app";
@@ -544,6 +544,33 @@ describe("a game's plan (D93)", () => {
     expect(planBrief(madeUp, true).gameTemplate).toBeUndefined();
     const none = parseIntake(args([card("How do you steer?", ["Tap", "Tilt"])], { game_brief: { ...brief, template: "none" } }), racer)!;
     expect(none.game?.template).toBeUndefined();
+  });
+
+  it("never starts a game between real people from a one-player template (D139)", () => {
+    const crew = "Build me a multiplayer game like among us, where there's an imposter trying to sabotage, and crew trying to fix. if anyone dies, we all vote who we think the imposter is, i want it 3D, everyone connects with their wallet, and one person can start a game with a code, while the rest join";
+    const brief = { name: "Shadow Crew", pitch: "A 3D station where a hidden saboteur lurks among your crew.", loop: "move around tasks, fix sabotage, report bodies, argue in votes", lose: "the saboteur is voted out", harder: "more sabotage", extras: [] };
+    const parsed = parseIntake(args([card("How do you move?", ["Joystick", "Tap"])], { game_brief: { ...brief, template: "maze-escape" } }), crew)!;
+    expect(parsed.game?.name).toBe("Shadow Crew");
+    expect(parsed.game?.template).toBeUndefined();
+    expect(planBrief(parsed, true).gameTemplate).toBeUndefined();
+    // The brief alone is enough: a saboteur in the pitch drops the template even when the request is short.
+    const short = parseIntake(args([card("How do you move?", ["Joystick", "Tap"])], { game_brief: { ...brief, template: "maze-escape" } }), "a 3D space station game")!;
+    expect(short.game?.template).toBeUndefined();
+    // A one-player maze game keeps its maze.
+    const maze = parseIntake(args([card("How do you move?", ["Joystick", "Tap"])], { game_brief: { name: "Crypt Run", pitch: "Find the key before the torch dies.", loop: "explore, dodge guards", lose: "a guard catches you", harder: "more guards", extras: [], template: "maze-escape" } }), "a 3D dungeon escape game")!;
+    expect(maze.game?.template).toBe("maze-escape");
+  });
+
+  it("hears a game between real people, not one against computer rivals (D139)", () => {
+    for (const together of ["a multiplayer quiz", "one person starts a room and friends join with a code", "we all vote who the imposter is", "a social deduction game with hidden roles", "play against friends online", "a lobby where players ready up", "a pass-and-play card game"]) expect(isMultiplayerGame(together), together).toBe(true);
+    for (const alone of ["race against rival cars", "a quiz with a leaderboard", "dodge the police", "a 3D maze with guards", "beat your best score"]) expect(isMultiplayerGame(alone), alone).toBe(false);
+  });
+
+  it("tells the planner a template must play the same way, and which are one player (D139)", () => {
+    const field = JSON.stringify(INTAKE_TOOLS_GAME);
+    expect(field).toMatch(/plays the same way as the template/);
+    expect(field).toMatch(/multiplayer/);
+    expect(field).toMatch(/maze-escape \(3D, action, one player\)/);
   });
 
   it("tells the kind of game by its words (D115)", () => {
