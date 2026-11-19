@@ -33,6 +33,13 @@ describe("verifyOnCeloscan", () => {
     expect(body.get("compilerversion")).toBe("v0.8.28+commit.7893614a");
     expect(body.get("constructorArguments")).toBe("abcd");
   });
+  it("submits a proxied contract as code with no arguments, then the proxy with its own", async () => {
+    const f = vi.fn().mockResolvedValue(json({ status: "0", result: "Contract source code already verified" }));
+    await verifyOnCeloscan({ ...base, proxy: { implementation: "0x2222222222222222222222222222222222222222" } } as unknown as Deployment, f as never, { key: "k" });
+    const args = f.mock.calls.map(([, init]) => new URLSearchParams((init as RequestInit).body as URLSearchParams));
+    expect([args[0].get("contractaddress"), args[0].get("constructorArguments")]).toEqual(["0x2222222222222222222222222222222222222222", ""]);
+    expect([args[1].get("contractaddress"), args[1].get("constructorArguments")]).toEqual([base.address, "abcd"]);
+  });
   it("treats already verified as verified and a rejection as failed", async () => {
     const ok = vi.fn().mockResolvedValue(json({ status: "0", result: "Contract source code already verified" }));
     expect((await verifyOnCeloscan(base, ok as never, { key: "k" })).status).toBe("verified");

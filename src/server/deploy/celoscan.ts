@@ -1,6 +1,7 @@
 import "server-only";
 
 import { CELO_MAINNET_ID } from "@/config/gooddollar";
+import { PROXY_IDENTIFIER } from "./compile";
 import type { Deployment } from "@/server/db/deploy-schema";
 
 /** Etherscan's v2 multichain API. One key covers Celo (chain 42220). */
@@ -76,7 +77,7 @@ async function submit(t: Target, d: Pick<Deployment, "stdJsonInput" | "compilerV
 
 /**
  * Submit a mainnet deployment to Celoscan (D132). Best effort: it never changes the Sourcify result, and
- * with no key or on testnet it does nothing. A proxied contract submits its current code.
+ * with no key or on testnet it does nothing. A proxied contract is two submissions (code and proxy).
  */
 export async function verifyOnCeloscan(
   d: Deployment,
@@ -90,9 +91,14 @@ export async function verifyOnCeloscan(
   if (!d.stdJsonInput || !id) return { status: "failed", detail: "The sources for this deployment weren't saved." };
   const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const polls = opts.polls ?? 6;
-  // A proxied contract (D33): submit the current code. The proxy's own constructor arguments aren't stored, and
-  // Etherscan-style explorers usually match OpenZeppelin's standard proxy on their own.
-  const targets: Target[] = [{ address: d.proxy ? d.proxy.implementation : d.address, identifier: id, constructorArgs: d.constructorArgs }];
+  // A proxied contract (D33) is two submissions. For its row, `constructorArgs` are the proxy's (code, owner, init data);
+  // the code itself is deployed with none.
+  const targets: Target[] = d.proxy
+    ? [
+        { address: d.proxy.implementation, identifier: id, constructorArgs: "0x" },
+        { address: d.address, identifier: PROXY_IDENTIFIER, constructorArgs: d.constructorArgs },
+      ]
+    : [{ address: d.address, identifier: id, constructorArgs: d.constructorArgs }];
   let worst: CeloscanOutcome = { status: "verified", detail: "Verified on Celoscan." };
   const rank = ["failed", "pending", "verified"];
   for (const t of targets) {
