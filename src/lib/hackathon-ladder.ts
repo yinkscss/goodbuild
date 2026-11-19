@@ -13,7 +13,7 @@ export function leagueFor(approvals: number): League | null {
   return null;
 }
 
-type Entry = { id: string; liveUrl: string; approvals: number; /** Rank in the latest earlier-day snapshot, if there is one (D134). */ prevRank?: number | null };
+type Entry = { id: string; liveUrl: string; approvals: number; /** Rank in the latest earlier-day snapshot, if there is one (D134). */ prevRank?: number | null; /** Weeks this project won Rising Star (D135). */ stars?: number[] };
 
 export interface LadderRow<T extends Entry> {
   entry: T & { rank: number; baseGd: number; topupGd: number; totalGd: number };
@@ -21,6 +21,8 @@ export interface LadderRow<T extends Entry> {
   inPrizeZone: boolean;
   /** Places gained since the last snapshot (positive = up, negative = down, 0 = same or unknown). */
   moved: number;
+  /** Weeks this project won Rising Star. */
+  stars: number[];
 }
 
 export interface Ladder<T extends Entry> {
@@ -41,6 +43,7 @@ export function buildLadder<T extends Entry>(entries: T[], myId?: string | null)
       league: leagueFor(entry.approvals),
       inPrizeZone: entry.rank <= REWARD_SLOTS,
       moved: entry.prevRank ? entry.prevRank - entry.rank : 0,
+      stars: entry.stars ?? [],
     }));
   const mine = myId ? (rows.find((r) => r.entry.id === myId) ?? null) : null;
   let gap: number | null = null;

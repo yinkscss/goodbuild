@@ -75,3 +75,19 @@ it("stops snapshotting after the day that holds the final ranking", async () => 
   expect(await snapshotRanks(db, at("2026-12-11T23:30:00Z"))).toEqual({ day: "2026-12-12", written: 0 });
   expect(await db.select().from(hackathonEntries).where(eq(hackathonEntries.hackathon, HACKATHON_ID))).toHaveLength(1);
 });
+
+it("marks the weekly winner on the entry list, using each week's gain and submission order for ties", async () => {
+  const a = await entry("a");
+  const b = await entry("b");
+  await approve(a.id, 2);
+  await approve(b.id, 6);
+  await snapshotRanks(db, at("2026-11-26T08:00:00Z")); // end of week 1: b gained 6, a gained 2
+  const moves = await withRankMoves(db, [{ id: a.id }, { id: b.id }], at("2026-11-27T08:00:00Z"));
+  expect(moves.find((m) => m.id === b.id)?.stars).toEqual([1]);
+  expect(moves.find((m) => m.id === a.id)?.stars).toEqual([]);
+});
+
+it("has no stars when there are no snapshots", async () => {
+  const a = await entry("a");
+  expect((await withRankMoves(db, [{ id: a.id }], at("2026-11-27T08:00:00Z")))[0].stars).toEqual([]);
+});

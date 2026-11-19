@@ -1664,3 +1664,10 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - **Migration number:** `0026` was the next free number on main on 19 Nov. If another branch adds `0026` first, renumber one of them.
 - **Not built:** weekly Rising Star (can reuse these snapshots), referral credits.
 
+### D135. Weekly Rising Star badge (19 Nov 2026)
+- Decided by: the owner (picked Rising Star next). Built by Claude. The three weeks are the ones from the preview and are Claude's proposal until confirmed.
+- **What:** the published project with the most new approvals in each week gets a "★ Rising Star" badge on the leaderboard and on its owner's badge row. Weeks: 18 to 25 Nov, 26 Nov to 2 Dec, 3 to 10 Dec. No money, so a project far down the ladder can still win. Ties go to the earlier submission; a week with no new approvals has no winner.
+- **How:** derived from the daily rank snapshots (D134), no new tables. A week ends at the snapshot dated the day after it (26 Nov, 3 Dec, 11 Dec), so the first star appears on 26 Nov. `src/lib/hackathon-weeks.ts` holds the rules; `GET /api/hackathon/projects` adds `stars` (week numbers) per project.
+- **Limits:** needs the worker to have written the boundary-day snapshot. If it missed a day, the next snapshot is used; if a week can't be measured it is skipped, not guessed.
+- **Not built:** referral credits.
+

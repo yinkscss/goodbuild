@@ -1,8 +1,9 @@
 import "server-only";
-import { and, desc, eq, lt } from "drizzle-orm";
+import { and, asc, desc, eq, lt } from "drizzle-orm";
 import type { Db } from "@/server/db/client";
-import { hackathonRankSnapshots } from "@/server/db/hackathon-schema";
+import { hackathonEntries, hackathonRankSnapshots } from "@/server/db/hackathon-schema";
 import { allocateHackathonRewards } from "@/lib/hackathon-rewards";
+import { risingStars, type RisingStar } from "@/lib/hackathon-weeks";
 import { CLAIMS_CLOSE, HACKATHON_ID } from "./claim";
 import { listEntries } from "./community";
 
@@ -48,10 +49,32 @@ export async function previousRanks(db: Db, now = new Date()): Promise<Map<strin
   return new Map(rows.map((r) => [r.entryId, r.rank]));
 }
 
-/** The public entry list with each project's previous-day rank (`prevRank`), for the arrows. */
+/** Weekly Rising Star winners (D135), worked out from the daily snapshots. */
+export async function weeklyStars(db: Db): Promise<RisingStar[]> {
+  const snapshots = await db
+    .select({ day: hackathonRankSnapshots.day, entryId: hackathonRankSnapshots.entryId, approvals: hackathonRankSnapshots.approvals })
+    .from(hackathonRankSnapshots)
+    .where(eq(hackathonRankSnapshots.hackathon, HACKATHON_ID));
+  if (snapshots.length === 0) return [];
+  const order = await db
+    .select({ id: hackathonEntries.id })
+    .from(hackathonEntries)
+    .where(eq(hackathonEntries.hackathon, HACKATHON_ID))
+    .orderBy(asc(hackathonEntries.createdAt), asc(hackathonEntries.id));
+  return risingStars(snapshots, order.map((o) => o.id));
+}
+
+/**
+ * The public entry list with each project's previous-day rank (`prevRank`, for the arrows, D134) and
+ * the weeks it won Rising Star (`stars`, D135).
+ */
 export async function withRankMoves<T extends { id: string }>(db: Db, entries: T[], now = new Date()) {
-  const before = await previousRanks(db, now);
-  return entries.map((e) => ({ ...e, prevRank: before.get(e.id) ?? null }));
+  const [before, stars] = await Promise.all([previousRanks(db, now), weeklyStars(db)]);
+  return entries.map((e) => ({
+    ...e,
+    prevRank: before.get(e.id) ?? null,
+    stars: stars.filter((s) => s.entryId === e.id).map((s) => s.week),
+  }));
 }
 
 /** The worker's hourly call: today's snapshot if it isn't there yet. */
