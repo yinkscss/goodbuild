@@ -8,6 +8,8 @@ import { faceVerificationLink, faceVerificationMessage } from "@/lib/goodid";
 /** About 100s: GoodDollar can take a while to register a face check on Celo. */
 const CHECKS_AFTER_RETURN = 20;
 const CHECK_INTERVAL_MS = 5000;
+/** Back from GoodDollar with no "verified" result (it errored, or the tab was closed): look a few times, then let the person press Verify again. */
+const CHECKS_WITHOUT_HINT = 3;
 /** Set just before leaving for GoodDollar, so coming back is recognised even if the address loses its ?isVerified. */
 const PENDING_KEY = "goodbuild:goodid-pending";
 
@@ -79,7 +81,9 @@ export function useGoodIdVerify(onVerified: () => unknown, returnTo?: () => stri
     void Promise.resolve().then(async () => {
       const url = new URL(window.location.href);
       let result = url.searchParams.get("isVerified");
-      // Back without the hint (some in-app browsers drop it): we left for GoodDollar, so ask the chain.
+      // Back without the hint (some in-app browsers drop it, or GoodDollar showed an error): we left for
+      // GoodDollar, so ask the chain, but only a few times: nothing says the face check finished.
+      const hinted = result !== null;
       if (result === null && pending("get")) result = "true";
       if (result === null) return;
       const reason = url.searchParams.get("reason");
@@ -93,7 +97,8 @@ export function useGoodIdVerify(onVerified: () => unknown, returnTo?: () => stri
         return;
       }
       setBusy(true);
-      for (let i = 0; i < CHECKS_AFTER_RETURN && !stopped; i++) {
+      const checks = hinted ? CHECKS_AFTER_RETURN : CHECKS_WITHOUT_HINT;
+      for (let i = 0; i < checks && !stopped; i++) {
         const verified = await checkOnChain().catch(() => false);
         if (verified) {
           pending("clear");
@@ -104,9 +109,14 @@ export function useGoodIdVerify(onVerified: () => unknown, returnTo?: () => stri
         await new Promise((resolve) => window.setTimeout(resolve, CHECK_INTERVAL_MS));
       }
       if (!stopped) {
-        // The flag stays, so reloading the page picks the check up again.
         setBusy(false);
-        setNote("GoodDollar hasn't confirmed it yet. Wait a minute and press Verify again.");
+        if (hinted) {
+          // GoodDollar said yes but the chain is slow: the flag stays, so reloading the page picks the check up again.
+          setNote("GoodDollar hasn't confirmed it yet. Wait a minute and press Verify again.");
+        } else {
+          pending("clear");
+          setNote("We didn't see a finished verification. If GoodDollar showed an error, press Verify to try again.");
+        }
       }
     });
     return () => {
