@@ -61,6 +61,12 @@ export interface GameTemplate {
 
 export const GAME_TEMPLATES: GameTemplate[] = [laneRacer, catchDodge, caveFlyer, brickBreaker, matchGrid, quickQuiz, runner3d, kartTrack, mazeEscape, skyRings, fourInARow, triviaBattle, saboteurParty, solitaire, higherLower, memoryPairs, lastCard, wordHunt, rhythmLanes, platformHop, craneStack, marketStall, pathGuard];
 
+/**
+ * Templates with art in public/games/<id>.webp. The others get no thumbnail, and the picker shows its
+ * gamepad icon instead of a broken image. Add an id here when its art is added (a test checks each exists).
+ */
+export const GAME_TEMPLATE_ART = new Set(["lane-racer", "catch-dodge", "cave-flyer", "brick-breaker", "match-grid", "quick-quiz", "runner-3d", "kart-track", "maze-escape", "sky-rings"]);
+
 /** Safe, small descriptions for the app's template picker. Keep game source files on the server. */
 export function gameTemplateStarters() {
   return GAME_TEMPLATES.map(({ id, name, dims, style, fits }) => ({
@@ -68,6 +74,7 @@ export function gameTemplateStarters() {
     label: name,
     description: fits,
     examplePrompt: `Build a ${name.toLowerCase()} game using GoodBuild's ${name} game template. ${fits}.`,
+    thumbnail: GAME_TEMPLATE_ART.has(id) ? `/games/${id}.webp` : undefined,
     game: { dims, style },
   }));
 }

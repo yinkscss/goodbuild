@@ -1,4 +1,5 @@
 import "server-only";
+import { platformJobAllowed } from "./build-sponsorship";
 
 import { and, eq, gte, inArray, ne, sql } from "drizzle-orm";
 
@@ -272,8 +273,8 @@ export async function checkAiAllowance(
   env: Record<string, string | undefined> = process.env,
 ): Promise<CapDecision> {
   if (input.funding === "exempt" || input.funding === "paid") return { allowed: true };
-  // Nothing creates these jobs yet: the AI review, when it's built, decides how they run.
-  if (input.funding === "platform") return { allowed: false, reason: "funding_unavailable", message: FUNDING_UNAVAILABLE_MESSAGE };
+  // Platform jobs need an actual reserved build allowance; arbitrary platform funding stays refused.
+  if (input.funding === "platform") return input.startingJobId && await platformJobAllowed(db, input.startingJobId) ? { allowed: true } : { allowed: false, reason: "funding_unavailable", message: FUNDING_UNAVAILABLE_MESSAGE };
 
   const free = await freeAllowance(db, input, env);
   if (free.allowed || free.reason === "one_build_at_a_time") return free;

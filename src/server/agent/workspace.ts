@@ -71,6 +71,7 @@ export class Workspace {
     } catch {
       return { ok: false, result: `Error: the arguments for ${name} weren't valid JSON. Call it again with valid JSON.` };
     }
+    if (!args || typeof args !== "object" || Array.isArray(args)) return { ok: false, result: "Error: tool arguments must be a JSON object." };
     const editing = ["create_file", "edit_file", "delete_file", "rename_file", "add_dependency", "add_kit"].includes(name);
     if (mode === "plan" && editing) return { ok: false, result: "Error: plan mode can't edit files." };
 

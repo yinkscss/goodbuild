@@ -204,6 +204,13 @@
       "when": 1795055375629,
       "tag": "0028_app_data_deals",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1795090368426,
+      "tag": "0029_progressive_delivery",
+      "breakpoints": true
     }
   ]
 }
