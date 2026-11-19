@@ -3,10 +3,15 @@ import "server-only";
 import { and, asc, eq, gt, inArray, sql } from "drizzle-orm";
 
 import type { Db } from "@/server/db/client";
-import { messages, projects, turnEvents, turnJobCalls, turnJobs, type FundingSource, type TurnJob } from "@/server/db/schema";
+import { buildDeliveries, buildDrafts, buildSponsorships, messages, projects, users, turnEvents, turnJobCalls, turnJobs, type FundingSource, type TurnJob } from "@/server/db/schema";
 import { decideFunding, decideStart, type CapRefusal } from "@/server/credits/cap";
 import { findReservationMismatches, repairReservations, type ReservationMismatch } from "@/server/credits/holds";
 import { LeaseLostError, type LoggedCall, type TurnJobContext, type TurnSetup } from "@/server/agent/turn-progress";
+import { Workspace } from "@/server/agent/workspace";
+import { deliveryFor } from "@/server/agent/delivery";
+import { reserveSponsorship, sponsorshipSettings } from "@/server/credits/build-sponsorship";
+import type { GoodIdentity } from "@/server/credits/free-grants";
+import type { Address } from "viem";
 import type { TurnEvent, TurnMode } from "@/lib/turn-types";
 
 /** Lease length and renewal (P18): renewed every 5 s, expires 30 s after the last renewal. */
@@ -44,6 +49,11 @@ type QueueArgs = {
   prompt?: string;
   userMessageId?: string;
   intake?: boolean;
+  retryOfJobId?: string;
+  continueDelivery?: boolean;
+  useCredits?: boolean;
+  baseVersion?: number;
+  deliveryIndex?: number;
   /** Files sent with this message (shown in its bubble). Checked against the project by the caller. */
   assetIds?: string[];
 };
@@ -71,11 +81,11 @@ async function queueTurn(tx: Db, args: QueueArgs, funding: FundingSource, holdMi
   } else {
     const [m] = await tx
       .insert(messages)
-      .values({ projectId: args.projectId, role: "user", content: prompt, status: "queued", meta: { mode: args.mode, ...(args.assetIds ? { assetIds: args.assetIds } : {}) } })
+      .values({ projectId: args.projectId, role: "user", content: prompt, status: "queued", meta: { mode: args.mode, ...(args.retryOfJobId ? { action: "retry", retryOfJobId: args.retryOfJobId } : {}), ...(args.assetIds ? { assetIds: args.assetIds } : {}) } })
       .returning({ id: messages.id });
     messageId = m.id;
   }
-  const [job] = await tx.insert(turnJobs).values({ projectId: args.projectId, userId: args.userId, mode: args.mode, prompt, userMessageId: messageId, funding, holdMicro }).returning();
+  const [job] = await tx.insert(turnJobs).values({ projectId: args.projectId, userId: args.userId, mode: args.mode, prompt, userMessageId: messageId, funding, holdMicro, retryOfJobId: args.retryOfJobId, baseVersion: args.baseVersion ?? 0, deliveryIndex: args.deliveryIndex }).returning();
   await tx.update(messages).set({ meta: sql`coalesce(${messages.meta}, '{}'::jsonb) || ${JSON.stringify({ mode: args.mode, jobId: job.id, ...(args.intake ? { intake: true } : {}) })}::jsonb` }).where(eq(messages.id, messageId));
   return job;
 }
@@ -87,17 +97,94 @@ export type StartResult = { job: TurnJob } | { refused: CapRefusal };
  * user's balance (D49). What the turns route uses. Builds sent at the same moment take turns here,
  * and each sees the jobs and holds of those before it. Only a job's first submit sets anything aside.
  */
-export async function startTurn(db: Db, args: QueueArgs, env: Record<string, string | undefined> = process.env): Promise<StartResult> {
+export async function startTurn(db: Db, args: QueueArgs, env: Record<string, string | undefined> = process.env, deps?: { readIdentity: (wallet: Address) => Promise<GoodIdentity> }): Promise<StartResult> {
+  if (args.retryOfJobId) {
+    const [existing] = await db.select().from(turnJobs).where(and(eq(turnJobs.retryOfJobId, args.retryOfJobId), eq(turnJobs.userId, args.userId), eq(turnJobs.projectId, args.projectId)));
+    if (existing) return { job: existing };
+  }
+  // Live chain verification is outside the DB transaction. A stale client/root cache cannot claim a grant.
+  let root: string | null = null;
+  if (args.mode === "build" && deps?.readIdentity) {
+    const [user] = await db.select().from(users).where(eq(users.id, args.userId));
+    if (user?.verifiedAt) {
+      try {
+        const identity = await deps.readIdentity(user.wallet as Address);
+        if (identity.root && (!identity.expiresAt || identity.expiresAt > new Date())) root = identity.root.toLowerCase();
+      } catch { /* A verification outage cannot grant a subsidy. Normal funding still works. */ }
+    }
+  }
   return db.transaction(async (raw) => {
     const tx = raw as unknown as Db;
-    const decision = await decideStart(tx, { userId: args.userId, projectId: args.projectId, mode: args.mode }, env);
+    // Serialise retries, milestone advancement and first-delivery admission per project.
+    const [project] = await tx.select().from(projects).where(and(eq(projects.id, args.projectId), eq(projects.ownerId, args.userId))).for("update");
+    if (!project) throw new Error("project_not_found");
     if (args.userMessageId) {
-      // Already queued and paid for: a double submit gets the same job, even if nothing's left for a second.
-      const [existing] = await tx.select().from(turnJobs).where(eq(turnJobs.userMessageId, args.userMessageId)).limit(1);
-      if (existing?.funding === "paid") return { job: existing };
+      const [existing] = await tx.select().from(turnJobs).where(eq(turnJobs.userMessageId, args.userMessageId));
+      if (existing) return { job: existing };
     }
+    let source: TurnJob | undefined;
+    if (args.retryOfJobId) {
+      [source] = await tx.select().from(turnJobs).where(and(eq(turnJobs.id, args.retryOfJobId), eq(turnJobs.projectId, args.projectId), eq(turnJobs.userId, args.userId)));
+      if (!source) throw new Error("retry_not_found");
+      const [existing] = await tx.select().from(turnJobs).where(eq(turnJobs.retryOfJobId, source.id));
+      if (existing) return { job: existing };
+      const [reply] = source.assistantMessageId ? await tx.select().from(messages).where(eq(messages.id, source.assistantMessageId)) : [];
+      const needsFix = (reply?.meta as { status?: string } | null)?.status === "needs_fix";
+      if (!["error", "stopped"].includes(source.status) && !needsFix) throw new Error("retry_not_failed");
+      if (source.baseVersion !== project.currentVersion) throw new Error("retry_stale");
+      if ((await activeJobs(tx, project.id)).length) throw new Error("retry_busy");
+      const [original] = await tx.select().from(messages).where(eq(messages.id, source.userMessageId));
+      args = { ...args, mode: source.mode as TurnMode, prompt: /^(Skip the questions, just build it|Start building)[.!]?$/i.test(source.prompt) ? (await tx.select().from(buildDeliveries).where(eq(buildDeliveries.projectId, project.id)))[0]?.plan.goal ?? source.prompt : source.prompt, userMessageId: undefined, intake: Boolean(original?.meta?.intake), assetIds: original?.meta?.assetIds as string[] | undefined, deliveryIndex: source.deliveryIndex ?? undefined };
+    }
+    args.baseVersion = project.currentVersion;
+    let [delivery] = await tx.select().from(buildDeliveries).where(eq(buildDeliveries.projectId, project.id));
+    if (args.mode === "build" && !delivery && project.currentVersion === 0) {
+      const [first] = await tx.select().from(messages).where(and(eq(messages.projectId, project.id), eq(messages.role, "user"))).orderBy(asc(messages.createdAt)).limit(1);
+      const plan = deliveryFor(first?.content || args.prompt || "Build the requested app");
+      [delivery] = await tx.insert(buildDeliveries).values({ projectId: project.id, plan }).returning();
+    }
+    if (delivery && source && source.deliveryIndex === null) args.deliveryIndex = 0;
+    if (delivery && args.mode === "build" && !source) {
+      const prompt = args.prompt?.trim() ?? "";
+      const picked = delivery.plan.milestones.findIndex((m) => m.title.toLowerCase() === prompt.toLowerCase());
+      const advance = args.continueDelivery || /^(continue|continue building|build next|next milestone)[.!]?$/i.test(prompt) || picked >= delivery.plan.completed;
+      if (advance && (await activeJobs(tx, project.id)).length) throw new Error("retry_busy");
+      if (advance && picked > delivery.plan.completed) {
+        const plan = { ...delivery.plan, milestones: [...delivery.plan.milestones] };
+        const [chosen] = plan.milestones.splice(picked, 1);
+        plan.milestones.splice(plan.completed, 0, chosen);
+        await tx.update(buildDeliveries).set({ plan }).where(eq(buildDeliveries.projectId, project.id));
+        delivery = { ...delivery, plan };
+      }
+      // Ordinary edits preserve scope; only explicit continuation or a saved choice advances it.
+      args.deliveryIndex = advance ? delivery.plan.completed : Math.max(0, delivery.plan.completed - 1);
+      if (args.deliveryIndex >= delivery.plan.milestones.length) {
+        const unverified = delivery.plan.milestones.findIndex((m) => !(delivery.plan.verified ?? []).includes(m.id));
+        args.deliveryIndex = unverified < 0 ? undefined : unverified;
+      }
+    }
+
+    const settings = sponsorshipSettings(env);
+    const key = root && source && !source.retryOfJobId && source.mode === "build" && source.status !== "stopped" && source.startedAt ? `repair:${root}:${new Date().toISOString().slice(0, 7)}` : root && project.currentVersion === 0 && args.mode === "build" ? `first:${root}` : null;
+    const limit = source ? settings.repair : settings.first;
+    const sponsored = key && await reserveSponsorship(tx, key, limit, env);
+    if (source && source.mode === "build" && source.status !== "stopped" && !sponsored && !args.useCredits) return { refused: { allowed: false, reason: "funding_unavailable", message: "The included repair allowance is unavailable or used up. Your progress is saved. You can request a smaller change using credits in the composer." } };
+    const decision = sponsored ? { allowed: true as const, funding: "platform" as const, holdMicro: 0 } : await decideStart(tx, { userId: args.userId, projectId: args.projectId, mode: args.mode }, env);
     if (!decision.allowed) return { refused: decision };
-    return { job: await queueTurn(tx, args, decision.funding, decision.holdMicro) };
+    const job = await queueTurn(tx, args, decision.funding, decision.holdMicro);
+    if (sponsored && key) await tx.insert(buildSponsorships).values({ jobId: job.id, allowanceKey: key, limitMicro: limit });
+    if (source) {
+      const [draft] = await tx.select().from(buildDrafts).where(eq(buildDrafts.jobId, source.id));
+      if (draft) await tx.insert(buildDrafts).values({ ...draft, jobId: job.id, updatedAt: new Date() });
+      else if (source.mode === "build" && source.setup?.baseFiles) {
+        // Legacy failures predate durable drafts, but their committed tool responses can recover edits.
+        const workspace = new Workspace(source.setup.baseFiles as Record<string, string>);
+        const calls = await tx.select().from(turnJobCalls).where(eq(turnJobCalls.jobId, source.id)).orderBy(asc(turnJobCalls.idx));
+        for (const row of calls) for (const call of (row.data as unknown as LoggedCall).toolCalls) workspace.execute(call.name, call.arguments, "build");
+        await tx.insert(buildDrafts).values({ jobId: job.id, projectId: project.id, baseVersion: project.currentVersion, files: workspace.files, diagnostics: source.error ?? "" });
+      }
+    }
+    return { job };
   });
 }
 
@@ -143,7 +230,11 @@ export async function claimJob(db: Db, owner: string): Promise<TurnJob | null> {
         })
         .where(eq(turnJobs.id, picked[0].id))
         .returning();
-      await tx.update(projects).set({ turnStartedAt: new Date(), status: "building" }).where(eq(projects.id, job.projectId));
+      const [project] = await tx.update(projects).set({ turnStartedAt: new Date(), status: "building" }).where(eq(projects.id, job.projectId)).returning({ version: projects.currentVersion });
+      if (job.attempt === 1) {
+        job.baseVersion = project.version;
+        await tx.update(turnJobs).set({ baseVersion: project.version }).where(eq(turnJobs.id, job.id));
+      }
       return job;
     });
   } catch (error) {
@@ -181,6 +272,9 @@ export async function jobContext(db: Db, job: TurnJob, owner: string, signal: Ab
     lockHeld: true,
     jobId: job.id,
     funding: job.funding,
+    baseVersion: job.baseVersion,
+    deliveryIndex: job.deliveryIndex ?? undefined,
+    draft: (await db.select().from(buildDrafts).where(eq(buildDrafts.jobId, job.id)))[0],
     signal,
     resume: job.attempt > 1 ? { assistantMessageId: job.assistantMessageId, setup: (job.setup as unknown as TurnSetup | null) ?? null, calls: log, attempt: job.attempt } : undefined,
     commit: (fn) =>
@@ -214,11 +308,11 @@ export async function failJob(db: Db, job: TurnJob, message: string): Promise<vo
     await tx.update(turnJobs).set({ status: "error", error: message, finishedAt: new Date(), leaseOwner: null, leaseExpiresAt: null }).where(eq(turnJobs.id, job.id));
     if (job.assistantMessageId) {
       const [m] = await tx.select().from(messages).where(eq(messages.id, job.assistantMessageId)).limit(1);
-      const meta = { ...((m?.meta as Record<string, unknown> | null) ?? { kind: "turn", mode: job.mode, steps: [], log: [], changes: [], chargedMicro: 0 }), status: "error", error: message };
+      const meta = { ...((m?.meta as Record<string, unknown> | null) ?? { kind: "turn", mode: job.mode, steps: [], log: [], changes: [], chargedMicro: 0 }), status: "error", error: message, jobId: job.id };
       await tx.update(messages).set({ status: "error", meta }).where(eq(messages.id, job.assistantMessageId));
     } else {
       await tx.update(messages).set({ status: "done" }).where(eq(messages.id, job.userMessageId));
-      await tx.insert(messages).values({ projectId: job.projectId, role: "assistant", content: "", status: "error", meta: { kind: "turn", mode: job.mode, steps: [], log: [], changes: [], chargedMicro: 0, status: "error", error: message } });
+      await tx.insert(messages).values({ projectId: job.projectId, role: "assistant", content: "", status: "error", meta: { kind: "turn", mode: job.mode, steps: [], log: [], changes: [], chargedMicro: 0, status: "error", error: message, jobId: job.id } });
     }
     const [p] = await tx.select().from(projects).where(eq(projects.id, job.projectId)).limit(1);
     await tx.update(projects).set({ turnStartedAt: null, status: p?.status === "building" ? "draft" : (p?.status ?? "draft") }).where(eq(projects.id, job.projectId));

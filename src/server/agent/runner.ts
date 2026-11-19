@@ -8,7 +8,7 @@ import { designTemplateFiles } from "./design-templates";
 import { templateImageFiles } from "./template-images";
 import { TEMPLATE_MINIPAY_NOTE, gameTemplateById, withGameTemplate } from "./game-templates";
 import type { Db } from "@/server/db/client";
-import { messages, projects } from "@/server/db/schema";
+import { buildDeliveries, buildDrafts, messages, projects } from "@/server/db/schema";
 import { checkApp, checkContracts, formatIssues, mentionsGd, mentionsNativeCelo, type CheckIssue, type CheckReport, type ContractCheckOptions } from "./checks";
 import { runContractTests } from "./contract-tests";
 import { createHash } from "node:crypto";
@@ -42,6 +42,9 @@ import {
   type TurnJobContext,
   type TurnSetup,
 } from "./turn-progress";
+import { deliveryContext, milestoneAllows } from "./delivery";
+import { SponsorshipExhaustedError, sponsorshipCanCall } from "@/server/credits/build-sponsorship";
+import type { DeliveryPlan } from "@/server/db/schema";
 import { Workspace, type FileChange } from "./workspace";
 import { requestGithubSync } from "@/server/github/sync";
 
@@ -124,7 +127,7 @@ export class TurnBusyError extends Error {
 
 /**
  * One agent turn (AI_AGENT.md §2): plan, tool edits, checks with up to 3 auto-fix
- * attempts, one checkpoint. Streams events as it goes and persists the chat, files, version
+ * attempts, durable recovery drafts and a validated checkpoint. Streams events as it goes and persists the chat, files, version
  * and usage. Never throws after the turn starts (except when its job lease is lost): failures
  * end as an error record the user can retry.
  *
@@ -144,7 +147,12 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
   const lint = (files: Record<string, string>) => lintWith(files, { assets: assetNames });
   const openWith = deps.runCheck ?? (runCheckEnabled() ? runCheck : undefined);
   let chainId: number | undefined;
-  const open = openWith ? (files: Record<string, string>) => openWith(files, { assets: assetNames, chainId }) : undefined;
+  const open = openWith ? async (files: Record<string, string>) => {
+    const result = await openWith(files, { assets: assetNames, chainId, ...(delivery && job.deliveryIndex !== undefined ? { delivery: { id: delivery.milestones[job.deliveryIndex].id, goal: delivery.goal, verifyWallet: delivery.verified?.includes("wallet") } } : {}) });
+    runtimeRan = result.ran;
+    deliveryVerified = result.deliveryVerified === true;
+    return result;
+  } : undefined;
   const reviewOn = (deps.review ?? reviewEnabled()) && Boolean(openWith);
   const typesMode = deps.typeCheckMode ?? (deps.typeCheck ? "enforce" : typeCheckMode());
   const types = typesMode === "off" ? undefined : { run: deps.typeCheck ?? typeCheck, enforce: typesMode === "enforce" };
@@ -190,6 +198,21 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
   };
 
   let images: UserPart[] = [];
+  let workspace: Workspace | undefined;
+  let delivery: DeliveryPlan | undefined;
+  let budgetStopped = false;
+  let draftPersisted = false;
+  let runtimeRan = false;
+  let deliveryVerified = false;
+  const saveDraft = async (diagnostics = "") => {
+    if (!workspace || !job.jobId || input.mode !== "build") return;
+    const files = { ...workspace.files };
+    await job.commit(async (tx) => {
+      await tx.insert(buildDrafts).values({ jobId: job.jobId!, projectId: input.projectId, baseVersion: job.baseVersion ?? 0, files, diagnostics })
+        .onConflictDoUpdate({ target: buildDrafts.jobId, set: { files, diagnostics, updatedAt: new Date() } });
+    });
+    draftPersisted = true;
+  };
   try {
     // ---- Setup: done once; a resumed run restores it instead (memory call and all) ----
     let setup: TurnSetup;
@@ -201,7 +224,8 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       setup = saved;
       Object.assign(record, structuredClone(setup.recordAtStart));
       text = setup.text;
-      emit({ type: "start", messageId: assistantId, mode: input.mode });
+      record.jobId = job.jobId;
+    emit({ type: "start", messageId: assistantId, mode: input.mode });
       images = await loadImages(deps.assets ?? dbAssetStore(db), input.projectId, setup.imageAssetIds);
       if (images.length !== setup.imageAssetIds.length) throw new ResumeFailedError("a design reference this build used was deleted.");
     } else {
@@ -210,6 +234,8 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     assetNames = setup.assetNames;
     chainId = setup.chainId;
     const ws = new Workspace(setup.baseFiles);
+    workspace = ws;
+    if (job.deliveryIndex !== undefined) delivery = (await db.select().from(buildDeliveries).where(eq(buildDeliveries.projectId, input.projectId)))[0]?.plan;
     const firstBuild = setup.firstBuild;
     const contractOptions = setup.contractOptions;
     if (saved) log(`↻ resumed after an interruption (attempt ${job.resume?.attempt ?? 2}), replaying ${replayLog.length} saved ${replayLog.length === 1 ? "response" : "responses"}`);
@@ -275,8 +301,9 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
         cutOff = cutAtLimit || (/^tool[-_]calls$/.test(finishReason ?? "") && toolCalls.length === 0);
       };
       const addUsage = (u: LoggedUsage) => {
-        record.chargedMicro += u.chargedMicro;
-        out({ type: "usage", chargedMicro: u.chargedMicro, totalChargedMicro: record.chargedMicro, model: u.model, inputTokens: u.inputTokens, outputTokens: u.outputTokens, cachedInputTokens: u.cachedInputTokens });
+        if (funding === "platform") record.sponsoredMicro = (record.sponsoredMicro ?? 0) + u.chargedMicro;
+        else record.chargedMicro += u.chargedMicro;
+        out({ type: "usage", chargedMicro: funding === "platform" ? 0 : u.chargedMicro, totalChargedMicro: record.chargedMicro, model: u.model, inputTokens: u.inputTokens, outputTokens: u.outputTokens, cachedInputTokens: u.cachedInputTokens });
       };
 
       if (logged) {
@@ -388,11 +415,19 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     };
 
     /** Let the model work until it stops calling tools. False when it ran out of rounds. */
+    const failures = new Map<string, number>();
+    let idleRounds = 0;
+    let lastRoundKey = "";
     const phase = async (tier: ModelTier, quiet = false) => {
       for (let round = 0; round < MAX_TOOL_ROUNDS_PER_PHASE; round++) {
         stopIfRequested();
         // Out of free spend: end the pass the way running out of rounds does, so the reply and the save still happen.
-        if (atFreeCeiling()) return false;
+        if (atFreeCeiling() || calls >= MAX_CALLS - 2) {
+          budgetStopped = true;
+          log("· saving progress with calls reserved for validation and final reporting");
+          return false;
+        }
+        const beforeRound = filesKey(ws.files);
         const toolCalls = await callModel(tier, quiet);
         if (cutOff) {
           // Not finished: the model was mid-write. Run whatever calls did complete, then
@@ -429,7 +464,19 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
             convo.push({ role: "tool", tool_call_id: call.id, content: "The questions are on the user's screen. Stop here." });
             continue;
           }
-          const outcome = ws.execute(call.name, call.arguments, input.mode);
+          let args: Record<string, unknown> = {};
+          try { const parsed = JSON.parse(call.arguments); if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) args = parsed; } catch { /* Workspace reports malformed arguments. */ }
+          const allowed = !delivery || job.deliveryIndex === undefined || milestoneAllows(delivery, job.deliveryIndex, call.name, args);
+          const outcome = allowed ? ws.execute(call.name, call.arguments, input.mode) : { ok: false, result: "This feature belongs to a later saved milestone. Finish the current interface; do not add contracts or live payments yet." };
+          const path = String(args.path ?? call.name);
+          if (!outcome.ok && ["edit_file", "create_file"].includes(call.name)) {
+            const count = (failures.get(path) ?? 0) + 1;
+            failures.set(path, count);
+            if (count >= 2 && ws.files[path] !== undefined) {
+              outcome.result += `\nRepeated edit failure. Current file:\n${ws.files[path]}\nRead these exact contents. Switch to a different search block or replace this file once with create_file. Do not repeat the failed edit.`;
+              log(`· repeated edit failure in ${path}; supplied current contents and requested a different strategy`);
+            }
+          } else if (outcome.change) failures.delete(path);
           if (outcome.guides?.length) log(`guides: ${outcome.guides.join(", ")}`);
           if (outcome.access) log(`· ${outcome.access}`);
           takeSuggestions(outcome.suggestions, quiet);
@@ -452,6 +499,17 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
             });
           }
           convo.push({ role: "tool", tool_call_id: call.id, content: outcome.result });
+        }
+        await saveDraft();
+        const roundKey = JSON.stringify(toolCalls.map((c) => [c.name, c.arguments]));
+        const editsOnly = toolCalls.length > 0 && toolCalls.every((c) => ["edit_file", "create_file"].includes(c.name));
+        if (filesKey(ws.files) === beforeRound && !final && input.mode === "build" && (editsOnly || roundKey === lastRoundKey)) idleRounds++;
+        else idleRounds = 0;
+        lastRoundKey = roundKey;
+        if (idleRounds >= 4 || [...failures.values()].some((n) => n >= 4)) {
+          log("· no progress after repeated tool attempts; saving the draft instead of repeating them");
+          budgetStopped = true;
+          return false;
         }
         if (cutOff) {
           convo.push({
@@ -522,7 +580,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       }
     }
     const finished = intake || (await phase(input.mode === "plan" ? TIER_FOR.plan : TIER_FOR.build));
-    if (!finished || !text.trim()) {
+    if ((!finished || !text.trim()) && calls < MAX_CALLS - 1 && !atFreeCeiling()) {
       // Out of tool rounds, or the pass ended with nothing shown (its reply came with a tool
       // call and was dropped as narration): ask once for the reply, so the user gets a
       // summary and follow-ups instead of an empty message. Tools stay declared (some
@@ -531,7 +589,19 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       const extra = await callModel(input.mode === "plan" ? TIER_FOR.plan : TIER_FOR.build, false, true);
       for (const call of extra) {
         if (call.name === "suggest_next") {
-          const outcome = ws.execute(call.name, call.arguments, input.mode);
+          let args: Record<string, unknown> = {};
+          try { const parsed = JSON.parse(call.arguments); if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) args = parsed; } catch { /* Workspace reports malformed arguments. */ }
+          const allowed = !delivery || job.deliveryIndex === undefined || milestoneAllows(delivery, job.deliveryIndex, call.name, args);
+          const outcome = allowed ? ws.execute(call.name, call.arguments, input.mode) : { ok: false, result: "This feature belongs to a later saved milestone. Finish the current interface; do not add contracts or live payments yet." };
+          const path = String(args.path ?? call.name);
+          if (!outcome.ok && ["edit_file", "create_file"].includes(call.name)) {
+            const count = (failures.get(path) ?? 0) + 1;
+            failures.set(path, count);
+            if (count >= 2 && ws.files[path] !== undefined) {
+              outcome.result += `\nRepeated edit failure. Current file:\n${ws.files[path]}\nRead these exact contents. Switch to a different search block or replace this file once with create_file. Do not repeat the failed edit.`;
+              log(`· repeated edit failure in ${path}; supplied current contents and requested a different strategy`);
+            }
+          } else if (outcome.change) failures.delete(path);
           takeSuggestions(outcome.suggestions, false);
           convo.push({ role: "tool", tool_call_id: call.id, content: outcome.result });
         } else {
@@ -611,6 +681,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       });
       await phase(fixTier(attempt, report.errors), true);
       report = await checkNow(attempt);
+      if (calls >= MAX_CALLS - 2 || budgetStopped) { stoppedEarly = true; stopNote = "saved at this milestone's work limit"; break; }
       step({
         id: `fix:${attempt}`,
         label: `Fixing errors (attempt ${attempt} of ${MAX_FIX_ATTEMPTS})`,
@@ -680,22 +751,14 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     keepTheme();
     // Replayed everything without reaching a new model call (a crash during the last checks).
     goLive();
-    // Only contract tests are still failing: the contract compiled and the app's checks pass, so the build ships and says so.
-    const testsOnly = onlyTestFailures(report.errors);
-    if (initialErrors > 0 && testsOnly) {
-      const detail = `${plural(report.errors.length, "test failure")} left (${firstIssue(report.errors)}). The contract compiled and the app checks pass, so you can still deploy.`;
-      step({ id: "autofix", label: "Contract tests: not all passing", detail, status: "done" });
-      log(`! ${detail}`);
-    } else if (initialErrors > 0) {
-      const detail = report.ok
-        ? `Fixed ${plural(initialErrors, "error")} on attempt ${attemptsUsed} of ${MAX_FIX_ATTEMPTS}`
-        : stoppedEarly
-          ? `Failed after ${plural(attemptsUsed, "attempt")}: ${stopNote || `the same ${report.errors.length === 1 ? "error" : "errors"} came back`}`
-          : `Failed after ${plural(attemptsUsed, "attempt")}: ${plural(report.errors.length, "error")} left`;
+    if (initialErrors > 0) {
+      const detail = report.ok ? `Fixed ${plural(initialErrors, "error")} on attempt ${attemptsUsed} of ${MAX_FIX_ATTEMPTS}` : stoppedEarly ? `Failed after ${plural(attemptsUsed, "attempt")}: ${stopNote || `the same ${report.errors.length === 1 ? "error" : "errors"} came back`}` : `Failed after ${plural(attemptsUsed, "attempt")}: ${plural(report.errors.length, "error")} left`;
       step({ id: "autofix", label: report.ok ? "Auto-fix: fixed" : "Auto-fix: failed", detail, status: report.ok ? "done" : "error" });
-      log(report.ok ? `✓ ${detail.toLowerCase()}` : `✗ ${detail.toLowerCase()}`);
+      log(`${report.ok ? "✓" : "✗"} ${detail.toLowerCase()}`);
     }
-
+    if (delivery && job.deliveryIndex !== undefined && (!runtimeRan || (["interface", "wallet"].includes(delivery.milestones[job.deliveryIndex].id) && !deliveryVerified) || isStarterApp(ws.files["src/App.tsx"]))) {
+      report = { ...report, ok: false, errors: [...report.errors, { file: "src/App.tsx", source: "runtime", message: !runtimeRan || !deliveryVerified ? "The milestone's browser acceptance has not passed; progress is saved for recovery." : "The first interface is still the starter app." }] };
+    }
     // Platform-owned contract modules: ABIs the front end imports (addresses come in M5).
     if (report.contracts.length) {
       const names = report.contracts.map((c) => c.name);
@@ -705,18 +768,37 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       ws.files[`${PLATFORM_DIR}index.ts`] = contractsIndex(names);
       record.contracts = report.contracts.map(({ name, file, bytecodeBytes }) => ({ name, file, bytecodeBytes }));
     }
-    record.checks = { errors: testsOnly ? 0 : report.errors.length, warnings: report.warnings.length };
-    record.status = report.ok || testsOnly ? "ready" : "needs_fix";
+    record.checks = { errors: report.errors.length, warnings: report.warnings.length };
+    record.status = report.ok ? "ready" : "needs_fix";
     const endStatus = record.status;
 
-    const summary = firstLine(text) || (report.ok || testsOnly ? "Build updated." : "Build has errors to fix.");
-    const save = ws.changed() || firstBuild;
+    if (!text.trim()) {
+      text = report.ok ? "Your working version is saved. You can continue with the next change." : "Your progress is saved for recovery. The checks found issues to fix.";
+      out({ type: "text_set", text });
+    }
+    let summary = firstLine(text) || (report.ok ? "Build updated." : "Build has errors to fix.");
+    const save = (ws.changed() || firstBuild) && (report.ok || !job.jobId);
+    await saveDraft(formatIssues(report.errors));
+    record.draftSaved = Boolean(job.jobId && !report.ok);
+    record.jobId = job.jobId;
+    if (delivery && job.deliveryIndex !== undefined) {
+      const index = job.deliveryIndex;
+      const verified = [...new Set([...(delivery.verified ?? []), ...(report.ok && deliveryVerified ? [delivery.milestones[index].id] : [])])];
+      const remaining = delivery.milestones.flatMap((m, i) => i > index || !verified.includes(m.id) ? [`${m.title}${report.ok && i <= index && !verified.includes(m.id) ? " (needs verification)" : ""}`] : []);
+      record.delivery = { title: delivery.milestones[index].title, remaining, demo: delivery.milestones[index].id !== "payments" };
+      text = report.ok ? `${delivery.milestones[index].title}: ${deliveryVerified ? "browser acceptance passed" : "implementation saved; live behaviour still needs verification"}.${record.delivery.demo ? " Live payments remain disabled." : " Deployment and wallet confirmation are still required for live payments."}${remaining.length ? ` Still to finish: ${remaining.join(", ")}.` : " The saved milestones are complete."}` : "Your progress is saved. This milestone still needs a fix before it replaces your working version.";
+      record.suggestions = report.ok && index + 1 < delivery.milestones.length ? delivery.milestones.slice(index + 1, index + 3).map((m) => m.title) : undefined;
+      out({ type: "text_set", text });
+    }
+    summary = firstLine(text) || summary;
+    emit({ type: "snapshot", text, record: structuredClone(record) });
     if (save) record.changes = ws.netChanges().filter((c) => !c.path.startsWith(PLATFORM_DIR));
     stopIfRequested();
     // One transaction: the checkpoint, the final message, the reference images marked as seen,
     // the turn lock and the job's end state. A crash after it leaves a finished job, never a
     // job that runs again.
     await job.commit(async (tx) => {
+      if (report.ok && delivery && job.deliveryIndex !== undefined) await tx.update(buildDeliveries).set({ plan: { ...delivery, completed: Math.max(delivery.completed, job.deliveryIndex + 1), verified: [...new Set([...(delivery.verified ?? []), ...(deliveryVerified ? [delivery.milestones[job.deliveryIndex].id] : [])])] } }).where(eq(buildDeliveries.projectId, input.projectId));
       if (save) record.version = await checkpoint(tx, { projectId: input.projectId, files: ws.files, summary, messageId: assistantId });
       await finish(tx, assistantId, text, record);
       await markImagesAttached(tx, setup);
@@ -737,7 +819,9 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     if (error instanceof TurnStoppedError || job.signal?.aborted) {
       // Stop: nothing is saved to the project (edits discarded); usage already recorded stays.
       record.status = "stopped";
-      log("■ stopped by you; this turn's edits were discarded");
+      log("■ stopped by you; the working version is unchanged and the last recovery draft is preserved");
+      record.jobId = job.jobId;
+      record.draftSaved = draftPersisted;
       await endWith("stopped").catch(rethrowLease);
       emit({ type: "done", status: "stopped", summary: text.trim() });
       return record;
@@ -750,8 +834,12 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
           : error instanceof Error
             ? error.message
             : "The build failed unexpectedly.";
+    await saveDraft(message).catch(rethrowLease);
+    record.jobId = job.jobId;
+    record.draftSaved = draftPersisted;
     record.status = "error";
     record.error = message;
+    emit({ type: "snapshot", text, record: structuredClone(record) });
     if (assistantId) await endWith("error", message).catch(rethrowLease);
     else
       await job
@@ -819,11 +907,12 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
         return assistant.id;
       });
     }
+    record.jobId = job.jobId;
     emit({ type: "start", messageId: assistantId, mode: input.mode });
 
-    let files = await loadFiles(db, input.projectId);
-    const firstBuild = Object.keys(files).length === 0;
-    files = withKitHelpers(firstBuild ? starterFiles(project.chainId) : withStarterHelpers(files, project.chainId));
+    let files = job.draft?.baseVersion === project.currentVersion ? job.draft.files : await loadFiles(db, input.projectId);
+    const firstBuild = project.currentVersion === 0;
+    files = withKitHelpers(Object.keys(files).length === 0 ? starterFiles(project.chainId) : withStarterHelpers(files, project.chainId));
     if (firstBuild && !isIntake) Object.assign(files, templateImageFiles(project.templateId));
     // Uploaded assets: the platform-owned module is refreshed before the workspace snapshot,
     // so a new upload alone doesn't count as an edit.
@@ -874,7 +963,13 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     // so what the person asked for is in their earlier messages: those words count too. Later turns go by
     // the request alone, so a word from long ago doesn't turn a kit on.
     const kitWords = [request, brief.answerWords, ...(firstBuild ? all.filter((m) => m.role === "user").map((m) => m.content) : [])].join("\n");
-    const newKits = input.mode === "build" ? detectKits(kitWords, files) : [];
+    const scopedDelivery = job.deliveryIndex !== undefined ? (await db.select().from(buildDeliveries).where(eq(buildDeliveries.projectId, input.projectId)))[0]?.plan : undefined;
+    const localOnly = scopedDelivery && scopedDelivery.milestones[job.deliveryIndex!]?.id !== "payments";
+    if (localOnly && firstBuild) {
+      // Keep legacy contract work in its source draft; it must not block the first local interface.
+      for (const path of Object.keys(files)) if (path.startsWith("contracts/") || path.startsWith(PLATFORM_DIR)) delete files[path];
+    }
+    const newKits = input.mode === "build" ? detectKits(kitWords, files).filter((k) => !localOnly || !Object.keys(k.files).some((p) => p.startsWith("contracts/"))) : [];
     // A Yes to the plan's MiniPay question (D88) turns the MiniPay kit on, whatever its words.
     const miniAppKit = kitById("mini-app");
     if (input.mode === "build" && brief.miniPay && miniAppKit && !kitsOf(files).includes(miniAppKit) && !newKits.includes(miniAppKit)) newKits.push(miniAppKit);
@@ -883,7 +978,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     const willHave = (id: string) => kitsOf(files).some((k) => k.id === id) || newKits.some((k) => k.id === id);
     // A game template (D114): on the first build, the plan's pick brings a working game and the kits it needs.
     // Before the board and shop rules below, which ask whether the games kit will be on.
-    const gameTemplate = input.mode === "build" && firstBuild ? gameTemplateById(brief.gameTemplate) : undefined;
+    const gameTemplate = input.mode === "build" && firstBuild && !job.draft ? gameTemplateById(brief.gameTemplate) : undefined;
     for (const id of gameTemplate?.kits ?? []) {
       const kit = kitById(id);
       if (kit && !willHave(id)) newKits.push(kit);
@@ -900,13 +995,14 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     // A gallery template is a designed page (D60): it gets the motion kit (D84) whatever its words say.
     const motionKit = kitById("motion");
     if (input.mode === "build" && firstBuild && motionKit && templateBriefFor(project.templateId) && !newKits.includes(motionKit)) newKits.push(motionKit);
+    if (localOnly) for (let n = newKits.length - 1; n >= 0; n--) if (Object.keys(newKits[n].files).some((p) => p.startsWith("contracts/"))) newKits.splice(n, 1);
     for (const kit of newKits) files = withKit(files, kit);
     if (newKits.length) log(`kits: turned on ${newKits.map((k) => k.id).join(", ")} for this request`);
     if (gameTemplate) {
-      files = withGameTemplate(files, gameTemplate);
+      files = withGameTemplate(files, localOnly ? { ...gameTemplate, kits: gameTemplate.kits.filter((id) => !Object.keys(kitById(id)?.files ?? {}).some((p) => p.startsWith("contracts/"))) } : gameTemplate);
       log(`game template: started from ${gameTemplate.id}`);
     }
-    if (firstBuild) Object.assign(files, designTemplateFiles(project.templateId));
+    if (firstBuild && !job.draft) Object.assign(files, designTemplateFiles(project.templateId));
     const kitsOn = kitsOf(files);
     const kitsBlock = kitsOn.length
       ? [
@@ -936,7 +1032,8 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
           funding,
           jobId: job.jobId,
         });
-        record.chargedMicro += cost.chargedMicro;
+        if (funding === "platform") record.sponsoredMicro = (record.sponsoredMicro ?? 0) + cost.chargedMicro;
+        else record.chargedMicro += cost.chargedMicro;
       }
       if (advanced) await tx.update(projects).set({ memory }).where(eq(projects.id, input.projectId));
     });
@@ -960,7 +1057,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       assets: assetManifest(assets),
       memory: memoryBlock(memory),
       deployments: [upgradeable ? upgradeableRules(await liveStorage(db, project)) : "", deploymentsBlock(await loadDeployedAddresses(db, input.projectId), { upgradeable })].filter(Boolean).join("\n\n"),
-      plan: [brief.text, firstBuild ? templateBriefFor(project.templateId) : "", gameTemplate ? `${gameTemplate.brief}\n${TEMPLATE_MINIPAY_NOTE}` : "", kitsBlock].filter(Boolean).join("\n\n"),
+      plan: [scopedDelivery && job.deliveryIndex !== undefined ? deliveryContext(scopedDelivery, job.deliveryIndex) : "", job.draft?.diagnostics ? `Previous attempt diagnostics: ${job.draft.diagnostics}` : "", brief.text, firstBuild ? templateBriefFor(project.templateId) : "", gameTemplate ? `${gameTemplate.brief}\n${TEMPLATE_MINIPAY_NOTE}` : "", kitsBlock].filter(Boolean).join("\n\n"),
       targetChain: project.chainId === 42220 ? "Celo Mainnet (42220)" : project.chainId === 11142220 ? "Celo Sepolia (11142220)" : `Unsupported chain ${project.chainId}`,
     });
     log(`context: ${ctx.picks.length} of ${Object.keys(files).length} files in full (${ctx.picks.map((p) => p.path.split("/").pop()).join(", ")})`);
@@ -1016,13 +1113,15 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
  * retry. Saved responses replayed after a crash never reach the model, so they never reach this.
  */
 function checkedAgainstHold(model: ModelClient, job: TurnJobContext): ModelClient {
-  if (job.funding !== "paid" || !job.jobId) return model;
+  if (!["paid", "platform"].includes(job.funding ?? "") || !job.jobId) return model;
   const jobId = job.jobId;
   return {
     async *stream(request) {
       const worst = worstCaseCallMicro(MODEL_IDS[request.tier], request);
-      if (!(await job.commit((tx) => ensureHold(tx, jobId, worst)))) throw new OutOfCreditsError();
-      yield* model.stream(request);
+      if (job.funding === "platform") {
+        if (!(await job.commit((tx) => sponsorshipCanCall(tx, jobId, worst)))) throw new SponsorshipExhaustedError();
+      } else if (!(await job.commit((tx) => ensureHold(tx, jobId, worst)))) throw new OutOfCreditsError();
+      yield* model.stream({ ...request, ...(job.funding === "platform" ? { noRetries: true } : {}) });
     },
   };
 }

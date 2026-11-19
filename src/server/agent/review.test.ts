@@ -260,7 +260,7 @@ async function runJob(jobId: string, model: ModelClient, crashAfter?: number) {
   return { record, saves };
 }
 
-const withoutResume = (r: TurnRecord): TurnRecord => ({ ...r, log: r.log.filter((l) => !l.startsWith("↻")), steps: r.steps.map((s) => ({ ...s, id: s.id.replace(/^(tool:\d+):.*$/, "$1") })) });
+const withoutResume = (r: TurnRecord): TurnRecord => ({ ...r, jobId: undefined, log: r.log.filter((l) => !l.startsWith("↻")), steps: r.steps.map((s) => ({ ...s, id: s.id.replace(/^(tool:\d+):.*$/, "$1") })) });
 
 describe("the review after a crash", { timeout: 180_000 }, () => {
   it("resumes at every save point with the same result, never asking the reviewer or paying twice", async () => {

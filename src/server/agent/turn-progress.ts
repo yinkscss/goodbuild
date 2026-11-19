@@ -101,6 +101,9 @@ export interface TurnJobContext {
   lockHeld: boolean;
   /** Who funds the job, fixed when it was created (D48). Without a job, the runner decides it. */
   funding?: FundingSource;
+  baseVersion?: number;
+  deliveryIndex?: number;
+  draft?: { files: Record<string, string>; diagnostics: string; baseVersion: number };
   /** The job itself, for its hold (D49). Direct runs have none, so they can't spend credit. */
   jobId?: string;
   signal?: AbortSignal;

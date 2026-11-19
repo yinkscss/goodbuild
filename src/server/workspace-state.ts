@@ -3,12 +3,13 @@ import "server-only";
 import { eq } from "drizzle-orm";
 
 import type { Db } from "@/server/db/client";
-import { projectAssets } from "@/server/db/schema";
+import { buildDeliveries, projectAssets, turnJobs, type DeliveryPlan } from "@/server/db/schema";
 import { pendingAssetIds } from "@/lib/attachments";
 import { estimateTurnMicro } from "@/lib/pricing";
 import { dbAssetStore } from "@/server/agent/asset-store";
 import { publicAssetOrigin, publicAssetUrl } from "@/server/agent/asset-url";
 import type { AssetInfo } from "@/server/agent/assets";
+import { MODEL_IDS, TIER_FOR } from "@/server/agent/model";
 import { systemPrompt } from "@/server/agent/prompt";
 import { listVersions, loadFiles } from "@/server/agent/store";
 import { starterFiles, withStarterHelpers } from "@/server/agent/template";
@@ -36,6 +37,7 @@ export interface WorkspaceState {
   versions: Array<{ number: number; summary: string; createdAt: string; revertedFrom: number | null }>;
   /** Preflight estimates in micro-USD (D13). */
   estimate: { buildMicro: number; planMicro: number };
+  delivery?: DeliveryPlan;
   /**
    * Uploaded logos, images and design references (metadata; bytes via the assets API). `url`
    * is a public signed URL when GoodBuild runs on a public https origin; otherwise the preview
@@ -73,6 +75,7 @@ export async function workspaceState(db: Db, projectId: string, ownerId: string)
     owned.messages.map((m) => ({ role: m.role, meta: (m.meta as Record<string, unknown> | null) ?? null, createdAt: m.createdAt.toISOString() })),
     uploaded.map((a) => ({ id: a.id, createdAt: a.createdAt.toISOString() })),
   );
+  const jobRows = await db.select({ id: turnJobs.id, assistantId: turnJobs.assistantMessageId }).from(turnJobs).where(eq(turnJobs.projectId, projectId));
   return {
     project: {
       id: project.id,
@@ -85,12 +88,13 @@ export async function workspaceState(db: Db, projectId: string, ownerId: string)
       templateId: project.templateId,
     },
     files,
+    delivery: (await db.select().from(buildDeliveries).where(eq(buildDeliveries.projectId, projectId)))[0]?.plan,
     messages: owned.messages.map((m) => ({
       id: m.id,
       role: m.role as WorkspaceMessage["role"],
       content: m.content,
       status: m.status,
-      meta: m.meta ?? null,
+      meta: m.role === "assistant" && m.meta?.kind === "turn" ? { ...m.meta, jobId: jobRows.find((j) => j.assistantId === m.id)?.id } : m.meta ?? null,
       createdAt: m.createdAt.toISOString(),
     })),
     versions: versions.map((v) => ({ ...v, createdAt: v.createdAt.toISOString(), revertedFrom: v.revertedFrom ?? null })),
@@ -100,7 +104,7 @@ export async function workspaceState(db: Db, projectId: string, ownerId: string)
     freePolicy: freePolicy(process.env),
     availableMicro: await availableMicro(db, ownerId, (await getCredits(ownerId, db)).balanceMicro),
     estimate: {
-      buildMicro: estimateTurnMicro({ mode: "build", contextChars, firstBuild }),
+      buildMicro: estimateTurnMicro({ mode: "build", contextChars, firstBuild }, firstBuild ? MODEL_IDS[TIER_FOR.build] : undefined),
       planMicro: estimateTurnMicro({ mode: "plan", contextChars, firstBuild }),
     },
     assets: (await dbAssetStore(db).list(projectId)).map((a) => {

@@ -20,6 +20,8 @@ export interface UseWorkspace {
   send: (prompt: string, mode: TurnMode, opts?: { skipPlan?: boolean }) => void;
   /** Stop the running turn and cancel queued follow-ups. */
   stop: () => Promise<void>;
+  retry: (jobId: string, useCredits?: boolean) => void;
+  paidRetryJobId: string | null;
   /** Save one answer to the plan's questions (D32). */
   answerPlan: (messageId: string, questionId: string, answer: PlanAnswer) => void;
   /** Leave the plan and build now, with whatever has been answered so far. */
@@ -112,6 +114,7 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
   const [live, setLive] = React.useState<LiveTurn | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [needsCredits, setNeedsCredits] = React.useState(false);
+  const [paidRetryJobId, setPaidRetryJobId] = React.useState<string | null>(null);
   const projectId = initial.project.id;
   const [autoFixVersion, setAutoFixVersion] = React.useState<number | null>(null);
   const [checkVersion, setCheckVersion] = React.useState<number | null>(null);
@@ -167,6 +170,22 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
     },
     [projectId, refresh],
   );
+
+  const retry = React.useCallback((jobId: string, useCredits = false) => {
+    sending.current = sending.current.then(async () => {
+      setError(null);
+      try {
+        const res = await fetch(`/api/projects/${projectId}/turns/${jobId}/retry`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ useCredits }) });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({})) as { message?: string; error?: string };
+          setError(body.message ?? "Couldn't resume this build. Reload and try again.");
+          if (body.error === "funding_unavailable") { setPaidRetryJobId(jobId); setNeedsCredits(false); }
+          else if (res.status === 402) setNeedsCredits(true);
+        } else { setNeedsCredits(false); setPaidRetryJobId(null); }
+      } catch { setError("Couldn't reach GoodBuild. Your saved progress is safe."); }
+      await refresh().catch(() => undefined);
+    });
+  }, [projectId, refresh]);
 
   // Sends go out one at a time, so the server queues prompts in the order they were sent
   // (measured: three quick sends raced and were queued out of order).
@@ -412,6 +431,8 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
     live,
     running: (Boolean(live) && live?.phase === "running") || state.jobs.length > 0,
     send,
+    retry,
+    paidRetryJobId,
     stop,
     answerPlan,
     skipPlan,

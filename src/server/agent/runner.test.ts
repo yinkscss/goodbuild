@@ -211,17 +211,17 @@ describe("runTurn", { timeout: 120_000 }, () => {
     expect(record.status).toBe("ready");
   });
 
-  it("asks for a reply when the build pass runs out of tool rounds, and flags no-op edits", async () => {
+  it("stops repeated no-op edits early and asks for a reply", async () => {
     const noop = { name: "edit_file", args: { path: "src/App.tsx", edits: [{ search: "export default", replace: "export default" }] } };
     const { client, requests } = scriptedModel([
       { text: "I'll start by planning this out.", tools: [{ name: "set_plan", args: { summary: "Add a thank-you banner.", steps: ["Banner"] } }, { name: "create_file", args: { path: "src/App.tsx", content: PAGE } }] },
-      ...Array.from({ length: 19 }, () => ({ tools: [noop] })),
+      ...Array.from({ length: 4 }, () => ({ tools: [noop] })),
       { text: "Added a thank-you banner.\n\nWant it to show the tip amount?" },
     ]);
     const record = await runTurn({ db, model: client }, { projectId, userId, mode: "build", userMessageId: queuedId }, () => {});
     const [assistant] = (await db.select().from(messages).where(eq(messages.projectId, projectId))).filter((m) => m.role === "assistant");
     expect(assistant.content).toBe("Added a thank-you banner.\n\nWant it to show the tip amount?");
-    expect(record.log).toContain("! stopped: too many tool rounds in one pass");
+    expect(record.log).toContain("· no progress after repeated tool attempts; saving the draft instead of repeating them");
     const toolResults = requests.at(-1)!.messages.filter((m) => m.role === "tool").map((m) => String(m.content));
     expect(toolResults.some((c) => c.startsWith("No change: src/App.tsx"))).toBe(true);
     expect(String(requests.at(-1)!.messages.at(-1)!.content)).toMatch(/Reply to the user now/);
@@ -234,9 +234,8 @@ describe("runTurn", { timeout: 120_000 }, () => {
     ]);
     const record = await runTurn({ db, model: client }, { projectId, userId, mode: "build", userMessageId: queuedId }, () => {});
     expect(record.chargedMicro).toBeGreaterThanOrEqual(FREE_BUILD_CEILING_MICRO);
-    // The build call, then only the reply: no more work, no fix attempts.
-    expect(requests).toHaveLength(2);
-    expect(String(requests[1].messages.at(-1)!.content)).toMatch(/Reply to the user now/);
+    // At the spend ceiling, finalise without buying another model call.
+    expect(requests).toHaveLength(1);
     expect(record.log.some((l) => l.includes("most one build may spend on free AI"))).toBe(true);
     expect(record.status).not.toBe("error");
     expect((await loadFiles(db, projectId))["src/App.tsx"]).toBe(PAGE);
@@ -850,5 +849,19 @@ describe("kits in a turn (D71)", { timeout: 120_000 }, () => {
     expect(web["src/game/leaderboard.ts"]).toContain("export function useLeaderboard");
     // Nothing for sale, so no shop and no shop contract to deploy.
     expect(web["src/goodbuild.json"]).not.toContain("game-shop");
+  });
+});
+
+
+describe("contract readiness", () => {
+  it("never treats failing contract tests as ready to deploy", async () => {
+    const model = scriptedModel([
+      { tools: [{ name: "create_file", args: { path: "contracts/Escrow.sol", content: HEADER + "contract Escrow {}" } }, { name: "create_file", args: { path: "src/App.tsx", content: PAGE } }] },
+      { text: "Draft saved" }, { text: "Needs repair" },
+    ]);
+    const record = await runTurn({ db, model: model.client, checkContracts: async () => ({ ok: false, contracts: [], errors: [{ file: "contracts/test/Escrow.t.sol", source: "test", message: "testCannotSteal failed" }], warnings: [] }) }, { projectId, userId, mode: "build", prompt: "Build escrow" }, () => {});
+    expect(record.status).toBe("needs_fix");
+    expect(record.checks?.errors).toBe(1);
+    expect(record.steps.some((step) => step.detail?.includes("you can still deploy"))).toBe(false);
   });
 });

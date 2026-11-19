@@ -1686,3 +1686,7 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
 - **Fix:** `recordingRootReader` / `recordGoodIdRoot` in `src/server/goodid.ts`. `GET /api/hackathon/votes`, approvals (`POST /api/hackathon/projects`) and every FlowState status check now record the signed-in wallet's own root the first time the chain says it's verified. Only fills in an account not yet verified; a project owner's wallet read during an approval is never recorded against the voter.
 - **Past accounts:** `scripts/goodid-backfill.ts` re-reads the chain for every account with no `verified_at` (dry run by default, `--write` to save). Run once on production.
 - /stats is also cached for up to 10 minutes, so a new verification can take that long to show.
+
+## Progressive first delivery and recoverable builds (19 Nov 2026)
+
+The owner approved implementing all five parts of the first-build fix and opening a PR: explicit retry, durable drafts and loop limits, staged MVP delivery, bounded first-build/repair sponsorship, and contract-test readiness. See [PROGRESSIVE_DELIVERY.md](PROGRESSIVE_DELIVERY.md) for schema, funding caps, behavior, validation and rollout limits. The existing mainnet custody gate remains mandatory. Working interface, saved implementation and verified live capability are distinct states. The default sponsorship limits are reviewable launch caps, not measured completion guarantees.

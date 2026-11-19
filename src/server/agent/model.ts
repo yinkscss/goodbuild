@@ -62,6 +62,8 @@ export interface ModelRequest {
    * deepseek-flash spent all of 500, 2,500 and 6,000 output tokens on reasoning (HARNESS.md).
    */
   noThinking?: boolean;
+  /** Sponsored calls are retried by the runner so each attempt goes through its budget guard. */
+  noRetries?: boolean;
 }
 
 /** Streaming chat with tool calls. Implemented over the Vercel AI SDK, or scripted in tests. */
@@ -103,7 +105,7 @@ export function aiSdkClient(models?: Record<ModelTier, LanguageModel>): ModelCli
           allowSystemInMessages: true,
           tools: toSdkTools(req.tools),
           maxOutputTokens: req.maxTokens,
-          maxRetries: 1,
+          maxRetries: req.noRetries ? 0 : 1,
           abortSignal: req.signal,
           ...(req.noThinking ? { providerOptions: { deepseek: { thinking: { type: "disabled" } } } } : {}),
         });

@@ -82,10 +82,16 @@ export function ChatPanel({
   const [composerCue, setComposerCue] = React.useState(0);
   const draftOpen = Boolean(lastRecord?.mode === "plan" && lastRecord.plan && !lastRecord.intake && !running);
   // The prompt the newest turn answered, for "Try again" on a failed or interrupted build.
-  const lastUserPrompt = [...state.messages].reverse().find((m) => m.role === "user" && m.status !== "queued" && m.status !== "cancelled")?.content;
+  const retryRecord = (record?: TurnRecord | null) => {
+    if (record?.jobId) ws.retry(record.jobId);
+    else send(FIX_PROMPT, "build");
+  };
   const continueAfterCredits = () => {
     ws.clearNeedsCredits();
-    if (lastUserPrompt) send(lastUserPrompt, "build");
+    const last = [...state.messages].reverse().find((m) => m.role === "assistant");
+    const record = last?.meta as TurnRecord | null;
+    if (record?.jobId) ws.retry(record.jobId, true);
+    else retryRecord(record);
   };
   return (
     <section aria-label="Chat" className="flex min-h-0 flex-col rounded-card bg-surface shadow-card">
@@ -93,6 +99,7 @@ export function ChatPanel({
         <TemplateBanner templateId={state.project.templateId} />
         {state.messages.map((m) => {
           if (m.id === liveMessageId) return null;
+          if (m.role === "user" && m.meta?.action === "retry") return <p key={m.id} className="text-xs text-grey-600">Resuming the saved build</p>;
           if (m.role === "user") {
             const mode = (m.meta as { mode?: TurnMode } | null)?.mode ?? "build";
             const waiting = m.status === "queued" && state.jobs.findIndex((j) => j.userMessageId === m.id) !== 0;
@@ -138,7 +145,7 @@ export function ChatPanel({
               record={record}
               chainId={state.project.chainId}
               live={false}
-              onFix={() => send(record.status === "error" && lastUserPrompt && m.id === lastAssistantId ? lastUserPrompt : FIX_PROMPT, "build")}
+              onFix={() => retryRecord(record)}
               fixDisabled={running}
               onSuggest={!live && canSuggest && m.id === lastAssistantId ? suggest : undefined}
               checking={m.id === lastAssistantId && ws.checking}
@@ -165,7 +172,7 @@ export function ChatPanel({
             record={live.record}
             chainId={state.project.chainId}
             live={live.phase === "running"}
-            onFix={() => send(FIX_PROMPT, "build")}
+            onFix={() => retryRecord(live?.record)}
             fixDisabled={live.phase === "running"}
             onSuggest={live.phase === "done" && state.jobs.length <= 1 ? suggest : undefined}
             onSkipPlan={live.phase === "running" && !live.record.intake && planning ? ws.skipPlan : undefined}
@@ -179,6 +186,12 @@ export function ChatPanel({
             <span className="mt-1.5 size-2 shrink-0 rounded-full bg-danger" aria-hidden />
             {ws.error}
           </p>
+        )}
+        {!running && ws.paidRetryJobId && (
+          <button type="button" className="rounded-full bg-violet px-4 py-2 text-sm text-white" onClick={() => ws.retry(ws.paidRetryJobId!, true)}>Continue using credits (estimated {formatCredits(state.estimate.buildMicro)})</button>
+        )}
+        {!running && state.delivery && state.delivery.completed > 0 && state.delivery.completed < state.delivery.milestones.length && (
+          <p className="px-4 text-xs text-grey-600">Next: {state.delivery.milestones[state.delivery.completed].title}. Continuing starts a separate build, estimated at {formatCredits(state.estimate.buildMicro)}, using your credits.</p>
         )}
         <OutOfCredits open={ws.needsCredits} freeCredits={state.freePolicy === "verified"} onContinue={continueAfterCredits} onRefresh={ws.refresh} />
         {state.outdatedContracts.length > 0 && !running && (

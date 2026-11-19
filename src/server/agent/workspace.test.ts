@@ -34,3 +34,9 @@ describe("Workspace naming", () => {
     expect(call(ws, "create_file", { path: "src/assets/index.ts", content: "x" }).result).toMatch(/uploads/);
   });
 });
+
+describe("malformed tool arguments", () => {
+  it.each([null, [], "text", 1])("returns a recoverable error for %j", (args) => {
+    expect(call(new Workspace({}), "edit_file", args)).toEqual({ ok: false, result: "Error: tool arguments must be a JSON object." });
+  });
+});

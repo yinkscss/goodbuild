@@ -178,7 +178,7 @@ describe.each(testBackends())("free-only users notice no change on $name", (back
     expect([before.UNVERIFIED_CAP_MICRO, before.VERIFIED_CAP_MICRO, before.FREE_BUDGET_MICRO, before.RESERVED_PER_BUILD_MICRO]).toEqual([200_000, 700_000, 4_000_000, 350_000]);
   });
 
-  it("a whole free build costs what it did: no holds, no ledger, and the model sees the same requests", async () => {
+  it("a whole free build keeps free billing while adding durable recovery", async () => {
     const a = await newUser();
     const started = await startTurn(db, { projectId: a.projectId, userId: a.userId, mode: "build", prompt: "Build it" }, LEGACY);
     if ("refused" in started) throw new Error("refused");
@@ -194,11 +194,11 @@ describe.each(testBackends())("free-only users notice no change on $name", (back
     };
     const reply = [{ tools: [{ name: "create_file", args: { path: "src/App.tsx", content: "export default function App() { return <main>Club</main>; }\n" } }] }, { text: "Built." }];
     const model = scriptedModel(reply);
-    const record = await runTurn({ db, model: model.client, job: ctx }, { projectId: a.projectId, userId: a.userId, mode: "build", userMessageId: claimed.userMessageId }, () => undefined);
+    const record = await runTurn({ db, model: model.client, job: ctx, runCheck: async () => ({ ran: true, deliveryVerified: true, issues: [], note: "Accounting fixture acceptance", ms: 0 }) }, { projectId: a.projectId, userId: a.userId, mode: "build", userMessageId: claimed.userMessageId }, () => undefined);
     expect(record.status).toBe("ready");
     expect(model.requests).toHaveLength(2);
-    // The reply, the setup, one per response, the final commit: no extra commit for a hold check.
-    expect(commits).toHaveLength(5);
+    // Reply, setup, two responses, two durable drafts and final commit; no hold check.
+    expect(commits).toHaveLength(7);
     const [row] = await db.select().from(turnJobs).where(eq(turnJobs.id, started.job.id));
     expect([row.status, row.holdMicro, row.releasedMicro]).toEqual(["done", 0, 0]);
     expect((await db.select().from(usageEvents)).map((u) => u.funding)).toEqual(["free", "free"]);

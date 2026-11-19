@@ -151,7 +151,7 @@ describe.each(testBackends())("holds and charging on $name", (backend) => {
       if (++commits > crashAfter) throw new LeaseLostError();
       return real(fn);
     };
-    const record = await runTurn({ db, model: client, job: ctx }, { projectId: claimed!.projectId, userId: claimed!.userId, mode: "build", userMessageId: claimed!.userMessageId }, () => undefined);
+    const record = await runTurn({ db, model: client, job: ctx, runCheck: async () => ({ ran: true, deliveryVerified: true, issues: [], note: "Accounting fixture acceptance; browser behavior is covered separately", ms: 0 }) }, { projectId: claimed!.projectId, userId: claimed!.userId, mode: "build", userMessageId: claimed!.userMessageId }, () => undefined);
     return record;
   }
 
@@ -509,7 +509,7 @@ describe.each(testBackends())("holds and charging on $name", (backend) => {
     /** Calls that each really use their whole output limit, reported as the tier's own model. */
     const costly = (n: number): ScriptedReply[] =>
       Array.from({ length: n }, (_, i) => ({
-        tools: [{ name: "create_file", args: { path: i === 0 ? "src/App.tsx" : `src/F${i}.tsx`, content: i === 0 ? APP : "x" } }],
+        tools: [{ name: "create_file", args: { path: i === 0 ? "src/App.tsx" : `src/components/F${i}.tsx`, content: i === 0 ? APP : `export default function F${i}(){return null}` } }],
         usage: { input: 2_000, output: 16_000 },
       }));
 
