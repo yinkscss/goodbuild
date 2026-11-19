@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { chromium } from "playwright-core";
+import { chromium, type Page } from "playwright-core";
 import { afterAll, describe, expect, it } from "vitest";
 
 import { checkApp, checkContracts } from "../checks";
@@ -7,6 +7,8 @@ import { kitById, kitIdsOf, withKit } from "../kits/index";
 import { closeRunCheckBrowser, runCheck } from "../run-check";
 import { PLATFORM_DIR, contractModule, contractsIndex, starterFiles } from "../template";
 import { typeCheck } from "../type-check";
+
+import { parseDataRules } from "@/lib/app-data";
 
 import { GAME_TEMPLATES, gameTemplateById, gameTemplateCatalog, withGameTemplate } from "./index";
 
@@ -75,7 +77,8 @@ describe("game templates (D114)", { timeout: 180_000 }, () => {
       expect(r.ran, r.note).toBe(true);
       expect(r.issues).toEqual([]);
       expect(r.note).toMatch(/played \d+ rounds?/);
-      expect(r.note).toMatch(/a score was posted and shown on the board/);
+      // A room game has no leaderboard: its rounds are against the computer or friends.
+      if (t.leaderboard) expect(r.note).toMatch(/a score was posted and shown on the board/);
     });
   }
 
@@ -224,7 +227,7 @@ describe("game templates in MiniPay (D114)", { timeout: 180_000 }, () => {
       files[`${PLATFORM_DIR}index.ts`] = contractsIndex(report.contracts.map((c) => c.name));
       // MINI_APP's wording is the person's, filled in by the builder; everything else passes.
       expect(checkApp(files).errors.filter((e) => e.file !== "src/minipay/app.ts")).toEqual([]);
-      expect(files["src/play/Game.tsx"]).toContain("useLeaderboard({ chain: miniPayBoard })");
+      if (gameTemplateById(id)!.leaderboard) expect(files["src/play/Game.tsx"]).toContain("useLeaderboard({ chain: miniPayBoard })");
       const types = await typeCheck(files);
       expect(types.ran).toBe(true);
       expect(types.issues).toEqual([]);
@@ -256,5 +259,133 @@ describe("a 3D game on a checker with no WebGL (D116)", { timeout: 180_000 }, ()
     } finally {
       await browser.close();
     }
+  });
+});
+
+/** A browser wallet for one player of a room test: says yes to everything, with its own address. */
+const walletFor = (account: string) => `(() => {
+  window.ethereum = {
+    request: async ({ method }) => {
+      if (method === "eth_requestAccounts" || method === "eth_accounts") return [${JSON.stringify("ACCOUNT")}];
+      if (method === "eth_chainId") return "0xaa044c";
+      if (method === "net_version") return "11142220";
+      if (method === "personal_sign") return "0x" + "11".repeat(65);
+      if (method === "wallet_switchEthereumChain" || method === "wallet_addEthereumChain") return null;
+      throw Object.assign(new Error("Not available."), { code: 4200 });
+    },
+    on() {},
+    removeListener() {},
+  };
+})();`.replace('"ACCOUNT"', JSON.stringify(account));
+
+/** Open the game as one player and sign in to the room with that player's wallet. */
+async function player(first: Page, account: string, name: string): Promise<Page> {
+  const page = await first.context().newPage();
+  await page.addInitScript(walletFor(account));
+  await page.goto(first.url(), { waitUntil: "load" });
+  await page.getByRole("button", { name: "Sign in with wallet" }).click();
+  await page.locator("[data-goodbuild-wallets] .gbw-row", { hasText: /Browser wallet|MetaMask/ }).first().click({ timeout: 2_000 }).catch(() => undefined);
+  await page.getByLabel("Your name").fill(name, { timeout: 5_000 });
+  return page;
+}
+
+/** Ada makes a room, Bo joins by its code and readies up, and Ada starts. The rooms poll every 3 seconds. */
+async function startRoom(first: Page): Promise<{ ada: Page; bo: Page; code: string }> {
+  const ada = await player(first, "0x00000000000000000000000000000000000000a1", "Ada");
+  const bo = await player(first, "0x00000000000000000000000000000000000000b2", "Bo");
+  await ada.getByRole("button", { name: "Make a room" }).click();
+  const code = (await ada.locator("[data-room-code]").innerText({ timeout: 5_000 })).trim();
+  expect(code).toMatch(/^[A-Z2-9]{5}$/);
+  await bo.getByLabel("Room code").fill(code.toLowerCase());
+  await bo.getByRole("button", { name: "Join" }).click();
+  await bo.getByRole("button", { name: "I'm ready" }).click({ timeout: 8_000 });
+  await ada.getByRole("button", { name: "Start the game" }).click({ timeout: 10_000 });
+  return { ada, bo, code };
+}
+
+describe("room games in the preview, with two players (D139)", { timeout: 240_000 }, () => {
+  afterAll(() => closeRunCheckBrowser());
+
+  it("add the room's three collections with valid rules, keeping the person's own", () => {
+    const start = { ...starterFiles(), "src/lib/dataRules.json": JSON.stringify({ collections: { notes: "private", moves: "public-read" } }) };
+    for (const id of ["four-in-a-row", "trivia-battle"]) {
+      const files = withGameTemplate(start, gameTemplateById(id)!);
+      const parsed = parseDataRules(files["src/lib/dataRules.json"]);
+      expect(parsed.issues).toEqual([]);
+      expect(Object.keys(parsed.rules)).toEqual(expect.arrayContaining(["notes", "rooms", "seats", "moves"]));
+      // A collection the person already had keeps its rule.
+      expect(JSON.parse(files["src/lib/dataRules.json"]).collections.moves).toBe("public-read");
+      expect(parsed.rules.rooms.unique).toEqual(["code"]);
+    }
+  });
+
+  it.skipIf(!hasBrowser)("Four in a row: a room is made, joined by code and started, turns alternate, the winner shows on both screens, and Rematch goes back to the lobby", async () => {
+    let checked = false;
+    const r = await runCheck(built("four-in-a-row"), {
+      afterPlay: async (first) => {
+        const { ada, bo } = await startRoom(first);
+        const drop = async (who: Page, col: number) => {
+          await who.getByText("Your turn").waitFor({ timeout: 10_000 });
+          await who.getByRole("button", { name: "Drop in column " + col }).click();
+        };
+        // Ada goes first (the host), and wins down column 1.
+        for (let i = 0; i < 3; i++) {
+          await drop(ada, 1);
+          // Bo's columns wait for his turn, which comes from Ada's move on his screen.
+          await drop(bo, 2);
+        }
+        await drop(ada, 1);
+        await ada.getByText("You win!").waitFor({ timeout: 10_000 });
+        await bo.getByText("Ada wins").waitFor({ timeout: 10_000 });
+        await ada.getByRole("button", { name: "Rematch" }).click();
+        await bo.getByRole("button", { name: "I'm ready" }).waitFor({ timeout: 10_000 });
+        checked = true;
+      },
+    });
+    expect(r.issues).toEqual([]);
+    expect(checked).toBe(true);
+  });
+
+  it.skipIf(!hasBrowser)("Trivia battle: two players get the same questions, both scores show live, and the round ends with a winner", async () => {
+    let checked = false;
+    const r = await runCheck(built("trivia-battle"), {
+      afterPlay: async (first) => {
+        const { ada, bo } = await startRoom(first);
+        const firstQuestion = async (p: Page) => (await p.locator("[data-game-area]").locator("..").locator("p.text-lg").innerText({ timeout: 10_000 })).trim();
+        expect(await firstQuestion(ada)).toBe(await firstQuestion(bo));
+        // Ada answers everything first; Bo sees her score move before answering.
+        for (let q = 1; q <= 10; q++) {
+          await ada.getByText("Question " + q + "/10").waitFor({ timeout: 5_000 });
+          await ada.locator("[data-game-area] button").first().click();
+        }
+        await ada.getByText(/Waiting for the others/).waitFor({ timeout: 5_000 });
+        await bo.locator("li", { hasText: "Ada" }).getByText(/done/).waitFor({ timeout: 10_000 });
+        for (let q = 1; q <= 10; q++) {
+          await bo.getByText("Question " + q + "/10").waitFor({ timeout: 5_000 });
+          await bo.locator("[data-game-area] button").nth(1).click();
+        }
+        await ada.getByText(/You win!|Bo wins/).waitFor({ timeout: 10_000 });
+        await bo.getByText(/You win!|Ada wins/).waitFor({ timeout: 10_000 });
+        await ada.getByRole("button", { name: "Rematch" }).waitFor({ timeout: 5_000 });
+        checked = true;
+      },
+    });
+    expect(r.issues).toEqual([]);
+    expect(checked).toBe(true);
+  });
+
+  // A cheap phone: a touch screen and a CPU four times slower. The room games must still play and judge cleanly.
+  for (const id of ["four-in-a-row", "trivia-battle"]) {
+    it.skipIf(!hasBrowser)(`${id}: plays with no issues on a slow touch phone`, async () => {
+      const r = await runCheck(built(id), { phone: { cpuSlowdown: 4 } });
+      expect(r.ran, r.note).toBe(true);
+      expect(r.issues).toEqual([]);
+      expect(r.note).toMatch(/turns game, \d+ moves, played \d+ rounds?/);
+    });
+  }
+
+  it.skipIf(!hasBrowser)("Four in a row: a copy whose columns do nothing is caught", async () => {
+    const dead = await runCheck(built("four-in-a-row", edit("src/play/Board.tsx", "onClick={() => onDrop(col)}", "onClick={() => undefined}")));
+    expect(dead.issues.map((i) => i.message).join(" ")).toMatch(/never accepted a move/);
   });
 });

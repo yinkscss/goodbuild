@@ -4,6 +4,7 @@ import { kitById, withKit } from "../kits/index";
 import { brickBreaker } from "./brick-breaker";
 import { caveFlyer } from "./cave-flyer";
 import { catchDodge } from "./catch-dodge";
+import { fourInARow } from "./four-in-a-row";
 import { kartTrack } from "./kart-track";
 import { laneRacer } from "./lane-racer";
 import { matchGrid } from "./match-grid";
@@ -13,6 +14,7 @@ import { quickQuiz } from "./quick-quiz";
 import { runner3d } from "./runner-3d";
 import { rhythmLanes } from "./rhythm-lanes";
 import { skyRings } from "./sky-rings";
+import { triviaBattle } from "./trivia-battle";
 import { wordHunt } from "./word-hunt";
 
 /**
@@ -45,9 +47,11 @@ export interface GameTemplate {
    * or social game; every other template is one player, and parseGameBrief drops it for such a game.
    */
   multiplayer?: boolean;
+  /** Collections it needs in src/lib/dataRules.json (a room's rooms, seats and moves), added if missing. */
+  rules?: Record<string, unknown>;
 }
 
-export const GAME_TEMPLATES: GameTemplate[] = [laneRacer, catchDodge, caveFlyer, brickBreaker, matchGrid, quickQuiz, runner3d, kartTrack, mazeEscape, skyRings, wordHunt, rhythmLanes, platformHop];
+export const GAME_TEMPLATES: GameTemplate[] = [laneRacer, catchDodge, caveFlyer, brickBreaker, matchGrid, quickQuiz, runner3d, kartTrack, mazeEscape, skyRings, fourInARow, triviaBattle, wordHunt, rhythmLanes, platformHop];
 
 /** Safe, small descriptions for the app's template picker. Keep game source files on the server. */
 export function gameTemplateStarters() {
@@ -134,15 +138,18 @@ export function withGameTemplate(files: Record<string, string>, template: GameTe
       .replace("const board = useLeaderboard();", "const board = useLeaderboard({ chain: miniPayBoard });")
       .replace("\nexport default function Game()", "\n// Inside MiniPay scores go to the leaderboard contract: MiniPay allows no sign-in signature.\nconst miniPayBoard = gameBoard(GameBoardAbi, GameBoardAddress[chain.id]);\n\nexport default function Game()");
   }
-  if (template.leaderboard) {
+  const needed: Record<string, unknown> = { ...(template.rules ?? {}) };
+  if (template.leaderboard) needed.scores = (JSON.parse("{" + SCORES_RULE_JSON + "}") as { scores: unknown }).scores;
+  if (Object.keys(needed).length) {
     let rules: { collections?: Record<string, unknown> } & Record<string, unknown> = {};
     try {
       rules = JSON.parse(out["src/lib/dataRules.json"] ?? "{}") as typeof rules;
     } catch {
       rules = {};
     }
-    const scores = (JSON.parse("{" + SCORES_RULE_JSON + "}") as { scores: unknown }).scores;
-    if (!rules.collections?.scores) out["src/lib/dataRules.json"] = JSON.stringify({ ...rules, collections: { ...(rules.collections ?? {}), scores } }, null, 2) + "\n";
+    // Only the ones missing: a collection the person already has keeps its own rule.
+    const missing = Object.entries(needed).filter(([name]) => !rules.collections?.[name]);
+    if (missing.length) out["src/lib/dataRules.json"] = JSON.stringify({ ...rules, collections: { ...(rules.collections ?? {}), ...Object.fromEntries(missing) } }, null, 2) + "\n";
   }
   return out;
 }
