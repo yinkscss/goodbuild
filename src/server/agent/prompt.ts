@@ -75,10 +75,14 @@ export const OPEN_APP_TOOL = fn("open_app", "Build the app and open it in a real
   route: { type: "string" },
 }, []);
 
+export const RUN_ACCEPTANCE_TOOL = fn("run_acceptance", "Run the spec's acceptance flows against the built app in a real browser, each on a fresh page. Returns each flow with pass or fail, the step that failed and what the page showed there. Give flow to run only the flows whose name contains it. Run it when the front end is done, fix what fails, and run it again.", {
+  flow: { type: "string" },
+}, []);
+
 const V2_RUN_CHECKS = fn("run_checks", "Run every GoodBuild check on the project as it is now: contracts compiled and tested, the app's imports and types, and the built app opened in a browser. Use it last, before you reply.", {}, []);
 
 /** v2 build tools: v1's, with run_checks uncapped and the finer checks added. */
-export const V2_BUILD_TOOLS: ToolSpec[] = [...BUILD_TOOLS.map((t) => (t.function.name === "run_checks" ? V2_RUN_CHECKS : t)), RUN_TESTS_TOOL, OPEN_APP_TOOL];
+export const V2_BUILD_TOOLS: ToolSpec[] = [...BUILD_TOOLS.map((t) => (t.function.name === "run_checks" ? V2_RUN_CHECKS : t)), RUN_TESTS_TOOL, OPEN_APP_TOOL, RUN_ACCEPTANCE_TOOL];
 
 /** The spec call's tools (D152): read the project, read guides, write the spec. No edits. */
 export const SPEC_TOOLS: ToolSpec[] = [
@@ -205,7 +209,7 @@ ${FOLLOW_UP}`
         ? `You are in BUILD MODE. Work until the app does what was asked, then reply:
 1. If ${SPEC_PATH} is in the context, it is the plan: build exactly that, and skip set_plan unless you need its guides. Otherwise call set_plan once with a short summary, steps and the guides this work needs (skip it when you are only answering a question).
 2. Follow the server delivery contract when present. Prefer edit_file on existing files; create_file for new ones. On a first build, replace src/App.tsx completely unless the context identifies a code-seeded template; for those, adapt the supplied composition and interactions. One file per create_file call, each under about 250 lines (split big contracts and pages); a response that is too long gets cut off and the file is lost. Don't write text between tool calls; the user only sees your final reply. Never repeat an edit that already succeeded.
-3. Check your own work, as often as it takes: after contracts or tests, run_tests until they pass; after the front end, open_app (and open_app with a route for each other page) and fix every crash and anything the outline shows is missing or wrong; at the end, run_checks once. Fix the cause, never weaken a test to make it pass. Kits and starter pieces are there to help; use them when they fit, build your own when they don't.
+3. Check your own work, as often as it takes: after contracts or tests, run_tests until they pass; after the front end, open_app (and open_app with a route for each other page) and fix every crash and anything the outline shows is missing or wrong; when the spec has acceptance flows, run_acceptance and fix what fails; at the end, run_checks once. Fix the cause, never weaken a test to make it pass. Kits and starter pieces are there to help; use them when they fit, build your own when they don't.
 4. Then reply to the user in 1-3 plain sentences (never use em dashes; use commas or full stops): what you built or changed and anything they should know (for example constructor arguments they'll be asked for at deploy). No markdown headings, no code. Do not say whether the code compiled, ran or was tested: GoodBuild shows the user those results itself.
 ${FOLLOW_UP}
 GoodBuild checks everything again when you reply, and sends back anything that still fails.`

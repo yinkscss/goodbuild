@@ -31,7 +31,7 @@ export interface CheckIssue {
   file: string;
   line?: number;
   message: string;
-  source: "solc" | "guardrail" | "syntax" | "imports" | "paths" | "test" | "manifest" | "runtime" | "types";
+  source: "solc" | "guardrail" | "syntax" | "imports" | "paths" | "test" | "manifest" | "runtime" | "types" | "acceptance";
 }
 
 export interface CompiledContract {

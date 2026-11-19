@@ -42,5 +42,13 @@ export function harnessLimits(env: Record<string, string | undefined> = process.
   };
 }
 
+/**
+ * What failing acceptance flows do (D152): "warn" (default) logs them and shows them to the builder; "enforce"
+ * sends them to the fix loop like any other failed check.
+ */
+export function acceptanceMode(env: Record<string, string | undefined> = process.env): "warn" | "enforce" {
+  return (env.ACCEPTANCE ?? "").trim().toLowerCase() === "enforce" ? "enforce" : "warn";
+}
+
 /** Requests that touch a project's contracts: these get a spec and a Sonnet contracts phase (D152). */
 export const CONTRACT_WORK = /\b(?:contract|stake|staking|token|escrow|payment|pay|on.?chain|mint|swap|vault|pool|withdraw|deposit|fee|reward|vote|voting|treasury|allowance|supply)s?\b|G\$/i;

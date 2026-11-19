@@ -24,7 +24,8 @@ import { HISTORY_WINDOW, memoryBlock, updateMemory, type Memory, type MemoryMess
 import { MODEL_IDS, TIER_FOR, ModelUnavailableError, type ChatMessage, type ModelClient, type ModelEvent, type ModelTier, type ToolCall, type UserPart } from "./model";
 import { INTAKE_MAX_TOKENS, INTAKE_PROMPT, PLAN_ASK_TOOL_NAME, askedJustBefore, fallbackIntake, intakeTools, intakeContext, isGameRequest, latestIntake, parseIntake, parsePlanQuestions, planBrief } from "./plan-intake";
 import { BUILD_TOOLS, SPEC_TOOLS, V2_BUILD_TOOLS, contextWithPicks, planTools, systemPrompt } from "./prompt";
-import { CONTRACT_WORK, SPEC_MAX_ROUNDS, harnessLimits, usesHarnessV2 } from "./harness";
+import { CONTRACT_WORK, SPEC_MAX_ROUNDS, acceptanceMode, harnessLimits, usesHarnessV2 } from "./harness";
+import { acceptanceIssues, acceptanceSummary, formatFlowResults, type FlowResult } from "./acceptance";
 import { SPEC_PATH, readSpec, specRequest, type AppSpec } from "./spec";
 import { requestView } from "./request-view";
 import { checkpoint, claimTurn, loadFiles, recordUsage, releaseTurn } from "./store";
@@ -157,11 +158,20 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
   const lint = (files: Record<string, string>) => lintWith(files, { assets: assetNames });
   const openWith = deps.runCheck ?? (runCheckEnabled() ? runCheck : undefined);
   let chainId: number | undefined;
+  /** v2 (D152): the run check also runs the spec's acceptance flows; set once the setup says v2. */
+  let acceptanceOn = false;
+  /** The flows' results from the latest run check, for run_checks to show when they fail (ACCEPTANCE=warn). */
+  let lastAcceptance: FlowResult[] | undefined;
   const open = openWith ? async (files: Record<string, string>) => {
-    const result = await openWith(files, { assets: assetNames, chainId, ...(delivery && job.deliveryIndex !== undefined ? { delivery: { id: delivery.milestones[job.deliveryIndex].id, goal: delivery.goal, verifyWallet: delivery.verified?.includes("wallet") } } : {}) });
+    const flows = acceptanceOn ? readSpec(files)?.acceptance ?? [] : [];
+    const result = await openWith(files, { assets: assetNames, chainId, ...(delivery && job.deliveryIndex !== undefined ? { delivery: { id: delivery.milestones[job.deliveryIndex].id, goal: delivery.goal, verifyWallet: delivery.verified?.includes("wallet") } } : {}), ...(flows.length ? { acceptance: { flows } } : {}) });
     runtimeRan = result.ran;
-    deliveryVerified = result.deliveryVerified === true;
-    return result;
+    lastAcceptance = result.acceptance;
+    const failing = result.acceptance ? acceptanceIssues(result.acceptance) : [];
+    if (result.acceptance) log(`acceptance: ${acceptanceSummary(result.acceptance)}${failing.length && acceptanceMode() === "warn" ? " (warn: not blocking)" : ""}`);
+    const enforce = failing.length > 0 && acceptanceMode() === "enforce";
+    deliveryVerified = result.deliveryVerified === true && !enforce;
+    return enforce ? { ...result, issues: [...result.issues, ...failing] } : result;
   } : undefined;
   const reviewOn = (deps.review ?? reviewEnabled()) && Boolean(openWith);
   const typesMode = deps.typeCheckMode ?? (deps.typeCheck ? "enforce" : typeCheckMode());
@@ -255,6 +265,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     // Harness v2 (D152): spec, contracts and front end by different models, the builder checks its own work.
     const v2 = setup.harness === "v2" && input.mode === "build" && !intake;
     const limits = v2 ? harnessLimits() : { maxCalls: MAX_CALLS, maxRounds: MAX_TOOL_ROUNDS_PER_PHASE, checkBudgetMs: 0 };
+    acceptanceOn = v2;
     const convo: ChatMessage[] = [{ role: "system", content: intake ? INTAKE_PROMPT : systemPrompt(input.mode, setup.canAsk === true, v2) }, ...rehydrate(setup.prefix, images)];
     // The tools of the phase that is running (v2's spec call has its own).
     let tools = intake ? intakeTools(setup.request) : input.mode === "plan" ? planTools(setup.canAsk === true) : v2 ? V2_BUILD_TOOLS : BUILD_TOOLS;
@@ -506,6 +517,10 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
             convo.push({ role: "tool", tool_call_id: call.id, content: await openForTheBuilder(stringArg(call, "route")) });
             continue;
           }
+          if (v2 && call.name === "run_acceptance") {
+            convo.push({ role: "tool", tool_call_id: call.id, content: await acceptanceForTheBuilder(stringArg(call, "flow")) });
+            continue;
+          }
           // Plan mode's own questions (D103): shown as cards, and the turn ends so the answers can start the plan.
           if (call.name === PLAN_ASK_TOOL_NAME) {
             const asked = input.mode === "plan" && setup.canAsk && !record.intake ? parsePlanQuestions(call.arguments) : null;
@@ -628,11 +643,15 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       keepTheme();
       log(v2 ? `· run_checks (${toolChecks})` : `· run_checks (${toolChecks} of ${MAX_TOOL_CHECKS})`);
       const started = Date.now();
+      lastAcceptance = undefined;
       const report = await runChecks(ws.files, compile, lint, step, log, `check${toolChecks}`, contractOptions, runContractTests, stopIfRequested, open, types);
       checkMs += Date.now() - started;
       checked = { key: filesKey(ws.files), report };
       latestReport = report;
       const found = [...report.errors, ...(report.notes ?? [])];
+      // ACCEPTANCE=warn (D152): failing flows don't block the build, but the builder sees them and can fix them.
+      const flowsFailing = acceptanceMode() === "warn" ? ((lastAcceptance as FlowResult[] | undefined) ?? []).filter((r) => r.status === "fail") : [];
+      if (flowsFailing.length) return `${found.length ? `The checks found problems:\n${formatIssues(found)}\n\n` : ""}These acceptance flows from the spec fail (they show what doesn't work yet; fix the app, then run_acceptance):\n${formatFlowResults(flowsFailing)}`;
       if (!found.length) return "All checks pass. Don't run them again unless you edit more files.";
       return `${report.ok ? "Nothing blocks the build, but these are worth fixing" : "The checks found problems"}. Fix them with edit_file (read a file before editing it), then run_checks again if you changed more than a line or two:\n${formatIssues(found)}`;
     };
@@ -689,24 +708,51 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       }
     };
 
+    /** The project as the browser checks open it: its contracts' ABI modules added, or why it can't be opened yet. */
+    const filesToOpen = async (): Promise<{ files: Record<string, string> } | { problem: string }> => {
+      keepTheme();
+      let compiledContracts: CheckReport["contracts"] = [];
+      if (hasContractsIn(ws.files)) {
+        stopIfRequested();
+        const compiled = await compile(ws.files, contractOptions);
+        if (!compiled.ok) return { problem: `The contracts don't compile, so the app can't be opened with them. Fix these first (run_tests shows them too):\n${formatIssues(compiled.errors)}` };
+        compiledContracts = compiled.contracts;
+      }
+      const app = lint(ws.files);
+      if (!app.ok) return { problem: `The app can't be built yet. Fix these first:\n${formatIssues(app.errors)}` };
+      stopIfRequested();
+      return { files: withContractModules(ws.files, compiledContracts) };
+    };
+
+    /** v2's run_acceptance (D152): the spec's flows against the built app, with the failing step and what the page showed. */
+    const acceptanceForTheBuilder = async (only: string): Promise<string> => {
+      if (!openWith) return "run_acceptance isn't available on this server. Use run_checks.";
+      const flows = readSpec(ws.files)?.acceptance ?? [];
+      if (!flows.length) return "The spec has no acceptance flows to run.";
+      if (checkMs >= limits.checkBudgetMs) return CHECK_BUDGET_USED;
+      const started = Date.now();
+      try {
+        const ready = await filesToOpen();
+        if ("problem" in ready) return ready.problem;
+        const result = await openWith(ready.files, { assets: assetNames, chainId, acceptance: { flows, only } });
+        if (!result.ran || !result.acceptance) return `The flows couldn't run here (${result.note}). Use run_checks instead.`;
+        log(`· run_acceptance${only ? ` "${only}"` : ""}: ${acceptanceSummary(result.acceptance)}`);
+        const crashes = result.issues.length ? `The app also had problems when it opened:\n${formatIssues(result.issues)}\n\n` : "";
+        return `${crashes}${formatFlowResults(result.acceptance)}`;
+      } finally {
+        checkMs += Date.now() - started;
+      }
+    };
+
     /** v2's open_app (D152): the built app in the run check's browser, its errors and an outline of the page. */
     const openForTheBuilder = async (route: string): Promise<string> => {
       if (!openWith) return "open_app isn't available on this server. Use run_checks: it checks the imports, syntax and types.";
       if (checkMs >= limits.checkBudgetMs) return CHECK_BUDGET_USED;
       const started = Date.now();
       try {
-        keepTheme();
-        let compiledContracts: CheckReport["contracts"] = [];
-        if (hasContractsIn(ws.files)) {
-          stopIfRequested();
-          const compiled = await compile(ws.files, contractOptions);
-          if (!compiled.ok) return `The contracts don't compile, so the app can't be opened with them. Fix these first (run_tests shows them too):\n${formatIssues(compiled.errors)}`;
-          compiledContracts = compiled.contracts;
-        }
-        const app = lint(ws.files);
-        if (!app.ok) return `The app can't be built yet. Fix these first:\n${formatIssues(app.errors)}`;
-        stopIfRequested();
-        const result = await openWith(withContractModules(ws.files, compiledContracts), { assets: assetNames, chainId, outline: { route } });
+        const ready = await filesToOpen();
+        if ("problem" in ready) return ready.problem;
+        const result = await openWith(ready.files, { assets: assetNames, chainId, outline: { route } });
         log(`· open_app${route ? ` ${route}` : ""}: ${result.note} (${(result.ms / 1000).toFixed(1)}s)`);
         if (!result.ran) return `The app couldn't be opened here (${result.note}). Use run_checks instead.`;
         const problems = result.issues.length ? `Problems:\n${formatIssues(result.issues)}` : "No crashes or console errors.";
@@ -1422,7 +1468,7 @@ function frontEndPhaseMessage(spec: AppSpec, contractNames: string[]): string {
     ? `\nThe contracts are written, tested and compiled: import { <Name>Abi, <Name>Address } from "./contracts" for ${contractNames.join(", ")} (read src/contracts/<Name>.ts for the exact functions). Don't change contracts/; if one is wrong, say so in your reply.`
     : "";
   return `FRONT END. Build what the spec describes, completely: every page, element and flow, in its visual direction.${contracts}
-The acceptance flows in the spec will be run in a real browser against what you build, so use the wording and roles they name. Check your work with open_app (each page) before you reply.
+The acceptance flows in the spec will be run in a real browser against what you build, so use the wording and roles they name. Check your work with open_app (each page) and run_acceptance before you reply.
 
 The spec (${SPEC_PATH}):
 ${JSON.stringify(spec, null, 2).slice(0, 12_000)}`;

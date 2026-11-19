@@ -1,3 +1,4 @@
+import { MAX_FLOWS, parseFlows, type Flow } from "./acceptance";
 import type { ToolSpec } from "./model";
 
 /**
@@ -7,16 +8,14 @@ import type { ToolSpec } from "./model";
  */
 export const SPEC_PATH = "src/spec.json";
 
-export type AcceptanceNeeds = "local" | "wallet" | "deployed";
-
 export interface AppSpec {
   summary: string;
   direction: string;
   pages: Array<{ route: string; purpose: string; elements: string[] }>;
   contracts: Array<{ name: string; purpose: string; state: string[]; functions: Array<{ name: string; who: string; does: string }>; events: string[]; invariants: string[] }>;
   data: Array<{ collection: string; rules: string }>;
-  /** Browser flows the checker runs (docs/HARNESS_V2_PLAN.md WS3). Steps are validated by acceptance.ts. */
-  acceptance: Array<{ name: string; needs: AcceptanceNeeds; steps: unknown[] }>;
+  /** Browser flows the checker runs (docs/HARNESS_V2_PLAN.md WS3), validated by acceptance.ts. */
+  acceptance: Flow[];
   outOfScope: string[];
 }
 
@@ -81,11 +80,10 @@ export function parseSpec(raw: Record<string, unknown>): { ok: true; spec: AppSp
   }));
   const bad = contracts.find((c) => !/^[A-Z][A-Za-z0-9]*$/.test(c.name));
   if (bad) return { ok: false, error: `Contract names are PascalCase and become the file name: "${bad.name}" isn't.` };
-  const acceptance = objects(raw.acceptance, 8).map((a) => ({
-    name: text(a.name, 120),
-    needs: (["local", "wallet", "deployed"].includes(String(a.needs)) ? a.needs : "local") as AcceptanceNeeds,
-    steps: Array.isArray(a.steps) ? a.steps.slice(0, 20) : [],
-  })).filter((a) => a.name && a.steps.length);
+  // A flow that can't run is sent back to the spec call to fix while it still has the plan in mind.
+  const { flows: acceptance, problems } = parseFlows(Array.isArray(raw.acceptance) ? raw.acceptance : []);
+  if (problems.length) return { ok: false, error: `Some acceptance flows can't run: ${problems.slice(0, 6).join("; ")}.` };
+  if (Array.isArray(raw.acceptance) && raw.acceptance.length > MAX_FLOWS) return { ok: false, error: `At most ${MAX_FLOWS} acceptance flows.` };
   return {
     ok: true,
     spec: {
@@ -135,7 +133,7 @@ export function specRequest(hasContracts: boolean, contractsAllowed: boolean): s
     contractsAllowed
       ? `Contracts: list each one the app needs now with its state, every function and who may call it, its events, and its invariants (each invariant becomes a contract test). One focused contract per file; keep each under 24 KB of bytecode. ${hasContracts ? "The project already has contracts: describe them as they should be after this change." : "Leave contracts empty when the app needs no on-chain state or payments."}`
       : "Contracts: leave them empty. The delivery contract keeps on-chain work for a later milestone.",
-    'Acceptance: up to 8 short browser flows that prove the main things work, written before the interface exists, so name what a person sees: visible text and roles, the way the pages you planned will word them. Steps: {"goto": "/route"}, {"click": {"role": "button", "name": "Send tip"}} or {"click": {"text": "..."}}, {"fill": {"label": "Amount"}, "value": "50"}, {"press": "Enter"}, {"expect": {"text": "..."}}, {"expect": {"hidden": "..."}}, {"expect": {"route": "/about"}}, {"wait": 500}, {"connectWallet": true}. Set needs to wallet when a flow needs a connected wallet, and to deployed when it needs a live contract (before deploy the app shows its "deploy to go live" state, which a local flow can check).',
+    'Acceptance: up to 8 short browser flows that prove the main things work, written before the interface exists, so name what a person sees: visible text and roles, the way the pages you planned will word them. Steps: {"goto": "/route"}, {"click": {"role": "button", "name": "Send tip"}} or {"click": {"text": "..."}}, {"fill": {"label": "Amount"}, "value": "50"} (or {"placeholder": "..."}, {"testid": "..."} for a data-testid), {"press": "Enter"}, {"expect": {"text": "..."}}, {"expect": {"hidden": "..."}}, {"expect": {"route": "/about"}}, {"wait": 500}, {"connectWallet": true}. Set needs to wallet when a flow needs a connected wallet, and to deployed when it needs a live contract (before deploy the app shows its "deploy to go live" state, which a local flow can check).',
     "Ambitious is fine: plan the app that was asked for, not a smaller safer one, and leave out only what the delivery contract defers.",
   ].join("\n\n");
 }

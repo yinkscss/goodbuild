@@ -264,3 +264,93 @@ describe("runTurn with harness v2", { timeout: 120_000 }, () => {
     expect(record.log).not.toContain("harness: v2 (D152)");
   });
 });
+
+describe("acceptance flows in a v2 build (D152 PR 2)", { timeout: 120_000 }, () => {
+  let db: Db;
+  let userId: string;
+  let projectId: string;
+  let queuedId: string;
+  const saved = { HARNESS_V2: process.env.HARNESS_V2, ACCEPTANCE: process.env.ACCEPTANCE };
+
+  beforeEach(async () => {
+    db = await createTestDb();
+    const user = await signInUser(db, { wallet: ADMIN, walletKind: "external", attestation: { ageOk: true, notUsPerson: true } });
+    userId = user.id;
+    const p = await createProjectFromPrompt(db, userId, { prompt: "A landing page for our football club", network: "celo-sepolia" });
+    projectId = p.id;
+    const [m] = await db.select().from(messages).where(eq(messages.projectId, projectId));
+    queuedId = m.id;
+    process.env.HARNESS_V2 = "on";
+  });
+  afterEach(() => {
+    for (const [k, v] of Object.entries(saved)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  });
+
+  const spec = { ...SPEC, contracts: [] };
+  const withTips = "export default function App() { return <main><h1>Tips</h1></main>; }\n";
+  const withoutTips = "export default function App() { return <main><h1>Hello</h1></main>; }\n";
+  // A run check that passes the spec's one flow only when the page says "Tips".
+  const seen: Array<{ only?: string; flows: number }> = [];
+  const flowCheck = async (files: Record<string, string>, opts: { acceptance?: { flows: unknown[]; only?: string } } = {}): Promise<RunCheckResult> => {
+    if (opts.acceptance) seen.push({ only: opts.acceptance.only, flows: opts.acceptance.flows.length });
+    const pass = files["src/App.tsx"]?.includes("Tips");
+    return {
+      ran: true,
+      issues: [],
+      note: "opened the app with no errors",
+      ms: 1,
+      ...(opts.acceptance ? { acceptance: [pass ? { name: "Home loads", needs: "local" as const, status: "pass" as const } : { name: "Home loads", needs: "local" as const, status: "fail" as const, step: 2, reason: 'step 2 (expect text "Tips" to show) failed: timeout', outline: "route: /\nh1: Hello" }] } : {}),
+    };
+  };
+
+  it("warn: shows failing flows to the builder, through run_acceptance and run_checks, without blocking", async () => {
+    seen.length = 0;
+    const { client, requests } = scriptedModel([
+      { tools: [{ name: "write_spec", args: spec }] },
+      { tools: [{ name: "create_file", args: { path: "src/App.tsx", content: withoutTips } }] },
+      { tools: [{ name: "run_acceptance", args: { flow: "home" } }] },
+      { tools: [{ name: "run_checks", args: {} }] },
+      { text: "Built the page." },
+    ]);
+    const record = await runTurn({ db, model: client, runCheck: flowCheck }, { projectId, userId, mode: "build", userMessageId: queuedId }, () => {});
+    const results = (i: number) => requests[i].messages.filter((m) => m.role === "tool").map((m) => String(m.content));
+    expect(results(3).some((c) => c.startsWith("FAIL Home loads: step 2") && c.includes("What the page showed:\nroute: /"))).toBe(true);
+    expect(results(4).some((c) => c.includes("These acceptance flows from the spec fail"))).toBe(true);
+    expect(seen[0]).toEqual({ only: "home", flows: 1 });
+    expect(record.status).toBe("ready");
+    expect(record.log.some((l) => l.startsWith("acceptance: 0 of 1 flows pass") && l.endsWith("(warn: not blocking)"))).toBe(true);
+  });
+
+  it("enforce: a failing flow goes to the fix loop, back to the model that wrote the page", async () => {
+    process.env.ACCEPTANCE = "enforce";
+    const { client, requests } = scriptedModel([
+      { tools: [{ name: "write_spec", args: spec }] },
+      { tools: [{ name: "create_file", args: { path: "src/App.tsx", content: withoutTips } }] },
+      { text: "Built the page." },
+      { tools: [{ name: "create_file", args: { path: "src/App.tsx", content: withTips } }] },
+      { text: "Fixed the heading." },
+    ]);
+    const record = await runTurn({ db, model: client, runCheck: flowCheck }, { projectId, userId, mode: "build", userMessageId: queuedId }, () => {});
+    expect(record.status).toBe("ready");
+    expect(requests.map((r) => r.tier)).toEqual(["strong", "cheap", "cheap", "cheap", "cheap"]);
+    expect(String(requests[3].messages.at(-1)?.content)).toContain('[acceptance] Acceptance flow "Home loads"');
+    expect(record.steps.find((s) => s.id === "fix:1")).toMatchObject({ status: "done" });
+    const files = await loadFiles(db, projectId);
+    expect(files["src/App.tsx"]).toBe(withTips);
+  });
+
+  it("v1 never runs acceptance flows, even with a spec file", async () => {
+    process.env.HARNESS_V2 = "off";
+    seen.length = 0;
+    const { client } = scriptedModel([
+      { tools: [{ name: "create_file", args: { path: "src/App.tsx", content: withoutTips } }] },
+      { text: "Built it." },
+    ]);
+    const record = await runTurn({ db, model: client, runCheck: flowCheck }, { projectId, userId, mode: "build", userMessageId: queuedId }, () => {});
+    expect(record.status).toBe("ready");
+    expect(seen).toEqual([]);
+  });
+});

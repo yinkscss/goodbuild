@@ -6,7 +6,8 @@ import type { Browser, BrowserContext, Page, Route } from "playwright-core";
 import { buildPublishedApp, moduleStarts, PublishBuildError, type PublishedFile } from "@/server/publish/build";
 
 import type { CheckIssue } from "./checks";
-import { checkControls, GAME_CHECK_SPEED, gameCanvas, gameCheckScript, insideMiniPay, judgeRounds, playRounds, probeReport, standInWalletScript, walletAndBoard } from "./game-check";
+import { CHECK_WALLET_SHORT, checkControls, GAME_CHECK_SPEED, gameCanvas, gameCheckScript, insideMiniPay, judgeRounds, pickBrowserWallet, playRounds, probeReport, standInWalletScript, walletAndBoard } from "./game-check";
+import { ALL_FLOWS_MS, parseFlows, runFlows, type FlowResult } from "./acceptance";
 import { KITS, kitIdsOf } from "./kits/registry";
 
 /** Every file a kit ships, so the game's own code can be told apart from GoodBuild's. */
@@ -48,6 +49,8 @@ export interface RunCheckOptions {
   screenshots?: boolean;
   /** Also return a text outline of a page (D152: the builder's open_app tool). route defaults to the home page. */
   outline?: { route?: string };
+  /** Run the spec's acceptance flows (D152), each on a fresh page; `only` runs the flows whose name contains it. */
+  acceptance?: { flows: unknown[]; only?: string };
   timeoutMs?: number;
   /** Tests: a browser to use instead of the shared one. */
   browser?: Browser;
@@ -71,6 +74,8 @@ export interface RunCheckResult {
   screenshots?: Array<{ width: number; png: Uint8Array; shows?: "start" | "playing" }>;
   /** What the page shows, as text: headings, buttons, links, inputs and the start of its text (options.outline). */
   outline?: string;
+  /** Each acceptance flow's result (options.acceptance). Reported, never turned into issues here: the runner decides. */
+  acceptance?: FlowResult[];
 }
 
 export const PHONE = { width: 375, height: 812 };
@@ -545,6 +550,32 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
     }
   }
 
+  // The spec's acceptance flows (D152), each on its own fresh page in this context, so the app is served the same way.
+  let acceptance: FlowResult[] | undefined;
+  if (options.acceptance) {
+    const { flows, problems } = parseFlows(options.acceptance.flows);
+    acceptance = [
+      ...problems.map((reason) => ({ name: "invalid flow", needs: "local" as const, status: "fail" as const, reason })),
+      ...(await runFlows(flows, {
+        newPage: async (wallet) => {
+          const p = await context.newPage();
+          if (wallet) await p.addInitScript(standInWalletScript({ miniPay: false, chainId: options.chainId ?? 11142220 }));
+          return p;
+        },
+        open,
+        connectWallet: async (p) => {
+          const button = p.getByRole("button", { name: /connect( a| your)? wallet/i }).first();
+          if (!(await button.isVisible().catch(() => false))) return "there is no Connect wallet button";
+          await button.click({ timeout: 1_500 });
+          await pickBrowserWallet(p);
+          const shown = await p.waitForFunction((short) => document.body.innerText.includes(short), CHECK_WALLET_SHORT, { timeout: 3_000 }).then(() => true).catch(() => false);
+          return shown ? null : "the wallet connected but the page didn't show its address";
+        },
+        outline: (p) => p.evaluate(pageOutline),
+      }, options.acceptance.only)),
+    ];
+  }
+
   // The builder's own look at a page (D152). Before the issues are read, so a crash on that route is reported too.
   let outline: string | undefined;
   if (options.outline) {
@@ -612,7 +643,7 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
   }
   const opened = issues.length ? `${issues.length} problem${issues.length === 1 ? "" : "s"} when the app ran` : `opened ${routes.length === 1 ? "the app" : `${routes.length} pages`} with no errors`;
   const note = gameNotes.length ? `${opened}; ${gameNotes.filter(Boolean).join("; ")}` : opened;
-  return { ran: true, deliveryVerified: Boolean(deliveryVerified && !issues.length), issues, note, ...(screenshots ? { screenshots } : {}), ...(outline !== undefined ? { outline } : {}) };
+  return { ran: true, deliveryVerified: Boolean(deliveryVerified && !issues.length), issues, note, ...(screenshots ? { screenshots } : {}), ...(outline !== undefined ? { outline } : {}), ...(acceptance ? { acceptance } : {}) };
 }
 
 /** Runs in the page: what a person sees, as short lines (open_app, D152). Self-contained, it is serialised. */
@@ -667,7 +698,8 @@ export async function runCheck(files: Record<string, string>, options: RunCheckO
     const kits = kitIdsOf(files);
     context = await browser.newContext({ viewport: PHONE, hasTouch: Boolean(options.phone), serviceWorkers: "block", acceptDownloads: false, permissions: [] });
     const timeout = new Promise<Omit<RunCheckResult, "ms">>((resolve) => {
-      timer = setTimeout(() => resolve({ ran: false, issues: [], note: "skipped: the app took too long to open" }), options.timeoutMs ?? (kits.includes("game-2d") ? GAME_TIMEOUT_MS : DEFAULT_TIMEOUT_MS));
+      // Acceptance flows (D152) get their own time on top: ALL_FLOWS_MS bounds them.
+      timer = setTimeout(() => resolve({ ran: false, issues: [], note: "skipped: the app took too long to open" }), (options.timeoutMs ?? (kits.includes("game-2d") ? GAME_TIMEOUT_MS : DEFAULT_TIMEOUT_MS)) + (options.acceptance ? ALL_FLOWS_MS : 0));
     });
     const ticTacToe = options.delivery?.id === "interface" && /tic[- ]tac[- ]toe/i.test(options.delivery.goal);
     const game = ticTacToe ? false : options.game ?? (kits.includes("game-2d") || kits.includes("three-d"));

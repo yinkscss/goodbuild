@@ -1825,6 +1825,13 @@ The owner approved implementing all five parts of the first-build fix and openin
 - **PR 1 (built, 19 Nov 2026):** the flag, the spec call, the Sonnet contracts phase and the DeepSeek front-end phase, writer-first fixes, `run_tests` and `open_app` with a check-time budget, the v2 limits, history trimmed at phase boundaries, the cached tail of strong calls, cache writes billed, the v2 prompt and design rules, capability kits left to the builder, `require` allowed. Two changes from the plan:
   - No `TURN_SETUP_VERSION` bump: an optional `harness` field on the setup does the job, so turns running during the deploy resume as v1 instead of failing.
   - The upgradeable deploy check also allows `require`, or a v2 contract converted to upgradeable would be refused at deploy.
+- **PR 2 (built, 19 Nov 2026): acceptance flows.**
+  - `acceptance.ts` holds the flow language (`goto`, `click`, `fill`, `press`, `expect` text/hidden/route/locator, `wait`, `connectWallet`; locators by role and name, text, label, placeholder, testid) and `parseFlows`.
+  - The spec call gets a flow that can't run back as an error to fix; a flow with any problem is left out whole.
+  - The run check runs each flow on a fresh page in its own context: a stand-in wallet for `wallet` flows, `deployed` flows skipped, a crash during a flow is that flow's failure. Limits: 2 s a step, 20 s a flow, 60 s in all, added to the check's timeout.
+  - The builder has `run_acceptance` (optionally one flow by name). The final checks run the spec's flows too.
+  - `ACCEPTANCE=warn` (default) logs `acceptance: N of M flows pass` and shows failing flows in `run_checks`' answer. `enforce` adds them as `[acceptance]` issues, so they go to the fix loop and block the milestone's verification.
+  - v1 never runs flows.
 - **Also changes v1 billing:** cache writes are now billed at Anthropic's write rate (1.25x input) for every Sonnet call, and a paid call's hold allows for them. v1 already cached the system prompt and context, and those writes were billed as plain input before.
 - **Checked:** unit and scripted-runner tests (`harness-v2.test.ts`); every existing agent, pricing and credit test passes.
 - **Live smoke run, 19 Nov 2026, DeepSeek only:** a local production build with `HARNESS_V2=on`, the run check on and no Anthropic key, so every strong call fell back to `deepseek-flash`. Sonnet itself is still **UNVERIFIED**; that is the owner's canary.
