@@ -1832,6 +1832,7 @@ The owner approved implementing all five parts of the first-build fix and openin
   - The builder has `run_acceptance` (optionally one flow by name). The final checks run the spec's flows too.
   - `ACCEPTANCE=warn` (default) logs `acceptance: N of M flows pass` and shows failing flows in `run_checks`' answer. `enforce` adds them as `[acceptance]` issues, so they go to the fix loop and block the milestone's verification.
   - v1 never runs flows.
+  - **Live smoke run, DeepSeek only (19 Nov 2026):** the eval suite's `event-rsvp` scenario ($0.108, 289 s, no fix attempts). The spec had 4 pages and 8 acceptance flows, every one of which parsed. The builder opened four pages with `open_app`, ran `run_acceptance` (8 of 8 pass) and `run_checks`, and the final checks logged `acceptance: 8 of 8 flows pass`. Not yet seen live: a failing flow fixed through the loop (covered by the scripted test), and flows written by Sonnet.
 - **Also changes v1 billing:** cache writes are now billed at Anthropic's write rate (1.25x input) for every Sonnet call, and a paid call's hold allows for them. v1 already cached the system prompt and context, and those writes were billed as plain input before.
 - **Checked:** unit and scripted-runner tests (`harness-v2.test.ts`); every existing agent, pricing and credit test passes.
 - **Live smoke run, 19 Nov 2026, DeepSeek only:** a local production build with `HARNESS_V2=on`, the run check on and no Anthropic key, so every strong call fell back to `deepseek-flash`. Sonnet itself is still **UNVERIFIED**; that is the owner's canary.
