@@ -11,6 +11,7 @@ import { matchGrid } from "./match-grid";
 import { mazeEscape } from "./maze-escape";
 import { quickQuiz } from "./quick-quiz";
 import { runner3d } from "./runner-3d";
+import { saboteurParty } from "./saboteur-party";
 import { skyRings } from "./sky-rings";
 import { triviaBattle } from "./trivia-battle";
 
@@ -48,7 +49,7 @@ export interface GameTemplate {
   rules?: Record<string, unknown>;
 }
 
-export const GAME_TEMPLATES: GameTemplate[] = [laneRacer, catchDodge, caveFlyer, brickBreaker, matchGrid, quickQuiz, runner3d, kartTrack, mazeEscape, skyRings, fourInARow, triviaBattle];
+export const GAME_TEMPLATES: GameTemplate[] = [laneRacer, catchDodge, caveFlyer, brickBreaker, matchGrid, quickQuiz, runner3d, kartTrack, mazeEscape, skyRings, fourInARow, triviaBattle, saboteurParty];
 
 /** Safe, small descriptions for the app's template picker. Keep game source files on the server. */
 export function gameTemplateStarters() {
