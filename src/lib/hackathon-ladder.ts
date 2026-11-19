@@ -2,11 +2,14 @@ import { allocateHackathonRewards, REWARD_SLOTS } from "./hackathon-rewards";
 
 export type League = "Gold" | "Silver" | "Bronze";
 
-/** Leagues are decided by approvals only: 100+, 40+, 10+. They carry a badge, never money. */
+/** Approvals received for each league (D133). Lowered from 10/40/100 once approvals were capped at 3 each. */
+export const LEAGUE_AT = { Bronze: 5, Silver: 15, Gold: 30 } as const;
+
+/** Leagues are decided by approvals only. They carry a badge, never money. */
 export function leagueFor(approvals: number): League | null {
-  if (approvals >= 100) return "Gold";
-  if (approvals >= 40) return "Silver";
-  if (approvals >= 10) return "Bronze";
+  if (approvals >= LEAGUE_AT.Gold) return "Gold";
+  if (approvals >= LEAGUE_AT.Silver) return "Silver";
+  if (approvals >= LEAGUE_AT.Bronze) return "Bronze";
   return null;
 }
 
