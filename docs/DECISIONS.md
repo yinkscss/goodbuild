@@ -1747,6 +1747,46 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
   - 30 deals and 120 draws a minute per wallet in one app.
 - **UNVERIFIED:** on Postgres under real concurrency (the parallel-draw test ran on PGlite, which serialises), and on a published app in a real browser with a real wallet.
 
+### D142. A crew and saboteur party game template, on the room and the dealer (19 Nov 2026; PR 7 of D139)
+- Decided by: the owner (D139's plan). Built by Claude. Original throughout: shown as "Deep Station", an undersea research station with its own tasks, names and look. No other game's name, characters or art; a test checks the files for the best-known one.
+- **The game** (`saboteur-party`, 4 to 10 players):
+  - Roles come from the dealer (D141): one saboteur for 4 to 6 players, two for 7 to 10. Everyone knows how many, nobody knows who. The host deals once per round and puts the deal id in a signed move. Each player reads only their own role, and trusts only a deal whose receipt names the room's host.
+  - **Tasks:** the crew taps numbered tiles in order. Every task done wins it for the crew.
+  - **Sabotage:** the oxygen fails, and the crew has 30 s to fix it or the saboteurs win.
+  - **Knock-out:** a saboteur knocks someone out, at most every 30 s. That calls a **meeting**: 45 s to talk in the room and vote, or skip. The most votes puts a player out (a tie or skip puts nobody out). Whoever is voted out shows their role.
+  - **Endings:** the crew wins when every saboteur is out or every task is done. The saboteurs win when they equal the crew or the oxygen runs out.
+- **How it stays fair without a server referee:** knock-outs, sabotage, tasks and fixes go in an `events` collection whose fields are public but whose writer is not (D34 `public` fields with `read: ["writer"]`), so nobody sees who knocked someone out. Votes and shown roles are signed moves. Every screen works out the phase, who is out and who won from the same records with the same code (`station()` in `rules.ts`), using the server's record times.
+- **Play the computer:** you and four computer players with a random role. It's shorter (3 tasks each, 10 s meetings), and it's what the run check plays.
+- **Preview fix:** the preview's stand-in store now shows another writer's record by its public fields only, as the server does. Before this it showed nothing, so a game using public fields looked empty in the preview.
+- **Tests:**
+  - The rules on their own: a knock-out too early does nothing; a meeting, the vote and the reveal; a tie; sabotage fixed or not; all tasks done; the saboteurs equalling the crew; the role counts.
+  - Four players in a room on the preview: exactly one saboteur is dealt, each player sees only their own role, the knock-out calls a meeting on all four screens, and voting the saboteur out shows "The crew wins" everywhere.
+  - The app, type and run checks, with and without MiniPay, plus a slow touch phone and a copy whose task tiles do nothing.
+- **Limits:**
+  - A role someone shows when they're out is their own word: the dealer keeps hands private and has no reveal. Someone who leaves without showing theirs counts as crew after 10 s.
+  - The events' writers are hidden, but a modified client can still send one. That is the same "between friends" limit as every room game.
+  - A meeting's clock and the cooldowns are measured on each device against the server's record times, so they can be a few seconds apart.
+  - With polling, actions take up to 3 s to reach the other screens.
+- **UNVERIFIED:** on a real phone, on a published app with real signatures, and with a real model building from it.
+
+### D143. Card game templates: Solitaire, Higher or lower, Memory pairs and a shedding game on the dealer (19 Nov 2026; PR 8 of D139)
+- Decided by: the owner (D139's plan). Built by Claude. Original names and look throughout: GoodBuild's own card face (`src/cards/CardFace.tsx`, a white face, rank and suit sign, the theme's colours). Points only, never money or tokens (D4, D72); a test checks the card games for betting words.
+- **Shared:** `src/cards/cards.ts`. Cards are short strings ("QH", "10S"), so they fit the dealer's decks and records unchanged.
+- **Solitaire** (`solitaire`, "Patience Lane"): Klondike rules. Seven columns, foundations built up by suit from the ace, the deck turned three at a time, three passes. Tap a card to move it where it can go (a foundation first), which suits a phone. Scoring: 10 a card home, 5 a card turned in a column, 200 for the whole deck. The round ends when the player wins, is stuck, or presses End game. **No leaderboard (changed from the other one-player templates):** a round rarely ends without a player deciding to stop, so the check's bot could never post a score. It keeps the player's best on the device.
+- **Higher or lower** (`higher-lower`, "High Card Run"): 3 lives, a streak doubles the points and earns a skip, and the leaderboard is on.
+- **Memory pairs** (`memory-pairs`, "Pair Up"): 6 pairs, 16 tries. Points for each card turned for the first time, each pair, and tries left at the end. The leaderboard is on. It is a separate game from the match grid, which clears groups of tiles on a board.
+- **Shedding game** (`last-card`, "Last Card Out", 2 to 6): match the top card's suit or rank. An 8 goes on anything and calls the suit. Can't go? Draw one. First with no cards wins, and if the deck is empty and everyone passes, the fewest cards wins.
+  - In a room the host deals through the dealer (D141), draws the first card and posts it with the deal id. Each player reads only their own hand (dealt plus drawn, minus what they've played).
+  - Plays are public moves, replayed the same way on every screen (`replay` in `rules.ts`), and everyone's card counts come from those moves.
+  - Play the computer pits you against two computer players.
+- **Tests** (`templates.test.ts`):
+  - **The rules on their own:** Solitaire's deal, moves, scoring, passes, stuck and won; the shedding game's turns, wrong cards, the 8, draws, repeats and everyone passing.
+  - **Two players in a room on the preview** get 7 cards each with none in common, see the same top card, and a play or draw reaches the other screen and passes the turn.
+  - **Every game** passes the app, type and run checks, with and without MiniPay, and plays on a slow touch phone.
+  - **A broken copy** of Higher or lower is caught.
+- **Limits:** the shedding game shares the room's limits, so a move is a claim between friends. A modified client could play a card it doesn't hold; everyone's counts would show it at the end. Solitaire's tap-to-move picks the first legal column, with no drag to choose another.
+- **UNVERIFIED:** on a real phone, on a published app with real signatures, and with a real model building from them.
+
 ### D150. Genre templates, part 1: Word hunt, Rhythm lanes and Platform hop (19 Nov 2026; the genre step of D139)
 - Decided by: the owner (D139's plan: "more genres"). Built by Claude. Numbered D150 so it can't collide with the other session building D139's PR 5 to PR 8 (room, dealer, saboteur, cards), which agreed to leave the genre templates to this one.
 - **Word hunt** (puzzle, letter buttons): today's grid (from `dailySeed`, the same for everyone) hides five words reading across or down; tap their letters, finish a word for a bonus that grows with words in a row, a wrong letter costs one of three lives, a hint lights a letter (another every two words). The word list shows each word's length so the hunt isn't blind. A wrong tap costing a life is what lets a random player (and the run check) finish a round quickly, and a right one scoring is what lets it post a score.

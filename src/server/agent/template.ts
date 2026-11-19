@@ -453,12 +453,20 @@ function previewPut<T>(collection: string, key: string, value: T, dealtTo?: stri
   return record;
 }
 
-/** In the preview you are the owner, so you see what the owner would. */
+/**
+ * In the preview you are the owner, so you see what the owner would. A record you can't read in full
+ * shows only its public fields, without who wrote it, as on the server.
+ */
 function previewVisible(collection: string, owner?: string): DbRecord[] {
   const rule = ruleOf(collection);
   return previewRecords()
     .filter((r) => r.collection === collection)
-    .map((r) => (rule.read.some((x) => x === "anyone" || x === "owner" || (x === "signed-in" && previewSubject()) || (x === "writer" && r.owner === (previewSubject() ?? PREVIEW_ANON))) ? r : null))
+    .map((r): Stored | null => {
+      if (rule.read.some((x) => x === "anyone" || (x === "owner" && !rule.dealt) || (x === "signed-in" && previewSubject()) || (x === "writer" && r.owner === (previewSubject() ?? PREVIEW_ANON)))) return r;
+      const v = r.value as Record<string, unknown> | null;
+      if (!rule.public.length || !v || typeof v !== "object" || Array.isArray(v)) return null;
+      return { ...r, owner: null, value: Object.fromEntries(rule.public.filter((f) => f in v).map((f) => [f, v[f]])) };
+    })
     .filter((r): r is Stored => r !== null && (!owner || r.owner === owner.toLowerCase()));
 }
 

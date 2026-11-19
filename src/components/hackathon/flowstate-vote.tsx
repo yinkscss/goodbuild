@@ -142,6 +142,19 @@ export function FlowstateVote({ onConfirmed }: { onConfirmed?: () => void }) {
   async function acceptExisting() {
     await perform("Checking your vote…", confirmExisting);
   }
+  async function checkEligibilityAgain() {
+    await perform("Checking your available votes…", async () => {
+      const next: FlowstateStatus = await request();
+      applyStatus(next);
+      if (
+        next.verified &&
+        next.registered &&
+        BigInt(next.available) > BigInt(0)
+      ) {
+        setConfirmed(false);
+      }
+    });
+  }
   async function signer() {
     if (!wallet) throw new Error("Connect with your email first.");
     await auth.switchChain(FLOWSTATE_CHAIN_ID);
@@ -262,6 +275,17 @@ export function FlowstateVote({ onConfirmed }: { onConfirmed?: () => void }) {
           {confirmed ? (
             <div className="space-y-4 text-center">
               <p className="text-lg font-semibold">✓ Thank you for voting!</p>
+              {status && BigInt(status.available) <= BigInt(0) && (
+                <p className="text-sm">You have no votes available right now.</p>
+              )}
+              <button
+                type="button"
+                className={`${styles.btnV} w-full`}
+                disabled={Boolean(busy)}
+                onClick={() => void checkEligibilityAgain()}
+              >
+                Check for new eligibility to vote again
+              </button>
               <button type="button" className={`${styles.btnV} w-full`} onClick={() => setOpen(false)}>
                 Continue
               </button>
