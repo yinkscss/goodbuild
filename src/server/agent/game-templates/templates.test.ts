@@ -114,6 +114,27 @@ describe("game templates (D114)", { timeout: 180_000 }, () => {
     expect(dead.issues.map((i) => i.message).join(" ")).toMatch(/never accepted a move/);
   });
 
+  // D150: the genre templates, each with a broken copy the check must catch.
+  it.skipIf(!hasBrowser)("Word hunt: judged as a puzzle by its letters, and a copy whose letters do nothing is caught", async () => {
+    const ok = await runCheck(built("word-hunt"));
+    expect(ok.note).toMatch(/puzzle game, \d+ moves/);
+    const dead = await runCheck(built("word-hunt", edit("src/play/Game.tsx", "onClick={() => tap(i)}", "onClick={() => undefined}")));
+    expect(dead.issues.map((i) => i.message).join(" ")).toMatch(/never accepted a move/);
+  });
+
+  it.skipIf(!hasBrowser)("Rhythm lanes: every kind it declares is seen, and a copy whose pad never moves is caught", async () => {
+    const ok = await runCheck(built("rhythm-lanes"));
+    for (const kind of ["bomb", "double", "slow"]) expect(ok.note).toContain(kind);
+    const stuck = await runCheck(built("rhythm-lanes", edit("src/play/Game.tsx", "g.x += (laneX(g.lane) - g.x) * Math.min(1, dt * 22);", "")));
+    expect(stuck.issues.map((i) => i.message).join(" ")).toMatch(/never moved the player/);
+  });
+
+  it.skipIf(!hasBrowser)("Platform hop: every kind it declares is seen", async () => {
+    const ok = await runCheck(built("platform-hop"));
+    expect(ok.issues).toEqual([]);
+    for (const kind of ["gap", "spike", "beetle", "shield", "double"]) expect(ok.note).toContain(kind);
+  });
+
   // D117: one broken copy per kind of control the new templates add, so the check is shown to catch each.
   it.skipIf(!hasBrowser)("Match grid: judged as a puzzle by its taps, and a copy whose tiles do nothing is caught", async () => {
     const ok = await runCheck(built("match-grid"));

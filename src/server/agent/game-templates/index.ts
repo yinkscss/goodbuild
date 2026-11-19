@@ -11,13 +11,16 @@ import { kartTrack } from "./kart-track";
 import { laneRacer } from "./lane-racer";
 import { matchGrid } from "./match-grid";
 import { memoryPairs } from "./memory-pairs";
+import { platformHop } from "./platform-hop";
 import { mazeEscape } from "./maze-escape";
 import { quickQuiz } from "./quick-quiz";
 import { runner3d } from "./runner-3d";
+import { rhythmLanes } from "./rhythm-lanes";
 import { saboteurParty } from "./saboteur-party";
 import { skyRings } from "./sky-rings";
 import { solitaire } from "./solitaire";
 import { triviaBattle } from "./trivia-battle";
+import { wordHunt } from "./word-hunt";
 
 /**
  * Game templates (D114): working, tested games the builder reshapes to the plan, instead of writing a
@@ -53,7 +56,7 @@ export interface GameTemplate {
   rules?: Record<string, unknown>;
 }
 
-export const GAME_TEMPLATES: GameTemplate[] = [laneRacer, catchDodge, caveFlyer, brickBreaker, matchGrid, quickQuiz, runner3d, kartTrack, mazeEscape, skyRings, fourInARow, triviaBattle, saboteurParty, solitaire, higherLower, memoryPairs, lastCard];
+export const GAME_TEMPLATES: GameTemplate[] = [laneRacer, catchDodge, caveFlyer, brickBreaker, matchGrid, quickQuiz, runner3d, kartTrack, mazeEscape, skyRings, fourInARow, triviaBattle, saboteurParty, solitaire, higherLower, memoryPairs, lastCard, wordHunt, rhythmLanes, platformHop];
 
 /** Safe, small descriptions for the app's template picker. Keep game source files on the server. */
 export function gameTemplateStarters() {
