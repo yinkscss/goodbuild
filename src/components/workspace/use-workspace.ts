@@ -213,6 +213,7 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
       if (attached.current === jobId) return;
       attached.current = jobId;
       let turn = emptyTurn(mode);
+      turn.record.jobId = jobId;
       setLive(turn);
       let after = -1;
       let failures = 0;
