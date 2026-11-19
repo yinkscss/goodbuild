@@ -295,7 +295,7 @@ function Registration() {
                 <Link className={styles.cta} href="/">
                   Start building →
                 </Link>
-                <Link className={styles.ghostLight} href="/home/hackathon#project">
+                <Link className={styles.ghostLight} href="/home/hackathon/project">
                   Submit or update your project
                 </Link>
                 {claim.status.deployPending && (

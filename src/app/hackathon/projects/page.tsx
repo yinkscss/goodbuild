@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ProjectGallery } from "@/components/hackathon/community";
+import { VoteList } from "@/components/hackathon/vote-list";
 import { styles } from "@/components/hackathon/styles";
 import "@/components/hackathon/hackathon.css";
 export const metadata = {
@@ -24,14 +24,14 @@ export default function Page() {
           <div className="hk-community-intro">
             <p>
               Explore every project, try a published app, and give it your
-              approval. The leaderboard updates as verified humans vote.
+              approval. Each verified person gets 3. The leaderboard updates as verified humans vote.
             </p>
             <Link className={styles.btnV} href="/hackathon/submit">
               Submit or update a project →
             </Link>
           </div>
         </div>
-        <ProjectGallery />
+        <VoteList />
       </main>
     </div>
   );
