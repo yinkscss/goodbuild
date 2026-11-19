@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { BASE_ALLOWED_DEPENDENCIES, dependenciesOf, packageJson } from "../template";
+import { BASE_ALLOWED_DEPENDENCIES, V2_PACKAGES, dependenciesOf, packageJson } from "../template";
 
 import { KITS, KIT_MARKER, kitIdsOf, kitMarker, kitsOf, type Kit } from "./registry";
 
@@ -28,9 +28,9 @@ function isSuperseded(kit: Kit, path: string, content: string): boolean {
   return Boolean(old?.length) && old!.includes(createHash("sha256").update(content).digest("hex"));
 }
 
-/** The packages this project may add: the base list, plus those of the kits it has on. */
-export function packagesFor(files: Record<string, string>, kits: Kit[] = KITS): Record<string, string> {
-  return Object.assign({}, BASE_ALLOWED_DEPENDENCIES, ...kitsOf(files, kits).map((k) => k.packages)) as Record<string, string>;
+/** The packages this project may add: the base list (plus the vetted v2 packages in a harness v2 build, D152), plus those of the kits it has on. */
+export function packagesFor(files: Record<string, string>, kits: Kit[] = KITS, { v2 = false }: { v2?: boolean } = {}): Record<string, string> {
+  return Object.assign({}, BASE_ALLOWED_DEPENDENCIES, v2 ? V2_PACKAGES : {}, ...kitsOf(files, kits).map((k) => k.packages)) as Record<string, string>;
 }
 
 /**

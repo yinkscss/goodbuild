@@ -12,9 +12,10 @@ export type ModelTier = "strong" | "cheap";
  * Which tier each kind of work uses (D19). DeepSeek writes the first pass; Claude fixes what
  * the checks reject. Moving follow-up edits to Claude later is one line: build for edits.
  */
-export const TIER_FOR = { plan: "cheap", build: "cheap", fix: "strong", testFix: "cheap", review: "strong" } as const satisfies Record<string, ModelTier>;
+export const TIER_FOR = { plan: "cheap", build: "cheap", fix: "strong", testFix: "cheap", review: "strong", spec: "strong", contracts: "strong" } as const satisfies Record<string, ModelTier>;
 /** `testFix`: first auto-fix attempt when every failing check is a contract test (D19 amendment). Later attempts use `fix`. */
 /** `review`: reading the screenshots of a finished build (D87). What it finds is fixed on `build`. */
+/** `spec` and `contracts` (D152, harness v2 only): the app's plan and acceptance flows, then its contracts and their tests. */
 
 export const MODEL_IDS: Record<ModelTier, string> = { strong: "claude-sonnet-5-5", cheap: "deepseek-flash" };
 const KEY_NAME: Record<ModelTier, string> = { strong: "ANTHROPIC_API_KEY", cheap: "DEEPSEEK_API_KEY" };
@@ -48,7 +49,7 @@ export interface ToolCall {
 export type ModelEvent =
   | { type: "text"; delta: string }
   | { type: "tool_call"; call: ToolCall }
-  | { type: "usage"; model: string; inputTokens: number; outputTokens: number; cachedInputTokens: number; callId: string }
+  | { type: "usage"; model: string; inputTokens: number; outputTokens: number; cachedInputTokens: number; callId: string; /** Prompt tokens written to the cache (a subset of inputTokens), billed at the provider's write rate (D152). */ cacheWriteTokens?: number }
   | { type: "done"; finishReason: string | null };
 
 export interface ModelRequest {
@@ -64,6 +65,11 @@ export interface ModelRequest {
   noThinking?: boolean;
   /** Sponsored calls are retried by the runner so each attempt goes through its budget guard. */
   noRetries?: boolean;
+  /**
+   * Also cache the end of the conversation on Anthropic (D152): the system prompt and the context are
+   * marked already, so a long fix pass otherwise re-sends everything after them at the full price.
+   */
+  cacheTail?: boolean;
 }
 
 /** Streaming chat with tool calls. Implemented over the Vercel AI SDK, or scripted in tests. */
@@ -117,7 +123,7 @@ export function aiSdkClient(models?: Record<ModelTier, LanguageModel>, idleMs = 
       let result;
       try {
         const model = (models ?? defaultModels())[tier];
-        const { system, messages } = toSdkMessages(req.messages);
+        const { system, messages } = toSdkMessages(req.messages, { cacheTail: req.cacheTail });
         result = streamText({
           model,
           messages: [...system, ...messages],
@@ -155,6 +161,7 @@ export function aiSdkClient(models?: Record<ModelTier, LanguageModel>, idleMs = 
                 inputTokens: part.usage?.inputTokens ?? 0,
                 outputTokens: part.usage?.outputTokens ?? 0,
                 cachedInputTokens: part.usage?.inputTokenDetails?.cacheReadTokens ?? 0,
+                cacheWriteTokens: part.usage?.inputTokenDetails?.cacheWriteTokens ?? 0,
                 callId: part.response?.id || `call_${crypto.randomUUID()}`,
               } as const;
               break;
@@ -204,20 +211,26 @@ export function withFallback(strong: ModelClient, cheap: ModelClient): ModelClie
   };
 }
 
-/** The runner's OpenAI-style messages become AI SDK messages. System text is cached on Anthropic. */
-export function toSdkMessages(input: ChatMessage[]): { system: ModelMessage[]; messages: ModelMessage[] } {
+const CACHE = { anthropic: { cacheControl: { type: "ephemeral" } } } as const;
+
+/**
+ * The runner's OpenAI-style messages become AI SDK messages. System text is cached on Anthropic, and so is
+ * a user message marked `cache`. With `cacheTail` the last message is marked too (D152): three of the four
+ * breakpoints Anthropic allows, so each round of a long pass reads the one before it from the cache.
+ */
+export function toSdkMessages(input: ChatMessage[], options: { cacheTail?: boolean } = {}): { system: ModelMessage[]; messages: ModelMessage[] } {
   const system: ModelMessage[] = [];
   const messages: ModelMessage[] = [];
   const toolNames = new Map<string, string>();
   for (const m of input) {
     if (m.role === "system") {
-      system.push({ role: "system", content: m.content, providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } } });
+      system.push({ role: "system", content: m.content, providerOptions: CACHE });
     } else if (m.role === "user") {
       const content =
         typeof m.content === "string"
           ? m.content
           : m.content.map((p) => (p.type === "text" ? { type: "text" as const, text: p.text } : { type: "file" as const, data: p.data, mediaType: p.mediaType }));
-      messages.push({ role: "user", content, ...(m.cache ? { providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } } } : {}) });
+      messages.push({ role: "user", content, ...(m.cache ? { providerOptions: CACHE } : {}) });
     } else if (m.role === "assistant") {
       const parts: Extract<ModelMessage, { role: "assistant" }>["content"] = [];
       if (m.content) parts.push({ type: "text", text: m.content });
@@ -240,6 +253,8 @@ export function toSdkMessages(input: ChatMessage[]): { system: ModelMessage[]; m
       });
     }
   }
+  const last = messages.at(-1);
+  if (options.cacheTail && last && !last.providerOptions) last.providerOptions = CACHE;
   return { system, messages };
 }
 

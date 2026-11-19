@@ -8,7 +8,7 @@ import { designTemplateFiles } from "./design-templates";
 import { templateImageFiles } from "./template-images";
 import { TEMPLATE_MINIPAY_NOTE, gameTemplateById, withGameTemplate } from "./game-templates";
 import type { Db } from "@/server/db/client";
-import { buildDeliveries, buildDrafts, messages, projects } from "@/server/db/schema";
+import { buildDeliveries, buildDrafts, messages, projects, users } from "@/server/db/schema";
 import { checkApp, checkContracts, formatIssues, mentionsGd, mentionsNativeCelo, type CheckIssue, type CheckReport, type ContractCheckOptions } from "./checks";
 import { runContractTests } from "./contract-tests";
 import { createHash } from "node:crypto";
@@ -23,7 +23,11 @@ import { ASSETS_MODULE, assetManifest, assetsModule, reviewImage, visionImage } 
 import { HISTORY_WINDOW, memoryBlock, updateMemory, type Memory, type MemoryMessage } from "./memory";
 import { MODEL_IDS, TIER_FOR, ModelUnavailableError, type ChatMessage, type ModelClient, type ModelEvent, type ModelTier, type ToolCall, type UserPart } from "./model";
 import { INTAKE_MAX_TOKENS, INTAKE_PROMPT, PLAN_ASK_TOOL_NAME, askedJustBefore, fallbackIntake, intakeTools, intakeContext, isGameRequest, latestIntake, parseIntake, parsePlanQuestions, planBrief } from "./plan-intake";
-import { BUILD_TOOLS, contextWithPicks, planTools, systemPrompt } from "./prompt";
+import { BUILD_TOOLS, SPEC_TOOLS, V2_BUILD_TOOLS, contextWithPicks, planTools, systemPrompt } from "./prompt";
+import { CONTRACT_WORK, SPEC_MAX_ROUNDS, acceptanceMode, harnessLimits, usesHarnessV2 } from "./harness";
+import { acceptanceIssues, acceptanceSummary, formatFlowResults, type FlowResult } from "./acceptance";
+import { SPEC_PATH, readSpec, specRequest, type AppSpec } from "./spec";
+import { requestView } from "./request-view";
 import { checkpoint, claimTurn, loadFiles, recordUsage, releaseTurn } from "./store";
 import { decideFunding } from "@/server/credits/cap";
 import { CREDITS_PAUSED_MESSAGE, OutOfCreditsError, ensureHold, fitCall, headroomMicro, worstCaseCallMicro } from "@/server/credits/holds";
@@ -75,6 +79,9 @@ export interface TurnDeps {
   job?: TurnJobContext;
   now?: () => Date;
 }
+
+/** Kits harness v2 leaves to the builder's add_kit instead of turning on by request words (D152). */
+const V2_OPTIONAL_KITS = ["motion", "dashboard"];
 
 /** Design-reference images sent with one turn (each is described in text for later turns). */
 const MAX_IMAGES_PER_TURN = 2;
@@ -149,14 +156,30 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
   const compile: typeof checkContracts = (files, options = {}) => compileWith(files, options.upgradeable ? { ...options, upgradeChecks: upgradeChecksFor(db, input.projectId) } : options);
   const lintWith = deps.checkApp ?? checkApp;
   let assetNames: string[] = [];
-  const lint = (files: Record<string, string>) => lintWith(files, { assets: assetNames });
+  // Harness v2 (D152): the vetted packages are addable, so the import check's hints say so.
+  let packagesV2 = false;
+  const lint = (files: Record<string, string>) => lintWith(files, { assets: assetNames, ...(packagesV2 ? { v2: true } : {}) });
   const openWith = deps.runCheck ?? (runCheckEnabled() ? runCheck : undefined);
   let chainId: number | undefined;
+  /** v2 (D152): the run check also runs the spec's acceptance flows; set once the setup says v2. */
+  let acceptanceOn = false;
+  /** v2: this turn's spec step wrote the spec, so its flows describe this turn's request. */
+  let specThisTurn = false;
+  /** The flows' results from the latest run check, for run_checks to show when they fail (ACCEPTANCE=warn). */
+  let lastAcceptance: FlowResult[] | undefined;
   const open = openWith ? async (files: Record<string, string>) => {
-    const result = await openWith(files, { assets: assetNames, chainId, ...(delivery && job.deliveryIndex !== undefined ? { delivery: { id: delivery.milestones[job.deliveryIndex].id, goal: delivery.goal, verifyWallet: delivery.verified?.includes("wallet") } } : {}) });
+    const flows = acceptanceOn ? readSpec(files)?.acceptance ?? [] : [];
+    const result = await openWith(files, { assets: assetNames, chainId, ...(delivery && job.deliveryIndex !== undefined ? { delivery: { id: delivery.milestones[job.deliveryIndex].id, goal: delivery.goal, verifyWallet: delivery.verified?.includes("wallet") } } : {}), ...(flows.length ? { acceptance: { flows } } : {}) });
     runtimeRan = result.ran;
-    deliveryVerified = result.deliveryVerified === true;
-    return result;
+    lastAcceptance = result.acceptance;
+    const failing = result.acceptance ? acceptanceIssues(result.acceptance) : [];
+    // Flows are enforced on the turn whose spec wrote them. A later turn may change what they check (a renamed
+    // heading), so there they only warn: the builder sees them, and nothing sends it back to the old wording.
+    const enforcing = acceptanceMode() === "enforce" && specThisTurn;
+    if (result.acceptance) log(`acceptance: ${acceptanceSummary(result.acceptance)}${failing.length && !enforcing ? ` (${acceptanceMode() === "enforce" ? "the spec is from an earlier turn" : "warn"}: not blocking)` : ""}`);
+    const enforce = failing.length > 0 && enforcing;
+    deliveryVerified = result.deliveryVerified === true && !enforce;
+    return enforce ? { ...result, issues: [...result.issues, ...failing] } : result;
   } : undefined;
   const reviewOn = (deps.review ?? reviewEnabled()) && Boolean(openWith);
   const typesMode = deps.typeCheckMode ?? (deps.typeCheck ? "enforce" : typeCheckMode());
@@ -260,7 +283,8 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     }
     assetNames = setup.assetNames;
     chainId = setup.chainId;
-    const ws = new Workspace(setup.baseFiles);
+    packagesV2 = setup.harness === "v2" && input.mode === "build";
+    const ws = new Workspace(setup.baseFiles, { v2: packagesV2 });
     turnWs = ws;
     workspace = ws;
     if (job.deliveryIndex !== undefined) delivery = (await db.select().from(buildDeliveries).where(eq(buildDeliveries.projectId, input.projectId)))[0]?.plan;
@@ -269,8 +293,18 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     if (saved) log(`↻ resumed after an interruption (attempt ${job.resume?.attempt ?? 2}), replaying ${replayLog.length} saved ${replayLog.length === 1 ? "response" : "responses"}`);
 
     const intake = setup.intake === true;
-    const convo: ChatMessage[] = [{ role: "system", content: intake ? INTAKE_PROMPT : systemPrompt(input.mode, setup.canAsk === true) }, ...rehydrate(setup.prefix, images)];
-    const tools = intake ? intakeTools(setup.request) : input.mode === "plan" ? planTools(setup.canAsk === true) : BUILD_TOOLS;
+    // Harness v2 (D152): spec, contracts and front end by different models, the builder checks its own work.
+    const v2 = setup.harness === "v2" && input.mode === "build" && !intake;
+    const limits = v2 ? harnessLimits() : { maxCalls: MAX_CALLS, maxRounds: MAX_TOOL_ROUNDS_PER_PHASE, checkBudgetMs: 0 };
+    acceptanceOn = v2;
+    const convo: ChatMessage[] = [{ role: "system", content: intake ? INTAKE_PROMPT : systemPrompt(input.mode, setup.canAsk === true, v2) }, ...rehydrate(setup.prefix, images)];
+    // The tools of the phase that is running (v2's spec call has its own).
+    let tools = intake ? intakeTools(setup.request) : input.mode === "plan" ? planTools(setup.canAsk === true) : v2 ? V2_BUILD_TOOLS : BUILD_TOOLS;
+    /** v2: where the running phase began. Older file bodies and long results are trimmed from what is sent (requestView). */
+    let trimBefore = 0;
+    /** v2: which tier wrote each file this turn, so its first fix goes back to the writer. */
+    const authors = new Map<string, ModelTier>();
+    let specWritten = false;
 
     let calls = 0;
     let callIdx = 0;
@@ -315,7 +349,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     const callModel = async (tier: ModelTier, quiet = false, wrapUp = false, side?: { messages: ChatMessage[]; maxTokens: number }) => {
       if (side) quiet = true;
       stopIfRequested();
-      if (++calls > MAX_CALLS) throw new Error("This build used too many steps. Try a smaller change.");
+      if (++calls > limits.maxCalls) throw new Error("This build used too many steps. Try a smaller change.");
       const idx = callIdx++;
       const logged = replayLog[idx];
       if (logged && (logged.tier !== tier || logged.convoLen !== convo.length)) {
@@ -368,7 +402,9 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
         // A side call (the review reads pictures) only runs on the model it asked for; build, fix and
         // wrap-up calls are fitted to the credit left (D138). The saved call keeps the tier it was asked
         // for, so a resumed build replays it however it was fitted.
-        const asked = side ? { tier, messages: side.messages, maxTokens: side.maxTokens } : { tier, messages: convo, tools, maxTokens: intake ? INTAKE_MAX_TOKENS : MAX_TOKENS, ...(intake ? { noThinking: true } : {}) };
+        const asked = side
+          ? { tier, messages: side.messages, maxTokens: side.maxTokens }
+          : { tier, messages: v2 ? requestView(convo, trimBefore) : convo, tools, maxTokens: intake ? INTAKE_MAX_TOKENS : MAX_TOKENS, ...(intake ? { noThinking: true } : {}), ...(v2 && tier === "strong" ? { cacheTail: true } : {}) };
         const ask = side ? asked : await fitToCredit(asked);
         for (let attempt = 0; ; attempt++) {
           try {
@@ -418,6 +454,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
               inputTokens: ev.inputTokens,
               outputTokens: ev.outputTokens,
               cachedInputTokens: ev.cachedInputTokens,
+              cacheWriteTokens: ev.cacheWriteTokens,
               funding,
               jobId: job.jobId,
             });
@@ -469,11 +506,13 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     const failures = new Map<string, number>();
     let idleRounds = 0;
     let lastRoundKey = "";
-    const phase = async (tier: ModelTier, quiet = false) => {
-      for (let round = 0; round < MAX_TOOL_ROUNDS_PER_PHASE; round++) {
+    const phase = async (tier: ModelTier, quiet = false, opts: PhaseOptions = {}) => {
+      // v2: everything before this phase is sent trimmed, and stays byte-stable while the phase runs.
+      if (v2) trimBefore = convo.length;
+      for (let round = 0; round < (opts.maxRounds ?? limits.maxRounds); round++) {
         stopIfRequested();
         // Out of free spend: end the pass the way running out of rounds does, so the reply and the save still happen.
-        if (atFreeCeiling() || calls >= MAX_CALLS - 2) {
+        if (atFreeCeiling() || calls >= limits.maxCalls - 2) {
           budgetStopped = true;
           log("· saving progress with calls reserved for validation and final reporting");
           return false;
@@ -488,15 +527,35 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
         if (!toolCalls.length && !cutOff) return true;
         // The final reply arrives with suggest_next: that ends the pass, no extra round.
         const final = onlySuggestions(toolCalls);
+        let ended = false;
         for (const call of toolCalls) {
           // The model-call number keeps step ids unique even if a provider repeats a tool call
           // id across calls (replayed and live calls after a resume, say).
           const stepId = `tool:${calls}:${call.id}`;
+          // Only the tools this step offers run, checked before any of them is handled. In v2 that is the step's
+          // own list (write_spec belongs to the spec step alone); v1 never offers write_spec.
+          if (v2 ? !tools.some((t) => t.function.name === call.name) : call.name === "write_spec") {
+            convo.push({ role: "tool", tool_call_id: call.id, content: `Error: ${call.name} isn't available in this step.` });
+            continue;
+          }
           // Plan mode can't edit; a refused edit attempt isn't worth showing as a failed step.
           const label = input.mode === "plan" ? null : toolLabel(call);
           if (label) step({ id: stepId, label, status: "running" });
           if (call.name === "run_checks") {
             convo.push({ role: "tool", tool_call_id: call.id, content: await checkForTheBuilder() });
+            continue;
+          }
+          // v2's own checks (D152): the builder runs the tests and opens the app itself.
+          if (v2 && call.name === "run_tests") {
+            convo.push({ role: "tool", tool_call_id: call.id, content: await testsForTheBuilder(stringArg(call, "filter")) });
+            continue;
+          }
+          if (v2 && call.name === "open_app") {
+            convo.push({ role: "tool", tool_call_id: call.id, content: await openForTheBuilder(stringArg(call, "route")) });
+            continue;
+          }
+          if (v2 && call.name === "run_acceptance") {
+            convo.push({ role: "tool", tool_call_id: call.id, content: await acceptanceForTheBuilder(stringArg(call, "flow")) });
             continue;
           }
           // Plan mode's own questions (D103): shown as cards, and the turn ends so the answers can start the plan.
@@ -518,8 +577,12 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
           let args: Record<string, unknown> = {};
           try { const parsed = JSON.parse(call.arguments); if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) args = parsed; } catch { /* Workspace reports malformed arguments. */ }
           const allowed = !delivery || job.deliveryIndex === undefined || milestoneAllows(delivery, job.deliveryIndex, call.name, args);
-          if (!allowed) scopeRefused++;
-          const outcome = allowed ? ws.execute(call.name, call.arguments, input.mode) : { ok: false, result: scopeRefusal(delivery!, job.deliveryIndex!) };
+          // v2: a phase may only write its own files (contracts in the contracts phase, the front end after it).
+          // add_kit writes the kit's starter files, so they pass the same gate.
+          const kitPaths = call.name === "add_kit" ? Object.keys(kitById(String(args.name ?? "").trim())?.files ?? {}) : [];
+          const gated = opts.gate && (EDIT_TOOLS.includes(call.name) || call.name === "add_kit") ? [args.path, args.from, args.to, ...kitPaths].map((p) => (typeof p === "string" ? opts.gate!(p) : null)).find(Boolean) : null;
+          if (!gated && !allowed) scopeRefused++;
+          const outcome = gated ? { ok: false, result: `Error: ${gated}` } : allowed ? ws.execute(call.name, call.arguments, input.mode) : { ok: false, result: scopeRefusal(delivery!, job.deliveryIndex!) };
           const path = String(args.path ?? call.name);
           if (!outcome.ok && ["edit_file", "create_file"].includes(call.name)) {
             const count = (failures.get(path) ?? 0) + 1;
@@ -529,15 +592,19 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
               log(`· repeated edit failure in ${path}; supplied current contents and requested a different strategy`);
             }
           } else if (outcome.change) failures.delete(path);
+          if (call.name === "write_spec" && outcome.ok) specWritten = specThisTurn = true;
+          if (opts.endOn === call.name && outcome.ok) ended = true;
           if (outcome.guides?.length) log(`guides: ${outcome.guides.join(", ")}`);
           if (outcome.access) log(`· ${outcome.access}`);
           takeSuggestions(outcome.suggestions, quiet);
-          if (outcome.plan) {
+          // v2: the spec's plan card stays; the builder's own set_plan only loads its guides.
+          if (outcome.plan && !(specWritten && call.name === "set_plan")) {
             record.plan = outcome.plan;
             out({ type: "plan", ...outcome.plan });
             step({ id: "plan", label: "Plan", detail: outcome.plan.summary || `${outcome.plan.steps.length} steps`, status: "done" });
           }
           if (outcome.change) {
+            if (v2) authors.set(outcome.change.path, tier);
             record.changes.push(outcome.change);
             out({ type: "file", change: outcome.change });
             log(`→ ${outcome.change.op === "delete" ? "deleted" : "wrote"} ${outcome.change.path}`);
@@ -563,6 +630,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
           budgetStopped = true;
           return false;
         }
+        if (ended) return true;
         if (cutOff) {
           convo.push({
             role: "user",
@@ -602,19 +670,28 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
      * end of the turn uses it instead of checking the same files twice.
      */
     let toolChecks = 0;
+    /** v2: milliseconds the builder's own checks have taken this turn (their budget replaces the count of 3). */
+    let checkMs = 0;
     let checked: { key: string; report: CheckReport } | undefined;
     /** The last checks run this turn, for a draft's contract modules (D138). */
     let latestReport: CheckReport | undefined;
     const checkForTheBuilder = async (): Promise<string> => {
       if (input.mode === "plan") return "Error: plan mode can't run the checks.";
-      if (toolChecks >= MAX_TOOL_CHECKS) return `You have already run the checks ${MAX_TOOL_CHECKS} times this turn. Finish the work and reply; GoodBuild checks everything again when you're done.`;
+      if (v2 && checkMs >= limits.checkBudgetMs) return CHECK_BUDGET_USED;
+      if (!v2 && toolChecks >= MAX_TOOL_CHECKS) return `You have already run the checks ${MAX_TOOL_CHECKS} times this turn. Finish the work and reply; GoodBuild checks everything again when you're done.`;
       toolChecks++;
       keepTheme();
-      log(`· run_checks (${toolChecks} of ${MAX_TOOL_CHECKS})`);
+      log(v2 ? `· run_checks (${toolChecks})` : `· run_checks (${toolChecks} of ${MAX_TOOL_CHECKS})`);
+      const started = Date.now();
+      lastAcceptance = undefined;
       const report = await runChecks(ws.files, compile, lint, step, log, `check${toolChecks}`, contractOptions, runContractTests, stopIfRequested, open, types);
+      checkMs += Date.now() - started;
       checked = { key: filesKey(ws.files), report };
       latestReport = report;
       const found = [...report.errors, ...(report.notes ?? [])];
+      // Flows that don't block (ACCEPTANCE=warn, or a spec from an earlier turn, D152): the builder still sees them.
+      const flowsFailing = !(acceptanceMode() === "enforce" && specThisTurn) ? ((lastAcceptance as FlowResult[] | undefined) ?? []).filter((r) => r.status === "fail") : [];
+      if (flowsFailing.length) return `${found.length ? `The checks found problems:\n${formatIssues(found)}\n\n` : ""}These acceptance flows from the spec fail (they show what doesn't work yet; fix the app, then run_acceptance):\n${formatFlowResults(flowsFailing)}`;
       if (!found.length) return "All checks pass. Don't run them again unless you edit more files.";
       return `${report.ok ? "Nothing blocks the build, but these are worth fixing" : "The checks found problems"}. Fix them with edit_file (read a file before editing it), then run_checks again if you changed more than a line or two:\n${formatIssues(found)}`;
     };
@@ -637,6 +714,92 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       for (const c of r.contracts) ws.files[`${PLATFORM_DIR}${c.name}.ts`] = contractModule(c.name, c.abi, deployed[c.name] ?? {});
       ws.files[`${PLATFORM_DIR}index.ts`] = contractsIndex(names);
       record.contracts = r.contracts.map(({ name, file, bytecodeBytes }) => ({ name, file, bytecodeBytes }));
+    };
+
+    /** v2's run_tests (D152): compile, then the contract tests in the local EVM, with each result and its revert reason. */
+    const testsForTheBuilder = async (filter: string): Promise<string> => {
+      if (checkMs >= limits.checkBudgetMs) return CHECK_BUDGET_USED;
+      if (!hasContractsIn(ws.files)) return "There are no contracts in this project yet.";
+      const started = Date.now();
+      try {
+        stopIfRequested();
+        const compiled = await compile(ws.files, contractOptions);
+        if (!compiled.ok) {
+          log(`· run_tests: ${plural(compiled.errors.length, "compile error")}`);
+          return `The contracts don't compile yet. Fix these, then run_tests again:\n${formatIssues(compiled.errors)}`;
+        }
+        await writeContractModules(compiled);
+        if (!compiled.tests?.length) {
+          log("· run_tests: compiled, no tests yet");
+          return `Compiled ${compiled.contracts.map((c) => c.name).join(", ")} with no errors. There are no tests yet: write contracts/test/<Name>.t.sol (read_guide "contract-tests"), then run_tests.`;
+        }
+        stopIfRequested();
+        const { results, issues } = await runContractTests(compiled);
+        if (!results.length) return `The tests didn't run:\n${formatIssues(issues)}`;
+        const wanted = filter.trim().toLowerCase();
+        const shown = wanted ? results.filter((r) => `${r.contract}.${r.test}`.toLowerCase().includes(wanted)) : results;
+        const passed = shown.filter((r) => r.ok).length;
+        log(`· run_tests${wanted ? ` "${filter.trim()}"` : ""}: ${passed} of ${shown.length} passed`);
+        const lines = shown.map((r) => `${r.ok ? "pass" : "FAIL"} ${r.contract}.${r.test}${r.ok ? "" : `: ${r.reason ?? "reverted"}`}`);
+        const advice = passed < shown.length ? " Fix the contract when it misbehaves; change a test only when its expectation is wrong, and never delete or weaken a check to pass." : "";
+        return `${passed} of ${shown.length} tests passed${wanted && shown.length !== results.length ? ` (${results.length} in all)` : ""}.${advice}\n${lines.join("\n")}`;
+      } finally {
+        checkMs += Date.now() - started;
+      }
+    };
+
+    /** The project as the browser checks open it: its contracts' ABI modules added, or why it can't be opened yet. */
+    const filesToOpen = async (): Promise<{ files: Record<string, string> } | { problem: string }> => {
+      keepTheme();
+      let compiledContracts: CheckReport["contracts"] = [];
+      if (hasContractsIn(ws.files)) {
+        stopIfRequested();
+        const compiled = await compile(ws.files, contractOptions);
+        if (!compiled.ok) return { problem: `The contracts don't compile, so the app can't be opened with them. Fix these first (run_tests shows them too):\n${formatIssues(compiled.errors)}` };
+        compiledContracts = compiled.contracts;
+      }
+      const app = lint(ws.files);
+      if (!app.ok) return { problem: `The app can't be built yet. Fix these first:\n${formatIssues(app.errors)}` };
+      stopIfRequested();
+      return { files: withContractModules(ws.files, compiledContracts) };
+    };
+
+    /** v2's run_acceptance (D152): the spec's flows against the built app, with the failing step and what the page showed. */
+    const acceptanceForTheBuilder = async (only: string): Promise<string> => {
+      if (!openWith) return "run_acceptance isn't available on this server. Use run_checks.";
+      const flows = readSpec(ws.files)?.acceptance ?? [];
+      if (!flows.length) return "The spec has no acceptance flows to run.";
+      if (checkMs >= limits.checkBudgetMs) return CHECK_BUDGET_USED;
+      const started = Date.now();
+      try {
+        const ready = await filesToOpen();
+        if ("problem" in ready) return ready.problem;
+        const result = await openWith(ready.files, { assets: assetNames, chainId, acceptance: { flows, only } });
+        if (!result.ran || !result.acceptance) return `The flows couldn't run here (${result.note}). Use run_checks instead.`;
+        log(`· run_acceptance${only ? ` "${only}"` : ""}: ${acceptanceSummary(result.acceptance)}`);
+        const crashes = result.issues.length ? `The app also had problems when it opened:\n${formatIssues(result.issues)}\n\n` : "";
+        return `${crashes}${formatFlowResults(result.acceptance)}`;
+      } finally {
+        checkMs += Date.now() - started;
+      }
+    };
+
+    /** v2's open_app (D152): the built app in the run check's browser, its errors and an outline of the page. */
+    const openForTheBuilder = async (route: string): Promise<string> => {
+      if (!openWith) return "open_app isn't available on this server. Use run_checks: it checks the imports, syntax and types.";
+      if (checkMs >= limits.checkBudgetMs) return CHECK_BUDGET_USED;
+      const started = Date.now();
+      try {
+        const ready = await filesToOpen();
+        if ("problem" in ready) return ready.problem;
+        const result = await openWith(ready.files, { assets: assetNames, chainId, outline: { route } });
+        log(`· open_app${route ? ` ${route}` : ""}: ${result.note} (${(result.ms / 1000).toFixed(1)}s)`);
+        if (!result.ran) return `The app couldn't be opened here (${result.note}). Use run_checks instead.`;
+        const problems = result.issues.length ? `Problems:\n${formatIssues(result.issues)}` : "No crashes or console errors.";
+        return `${problems}\n\nWhat the page shows at phone width:\n${result.outline ?? "(nothing could be read)"}`;
+      } finally {
+        checkMs += Date.now() - started;
+      }
     };
 
     /**
@@ -671,6 +834,53 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       return true;
     };
 
+    /**
+     * v2 (D152): the spec call on the strong model writes the plan and acceptance flows; when the spec has
+     * contracts and the delivery scope allows them, the strong model writes and tests them, and they are
+     * compiled before the front end is written. Returns the front end's write rule: no contracts/ once they
+     * have been written in their own phase.
+     */
+    const specAndContracts = async (): Promise<PhaseOptions["gate"]> => {
+      const hasContracts = hasContractsIn(ws.files);
+      const contractsAllowed = !delivery || job.deliveryIndex === undefined || delivery.milestones[job.deliveryIndex]?.id === "payments";
+      const wantSpec = job.deliveryIndex !== undefined || (setup.firstBuild && ws.files[SPEC_PATH] === undefined) || (hasContracts && CONTRACT_WORK.test(setup.request));
+      if (!wantSpec || atFreeCeiling()) return undefined;
+      step({ id: "spec", label: "Planning the app", status: "running" });
+      tools = SPEC_TOOLS;
+      convo.push({ role: "user", content: specRequest(hasContracts, contractsAllowed) });
+      await phase(TIER_FOR.spec, true, { endOn: "write_spec", maxRounds: SPEC_MAX_ROUNDS });
+      tools = V2_BUILD_TOOLS;
+      const spec = specWritten ? readSpec(ws.files) : null;
+      if (!spec) {
+        log("! spec: the planner wrote no spec; building from the request");
+        step({ id: "spec", label: "Planning the app", detail: "skipped", status: "done" });
+        convo.push({ role: "user", content: "The spec step ended without a spec. Build from the request as usual." });
+        return undefined;
+      }
+      log(`spec: ${plural(spec.pages.length, "page")}, ${plural(spec.contracts.length, "contract")}${spec.contracts.length ? ` (${spec.contracts.map((c) => c.name).join(", ")})` : ""}, ${plural(spec.acceptance.length, "acceptance flow")}`);
+      step({ id: "spec", label: "Planning the app", detail: spec.summary.slice(0, 140), status: "done" });
+      let contractsWritten = false;
+      if (spec.contracts.length && contractsAllowed && !atFreeCeiling()) {
+        step({ id: "contracts", label: "Writing the contracts", status: "running" });
+        log("phase: contracts (strong model)");
+        convo.push({ role: "user", content: contractsPhaseMessage(spec) });
+        await phase(TIER_FOR.contracts, true, { gate: (p) => (p.startsWith("contracts/") ? null : CONTRACTS_ONLY) });
+        contractsWritten = true;
+        // Compiled now, so the front end imports the real ABI instead of guessing it.
+        let detail = "no contract files were written";
+        if (hasContractsIn(ws.files)) {
+          stopIfRequested();
+          const compiled = await compile(ws.files, contractOptions);
+          if (compiled.contracts.length) await writeContractModules(compiled);
+          detail = compiled.ok ? `${compiled.contracts.map((c) => c.name).join(", ")} compiled` : `${plural(compiled.errors.length, "error")} left for the checks`;
+        }
+        step({ id: "contracts", label: "Writing the contracts", detail, status: "done" });
+      }
+      log("phase: front end (fast model)");
+      convo.push({ role: "user", content: frontEndPhaseMessage(spec, contractsWritten ? Object.keys(ws.files).filter((p) => p.startsWith(PLATFORM_DIR) && !p.endsWith("index.ts")).map((p) => p.slice(PLATFORM_DIR.length, -3)) : []) });
+      return contractsWritten ? (p) => (p.startsWith("contracts/") ? FRONT_END_NO_CONTRACTS : null) : undefined;
+    };
+
     // Plan first (D32): one call and no tool rounds. The answers start the next turn, so nothing
     // waits on a job or a worker. An unusable reply gets fixed questions, not a paid second try.
     if (intake) {
@@ -687,8 +897,11 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
         out({ type: "questions", intake: record.intake });
       }
     }
-    const finished = intake || (await phase(input.mode === "plan" ? TIER_FOR.plan : TIER_FOR.build));
-    if ((!finished || !text.trim()) && calls < MAX_CALLS - 1 && !atFreeCeiling()) {
+    // v2 (D152): the spec call, then the contracts on the strong model, before the front end is written.
+    let uiGate: PhaseOptions["gate"];
+    if (v2) uiGate = await specAndContracts();
+    const finished = intake || (await phase(input.mode === "plan" ? TIER_FOR.plan : TIER_FOR.build, false, { gate: uiGate }));
+    if ((!finished || !text.trim()) && calls < limits.maxCalls - 1 && !atFreeCeiling()) {
       // Out of tool rounds, or the pass ended with nothing shown (its reply came with a tool
       // call and was dropped as narration): ask once for the reply, so the user gets a
       // summary and follow-ups instead of an empty message. Tools stay declared (some
@@ -739,7 +952,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
         convo.push({ role: "user", content: MORE_BUILD_MESSAGE });
         const replied = replies.length;
         const textBefore = text;
-        const done = await phase(TIER_FOR.build);
+        const done = await phase(TIER_FOR.build, false, { gate: uiGate });
         const fresh = replies.length > replied ? replies.at(-1)! : "";
         // What they read is the latest summary, not "it isn't finished yet" followed by it.
         if (fresh.trim()) {
@@ -821,9 +1034,11 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
         role: "user",
         content: `GoodBuild's checks failed. Fix these errors with edit_file. A [runtime] error is what happened when GoodBuild opened the built app in a browser, and a [types] error is TypeScript's: read the named file before changing it. If a contract test fails, decide whether the contract or the test is wrong: fix the contract when it misbehaves; change a test only when its expectation is mistaken, and never delete or weaken a check just to make it pass. Then stop with a very short note (the user sees the fix steps, not this note):\n${issues}`,
       });
-      await phase(fixTier(attempt, report.errors), true);
+      const fixWith = v2 ? fixTierByWriter(attempt, report.errors, authors) : fixTier(attempt, report.errors);
+      if (v2) log(`· fix attempt ${attempt} on the ${fixWith === "cheap" ? "fast" : "strong"} model${attempt === 1 ? " (the files' writer)" : ""}`);
+      await phase(fixWith, true);
       report = await checkNow(attempt);
-      if (calls >= MAX_CALLS - 2 || budgetStopped) { stoppedEarly = true; stopNote = "saved at this milestone's work limit"; break; }
+      if (calls >= limits.maxCalls - 2 || budgetStopped) { stoppedEarly = true; stopNote = "saved at this milestone's work limit"; break; }
       step({
         id: `fix:${attempt}`,
         label: `Fixing errors (attempt ${attempt} of ${MAX_FIX_ATTEMPTS})`,
@@ -868,8 +1083,10 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
           step({ id: "review:fix", label: "Fixing what it saw", status: "running" });
           const before = { ...ws.files };
           const beforeKey = filesKey(before);
+          // What the browser check said about these files, restored with them if the fixes are rolled back.
+          const verifiedBefore = { runtimeRan, deliveryVerified, lastAcceptance };
           convo.push({ role: "user", content: reviewFixMessage(verdict.issues) });
-          await phase(TIER_FOR.build, true);
+          await phase(TIER_FOR.build, true, { gate: uiGate });
           keepTheme();
           const untouched = filesKey(ws.files) === beforeKey;
           const after = untouched ? report : await checkNow("review");
@@ -882,6 +1099,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
             // A fix that breaks a check isn't worth a second round of fixing: the page goes back to how it was.
             for (const path of Object.keys(ws.files)) delete ws.files[path];
             Object.assign(ws.files, before);
+            ({ runtimeRan, deliveryVerified, lastAcceptance } = verifiedBefore);
             checked = undefined;
             record.review = { ok: false, issues: verdict.issues, fixed: false };
             log(untouched ? "· review: the builder changed nothing" : "! review: the fixes broke a check, so the page was left as it was");
@@ -1100,6 +1318,9 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     const latest = latestIntake(chat);
     const brief = planBrief(latest, firstBuild);
     const appInfo = input.mode === "build" ? miniAppInfo(latest, project.name) : undefined;
+    // Harness v2 (D152) is decided here, once, and saved with the setup.
+    const [owner] = await db.select({ wallet: users.wallet }).from(users).where(eq(users.id, input.userId)).limit(1);
+    const v2 = input.mode === "build" && usesHarnessV2(owner?.wallet);
     // Plan mode may ask its own questions, but never twice in a row (D103). This turn's own messages are already in the chat.
     const canAsk = input.mode === "plan" && !askedJustBefore(chat.filter((m) => m.id !== assistantId && m.id !== userMessageId));
     const chosenPalette = firstBuild ? paletteById(brief.paletteId) : undefined;
@@ -1119,7 +1340,8 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       // Keep legacy contract work in its source draft; it must not block the first local interface.
       for (const path of Object.keys(files)) if (path.startsWith("contracts/") || path.startsWith(PLATFORM_DIR)) delete files[path];
     }
-    const newKits = input.mode === "build" ? detectKits(kitWords, files).filter((k) => !localOnly || !Object.keys(k.files).some((p) => p.startsWith("contracts/"))) : [];
+    // v2 (D152): capability kits (motion, dashboard) are the builder's choice, not turned on by request words.
+    const newKits = input.mode === "build" ? detectKits(kitWords, files).filter((k) => (!localOnly || !Object.keys(k.files).some((p) => p.startsWith("contracts/"))) && !(v2 && V2_OPTIONAL_KITS.includes(k.id))) : [];
     // A Yes to the plan's MiniPay question (D88) turns the MiniPay kit on, whatever its words.
     const miniAppKit = kitById("mini-app");
     if (input.mode === "build" && brief.miniPay && miniAppKit && !kitsOf(files).includes(miniAppKit) && !newKits.includes(miniAppKit)) newKits.push(miniAppKit);
@@ -1179,6 +1401,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
           inputTokens: ev.inputTokens,
           outputTokens: ev.outputTokens,
           cachedInputTokens: ev.cachedInputTokens,
+          cacheWriteTokens: ev.cacheWriteTokens,
           funding,
           jobId: job.jobId,
         });
@@ -1226,6 +1449,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       ...(history as SavedMessage[]),
       { role: "user", content: imageAssetIds.length ? [{ type: "text", text: ctx.text }, ...imageAssetIds.map((assetId) => ({ type: "asset-image" as const, assetId }))] : ctx.text, cache: true },
     ];
+    if (v2) log("harness: v2 (D152)");
     const result: TurnSetup = {
       v: TURN_SETUP_VERSION,
       assistantId,
@@ -1238,13 +1462,14 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       priorStatus: finalStatus,
       assetNames: names,
       chainId: project.chainId,
-      contractOptions: { gdToken: mentionsGd(userText), allowNative: mentionsNativeCelo(userText), ...(upgradeable ? { upgradeable } : {}) },
+      contractOptions: { gdToken: mentionsGd(userText), allowNative: mentionsNativeCelo(userText), ...(upgradeable ? { upgradeable } : {}), ...(v2 ? { allowRequire: true } : {}) },
       baseFiles: files,
       prefix,
       imageAssetIds,
       recordAtStart: structuredClone(record),
       text,
       ...(appInfo ? { appInfo } : {}),
+      ...(v2 ? { harness: "v2" as const } : {}),
     };
     await job.commit((tx) => job.saveSetup(tx, result));
     return result;
@@ -1254,6 +1479,62 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     if (!s.imageAssetIds.length) return;
     await (deps.assets ?? dbAssetStore(tx)).markAttached(input.projectId, s.imageAssetIds, assistantId);
   }
+}
+
+/** What a phase may do (D152): which files it may write, a tool that ends it, its own round limit. */
+interface PhaseOptions {
+  /** A reason to refuse writing this path, or null to allow it. */
+  gate?: (path: string) => string | null;
+  /** A tool whose success ends the phase (the spec call ends at write_spec). */
+  endOn?: string;
+  maxRounds?: number;
+}
+
+const EDIT_TOOLS = ["create_file", "edit_file", "delete_file", "rename_file"];
+const CHECK_BUDGET_USED = "The check time for this turn is used up. Finish the work and reply; GoodBuild checks everything again when you're done.";
+const CONTRACTS_ONLY = "This is the contracts phase: write only files under contracts/ (the contracts, contracts/test/ and contracts/deploy.json). The front end is written next.";
+const FRONT_END_NO_CONTRACTS = "The contracts were written and tested in the contracts phase, so contracts/ can't change now. If a contract needs a change, say what in your reply.";
+
+function hasContractsIn(files: Record<string, string>): boolean {
+  return Object.keys(files).some((p) => p.startsWith("contracts/") && p.endsWith(".sol"));
+}
+
+function stringArg(call: ToolCall, name: string): string {
+  try {
+    const v = (JSON.parse(call.arguments || "{}") as Record<string, unknown>)[name];
+    return typeof v === "string" ? v : "";
+  } catch {
+    return "";
+  }
+}
+
+function contractsPhaseMessage(spec: AppSpec): string {
+  return `CONTRACTS. Write the contracts in the spec, and nothing else yet: contracts/<Name>.sol for each; contracts/test/<Name>.t.sol for each one that holds, moves, sells or swaps value (read_guide "contract-tests"), with a test for every invariant; and contracts/deploy.json. Then run_tests, and fix until every test passes. Fix the contract when it misbehaves; change a test only when its expectation is wrong. When they pass, stop with a one-line note: another model writes the front end next, from the spec and the compiled ABI.
+
+Contracts in the spec:
+${JSON.stringify(spec.contracts, null, 2)}`;
+}
+
+function frontEndPhaseMessage(spec: AppSpec, contractNames: string[]): string {
+  const contracts = contractNames.length
+    ? `\nThe contracts are written, tested and compiled: import { <Name>Abi, <Name>Address } from "./contracts" for ${contractNames.join(", ")} (read src/contracts/<Name>.ts for the exact functions). Don't change contracts/; if one is wrong, say so in your reply.`
+    : "";
+  return `FRONT END. Build what the spec describes, completely: every page, element and flow, in its visual direction.${contracts}
+The acceptance flows in the spec will be run in a real browser against what you build, so use the wording and roles they name. Check your work with open_app (each page) and run_acceptance before you reply.
+
+The spec (${SPEC_PATH}):
+${JSON.stringify(spec, null, 2).slice(0, 12_000)}`;
+}
+
+/**
+ * v2's first fix attempt (D152) goes back to whichever model wrote the failing files, which has their context:
+ * the fast model for the front end, the strong one for contracts and tests. Files from earlier turns go by
+ * path. A mixed set, or any later attempt, goes to the strong model.
+ */
+export function fixTierByWriter(attempt: number, errors: CheckIssue[], authors: Map<string, ModelTier>): ModelTier {
+  if (attempt > 1 || !errors.length) return TIER_FOR.fix;
+  const writers = errors.map((e) => authors.get(e.file) ?? (e.file.startsWith("contracts/") ? "strong" : "cheap"));
+  return writers.every((t) => t === "cheap") ? "cheap" : "strong";
 }
 
 /**

@@ -123,7 +123,7 @@ export async function gameCanvas(page: Page) {
 }
 
 /** If the wallet list opened (published apps with WalletConnect list several), pick the browser wallet. */
-async function pickBrowserWallet(page: Page): Promise<void> {
+export async function pickBrowserWallet(page: Page): Promise<void> {
   await page.locator("[data-goodbuild-wallets] .gbw-row", { hasText: /Browser wallet|MetaMask/ }).first().click({ timeout: 800 }).catch(() => undefined);
 }
 

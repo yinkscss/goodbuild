@@ -205,6 +205,7 @@ Versions are pinned exactly, the same in `publish-runtime/package.json` and `ALL
 | `papaparse` | CSV import and export |
 | `nanoid` | IDs |
 
+- **Pinned (PR 3):** the versions, licences, sizes and the companion packages are in D152's PR 3 notes in [DECISIONS.md](DECISIONS.md). `@dnd-kit/utilities` was added as a companion; the dashboard and game-2d kits keep their `replaces` entries for v1, and v2 is told to add the package instead.
 - Not added: `framer-motion` and `motion` (D84 chose the 3.5 kB motion kit for size), `phaser` and `@react-three/fiber` (kits cover them), map libraries (tile servers mean third-party requests from every visitor; a separate decision).
 - The builder learns them through the `add_dependency` description and a short `packages` guide (what each is for, one example), only under v2.
 

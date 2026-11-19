@@ -39,11 +39,50 @@ export const BASE_ALLOWED_DEPENDENCIES: Record<string, string> = {
 };
 
 /**
- * Every package a generated app can have: the base list plus what the kits bring (D71). This is what
- * publishing bundles from and what publish-runtime installs. What one project may add is narrower:
- * packagesFor() in kits/index.ts.
+ * Harness v2 (D152, WS4): vetted packages a v2 build may add on top of the base list. Browser-only, no
+ * network calls of their own, MIT or Apache-2.0, React 18 compatible, each published at least two weeks
+ * before it was pinned. Sizes (minified + gzipped, as the publish bundle builds them) are in the packages
+ * guide. Publishing accepts them for any project, so a project built under v2 keeps working if the
+ * flag goes off; only v2 builds are told about them or may add them.
  */
-export const ALLOWED_DEPENDENCIES: Record<string, string> = { ...BASE_ALLOWED_DEPENDENCIES, ...allKitPackages() };
+export const V2_PACKAGES: Record<string, string> = {
+  zustand: "5.0.16",
+  immer: "11.2.9",
+  zod: "4.6.7",
+  "react-hook-form": "7.91.0",
+  recharts: "3.10.1",
+  "@dnd-kit/core": "6.3.1",
+  "@dnd-kit/sortable": "10.0.0",
+  "matter-js": "0.20.0",
+  howler: "2.2.4",
+  "react-markdown": "10.1.0",
+  "fuse.js": "7.5.0",
+  papaparse: "5.7.0",
+  nanoid: "6.0.2",
+};
+
+/**
+ * Packages added along with another because the in-browser preview doesn't install peer dependencies
+ * (recharts needs react-is, @dnd-kit/sortable needs @dnd-kit/core) and a few apps import a helper package
+ * directly (@dnd-kit/utilities for CSS.Transform). Each is pinned in ALLOWED_DEPENDENCIES like any other.
+ */
+export const COMPANION_PACKAGES: Record<string, Record<string, string>> = {
+  recharts: { "react-is": "18.3.1" },
+  "@dnd-kit/core": { "@dnd-kit/utilities": "3.2.2" },
+  "@dnd-kit/sortable": { "@dnd-kit/core": "6.3.1", "@dnd-kit/utilities": "3.2.2" },
+};
+
+/**
+ * Every package a generated app can have: the base list, the v2 packages and their companions, plus what the
+ * kits bring (D71). This is what publishing bundles from and what publish-runtime installs. What one project
+ * may add is narrower: packagesFor() in kits/index.ts.
+ */
+export const ALLOWED_DEPENDENCIES: Record<string, string> = {
+  ...BASE_ALLOWED_DEPENDENCIES,
+  ...V2_PACKAGES,
+  ...Object.assign({}, ...Object.values(COMPANION_PACKAGES)),
+  ...allKitPackages(),
+};
 
 /**
  * Packages only GoodBuild's own code uses: the WalletConnect module publishing swaps into
@@ -53,6 +92,10 @@ export const PLATFORM_DEPENDENCIES: Record<string, string> = {
   "@walletconnect/ethereum-provider": "2.26.0",
   // Types for three.js, so the type check can read it (D77). Only the kit's three is importable.
   "@types/three": "0.187.0",
+  // Types for the v2 packages that ship none (D152).
+  "@types/matter-js": "0.20.2",
+  "@types/howler": "2.2.13",
+  "@types/papaparse": "5.5.2",
 };
 
 export const BASE_DEPENDENCIES = ["react", "react-dom", "react-router-dom", "viem", "lucide-react", "clsx", "tailwind-merge", "class-variance-authority"];

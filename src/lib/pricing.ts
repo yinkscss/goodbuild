@@ -8,6 +8,8 @@ export interface TokenUsage {
   outputTokens: number;
   /** Prompt tokens served from cache (subset of inputTokens). */
   cachedInputTokens?: number;
+  /** Prompt tokens written to the cache (subset of inputTokens, D152). */
+  cacheWriteTokens?: number;
 }
 
 export function priceFor(model: string): ModelPrice {
@@ -18,8 +20,9 @@ export function priceFor(model: string): ModelPrice {
 export function costMicro(model: string, usage: TokenUsage): number {
   const p = priceFor(model);
   const cached = Math.min(usage.cachedInputTokens ?? 0, usage.inputTokens);
-  const fresh = usage.inputTokens - cached;
-  const usd = (fresh * p.inputPerMTok + cached * p.cachedInputPerMTok + usage.outputTokens * p.outputPerMTok) / 1_000_000;
+  const written = Math.min(usage.cacheWriteTokens ?? 0, usage.inputTokens - cached);
+  const fresh = usage.inputTokens - cached - written;
+  const usd = (fresh * p.inputPerMTok + cached * p.cachedInputPerMTok + written * (p.cacheWritePerMTok ?? p.inputPerMTok) + usage.outputTokens * p.outputPerMTok) / 1_000_000;
   return Math.ceil(usd * MICRO);
 }
 

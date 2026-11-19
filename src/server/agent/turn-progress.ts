@@ -50,6 +50,8 @@ export interface TurnSetup {
   text: string;
   /** The app's name and line from the plan, for the MiniPay kit's MINI_APP (D138). Missing on older saves. */
   appInfo?: MiniAppInfo;
+  /** Harness v2 (D152), decided when the setup was made. Missing: v1, so turns saved before it resume unchanged. */
+  harness?: "v2";
 }
 
 export interface LoggedUsage {
