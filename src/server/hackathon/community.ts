@@ -163,7 +163,7 @@ export async function listEntries(db: Db) {
 }
 /**
  * Approve a published project. Each verified person (one GoodDollar identity) has three approvals in
- * total (D132), needs a confirmed FlowState vote first, and can't approve their own project. The
+ * total (D155), needs a confirmed FlowState vote first, and can't approve their own project. The
  * count and the insert run under a per-identity lock, so parallel requests can't slip past three.
  */
 export async function approveEntry(

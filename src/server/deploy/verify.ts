@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import type { Db } from "@/server/db/client";
 import { deployments, type Deployment } from "@/server/db/deploy-schema";
 import { PROXY_IDENTIFIER } from "./compile";
+import { verifyOnCeloscan } from "./celoscan";
 
 /** Sourcify's public server. It lists both Celo chains as supported (checked 5 Nov 2026). */
 export const SOURCIFY_URL = process.env.SOURCIFY_URL ?? "https://sourcify.dev/server";
@@ -131,12 +132,15 @@ export const AFTER_DEPLOY: VerifyOptions = { bytecodeRetries: 3, retryMs: 10_000
 /** Run verification for a stored deployment and save the result. */
 export async function verifyDeployment(db: Db, d: Deployment, f: Fetch = fetch, opts: Omit<VerifyOptions, "identifier"> = {}): Promise<Deployment> {
   const out = d.proxy ? await verifyProxied(d, f, opts) : await verifyOnSourcify(d, f, opts);
+  // Celoscan (D156, mainnet only) is extra: it never changes the Sourcify status, only the note under it.
+  const scan = await verifyOnCeloscan(d, f, { polls: 2 }).catch(() => null);
+  const detail = scan && scan.status !== "skipped" ? `${out.detail} ${scan.detail}` : out.detail;
   const [row] = await db
     .update(deployments)
     .set({
       verifyStatus: out.status,
       verifyProvider: "sourcify",
-      verifyDetail: out.detail,
+      verifyDetail: detail,
       verifiedAt: out.status === "verified" ? new Date() : null,
     })
     .where(eq(deployments.id, d.id))

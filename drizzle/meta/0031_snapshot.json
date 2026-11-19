@@ -1,5 +1,5 @@
 {
-  "id": "ba3507aa-b691-4334-a516-301a80058713",
+  "id": "a1a07902-e5d4-421f-a622-e69635a2f847",
   "prevId": "d5102bab-5ae2-48ad-8903-7b8812ebabcd",
   "version": "7",
   "dialect": "postgresql",
@@ -3204,7 +3204,7 @@
       "checkConstraints": {
         "app_settings_key_known": {
           "name": "app_settings_key_known",
-          "value": "\"app_settings\".\"key\" in ('mainnet_access', 'gas_grants', 'gas_deploy_grants')"
+          "value": "\"app_settings\".\"key\" in ('mainnet_access', 'gas_grants')"
         }
       },
       "isRLSEnabled": false
@@ -4710,12 +4710,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "plan_key": {
-          "name": "plan_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "status": {
           "name": "status",
           "type": "text",
@@ -4788,65 +4782,6 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-        },
-        "gas_grants_vote_root_unique": {
-          "name": "gas_grants_vote_root_unique",
-          "columns": [
-            {
-              "expression": "goodid_root",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"gas_grants\".\"reason\" = 'hackathon_vote'",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "gas_grants_plan_unique": {
-          "name": "gas_grants_plan_unique",
-          "columns": [
-            {
-              "expression": "goodid_root",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "plan_key",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"gas_grants\".\"plan_key\" is not null",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "gas_grants_root_day_idx": {
-          "name": "gas_grants_root_day_idx",
-          "columns": [
-            {
-              "expression": "goodid_root",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
         }
       },
       "foreignKeys": {
@@ -4865,7 +4800,15 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "gas_grants_goodid_root_unique": {
+          "name": "gas_grants_goodid_root_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "goodid_root"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {
         "gas_grants_status_known": {
@@ -4875,10 +4818,6 @@
         "gas_grants_reason_known": {
           "name": "gas_grants_reason_known",
           "value": "\"gas_grants\".\"reason\" in ('hackathon_vote', 'deploy')"
-        },
-        "gas_grants_plan_key_check": {
-          "name": "gas_grants_plan_key_check",
-          "value": "(\"gas_grants\".\"reason\" = 'deploy') = (\"gas_grants\".\"plan_key\" is not null)"
         }
       },
       "isRLSEnabled": false
@@ -5043,6 +4982,147 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.registry_events": {
+      "name": "registry_events",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "builder": {
+          "name": "builder",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "app": {
+          "name": "app",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "target": {
+          "name": "target",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tx_hash": {
+          "name": "tx_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "occurred_at": {
+          "name": "occurred_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "batch_tx": {
+          "name": "batch_tx",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "error": {
+          "name": "error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "sent_at": {
+          "name": "sent_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "registry_events_status_idx": {
+          "name": "registry_events_status_idx",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "registry_events_key_unique": {
+          "name": "registry_events_key_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "key"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "registry_events_status_known": {
+          "name": "registry_events_status_known",
+          "value": "\"registry_events\".\"status\" in ('pending', 'sending', 'sent', 'failed')"
+        },
+        "registry_events_kind_known": {
+          "name": "registry_events_kind_known",
+          "value": "\"registry_events\".\"kind\" between 0 and 5"
+        }
+      },
       "isRLSEnabled": false
     }
   },

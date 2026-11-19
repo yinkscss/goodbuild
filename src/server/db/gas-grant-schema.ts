@@ -4,11 +4,11 @@ import { sql } from "drizzle-orm";
 import { users } from "./schema";
 
 /**
- * One row per network-fee top-up the gas wallet sends to a GoodDollar-verified person (D41, D124, D156).
+ * One row per network-fee top-up the gas wallet sends to a GoodDollar-verified person (D41, D124, D157).
  *
  * Vote grants (`reason = hackathon_vote`): `goodid_root` is unique among them, so a person gets one
  * however many wallets or tabs they use; the insert decides who wins a race. Deploy grants
- * (`reason = deploy`, D156): many per person, at most one per `plan_key` (project, chain, source, day).
+ * (`reason = deploy`, D157): many per person, at most one per `plan_key` (project, chain, source, day).
  * Both kinds share this table so one lock and one nonce sequence cover everything the gas wallet signs. The signed transaction is saved before it is broadcast, so a crash or an
  * unclear answer resends the SAME transaction (same nonce: it can land only once), never a new payment.
  *

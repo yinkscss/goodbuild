@@ -20,6 +20,7 @@ import { allowsMainnet, getMainnetMode } from "@/server/settings/mainnet-access"
 import { withCurrentAddresses } from "./addresses";
 import { compileForDeploy, type DeployCompile, type EvmVersion } from "./compile";
 import { DeployError } from "./deploy-error";
+import { enqueueDeployment } from "@/server/registry/outbox";
 import { exploitGate, type GateResult } from "./exploit-gate";
 import {
   adoptUnchanged,
@@ -428,6 +429,7 @@ export async function recordDeployment(
     })
     .returning();
 
+  await enqueueDeployment(db, row);
   await syncContractModules(db, input.projectId);
   await db.insert(messages).values({ projectId: input.projectId, role: "system", content: `${input.contractName} is live on ${chainLabel(input.chainId)} at ${address}` });
   await db.update(projects).set({ status: "deployed" }).where(eq(projects.id, input.projectId));

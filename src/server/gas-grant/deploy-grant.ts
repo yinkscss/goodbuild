@@ -9,7 +9,7 @@ import { ledgerEntries } from "@/server/db/schema";
 import { ensureGas, grantsEnabled, type GrantDeps, type GrantRule } from "./grant";
 
 /**
- * Network fee for a mainnet deploy, paid by the gas wallet (D156). Silent: the person just deploys.
+ * Network fee for a mainnet deploy, paid by the gas wallet (D157). Silent: the person just deploys.
  *
  * What it does: when a verified person prepares a Celo mainnet deploy and their wallet can't pay the
  * fee, the gas wallet tops that wallet up to the estimated fee, before the plan is returned. The person

@@ -13,6 +13,7 @@ import { contractUpgrades, deployments, upgradeableProjects, type Deployment, ty
 import { messages, projects } from "@/server/db/schema";
 import { compileForDeploy, type DeployArtifact, type DeployCompile, type EvmVersion, type UpgradeableBuild } from "./compile";
 import { DeployError } from "./deploy-error";
+import { enqueueDeployment } from "@/server/registry/outbox";
 import { compareLayouts, safetyMessage, storageProblemWords } from "./upgrade-check";
 
 /**
@@ -385,6 +386,7 @@ export async function recordProxyCreation(db: Db, input: RecordProxiedInput, dep
       proxy,
     })
     .returning();
+  await enqueueDeployment(db, row);
   await db.insert(messages).values({ projectId: input.projectId, role: "system", content: `${input.contractName} is live on ${chainLabel(input.chainId)} at ${address}. It can be changed later, by your wallet only.` });
   return row;
 }

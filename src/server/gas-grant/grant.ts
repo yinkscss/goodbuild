@@ -11,7 +11,7 @@ import { readGoodIdRoot } from "@/server/goodid";
 /**
  * Gas grant (D41, amended 18 Nov 2026, see DECISIONS.md D124): the gas wallet tops a GoodDollar-verified
  * person's session wallet up to 0.3 CELO, once per person, at most 50 a day, so they can vote on FlowState.
- * Mainnet deploys have their own, silent top-up (D156, deploy-grant.ts) that signs through the same code.
+ * Mainnet deploys have their own, silent top-up (D157, deploy-grant.ts) that signs through the same code.
  * Design and red team: MAINNET_PLAN.md section 7.
  *
  * Rules kept from that design:

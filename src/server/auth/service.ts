@@ -5,6 +5,7 @@ import { and, eq, gt, isNull } from "drizzle-orm";
 import type { Db } from "@/server/db/client";
 import { sessions, users, type User } from "@/server/db/schema";
 import { SESSION_ROTATE_AFTER_SECONDS, SESSION_TTL_SECONDS } from "./config";
+import { enqueueRegistryEvent } from "@/server/registry/outbox";
 import { AuthError } from "./errors";
 import { readSessionToken, signSessionToken } from "./tokens";
 
@@ -50,6 +51,7 @@ export async function signInUser(
     .values({ wallet, email: input.email, walletKind: input.walletKind, ageOk: true, countryOk: true, attestedAt: now, lastSeenAt: now })
     .onConflictDoUpdate({ target: users.wallet, set: { lastSeenAt: now } })
     .returning();
+  await enqueueRegistryEvent(db, { kind: "BuilderJoined", key: `builder:${created.id}`, userId: created.id });
   return created;
 }
 

@@ -23,7 +23,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/projects/[i
     if (!(await getOwnedProject(db, id, session.user.id))) return NextResponse.json({ error: "not_found" }, { status: 404 });
     try {
       const plan = await prepareDeploy(db, { ...parsed.data, projectId: id, wallet: session.user.wallet });
-      // D156: silently cover the network fee of a mainnet deploy. It never fails or slows a deploy past its wait.
+      // D157: silently cover the network fee of a mainnet deploy. It never fails or slows a deploy past its wait.
       await sponsorDeployFee(db, session.user, plan, gasGrantDeps());
       return NextResponse.json({ plan });
     } catch (error) {
