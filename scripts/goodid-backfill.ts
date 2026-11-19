@@ -35,6 +35,7 @@ async function main() {
           if (!root) return;
           found++;
           if (write) await recordGoodIdRoot(db, row.id, root);
+          console.log(`  verified: ${row.wallet}${root.toLowerCase() !== row.wallet.toLowerCase() ? ` (linked to ${root.toLowerCase()})` : ""}${write ? "  -> recorded" : ""}`);
         } catch (error) {
           failed++;
           console.error(`read failed for account ${row.id}`, error instanceof Error ? error.message : error);
