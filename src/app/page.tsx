@@ -17,6 +17,7 @@ import { SiteNav } from "@/components/landing/site-nav";
 import { PublishedApps, PublishedAppsSkeleton } from "@/components/landing/published-apps";
 import { TemplateCard } from "@/components/landing/template-card";
 import { TemplateGallery } from "@/components/landing/template-gallery";
+import { gameTemplateStarters } from "@/server/agent/game-templates";
 
 /**
  * Landing (design/landing/index.html). Bento order per DESIGN_SYSTEM §2:
@@ -41,6 +42,7 @@ const SITE_JSON_LD = [
 ];
 
 export default function LandingPage() {
+  const gameTemplates = gameTemplateStarters();
   return (
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(SITE_JSON_LD).replace(/</g, "\\u003c") }} />
@@ -52,7 +54,7 @@ export default function LandingPage() {
             <HeroCard />
           </div>
           <div id="build" className="order-2 scroll-mt-24 md:col-span-2 lg:order-4 lg:col-span-3">
-            <LandingPrompt />
+            <LandingPrompt gameTemplates={gameTemplates} />
           </div>
           <div className="order-3 flex lg:order-1 [&>*]:flex-1">
             <LiveCard />
@@ -63,7 +65,7 @@ export default function LandingPage() {
         </div>
 
         <HowItWorks />
-        <TemplateGallery />
+        <TemplateGallery gameTemplates={gameTemplates} />
         <Suspense fallback={<PublishedAppsSkeleton />}>
           <PublishedApps />
         </Suspense>

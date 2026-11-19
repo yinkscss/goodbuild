@@ -2,7 +2,6 @@ import { SiteFooter } from "@/components/landing/site-footer";
 import { LandingPrompt } from "@/components/landing/landing-prompt";
 import { SiteNav } from "@/components/landing/site-nav";
 import { TemplateGallery } from "@/components/landing/template-gallery";
-import { GameTemplateGallery } from "@/components/landing/game-template-gallery";
 import { gameTemplateStarters } from "@/server/agent/game-templates";
 
 export const metadata = { title: "Templates · GoodBuild" };
@@ -22,10 +21,7 @@ export default function TemplatesPage() {
         <div id="build" className="mt-8">
           <LandingPrompt gameTemplates={gameTemplates} />
         </div>
-        <div className="[&>section]:mt-12">
-          <TemplateGallery fullPage />
-          <GameTemplateGallery templates={gameTemplates} />
-        </div>
+        <TemplateGallery fullPage gameTemplates={gameTemplates} />
         <SiteFooter />
       </main>
     </>
