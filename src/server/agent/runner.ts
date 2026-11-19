@@ -33,6 +33,7 @@ import { decideFunding } from "@/server/credits/cap";
 import { CREDITS_PAUSED_MESSAGE, OutOfCreditsError, ensureHold, fitCall, headroomMicro, worstCaseCallMicro } from "@/server/credits/holds";
 import { fillMiniApp, type MiniAppInfo } from "./kits/mini-app";
 import { formatCredits } from "@/lib/credits-math";
+import { postLedgerEntry } from "@/server/credits/ledger";
 import { deploymentsBlock, loadDeployedAddresses } from "@/server/deploy/addresses";
 import { isUpgradeableProject, liveStorage, upgradeChecksFor } from "@/server/deploy/upgradeable";
 import { upgradeableRules } from "./upgradeable-rules";
@@ -48,7 +49,7 @@ import {
   type TurnJobContext,
   type TurnSetup,
 } from "./turn-progress";
-import { deliveryContext, milestoneAllows } from "./delivery";
+import { deliveryContext, milestoneAllows, scopeRefusal } from "./delivery";
 import { SponsorshipExhaustedError, sponsorshipCanCall } from "@/server/credits/build-sponsorship";
 import type { DeliveryPlan } from "@/server/db/schema";
 import { Workspace, type FileChange } from "./workspace";
@@ -206,6 +207,27 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
   };
 
   const record: TurnRecord = { kind: "turn", mode: input.mode, steps: [], log: [], changes: [], chargedMicro: 0, status: "error" };
+  /** Tool calls refused for milestone scope. A build turn that changed nothing because of them is refunded (D153). */
+  let scopeRefused = 0;
+  /** The turn's workspace, once there is one: the refund needs it on every way a turn ends, the error path included. */
+  let turnWs: Workspace | undefined;
+  /** Whether a scope refund was committed: a rolled-back one must not still show on the turn. */
+  let refundCommitted = false;
+  /**
+   * D153: a paid build turn the server refused for milestone scope, which changed no files, is refunded,
+   * however it ended (answered, after the checks, or with an error). Sets the record before `finish` saves
+   * it; `settleRefund` drops the claim if the transaction holding the credit rolled back.
+   */
+  const scopeRefund = async (tx: Db) => {
+    const amount = input.mode === "build" && funding === "paid" && scopeRefused > 0 && !refundCommitted && turnWs && !turnWs.changed() ? record.chargedMicro : 0;
+    if (amount <= 0) return;
+    record.refundedMicro = amount;
+    await postLedgerEntry(tx, { userId: input.userId, kind: "adjust", amountMicro: amount, idempotencyKey: `scope-refund:${job.jobId ?? record.jobId ?? "turn"}`, refType: "scope_refund", refId: job.jobId ?? undefined });
+  };
+  const settleRefund = (committed: boolean) => {
+    if (committed && record.refundedMicro) refundCommitted = true;
+    else if (!refundCommitted) delete record.refundedMicro;
+  };
   let assistantId = "";
   let finalStatus = "draft";
   let text = "";
@@ -263,6 +285,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     chainId = setup.chainId;
     packagesV2 = setup.harness === "v2" && input.mode === "build";
     const ws = new Workspace(setup.baseFiles, { v2: packagesV2 });
+    turnWs = ws;
     workspace = ws;
     if (job.deliveryIndex !== undefined) delivery = (await db.select().from(buildDeliveries).where(eq(buildDeliveries.projectId, input.projectId)))[0]?.plan;
     const firstBuild = setup.firstBuild;
@@ -558,7 +581,8 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
           // add_kit writes the kit's starter files, so they pass the same gate.
           const kitPaths = call.name === "add_kit" ? Object.keys(kitById(String(args.name ?? "").trim())?.files ?? {}) : [];
           const gated = opts.gate && (EDIT_TOOLS.includes(call.name) || call.name === "add_kit") ? [args.path, args.from, args.to, ...kitPaths].map((p) => (typeof p === "string" ? opts.gate!(p) : null)).find(Boolean) : null;
-          const outcome = gated ? { ok: false, result: `Error: ${gated}` } : allowed ? ws.execute(call.name, call.arguments, input.mode) : { ok: false, result: "This feature belongs to a later saved milestone. Finish the current interface; do not add contracts or live payments yet." };
+          if (!gated && !allowed) scopeRefused++;
+          const outcome = gated ? { ok: false, result: `Error: ${gated}` } : allowed ? ws.execute(call.name, call.arguments, input.mode) : { ok: false, result: scopeRefusal(delivery!, job.deliveryIndex!) };
           const path = String(args.path ?? call.name);
           if (!outcome.ok && ["edit_file", "create_file"].includes(call.name)) {
             const count = (failures.get(path) ?? 0) + 1;
@@ -889,7 +913,8 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
           let args: Record<string, unknown> = {};
           try { const parsed = JSON.parse(call.arguments); if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) args = parsed; } catch { /* Workspace reports malformed arguments. */ }
           const allowed = !delivery || job.deliveryIndex === undefined || milestoneAllows(delivery, job.deliveryIndex, call.name, args);
-          const outcome = allowed ? ws.execute(call.name, call.arguments, input.mode) : { ok: false, result: "This feature belongs to a later saved milestone. Finish the current interface; do not add contracts or live payments yet." };
+          if (!allowed) scopeRefused++;
+          const outcome = allowed ? ws.execute(call.name, call.arguments, input.mode) : { ok: false, result: scopeRefusal(delivery!, job.deliveryIndex!) };
           const path = String(args.path ?? call.name);
           if (!outcome.ok && ["edit_file", "create_file"].includes(call.name)) {
             const count = (failures.get(path) ?? 0) + 1;
@@ -958,11 +983,14 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       stopIfRequested();
       record.status = "answered";
       await job.commit(async (tx) => {
+        await scopeRefund(tx);
         await finish(tx, assistantId, text, record);
         await markImagesAttached(tx, setup);
         if (job.lockHeld) await releaseTurn(tx, input.projectId, finalStatus);
         await job.complete(tx, "done");
-      });
+      }).then(() => settleRefund(true), (e) => { settleRefund(false); throw e; });
+      // The live view takes the refund from the record: "done" carries only the status.
+      if (record.refundedMicro) emit({ type: "snapshot", text, record: structuredClone(record) });
       emit({ type: "done", status: "answered", summary: text.trim() });
       return record;
     }
@@ -1122,13 +1150,15 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     // the turn lock and the job's end state. A crash after it leaves a finished job, never a
     // job that runs again.
     await job.commit(async (tx) => {
+      await scopeRefund(tx);
       if (report.ok && delivery && job.deliveryIndex !== undefined) await tx.update(buildDeliveries).set({ plan: { ...delivery, completed: Math.max(delivery.completed, job.deliveryIndex + 1), verified: [...new Set([...(delivery.verified ?? []), ...(deliveryVerified ? [delivery.milestones[job.deliveryIndex].id] : [])])] } }).where(eq(buildDeliveries.projectId, input.projectId));
       if (save) record.version = await checkpoint(tx, { projectId: input.projectId, files: ws.files, summary, messageId: assistantId });
       await finish(tx, assistantId, text, record);
       await markImagesAttached(tx, setup);
       if (job.lockHeld) await releaseTurn(tx, input.projectId, endStatus);
       await job.complete(tx, "done");
-    });
+    }).then(() => settleRefund(true), (e) => { settleRefund(false); throw e; });
+    if (record.refundedMicro) emit({ type: "snapshot", text, record: structuredClone(record) });
     finalStatus = endStatus;
     if (save) {
       requestGithubSync(deps.db, input.projectId);
@@ -1173,8 +1203,10 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     record.status = "error";
     record.error = message;
     emit({ type: "snapshot", text, record: structuredClone(record) });
-    if (assistantId) await endWith("error", message).catch(rethrowLease);
-    else
+    if (assistantId) {
+      await endWith("error", message).catch(rethrowLease);
+      if (record.refundedMicro) emit({ type: "snapshot", text, record: structuredClone(record) });
+    } else
       await job
         .commit(async (tx) => {
           if (job.lockHeld) await releaseTurn(tx, input.projectId, finalStatus);
@@ -1189,10 +1221,11 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
 
   async function endWith(status: "stopped" | "error", message?: string) {
     await job.commit(async (tx) => {
+      if (status === "error") await scopeRefund(tx);
       await finish(tx, assistantId, text, record);
       if (job.lockHeld) await releaseTurn(tx, input.projectId, finalStatus);
       await job.complete(tx, status, message);
-    });
+    }).then(() => settleRefund(true), (e) => { settleRefund(false); throw e; });
   }
 
   /** First run: record the prompt, create the reply, build the context. Saved once. */

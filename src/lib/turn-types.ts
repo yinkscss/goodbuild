@@ -124,6 +124,8 @@ export interface TurnRecord {
   version?: number;
   chargedMicro: number;
   sponsoredMicro?: number;
+  /** Credits handed back because the server refused the change for milestone scope and nothing was built (D153). */
+  refundedMicro?: number;
   jobId?: string;
   draftSaved?: boolean;
   delivery?: { title: string; remaining: string[]; demo: boolean };

@@ -7,6 +7,7 @@ import { PACKAGES_GUIDE_NAME, V2_PACKAGE_USES } from "./packages-guide";
 import { BASE_ALLOWED_DEPENDENCIES, PLATFORM_DIR } from "./template";
 import { UI_PRIMITIVE_NAMES } from "./ui-primitives";
 import { SPEC_PATH, WRITE_SPEC_TOOL, specBlock } from "./spec";
+import { MILESTONE_FACTS } from "./delivery";
 
 /** Tools the agent can call (AI_AGENT.md §2). No shell: the preview has none. */
 export const BUILD_TOOLS: ToolSpec[] = [
@@ -201,6 +202,7 @@ const CONVERSATION = `Reading the user's message:
 - Replies never use em dashes (the user's house style); use commas or full stops.
 - Finding code: the context has the files most relevant to this request in full, and a one-line summary of every other file. To change something that isn't shown, call find_symbol (a component, hook, function or route name) or search_code (visible text, a class name) first, then read_file (a line range for long files). Never edit a file from memory: edit_file needs text copied from the file.
 - Images the user attached in this message are design references or their own assets: follow them closely (layout, colours, type, mood).
+- Build milestones (when the project has them): ${MILESTONE_FACTS}
 
 What users build: mostly dApps on Celo (a contract plus its app), also games in 2D and 3D, dashboards, mini apps, and plain websites and pages (landing pages, event or shop sites, portfolios, about or signup pages for their dApp). A project's chain is selected in GoodBuild and supplied in src/lib/chain.ts; keep every contract read and write on that chain. New projects default to Celo Sepolia, and mainnet use stays subject to GoodBuild's server-side safety gates. Write a contract only when the app needs on-chain state or payments; a website needs none. Data that must be saved but needn't be on-chain (profiles, notes, comments, form entries) goes in GoodBuild's app data store through src/lib/db.ts, with wallet sign-in (load the app-data guide). Never invent a backend, API route or third-party database: there is no other server.
 
@@ -232,7 +234,7 @@ ${FOLLOW_UP}
 GoodBuild checks everything again when you reply, and sends back anything that still fails.`
         : `You are in BUILD MODE. Work in this order:
 1. Call set_plan once with a short summary, steps and the guides this work needs (skip set_plan when you are only answering a question).
-2. Follow the server delivery contract when present: build the working interface and local interactions first, with deferred features clearly disabled. Only write contracts in an on-chain milestone. Without a delivery contract, write the interface first, then any required contracts. Prefer edit_file on existing files; create_file for new ones. On a first build, replace src/App.tsx completely unless the context identifies a code-seeded template; for those, adapt the supplied composition and interactions rather than rebuilding it. One file per create_file call and keep each file under about 250 lines (split big contracts and pages into several files); a response that is too long gets cut off and the file is lost. Don't write text between tool calls; the user only sees your final reply. Never repeat an edit that already succeeded.
+2. Follow the server delivery contract when present: build the working interface and local interactions first, with deferred features clearly disabled. Only write contracts in an on-chain milestone, or once the delivery contract says one is delivered. Without a delivery contract, write the interface first, then any required contracts. Prefer edit_file on existing files; create_file for new ones. On a first build, replace src/App.tsx completely unless the context identifies a code-seeded template; for those, adapt the supplied composition and interactions rather than rebuilding it. One file per create_file call and keep each file under about 250 lines (split big contracts and pages into several files); a response that is too long gets cut off and the file is lost. Don't write text between tool calls; the user only sees your final reply. Never repeat an edit that already succeeded.
 3. When the edits are done, call run_checks once and fix what it reports (skip it for a question, or a change to wording or one style). It takes several seconds, so don't call it after every file.
 4. Then reply to the user in 1-3 plain sentences (never use em dashes; use commas or full stops): what you built or changed and anything they should know (for example constructor arguments they'll be asked for at deploy). No markdown headings, no code. Do not say whether the code compiled, ran or was tested: GoodBuild shows the user those results itself.
 ${FOLLOW_UP}
