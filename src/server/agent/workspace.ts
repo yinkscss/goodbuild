@@ -6,6 +6,7 @@ import { applyEdits, diffStat, unifiedDiff, type SearchReplace } from "./edits";
 import { loadGuides } from "./guides";
 import { KITS, kitById, kitForPackage, kitIdsOf, kitsOf, packagesFor, withKit } from "./kits";
 import { dependenciesOf, packageJson } from "./template";
+import { SPEC_PATH, parseSpec, specPlan } from "./spec";
 
 import type { FileChange } from "@/lib/turn-types";
 
@@ -84,6 +85,22 @@ export class Workspace {
         }
         const g = loadGuides(args.guides);
         return { ok: true, result: `Plan noted. Guides for this work:\n\n${g.text}`, plan: { summary, steps }, guides: g.loaded };
+      }
+      case "write_spec": {
+        // The spec call (D152): the one tool that writes the platform-owned spec file.
+        if (mode === "plan") return { ok: false, result: "Error: plan mode can't write the spec." };
+        const parsed = parseSpec(args);
+        if (!parsed.ok) return { ok: false, result: `Error: ${parsed.error} Call write_spec again.` };
+        const prev = this.files[SPEC_PATH];
+        const content = JSON.stringify(parsed.spec, null, 2) + "\n";
+        this.files[SPEC_PATH] = content;
+        this.touched.add(SPEC_PATH);
+        return {
+          ok: true,
+          result: "Spec saved. The builders take it from here; stop now.",
+          plan: specPlan(parsed.spec),
+          change: { path: SPEC_PATH, op: prev === undefined ? "create" : "edit", ...diffStat(prev ?? "", content), diff: unifiedDiff(SPEC_PATH, prev ?? "", content) },
+        };
       }
       case "suggest_next": {
         const items = (Array.isArray(args.suggestions) ? args.suggestions : [])

@@ -173,7 +173,8 @@ export async function compileForDeploy(
     if (!proxy?.evm?.bytecode?.object) return { ok: false, errors: ["OpenZeppelin's proxy didn't compile."] };
     const issues = Object.entries(output.sources ?? {})
       .filter(([file]) => deployable(file))
-      .flatMap(([file, src]) => [...guardrailIssues(file, src.ast, files[file], { upgradeable: true }), ...upgradeableIssues(file, src.ast, files[file])]);
+      // require and revert strings are house style, allowed in harness v2 builds (D152), so a deploy never refuses them.
+      .flatMap(([file, src]) => [...guardrailIssues(file, src.ast, files[file], { upgradeable: true, allowRequire: true }), ...upgradeableIssues(file, src.ast, files[file])]);
     const input = { language: "Solidity", sources: Object.fromEntries(Object.entries({ ...sources, ...(imports ?? {}) }).map(([k, v]) => [k, { content: v }])), settings: solcSettings({ evmVersion, upgradeable: true }) };
     let analyses: Record<string, ContractAnalysis>;
     try {

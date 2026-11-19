@@ -46,6 +46,8 @@ export interface RunCheckOptions {
   scene?: boolean;
   /** Also return screenshots at phone and desktop width. */
   screenshots?: boolean;
+  /** Also return a text outline of a page (D152: the builder's open_app tool). route defaults to the home page. */
+  outline?: { route?: string };
   timeoutMs?: number;
   /** Tests: a browser to use instead of the shared one. */
   browser?: Browser;
@@ -67,6 +69,8 @@ export interface RunCheckResult {
   ms: number;
   /** For a 2D game, the first is the start screen and the second is a moment into play (phone width). */
   screenshots?: Array<{ width: number; png: Uint8Array; shows?: "start" | "playing" }>;
+  /** What the page shows, as text: headings, buttons, links, inputs and the start of its text (options.outline). */
+  outline?: string;
 }
 
 export const PHONE = { width: 375, height: 812 };
@@ -541,6 +545,19 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
     }
   }
 
+  // The builder's own look at a page (D152). Before the issues are read, so a crash on that route is reported too.
+  let outline: string | undefined;
+  if (options.outline) {
+    const target = options.outline.route?.trim().replace(/^#/, "") || "/";
+    route = target.startsWith("/") ? target : `/${target}`;
+    await page.evaluate((r) => {
+      document.documentElement.setAttribute("data-fx", "off");
+      window.location.hash = `#${r}`;
+    }, route).catch(() => undefined);
+    await settle(page, 500);
+    outline = await page.evaluate(pageOutline).catch((error) => `couldn't read the page: ${String((error as Error)?.message ?? error).slice(0, 160)}`);
+  }
+
   let screenshots: RunCheckResult["screenshots"];
   if (options.screenshots) {
     await page.evaluate(() => {
@@ -595,7 +612,37 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
   }
   const opened = issues.length ? `${issues.length} problem${issues.length === 1 ? "" : "s"} when the app ran` : `opened ${routes.length === 1 ? "the app" : `${routes.length} pages`} with no errors`;
   const note = gameNotes.length ? `${opened}; ${gameNotes.filter(Boolean).join("; ")}` : opened;
-  return { ran: true, deliveryVerified: Boolean(deliveryVerified && !issues.length), issues, note, ...(screenshots ? { screenshots } : {}) };
+  return { ran: true, deliveryVerified: Boolean(deliveryVerified && !issues.length), issues, note, ...(screenshots ? { screenshots } : {}), ...(outline !== undefined ? { outline } : {}) };
+}
+
+/** Runs in the page: what a person sees, as short lines (open_app, D152). Self-contained, it is serialised. */
+function pageOutline(): string {
+  const clean = (s: string | null | undefined, max = 80) => (s ?? "").replace(/\s+/g, " ").trim().slice(0, max);
+  const visible = (el: Element) => {
+    const r = el.getBoundingClientRect();
+    const st = getComputedStyle(el);
+    return r.width > 0 && r.height > 0 && st.visibility !== "hidden" && st.display !== "none";
+  };
+  const lines: string[] = [`route: ${window.location.hash.replace(/^#/, "") || "/"}`, `title: ${clean(document.title)}`];
+  document.querySelectorAll("h1, h2, h3").forEach((h) => {
+    if (visible(h)) lines.push(`${h.tagName.toLowerCase()}: ${clean(h.textContent)}`);
+  });
+  document.querySelectorAll("button, [role=button]").forEach((b) => {
+    if (!visible(b)) return;
+    const name = clean(b.getAttribute("aria-label") || b.textContent) || "(no text)";
+    lines.push(`button: ${name}${(b as HTMLButtonElement).disabled ? " (disabled)" : ""}`);
+  });
+  document.querySelectorAll("a[href]").forEach((a) => {
+    if (visible(a)) lines.push(`link: ${clean(a.getAttribute("aria-label") || a.textContent) || "(no text)"} -> ${clean(a.getAttribute("href"), 60)}`);
+  });
+  document.querySelectorAll("input, textarea, select").forEach((el) => {
+    if (!visible(el)) return;
+    const id = el.getAttribute("id");
+    const label = (id && document.querySelector(`label[for="${CSS.escape(id)}"]`)?.textContent) || el.closest("label")?.textContent || el.getAttribute("aria-label") || el.getAttribute("placeholder");
+    lines.push(`${el.tagName.toLowerCase()}${el.getAttribute("type") ? ` (${el.getAttribute("type")})` : ""}: ${clean(label) || "(no label)"}`);
+  });
+  lines.push(`text: ${clean(document.body?.innerText, 900)}`);
+  return lines.join("\n").slice(0, 4000);
 }
 
 /** Build the project and open it. Never throws: a check that can't run says so and reports nothing. */

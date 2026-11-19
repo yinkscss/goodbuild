@@ -1813,7 +1813,7 @@ The owner approved implementing all five parts of the first-build fix and openin
 - **UNVERIFIED** with a real model reshaping them, and on a real phone.
 
 ### D152. Harness v2: Sonnet plans and writes contracts, DeepSeek writes the front end, the builder checks its own work (19 Nov 2026; proposed, changes D19)
-- Date: 19 Nov 2026 · Proposed by: Claude, at the owner's request · **Status: proposed, waiting for the owner (Olayinka)** · Changes D19 (user decision), raises the call limit in [PROGRESSIVE_DELIVERY.md](PROGRESSIVE_DELIVERY.md) under the flag only
+- Date: 19 Nov 2026 · Proposed by: Claude, at the owner's request · **Decided by: user (Olayinka), in chat on 19 Nov 2026: all five points approved** (the routing change, the higher limits under the flag, the package list, `require` allowed again, acceptance in `warn` first) · Changes D19 (user decision), raises the call limit in [PROGRESSIVE_DELIVERY.md](PROGRESSIVE_DELIVERY.md) under the flag only
 - Plan: [HARNESS_V2_PLAN.md](HARNESS_V2_PLAN.md). Everything is behind `HARNESS_V2=off|admins|on`, default `off`; no migration.
 - **Routing:** a spec call on `claude-sonnet-5-5` (thinking on) writes the app's plan and acceptance flows to a platform-owned `src/spec.json`. Sonnet writes contracts, tests and `deploy.json`; DeepSeek writes `src/`. The first fix attempt goes to the tier that wrote the failing files; later attempts go to Sonnet as today.
 - **Loop (after OpenAI's open-source Codex harness):** the builder runs `run_tests`, `open_app` and `run_acceptance` itself, within a per-turn check-time budget instead of 3 calls; limits are 90 calls and 40 rounds, with spend still bounded by holds, the free ceiling and sponsorship; older file bodies are trimmed from the history at phase boundaries; Sonnet calls cache the tail of the conversation, and cache writes are billed at the provider's rate.
@@ -1822,6 +1822,11 @@ The owner approved implementing all five parts of the first-build fix and openin
 - Why: the owner wants apps that work, not template-shaped ones. In the evals, the expensive failures were contract and test code (RTX, E5), which a better plan alone doesn't fix; and the builder couldn't run or see its own work.
 - Cost, estimated: about +$0.11 per first build and +$0.30 to $0.40 per contract build before savings from fewer Sonnet fixes and caching. To measure in the canary (HARNESS_V2_PLAN.md).
 - Number note: D144 to D149 don't appear in this file; if an open branch uses D152, renumber this one.
+- **PR 1 (built, 19 Nov 2026):** the flag, the spec call, the Sonnet contracts phase and the DeepSeek front-end phase, writer-first fixes, `run_tests` and `open_app` with a check-time budget, the v2 limits, history trimmed at phase boundaries, the cached tail of strong calls, cache writes billed, the v2 prompt and design rules, capability kits left to the builder, `require` allowed. Two changes from the plan:
+  - No `TURN_SETUP_VERSION` bump: an optional `harness` field on the setup does the job, so turns running during the deploy resume as v1 instead of failing.
+  - The upgradeable deploy check also allows `require`, or a v2 contract converted to upgradeable would be refused at deploy.
+- **Also changes v1 billing:** cache writes are now billed at Anthropic's write rate (1.25x input) for every Sonnet call, and a paid call's hold allows for them. v1 already cached the system prompt and context, and those writes were billed as plain input before.
+- **Checked:** unit and scripted-runner tests (`harness-v2.test.ts`); every existing agent, pricing and credit test passes. **UNVERIFIED** with real models; that is the owner's canary in HARNESS_V2_PLAN.md.
 
 ### D154. Solitaire's run check deals from a fixed seed (19 Nov 2026; fixes a flaky template check)
 - Date: 19 Nov 2026 · Decided by: the owner (chose the seeded deal over loosening the score rule) · Built by: Claude

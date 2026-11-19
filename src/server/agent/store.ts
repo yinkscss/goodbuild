@@ -142,12 +142,15 @@ export async function recordUsage(
     inputTokens: number;
     outputTokens: number;
     cachedInputTokens: number;
+    /** Tokens written to the provider's cache (D152). Priced, not stored: the cost columns hold the result. */
+    cacheWriteTokens?: number;
     funding: FundingSource;
     /** The paid job this call belongs to. */
     jobId?: string | null;
   },
 ): Promise<{ providerCostMicro: number; chargedMicro: number; inserted: boolean }> {
-  const { jobId, ...row } = args;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { jobId, cacheWriteTokens: _written, ...row } = args;
   const provider = costMicro(args.model, args);
   const charged = chargedMicro(provider);
   const insertUsage = async (tx: Db) => {

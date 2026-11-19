@@ -2,6 +2,18 @@
 
 Written 4 Nov 2026 at the end of the first build session (claude.ai), for whoever continues in Claude Code. Read CLAUDE.md and docs/BUILD_PROMPT_STAGE1.md first; this file only covers where things stand.
 
+## Harness v2, PR 1: Sonnet plans and writes contracts, the builder checks its own work (19 Nov 2026, D152, branch `claude/elegant-pasteur-j73em3`)
+Behind `HARNESS_V2=off|admins|on`, **off by default**, so merging changes nothing for users. With it on:
+- a spec call on Sonnet writes `src/spec.json` (pages, direction, contracts, acceptance flows);
+- Sonnet writes and tests the contracts, which are compiled before DeepSeek writes the front end;
+- the first fix goes to the model that wrote the failing files;
+- the builder runs `run_tests` and `open_app` itself within a 4-minute check budget;
+- limits are 90 calls and 40 rounds, and older file bodies are trimmed from the history between phases;
+- strong calls cache their tail;
+- the design rules are about direction, the motion and dashboard kits are the builder's choice, and `require` is allowed.
+
+No migration. **Also live for everyone:** Sonnet cache writes are now billed at Anthropic's 1.25x rate. **Needs the owner:** set `HARNESS_V2=admins` in `.env.production`, `up -d worker`, and run the canary in [HARNESS_V2_PLAN.md](HARNESS_V2_PLAN.md). Watch the worker log for `harness: v2`, `spec:`, `phase: contracts`, `phase: front end` and `fix attempt 1 on the`. **UNVERIFIED** with real models. PR 2 (acceptance flows) and PR 3 (packages) are next.
+
 ## Low credits pause a build and keep its files; big plans get more passes (19 Nov 2026, D138, branch `claude/gallant-cori-0am2pm`)
 A paid build no longer stops on a call it can't afford at full size: the call moves to the fast model, then to a lower output limit, and only pauses when not even that fits. A paused build is saved as a draft (`needs_fix`, `paused: "credits"`) with a **Continue** button that picks up from its files. GoodBuild fills the MiniPay kit's MINI_APP from the plan, and missing-wiring errors get the fast model first. No migration. **UNVERIFIED** with a real model. Then (PR 2) Continue shows its cost and the composer warns before a build bigger than the balance; and (PR 3) a build whose reply says the plan isn't finished gets up to 2 more passes (`MORE_BUILD_PASSES`, 0 turns it off), a model stream silent for 2 minutes is retried (`MODEL_IDLE_MS`), and the chat's Thinking clock keeps running through quiet steps. Watch the worker log for `the builder said the plan isn't finished`.
 

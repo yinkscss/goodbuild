@@ -1,3 +1,4 @@
+import { SPEC_PATH } from "./spec";
 import { TEMPLATE_IMAGE_MODULE } from "@/config/page-templates";
 import "server-only";
 
@@ -93,6 +94,7 @@ export function pathProblem(p: string, kits: Kit[] = []): string | null {
     return `${WALLET_DIR} is GoodBuild's wallet layer (wallet list, WalletConnect, MiniPay). Use connectWallet / writeContract from src/lib/chain.ts, useWallet and ConnectButton instead of changing it.`;
   }
   if (p.startsWith("src/assets/")) return "src/assets/ is written by GoodBuild from the user's uploads. Import { assets } from it, or use the /assets/<name> path.";
+  if (p === SPEC_PATH) return `${SPEC_PATH} is the app's spec, written by GoodBuild's planner. Follow it; if it is wrong, say so in your reply instead of changing it.`;
   if (/^contracts\/[A-Za-z0-9_]+\.sol$/.test(p) || p === MANIFEST_PATH) return null;
   if (/^contracts\/test\/[A-Za-z0-9_]+\.t\.sol$/.test(p)) return null;
   if (/^src\/[A-Za-z0-9_\-/.]+\.(tsx?|css|json)$/.test(p)) return null;
@@ -198,7 +200,7 @@ function lineAt(content: string | undefined, offset: number): number | undefined
  * house-style ones (require strings, a token calling its own transfer), for the re-check at deploy time:
  * a safe but untidy older project must still be able to deploy.
  */
-export function guardrailIssues(file: string, ast: Json, content?: string, { upgradeable = false, securityOnly = false }: { upgradeable?: boolean; securityOnly?: boolean } = {}): CheckIssue[] {
+export function guardrailIssues(file: string, ast: Json, content?: string, { upgradeable = false, securityOnly = false, allowRequire = false }: { upgradeable?: boolean; securityOnly?: boolean; /** Harness v2 (D152): require(cond, "text") and revert("text") are allowed. */ allowRequire?: boolean } = {}): CheckIssue[] {
   const issues: CheckIssue[] = [];
   const at = (node: Json) => {
     const start = Number(String(node.src ?? "").split(":")[0]);
@@ -250,7 +252,7 @@ export function guardrailIssues(file: string, ast: Json, content?: string, { upg
         let callee = n.expression as Json | undefined;
         const args = (n.arguments as Json[]) ?? [];
         // Custom errors only: no require(...) without an error, no revert("text").
-        if (!securityOnly && callee?.nodeType === "Identifier" && callee.name === "require") {
+        if (!securityOnly && !allowRequire && callee?.nodeType === "Identifier" && callee.name === "require") {
           const reason = args[1];
           const customError = reason?.nodeType === "FunctionCall";
           if (!customError) flag(n, "Use a custom error instead of require: declare `error Name();` and write `if (!condition) revert Name();`.");
@@ -261,7 +263,7 @@ export function guardrailIssues(file: string, ast: Json, content?: string, { upg
         if (!securityOnly && inErc20 && callee?.nodeType === "Identifier" && (callee.name === "transferFrom" || callee.name === "transfer")) {
           flag(n, `Don't call this token's own public ${String(callee.name)}() from inside the contract: msg.sender is still the user, so it spends their allowance to themselves and reverts. Use _transfer(from, to, amount).`);
         }
-        if (!securityOnly && callee?.nodeType === "Identifier" && callee.name === "revert") {
+        if (!securityOnly && !allowRequire && callee?.nodeType === "Identifier" && callee.name === "revert") {
           flag(n, 'Use a custom error instead of revert("..."): `revert Name();`.');
         }
         if (callee?.nodeType === "FunctionCallOptions") callee = callee.expression as Json;
@@ -435,6 +437,8 @@ export interface ContractCheckOptions {
   upgradeable?: boolean;
   /** Safety and storage checks for an upgradeable project, run after a clean compile. */
   upgradeChecks?: (files: Record<string, string>) => Promise<CheckIssue[]>;
+  /** Harness v2 (D152): require(cond, "text") and revert("text") pass; every security guardrail still applies. */
+  allowRequire?: boolean;
 }
 
 /** True when a request explicitly asks for native CELO (the word CELO, not "Celo" the network). */
@@ -481,7 +485,7 @@ export async function checkContracts(files: Record<string, string>, options: Con
     // Tests never deploy, so deploy guardrails don't apply to them (and a test touching
     // IERC20 mustn't satisfy the G$ "handles a token" check for the real contracts).
     if (!file.startsWith("contracts/") || isTestFile(file)) continue;
-    errors.push(...guardrailIssues(file, src.ast, files[file], { upgradeable: options.upgradeable }));
+    errors.push(...guardrailIssues(file, src.ast, files[file], { upgradeable: options.upgradeable, allowRequire: options.allowRequire }));
     if (options.upgradeable) errors.push(...upgradeableIssues(file, src.ast, files[file]));
     projectAsts.push({ file, ast: src.ast, content: files[file] });
   }
