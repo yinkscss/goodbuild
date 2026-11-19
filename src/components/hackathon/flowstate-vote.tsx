@@ -95,6 +95,7 @@ export function FlowstateVote({ onConfirmed }: { onConfirmed?: () => void }) {
     }
     applyStatus(next);
     setConfirmed(true);
+    setTxHash(null);
     localStorage.removeItem(storageKey);
     onConfirmed?.();
   }
@@ -114,6 +115,7 @@ export function FlowstateVote({ onConfirmed }: { onConfirmed?: () => void }) {
   async function load() {
     setOpen(true);
     setConfirmed(false);
+    setStatus(null);
     setTxHash(null);
     setError("");
     setDiscardArmed(false);
@@ -125,9 +127,9 @@ export function FlowstateVote({ onConfirmed }: { onConfirmed?: () => void }) {
         return;
       }
       const next: FlowstateStatus = await request();
-      applyStatus(next);
       // Already voted for us (here, on /hackathon, or on FlowState itself)? Don't ask again: confirm it.
       if (next.verified && BigInt(next.support) > BigInt(0)) await confirmExisting();
+      else applyStatus(next);
     });
   }
   /** Confirms the vote already on-chain and marks it done. Throws if it isn't settled yet. */

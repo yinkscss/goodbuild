@@ -1,6 +1,6 @@
 import * as React from "react";
 import { afterEach, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AuthContextProvider, unconfiguredAuth } from "@/lib/auth/context";
 import { FlowstateVote } from "./flowstate-vote";
@@ -207,4 +207,51 @@ it("never asks someone who already voted to vote again: it confirms the vote on 
   expect(screen.queryByRole("slider")).not.toBeInTheDocument();
   expect(client.writeContract).not.toHaveBeenCalled();
   expect(onConfirmed).toHaveBeenCalledOnce();
+});
+
+it("lets a voter spend the remaining nine points after a one-point vote in the same dialog", async () => {
+  const { client } = setup();
+  const remaining = { ...status, allocated: "1", available: "9", support: "1" };
+  let voted = false;
+  vi.stubGlobal("fetch", vi.fn(async (_url, init?: RequestInit) => {
+    const body = init?.body ? JSON.parse(String(init.body)) : null;
+    const current = voted ? remaining : status;
+    const data = body?.action === "prepare"
+      ? { ...review, ...current, additional: body.additional, after: String(Number(current.support) + Number(body.additional)) }
+      : body?.action === "confirm" ? remaining : current;
+    if (body?.action === "confirm") voted = true;
+    return new Response(JSON.stringify(data));
+  }));
+  await userEvent.click(screen.getByRole("button", { name: "Vote here with your wallet" }));
+  fireEvent.change(await screen.findByRole("slider"), { target: { value: "1" } });
+  await userEvent.click(screen.getByRole("button", { name: "Vote 1 point" }));
+  await screen.findByText("✓ Thank you for voting!");
+  await userEvent.click(screen.getByRole("button", { name: "Check for new eligibility to vote again" }));
+  const slider = await screen.findByRole("slider");
+  expect(slider).toHaveValue("9");
+  expect(slider).toHaveAttribute("max", "9");
+  await userEvent.click(screen.getByRole("button", { name: "Vote 9 points" }));
+  await waitFor(() => expect(client.writeContract).toHaveBeenCalledTimes(2));
+  expect(client.writeContract).toHaveBeenLastCalledWith(expect.objectContaining({
+    args: [[{ recipient: GOODBUILDIT_RECIPIENT, amount: BigInt(10) }]],
+  }));
+  await screen.findByText("✓ Thank you for voting!");
+});
+
+it("hides the ballot until existing support has finished checking", async () => {
+  setup();
+  let resolveExisting!: (value: Response) => void;
+  const existing = new Promise<Response>((resolve) => { resolveExisting = resolve; });
+  const fetcher = vi.fn(async (_url, init?: RequestInit) => {
+    const body = init?.body ? JSON.parse(String(init.body)) : null;
+    if (body?.action === "existing") return existing;
+    return new Response(JSON.stringify({ ...status, available: "9", support: "1" }));
+  });
+  vi.stubGlobal("fetch", fetcher);
+  await userEvent.click(screen.getByRole("button", { name: "Vote here with your wallet" }));
+  await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
+  expect(screen.queryByRole("slider")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Vote 9 points" })).not.toBeInTheDocument();
+  resolveExisting(new Response(JSON.stringify({ ...status, available: "9", support: "1" })));
+  await screen.findByText("✓ Thank you for voting!");
 });
