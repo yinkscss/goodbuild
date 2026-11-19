@@ -489,3 +489,131 @@ describe("the crew and saboteur party game (D142)", { timeout: 300_000 }, () => 
     expect(dead.issues.map((i) => i.message).join(" ")).toMatch(/never accepted a move/);
   });
 });
+
+/** A card template's rules file with the shared cards module in front of it, loaded on its own. */
+async function cardRules(id: string) {
+  const files = gameTemplateById(id)!.files;
+  const rules = files["src/play/rules.ts"].replace(/^import .* from "\.\.\/cards\/cards";$/m, "");
+  return moduleOf(files["src/cards/cards.ts"] + "\n" + rules);
+}
+
+describe("the card games (D143)", { timeout: 300_000 }, () => {
+  afterAll(() => closeRunCheckBrowser());
+
+  it("Solitaire deals Klondike, moves by the rules, scores, and knows when it's stuck or won", async () => {
+    const r = await cardRules("solitaire");
+    const t = r.deal();
+    expect(t.piles.map((p: { down: string[]; up: string[] }) => p.down.length + p.up.length)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect(t.piles.every((p: { up: string[] }) => p.up.length === 1)).toBe(true);
+    expect(t.stock).toHaveLength(24);
+    expect(r.draw(t).waste).toHaveLength(3);
+    // Three passes through the stock, then no more.
+    let d = t;
+    for (let i = 0; i < 8 * r.PASSES + (r.PASSES - 1); i++) d = r.draw(d) ?? d;
+    expect(r.draw(d)).toBeNull();
+    // An ace goes home (10) and the card under it turns (5); a red 6 goes on a black 7; a king takes an empty column.
+    const table = { stock: [], waste: ["AH"], found: [[], [], [], []], pass: 3, score: 0, piles: [{ down: ["2C"], up: ["7S"] }, { down: [], up: ["6H"] }, { down: [], up: [] }, { down: ["3D"], up: ["KS"] }, { down: [], up: [] }, { down: [], up: [] }, { down: [], up: [] }] };
+    const home = r.move(table, { from: "waste" });
+    expect(home.found[1]).toEqual(["AH"]);
+    expect(home.score).toBe(10);
+    const six = r.move(table, { from: "pile", pile: 1, index: 0 });
+    expect(six.piles[0].up).toEqual(["7S", "6H"]);
+    const king = r.move(table, { from: "pile", pile: 3, index: 0 });
+    expect(king.piles[3].up).toEqual(["3D"]);
+    expect(king.score).toBe(5);
+    expect(r.move({ ...table, waste: ["5H"] }, { from: "waste" })).toBeNull();
+    expect(r.stuck({ ...table, waste: ["5C"], piles: [{ down: ["2C"], up: ["9S"] }, ...table.piles.slice(1, 2).map(() => ({ down: [], up: ["4D"] })), ...Array.from({ length: 5 }, () => ({ down: ["QC"], up: ["QH"] }))] })).toBe(true);
+    expect(r.won({ ...table, found: [0, 1, 2, 3].map(() => Array(13).fill("x")) })).toBe(true);
+  });
+
+  it("Last card out replays the moves the same way on every screen", async () => {
+    const r = await cardRules("last-card");
+    const players = ["a", "b"];
+    const m = (wallet: string, n: number, data: Record<string, unknown>) => ({ wallet, n, data });
+    const start = m("a", 0, { kind: "start", card: "5H", deal: "d1" });
+    // Turn 1 is a's: b out of turn is left out, a wrong card is left out, a matching suit goes.
+    let p = r.replay([start, m("b", 1, { kind: "play", card: "5S" }), m("a", 1, { kind: "play", card: "9C" }), m("a", 1, { kind: "play", card: "9H" })], players, "a");
+    expect(p.top).toBe("9H");
+    expect(p.turn).toBe(2);
+    expect(p.counts).toEqual([6, 7]);
+    expect(p.deal).toBe("d1");
+    // An 8 calls the suit; drawing adds a card and ends the turn.
+    p = r.replay([start, m("a", 1, { kind: "play", card: "8D", suit: "S" }), m("b", 2, { kind: "play", card: "2S" }), m("a", 3, { kind: "draw" })], players, "a");
+    expect(p.called).toBe("S");
+    expect(p.counts).toEqual([7, 6]);
+    // The same card can't be played twice.
+    expect(r.replay([start, m("a", 1, { kind: "play", card: "5D" }), m("b", 2, { kind: "play", card: "5D" })], players, "a").turn).toBe(2);
+    // Every player passes with an empty deck: fewest cards wins.
+    p = r.replay([start, m("a", 1, { kind: "play", card: "6H" }), m("b", 2, { kind: "pass" }), m("a", 3, { kind: "pass" })], players, "a");
+    expect(p.winner).toBe(0);
+    expect(r.handSize(2)).toBe(7);
+    expect(r.handSize(4)).toBe(5);
+  });
+
+  it("card games add their rules: the shedding game a dealt hands collection beside the room's", () => {
+    const parsed = parseDataRules(withGameTemplate(starterFiles(), gameTemplateById("last-card")!)["src/lib/dataRules.json"]);
+    expect(parsed.issues).toEqual([]);
+    expect(parsed.rules.hands.dealt).toBe(true);
+    expect(Object.keys(parsed.rules)).toEqual(expect.arrayContaining(["rooms", "seats", "moves", "hands", "scores"].filter((c) => c !== "scores")));
+    // No betting words in any card game.
+    const all = ["solitaire", "higher-lower", "memory-pairs", "last-card"].flatMap((id) => Object.values(gameTemplateById(id)!.files)).join("\n");
+    expect(all).not.toMatch(/\b(bet|wager|stake|jackpot|casino|chips?)\b/i);
+  });
+
+  it.skipIf(!hasBrowser)("Last card out: two players in a room get dealt hands they alone see, the same top card, and a move reaches the other screen", async () => {
+    let checked = false;
+    let failed: unknown = null;
+    const r = await runCheck(built("last-card"), {
+      afterPlay: async (first) => {
+        try {
+          const { ada, bo } = await startRoom(first);
+          const hand = (p: Page) => p.locator("[data-game-area] button[aria-label$=' of hearts'], [data-game-area] button:has([aria-label*=' of '])");
+          await ada.getByText("You: 7").waitFor({ timeout: 15_000 });
+          await bo.getByText("You: 7").waitFor({ timeout: 15_000 });
+          expect(await hand(ada).count()).toBe(7);
+          expect(await hand(bo).count()).toBe(7);
+          const top = async (p: Page) => (await p.locator("[aria-label*=' of ']").first().getAttribute("aria-label"))!;
+          const adaCards = await ada.locator("[data-game-area] [aria-label*=' of ']").evaluateAll((els) => els.map((e) => e.getAttribute("aria-label")));
+          const boCards = await bo.locator("[data-game-area] [aria-label*=' of ']").evaluateAll((els) => els.map((e) => e.getAttribute("aria-label")));
+          expect(adaCards.filter((c) => boCards.includes(c))).toEqual([]);
+          expect(await top(ada)).toBe(await top(bo));
+          // Ada (the host) goes first: a card if one goes, else a draw. Bo's screen shows it's his turn.
+          await ada.getByText("Your turn: play a card or draw").waitFor({ timeout: 10_000 });
+          const playable = ada.locator("[data-game-area] button:not([disabled]):has([aria-label*=' of '])");
+          if (await playable.count()) {
+            await playable.first().click();
+            const suit = ada.getByRole("button", { name: "Call S" });
+            if (await suit.isVisible().catch(() => false)) await suit.click();
+            await bo.getByText("Bo: 7").or(bo.getByText("You: 7")).first().waitFor({ timeout: 5_000 });
+            await bo.getByText("Ada: 6").waitFor({ timeout: 10_000 });
+          } else {
+            await ada.getByRole("button", { name: "Draw a card" }).click();
+            await bo.getByText("Ada: 8").waitFor({ timeout: 10_000 });
+          }
+          await bo.getByText("Your turn: play a card or draw").waitFor({ timeout: 10_000 });
+          checked = true;
+        } catch (e) {
+          failed = e;
+        }
+      },
+      timeoutMs: 240_000,
+    });
+    expect(failed).toBeNull();
+    expect(r.issues).toEqual([]);
+    expect(checked).toBe(true);
+  });
+
+  for (const id of ["solitaire", "higher-lower", "memory-pairs", "last-card"]) {
+    it.skipIf(!hasBrowser)(`${id}: plays with no issues on a slow touch phone`, async () => {
+      const r = await runCheck(built(id), { phone: { cpuSlowdown: 4 } });
+      expect(r.ran, r.note).toBe(true);
+      expect(r.issues).toEqual([]);
+      expect(r.note).toMatch(/(turns|puzzle) game, \d+ moves, played \d+ rounds?/);
+    });
+  }
+
+  it.skipIf(!hasBrowser)("Higher or lower: a copy whose guesses do nothing is caught", async () => {
+    const dead = await runCheck(built("higher-lower", (f) => edit("src/play/Game.tsx", "onClick={() => guess(false)}", "onClick={() => undefined}")(edit("src/play/Game.tsx", "onClick={() => guess(true)}", "onClick={() => undefined}")(f))));
+    expect(dead.issues.map((i) => i.message).join(" ")).toMatch(/never accepted a move/);
+  });
+});

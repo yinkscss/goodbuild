@@ -1768,3 +1768,21 @@ Format: decision, date, who decided, rationale. **User** decisions are fixed unl
   - A meeting's clock and the cooldowns are measured on each device against the server's record times, so they can be a few seconds apart.
   - With polling, actions take up to 3 s to reach the other screens.
 - **UNVERIFIED:** on a real phone, on a published app with real signatures, and with a real model building from it.
+
+### D143. Card game templates: Solitaire, Higher or lower, Memory pairs and a shedding game on the dealer (19 Nov 2026; PR 8 of D139)
+- Decided by: the owner (D139's plan). Built by Claude. Original names and look throughout: GoodBuild's own card face (`src/cards/CardFace.tsx`, a white face, rank and suit sign, the theme's colours). Points only, never money or tokens (D4, D72); a test checks the card games for betting words.
+- **Shared:** `src/cards/cards.ts`. Cards are short strings ("QH", "10S"), so they fit the dealer's decks and records unchanged.
+- **Solitaire** (`solitaire`, "Patience Lane"): Klondike rules. Seven columns, foundations built up by suit from the ace, the deck turned three at a time, three passes. Tap a card to move it where it can go (a foundation first), which suits a phone. Scoring: 10 a card home, 5 a card turned in a column, 200 for the whole deck. The round ends when the player wins, is stuck, or presses End game. **No leaderboard (changed from the other one-player templates):** a round rarely ends without a player deciding to stop, so the check's bot could never post a score. It keeps the player's best on the device.
+- **Higher or lower** (`higher-lower`, "High Card Run"): 3 lives, a streak doubles the points and earns a skip, and the leaderboard is on.
+- **Memory pairs** (`memory-pairs`, "Pair Up"): 6 pairs, 16 tries. Points for each card turned for the first time, each pair, and tries left at the end. The leaderboard is on. It is a separate game from the match grid, which clears groups of tiles on a board.
+- **Shedding game** (`last-card`, "Last Card Out", 2 to 6): match the top card's suit or rank. An 8 goes on anything and calls the suit. Can't go? Draw one. First with no cards wins, and if the deck is empty and everyone passes, the fewest cards wins.
+  - In a room the host deals through the dealer (D141), draws the first card and posts it with the deal id. Each player reads only their own hand (dealt plus drawn, minus what they've played).
+  - Plays are public moves, replayed the same way on every screen (`replay` in `rules.ts`), and everyone's card counts come from those moves.
+  - Play the computer pits you against two computer players.
+- **Tests** (`templates.test.ts`):
+  - **The rules on their own:** Solitaire's deal, moves, scoring, passes, stuck and won; the shedding game's turns, wrong cards, the 8, draws, repeats and everyone passing.
+  - **Two players in a room on the preview** get 7 cards each with none in common, see the same top card, and a play or draw reaches the other screen and passes the turn.
+  - **Every game** passes the app, type and run checks, with and without MiniPay, and plays on a slow touch phone.
+  - **A broken copy** of Higher or lower is caught.
+- **Limits:** the shedding game shares the room's limits, so a move is a claim between friends. A modified client could play a card it doesn't hold; everyone's counts would show it at the end. Solitaire's tap-to-move picks the first legal column, with no drag to choose another.
+- **UNVERIFIED:** on a real phone, on a published app with real signatures, and with a real model building from them.
