@@ -82,12 +82,17 @@ function GameTemplateTile({ template, onPick }: { template: StarterTemplate; onP
  * art. Clicking either attaches the template to the prompt box above without submitting it.
  */
 export function TemplateGallery({ fullPage = false, gameTemplates = [] }: { fullPage?: boolean; gameTemplates?: StarterTemplate[] }) {
-  const [category, setCategory] = React.useState<TemplateCategory | "All" | "Games">("All");
+  const [selectedCategory, setSelectedCategory] = React.useState<TemplateCategory | "All" | "Games" | null>(null);
   const [showAll, setShowAll] = React.useState(false);
-
-  React.useEffect(() => {
-    if (window.location.hash === "#games") setCategory("Games");
-  }, []);
+  const hash = React.useSyncExternalStore(
+    (onChange) => {
+      window.addEventListener("hashchange", onChange);
+      return () => window.removeEventListener("hashchange", onChange);
+    },
+    () => window.location.hash,
+    () => "",
+  );
+  const category = selectedCategory ?? (hash === "#games" ? "Games" : "All");
 
   const filtered = category === "All" ? PAGE_TEMPLATES : category === "Games" ? [] : PAGE_TEMPLATES.filter((t) => t.category === category);
   const visible = fullPage || category !== "All" || showAll ? filtered : filtered.slice(0, FIRST_PAGE);
@@ -107,7 +112,7 @@ export function TemplateGallery({ fullPage = false, gameTemplates = [] }: { full
 
       <div id="template-categories" className="mb-5 flex flex-wrap gap-2" role="group" aria-label="Template categories">
         {(["All", ...TEMPLATE_CATEGORIES, "Games"] as const).map((c) => (
-          <Button id={c === "Games" ? "games" : undefined} key={c} type="button" size="chip" variant={category === c ? "chipSelected" : "chip"} aria-pressed={category === c} onClick={() => setCategory(c)}>
+          <Button id={c === "Games" ? "games" : undefined} key={c} type="button" size="chip" variant={category === c ? "chipSelected" : "chip"} aria-pressed={category === c} onClick={() => setSelectedCategory(c)}>
             {c}
           </Button>
         ))}
