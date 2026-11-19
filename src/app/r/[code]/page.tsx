@@ -11,7 +11,7 @@ export const metadata = {
   robots: { index: false },
 };
 
-/** Where an invite link lands (D153): sign in, verify with GoodDollar, one-tap vote. Works signed out. */
+/** Where an invite link lands (D155): sign in, verify with GoodDollar, one-tap vote. Works signed out. */
 export default async function InvitePage({ params }: { params: Promise<{ code: string }> }) {
   const code = cleanReferralCode((await params).code);
   if (!code) redirect("/");

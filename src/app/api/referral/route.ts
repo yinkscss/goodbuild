@@ -6,7 +6,7 @@ import { attributeInvite, inviteSummary } from "@/server/referrals/referrals";
 
 const headers = { "Cache-Control": "no-store" };
 
-/** The signed-in person's invite code and how their invites are doing (D153). */
+/** The signed-in person's invite code and how their invites are doing (D155). */
 export async function GET() {
   try {
     const session = await requireSession();

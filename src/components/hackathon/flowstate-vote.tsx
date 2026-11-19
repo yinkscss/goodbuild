@@ -60,7 +60,7 @@ async function request(body?: unknown) {
   return data;
 }
 /**
- * One tap (D153): checks the wallet, turns voting on if it isn't yet, gives all of the person's free
+ * One tap (D155): checks the wallet, turns voting on if it isn't yet, gives all of the person's free
  * points to GoodBuildIt, and confirms it on-chain. No slider, no amounts.
  */
 export function FlowstateVote({

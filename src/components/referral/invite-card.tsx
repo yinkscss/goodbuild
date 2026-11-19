@@ -11,7 +11,7 @@ interface Summary {
   earnedCredits: number;
 }
 
-/** "Invite friends" on the home dashboard (D153): a link to copy or share, and how it's going. */
+/** "Invite friends" on the home dashboard (D155): a link to copy or share, and how it's going. */
 export function InviteFriendsCard() {
   const [summary, setSummary] = React.useState<Summary | null>(null);
   const [loaded, setLoaded] = React.useState(false);

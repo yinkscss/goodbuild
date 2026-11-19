@@ -1,6 +1,6 @@
 import { cleanReferralCode } from "@/lib/hackathon-referral";
 
-/** Invites from the home dashboard (D153). Client-safe: the code format and the link shape. */
+/** Invites from the home dashboard (D155). Client-safe: the code format and the link shape. */
 export { MAX_PAID_REFERRALS, REFERRAL_ALPHABET, REFERRAL_BONUS_CREDITS, cleanReferralCode } from "@/lib/hackathon-referral";
 
 export const invitePath = (code: string) => `/r/${code}`;

@@ -20,7 +20,7 @@ function Step({ n, title, done, active, children }: { n: number; title: string; 
   );
 }
 
-/** Sign in, verify with GoodDollar, one-tap vote (D153). Each step opens when the one before it is done. */
+/** Sign in, verify with GoodDollar, one-tap vote (D155). Each step opens when the one before it is done. */
 export function InviteSteps({ code }: { code: string }) {
   const auth = useAuth();
   const { openConnect } = useSendGate();

@@ -3,7 +3,7 @@ import { bigint, index, pgTable, timestamp, uuid, text, uniqueIndex } from "driz
 import { users } from "./schema";
 
 /**
- * Invites (D153): one row per person who opened a friend's link and signed in. Rows only move forward:
+ * Invites (D155): one row per person who opened a friend's link and signed in. Rows only move forward:
  * created on sign-in, `verified_at` when the chain shows a GoodDollar root, `voted_at` when the vote
  * for GoodBuildIt is confirmed, `settled_at` when the bonus is paid (both sides together, or neither).
  *

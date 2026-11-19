@@ -202,7 +202,7 @@ export async function POST(request: Request) {
         if (!(e instanceof FreeGrantError)) console.error("[flowstate] welcome after vote failed", e instanceof Error ? e.name : "unknown");
       }
     }
-    // An invited person's vote also pays the invite bonus (D153): to them, and to whoever invited them.
+    // An invited person's vote also pays the invite bonus (D155): to them, and to whoever invited them.
     let inviteMicro = 0;
     try {
       if (await hasUnsettledInvite(db, s.user.id)) {

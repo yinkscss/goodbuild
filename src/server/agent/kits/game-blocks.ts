@@ -69,6 +69,8 @@ interface Check {
   on: boolean;
   /** Game steps per screen frame while checking, so a few seconds cover a long round. */
   speed?: number;
+  /** A fixed seed to deal from while checking, so the check isn't at the mercy of one unlucky deal. */
+  seed?: number;
   time: number;
   rounds: Round[];
   /** Each kind's first appearance, in seconds of play. */
@@ -156,6 +158,15 @@ export function probe(score: number, x = 0, y = 0, speed = 0): void {
   if (x > r.xMax!) r.xMax = x;
   if (y < r.yMin!) r.yMin = y;
   if (y > r.yMax!) r.yMax = y;
+}
+
+/**
+ * The seed to shuffle from while GoodBuild checks the game, or undefined for real players. A card game
+ * deals from it during the check (shuffle(fullDeck(), seededRandom(seed))), so every check plays the
+ * same deal that is known to give the bot a move to score with.
+ */
+export function checkSeed(): number | undefined {
+  return check()?.seed;
 }
 
 /** The player made a move the game accepted: tiles swapped, an answer picked, a card played. */
