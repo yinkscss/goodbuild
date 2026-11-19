@@ -8,7 +8,7 @@ import { isDeployableSource } from "@/lib/deploy/test-file";
 import type { AssetInfo, AssetKind } from "@/server/agent/assets";
 import { DRAFT_PLAN_TEXT, nextQuestion, PLAN_OTHER_MAX, planBuildPrompt, START_BUILDING_TEXT } from "@/lib/plan";
 import { OutOfCredits } from "./out-of-credits";
-import { FIX_PROMPT } from "@/lib/preview-errors";
+import { CONTINUE_PROMPT, FIX_PROMPT } from "@/lib/preview-errors";
 import { isSubmitShortcut } from "@/lib/prompt";
 import { isNearBottom } from "@/lib/scroll";
 import type { TurnMode, TurnRecord } from "@/lib/turn-types";
@@ -138,7 +138,7 @@ export function ChatPanel({
               record={record}
               chainId={state.project.chainId}
               live={false}
-              onFix={() => send(record.status === "error" && lastUserPrompt && m.id === lastAssistantId ? lastUserPrompt : FIX_PROMPT, "build")}
+              onFix={() => send(record.paused === "credits" ? CONTINUE_PROMPT : record.status === "error" && lastUserPrompt && m.id === lastAssistantId ? lastUserPrompt : FIX_PROMPT, "build")}
               fixDisabled={running}
               onSuggest={!live && canSuggest && m.id === lastAssistantId ? suggest : undefined}
               checking={m.id === lastAssistantId && ws.checking}
@@ -165,7 +165,7 @@ export function ChatPanel({
             record={live.record}
             chainId={state.project.chainId}
             live={live.phase === "running"}
-            onFix={() => send(FIX_PROMPT, "build")}
+            onFix={() => send(live.record.paused === "credits" ? CONTINUE_PROMPT : FIX_PROMPT, "build")}
             fixDisabled={live.phase === "running"}
             onSuggest={live.phase === "done" && state.jobs.length <= 1 ? suggest : undefined}
             onSkipPlan={live.phase === "running" && !live.record.intake && planning ? ws.skipPlan : undefined}

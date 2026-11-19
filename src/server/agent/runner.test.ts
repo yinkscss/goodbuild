@@ -13,7 +13,7 @@ import { FREE_BUILD_CEILING_MICRO, freeBuildCeilingMicro, runTurn, TurnBusyError
 import { claimTurn, listVersions, loadFiles, revertTo, saveFiles } from "./store";
 import { starterFiles } from "./template";
 import { fallbackIntake } from "./plan-intake";
-import { fixTier, isRepeat, plainDashes } from "./runner";
+import { fixTier, isRepeat, miniAppInfo, plainDashes } from "./runner";
 
 describe("plainDashes", () => {
   it("turns em dashes into commas in replies", () => {
@@ -80,6 +80,30 @@ describe("fixTier (D19 amendment)", () => {
     expect(fixTier(1, [t, solc])).toBe("strong");
     expect(fixTier(2, [t])).toBe("strong");
     expect(fixTier(1, [])).toBe("strong");
+  });
+  it("sends a first attempt at missing wiring or placeholders to the cheap tier (D138)", () => {
+    const paths = { file: "src/minipay/app.ts", message: "Fill in MINI_APP", source: "paths" as const };
+    const types = { file: "src/App.tsx", message: "Type 'string' is not assignable", source: "types" as const };
+    expect(fixTier(1, [paths])).toBe("cheap");
+    expect(fixTier(1, [paths, types])).toBe("cheap");
+    expect(fixTier(1, [paths, solc])).toBe("strong");
+    expect(fixTier(2, [paths])).toBe("strong");
+  });
+});
+
+describe("miniAppInfo (D138)", () => {
+  const game = { name: "Shadow Crew", pitch: "A 3D station where a hidden saboteur lurks. Every body starts a vote.", loop: "move around tasks, fix sabotage, report bodies", lose: "x", harder: "y", extras: [] };
+  it("takes a game's name, the first sentence of its pitch and its loop as a step", () => {
+    expect(miniAppInfo({ summary: "s", questions: [], answers: {}, game }, "Wallet Crew Sabotage")).toEqual({
+      name: "Shadow Crew",
+      tagline: "A 3D station where a hidden saboteur lurks.",
+      howTo: ["Open the game in MiniPay.", "Tap Play to start a round.", "Move around tasks, fix sabotage, report bodies."],
+    });
+  });
+  it("falls back to the project's name and the plan's summary, and to nothing without a real name", () => {
+    expect(miniAppInfo({ summary: "A tip jar for a club. With stablecoins.", questions: [], answers: {} }, "Club Tips")).toEqual({ name: "Club Tips", tagline: "A tip jar for a club." });
+    expect(miniAppInfo(null, "Untitled build")).toBeUndefined();
+    expect(miniAppInfo(null, null)).toBeUndefined();
   });
 });
 
@@ -229,7 +253,7 @@ describe("runTurn", { timeout: 120_000 }, () => {
 
   it("stops a build on free AI at its spending ceiling, then replies and saves what it made (D82)", async () => {
     const { client, requests } = scriptedModel([
-      { text: "Planning.", tools: [{ name: "set_plan", args: { summary: "A page.", steps: ["Page"] } }, { name: "create_file", args: { path: "src/App.tsx", content: PAGE } }], usage: { input: 1_000_000, output: 1_000_000 } }, // about $1.9 charged: over the ceiling, under the hard stop
+      { text: "Planning.", tools: [{ name: "set_plan", args: { summary: "A page.", steps: ["Page"] } }, { name: "create_file", args: { path: "src/App.tsx", content: PAGE } }], usage: { input: 4_000_000, output: 16_000 } }, // about $1.5 charged: over the ceiling, under the hard stop (output is capped at the call's limit)
       { text: "I built the page; it ran out of room to do more." },
     ]);
     const record = await runTurn({ db, model: client }, { projectId, userId, mode: "build", userMessageId: queuedId }, () => {});

@@ -127,6 +127,8 @@ export interface TurnRecord {
   checks?: { errors: number; warnings: number };
   contracts?: Array<{ name: string; file: string; bytecodeBytes: number }>;
   error?: string;
+  /** Why a needs_fix build stopped before its checks were done: "credits", it paused when the credit ran low and its files are a draft (D138). */
+  paused?: "credits";
   /** Screenshot review of the preview right after this build (P17 visual check). */
   visualCheck?: VisualCheck;
   /** The builder's own look at the page on the server (D87). When it is here, the browser's visual check isn't run. */
