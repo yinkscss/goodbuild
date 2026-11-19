@@ -94,7 +94,7 @@ export async function workspaceState(db: Db, projectId: string, ownerId: string)
       role: m.role as WorkspaceMessage["role"],
       content: m.content,
       status: m.status,
-      meta: m.role === "assistant" && m.meta?.kind === "turn" ? { ...m.meta, jobId: jobRows.find((j) => j.assistantId === m.id)?.id } : m.meta ?? null,
+      meta: m.role === "assistant" && m.meta?.kind === "turn" ? { ...m.meta, jobId: jobRows.find((j) => j.assistantId === m.id)?.id ?? m.meta.jobId } : m.meta ?? null,
       createdAt: m.createdAt.toISOString(),
     })),
     versions: versions.map((v) => ({ ...v, createdAt: v.createdAt.toISOString(), revertedFrom: v.revertedFrom ?? null })),
