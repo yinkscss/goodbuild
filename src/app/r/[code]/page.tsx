@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 
 import { SiteFooter } from "@/components/landing/site-footer";
@@ -11,10 +12,15 @@ export const metadata = {
   robots: { index: false },
 };
 
-/** Where an invite link lands (D155): sign in, verify with GoodDollar, one-tap vote. Works signed out. */
-export default async function InvitePage({ params }: { params: Promise<{ code: string }> }) {
+/** The code is read per request, inside Suspense, so the rest of the page can be prerendered. */
+async function Steps({ params }: { params: Promise<{ code: string }> }) {
   const code = cleanReferralCode((await params).code);
   if (!code) redirect("/");
+  return <InviteSteps code={code} />;
+}
+
+/** Where an invite link lands (D155): sign in, verify with GoodDollar, one-tap vote. Works signed out. */
+export default function InvitePage({ params }: { params: Promise<{ code: string }> }) {
   return (
     <>
       <SiteNav />
@@ -25,7 +31,9 @@ export default async function InvitePage({ params }: { params: Promise<{ code: s
           <p className="mt-4 max-w-xl text-base text-grey-600">
             Build your own app by describing it. Do two quick things and you both get free credits.
           </p>
-          <InviteSteps code={code} />
+          <Suspense fallback={<div className="skeleton mt-8 h-[260px] rounded-card motion-reduce:animate-none" />}>
+            <Steps params={params} />
+          </Suspense>
           <p className="mt-8 text-xs text-grey-600">18+ · Not open to US persons</p>
         </div>
         <SiteFooter />
