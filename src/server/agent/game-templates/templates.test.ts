@@ -5,6 +5,8 @@ import { afterAll, describe, expect, it } from "vitest";
 import { checkApp, checkContracts } from "../checks";
 import { kitById, kitIdsOf, withKit } from "../kits/index";
 import { closeRunCheckBrowser, runCheck } from "../run-check";
+import { CHECK_SEED, gameCheckScript } from "../game-check";
+import { EXTRAS } from "../kits/game-extras";
 import { PLATFORM_DIR, contractModule, contractsIndex, starterFiles } from "../template";
 import { typeCheck } from "../type-check";
 
@@ -568,6 +570,19 @@ describe("the card games (D143)", { timeout: 300_000 }, () => {
     expect(r.move({ ...table, waste: ["5H"] }, { from: "waste" })).toBeNull();
     expect(r.stuck({ ...table, waste: ["5C"], piles: [{ down: ["2C"], up: ["9S"] }, ...table.piles.slice(1, 2).map(() => ({ down: [], up: ["4D"] })), ...Array.from({ length: 5 }, () => ({ down: ["QC"], up: ["QH"] }))] })).toBe(true);
     expect(r.won({ ...table, found: [0, 1, 2, 3].map(() => Array(13).fill("x")) })).toBe(true);
+  });
+
+  it("Solitaire deals the run check a fixed deal that has aces to score with, and real players a random one", async () => {
+    const r = await cardRules("solitaire");
+    const { seededRandom } = await moduleOf(EXTRAS);
+    const checked = r.deal(r.shuffle(r.fullDeck(), seededRandom(CHECK_SEED)));
+    expect(checked).toEqual(r.deal(r.shuffle(r.fullDeck(), seededRandom(CHECK_SEED))));
+    // The check's bot taps at random; aces face up give it a scoring move from the first tap.
+    expect(checked.piles.filter((p: { up: string[] }) => /^A/.test(p.up[0])).length).toBeGreaterThanOrEqual(2);
+    expect(gameCheckScript()).toContain(`seed: ${CHECK_SEED}`);
+    const game = gameTemplateById("solitaire")!.files["src/play/Game.tsx"];
+    expect(game.match(/\bdeal\(/g)).toHaveLength(1);
+    expect(game).toContain("checkSeed()");
   });
 
   it("Last card out replays the moves the same way on every screen", async () => {

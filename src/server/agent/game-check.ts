@@ -16,6 +16,13 @@ import type { Page } from "playwright-core";
 /** Game steps per screen frame while checking: 7 seconds of play cover about 28 seconds of game. */
 export const GAME_CHECK_SPEED = 4;
 export const PLAY_MS = 7_000;
+/**
+ * The seed a game may deal from while it is checked (checkSeed() in src/game/probe.ts), so a card game's
+ * check doesn't hang on the luck of the deal. 18 deals Solitaire three aces face up: a bot playing at
+ * random scored within 35 moves in 20,000 simulated games out of 20,000, where about 2% of random deals
+ * gave it no score at all.
+ */
+export const CHECK_SEED = 18;
 /** The stand-in wallet's account, and how the app shows it (shortAddress). */
 export const CHECK_WALLET = "0x00000000000000000000000000000000000000c1";
 export const CHECK_WALLET_SHORT = "0x0000…00c1";
@@ -75,7 +82,7 @@ export function styleOf(report: ProbeReport | null): GameStyle {
 
 /** Turns the probe on before the app's own scripts run. */
 export function gameCheckScript(speed = GAME_CHECK_SPEED): string {
-  return `window.__gbGame = { on: true, speed: ${Number(speed)}, time: 0, rounds: [], seen: {}, probes: 0 };`;
+  return `window.__gbGame = { on: true, speed: ${Number(speed)}, seed: ${CHECK_SEED}, time: 0, rounds: [], seen: {}, probes: 0 };`;
 }
 
 /**
