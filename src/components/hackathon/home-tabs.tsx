@@ -49,11 +49,13 @@ export function HackathonTabs() {
       </nav>
       <nav aria-label="Hackathon sections" className="sticky top-3 z-10 mt-3 flex w-fit max-w-full gap-1 overflow-x-auto rounded-full bg-surface p-1 shadow-card">
         {SECTIONS.map((t) => {
-          const href = `${config.app}${t.path}`;
-          const on = path === href;
+          const base = `${config.app}${t.path}`;
+          const on = path === base;
+          // The main Get started keeps the switch's choice, so a FUTMinna member isn't sent back (D161).
+          const href = event === "main" && t.path === "" ? `${base}?stay=1` : base;
           return (
             <Link
-              key={href}
+              key={base}
               href={href}
               aria-current={on ? "page" : undefined}
               className={`shrink-0 rounded-full px-4 py-2 text-sm font-medium outline-none focus-visible:shadow-focus ${on ? "bg-violet text-white" : "text-ink/70 hover:bg-tint hover:text-violet"}`}

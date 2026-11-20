@@ -1950,10 +1950,10 @@ The owner approved implementing all five parts of the first-build fix and openin
 ### D161. FUTMinna members: whoever registers from a FUTMinna page opens on FUTMinna (20 Nov 2026; extends D160)
 - Decided by: the owner (people who register from the FUTMinna page should default to FUTMinna and not be confused by the main hackathon; they may still take part in it). Approach by Claude.
 - **The record:** a FUTMinna signup row (`hackathon_participants` under `futminna-2026`) marks a member. No new column or migration. It is written when someone:
-  - saves their email or starts their signup on a FUTMinna page;
+  - saves their email on a FUTMinna page (a signup made automatically from a login email does not count);
   - claims their first credits there;
   - presses **Join the FUTMinna hackathon** on the in-app FUTMinna tab;
   - enters a FUTMinna project.
-- **Not written by looking:** opening a FUTMinna page, or claiming the later deploy credits there, adds nobody. The in-app FUTMinna tab no longer joins main hackathon builders by itself; it shows the Join button.
+- **Not written by looking:** opening a FUTMinna page, or claiming the later deploy credits there, adds nobody. If the join request fails, the steps say so and offer Try again. The check that a builder has no entry in the other hackathon and the entry write run in one transaction under a per-builder lock. The in-app FUTMinna tab no longer joins main hackathon builders by itself; it shows the Join button.
 - **What members see:** `/home/hackathon` (the side menu and wallet menu both link there) sends them to `/home/hackathon/futminna`. The switch still offers the main hackathon; choosing it adds `?stay` and they stay there. Main hackathon builders see no change.
 - **Not changed:** credits (one grant per person, D160), each builder entering one hackathon, and the main hackathon's own pages.

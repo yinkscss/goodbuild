@@ -47,3 +47,19 @@ it("leaves the main leaderboard as it was", async () => {
   expect(screen.queryByText("Shortlist")).not.toBeInTheDocument();
   expect(screen.getAllByText(/est\. .* G\$/).length).toBeGreaterThan(0);
 });
+
+it("shows a FUTMinna builder ranked 6 to 20 once, not again below the list", async () => {
+  path.current = "/home/hackathon/futminna/leaderboard";
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string) => new Response(JSON.stringify(url.includes("mine") ? { id: "e5" } : entries))),
+  );
+  render(
+    <AuthContextProvider value={{ ...unconfiguredAuth, user: { id: "u", wallet: "0x1", walletKind: "embedded", verified: true } }}>
+      <Ladder mode="app" />
+    </AuthContextProvider>,
+  );
+  await screen.findByText(/You are #6/);
+  expect(screen.getAllByText("Project 5")).toHaveLength(1);
+  expect(screen.getAllByText("You")).toHaveLength(1);
+});

@@ -139,33 +139,42 @@ export async function saveEntry(
       "Verify with GoodDollar and vote first, then submit your project.",
       403,
     );
-  // One project, one hackathon (D160): an entry in another event has to be removed there first.
-  const [elsewhere] = await db
-    .select({ hackathon: hackathonEntries.hackathon })
-    .from(hackathonEntries)
-    .where(
-      and(
-        eq(hackathonEntries.userId, user.id),
-        inArray(
-          hackathonEntries.hackathon,
-          EVENTS.filter((e) => e !== event).map(eventId),
-        ),
-      ),
-    )
-    .limit(1);
-  if (elsewhere)
-    throw new CommunityError(
-      "Your project is already entered in the other hackathon. Each builder enters one hackathon.",
-      409,
+  // One project, one hackathon (D160): an entry in another event has to be removed there first. The
+  // check and the write share one transaction under a per-builder lock, so two submissions at once
+  // (one to each hackathon) can't both pass the check.
+  const entry = await db.transaction(async (raw) => {
+    const tx = raw as unknown as Db;
+    await tx.execute(
+      sql`select pg_advisory_xact_lock(hashtext(${`hackathon:entry:${user.id}`}))`,
     );
-  const [entry] = await db
-    .insert(hackathonEntries)
-    .values({ hackathon: eventId(event), userId: user.id, ...data })
-    .onConflictDoUpdate({
-      target: [hackathonEntries.hackathon, hackathonEntries.userId],
-      set: data,
-    })
-    .returning();
+    const [elsewhere] = await tx
+      .select({ hackathon: hackathonEntries.hackathon })
+      .from(hackathonEntries)
+      .where(
+        and(
+          eq(hackathonEntries.userId, user.id),
+          inArray(
+            hackathonEntries.hackathon,
+            EVENTS.filter((e) => e !== event).map(eventId),
+          ),
+        ),
+      )
+      .limit(1);
+    if (elsewhere)
+      throw new CommunityError(
+        "Your project is already entered in the other hackathon. Each builder enters one hackathon.",
+        409,
+      );
+    const [row] = await tx
+      .insert(hackathonEntries)
+      .values({ hackathon: eventId(event), userId: user.id, ...data })
+      .onConflictDoUpdate({
+        target: [hackathonEntries.hackathon, hackathonEntries.userId],
+        set: data,
+      })
+      .returning();
+    return row;
+  });
   return entry;
 }
 export async function ownEntry(db: Db, userId: string, event: HackathonEvent = "main") {

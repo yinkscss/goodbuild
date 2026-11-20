@@ -72,7 +72,9 @@ export function Ladder({ mode }: { mode: "web" | "app" }) {
     );
 
   const shown = rows.slice(0, 20);
-  const outside = mine && !mine.inPrizeZone ? mine : null;
+  // The builder's own row is added below the list only when the list doesn't already show it: with
+  // FUTMinna's shortlist of 5, ranks 6 to 20 are outside the zone but still in the top 20 shown.
+  const outside = mine && !mine.inPrizeZone && !shown.some((row) => row.entry.id === mine.entry.id) ? mine : null;
 
   return (
     <div>

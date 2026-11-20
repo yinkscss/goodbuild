@@ -16,8 +16,13 @@ import {
 import { FlowstateVote } from "./flowstate-vote";
 import { useHackathonEvent } from "./use-event";
 /** Adds the signed-in person to another hackathon's signup list with the email they gave (D160). */
-async function joinEvent(event: string) {
-  await fetch(`/api/hackathon/participants?event=${event}&join=1`, { method: "POST" }).catch(() => undefined);
+async function joinEvent(event: string): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/hackathon/participants?event=${event}&join=1`, { method: "POST" });
+    return res.ok && Boolean(await res.json());
+  } catch {
+    return false;
+  }
 }
 type Participant = {
   email: string;
@@ -47,10 +52,16 @@ function Registration() {
   // Registering from a FUTMinna page makes the person a FUTMinna member (D161): at the email step, or
   // when credits are claimed here. Only looking at the page changes nothing.
   const wasRegistered = React.useRef(true);
+  /** A FUTMinna join that failed, kept visible with a retry until it goes through. */
+  const [joinFailed, setJoinFailed] = React.useState(false);
+  const join = React.useCallback(async () => {
+    if (event === "main") return;
+    setJoinFailed(!(await joinEvent(event)));
+  }, [event]);
   const celebrate = React.useCallback(() => {
     burst(confettiRef.current);
-    if (event !== "main" && !wasRegistered.current) void joinEvent(event);
-  }, [event]);
+    if (!wasRegistered.current) void join();
+  }, [join]);
   const claim = useHackathonClaim(user && verified ? user.id : null, celebrate);
   // Only the first registration counts: collecting the later deploy credits here doesn't join anyone.
   const registeredNow = claim.status ? claim.status.registered : true;
@@ -74,7 +85,6 @@ function Registration() {
             "Could not load your signup. Please refresh to try again.",
           );
         let data = await res.json();
-        const fresh = !data && Boolean(user.email);
         if (!data && user.email) {
           const saved = await fetch("/api/hackathon/participants", {
             method: "POST",
@@ -90,7 +100,6 @@ function Registration() {
         if (!stopped && data) {
           setParticipant(data);
           setEmail(data.email);
-          if (fresh && event !== "main") await joinEvent(event);
         }
       } catch (e) {
         if (!stopped) setError((e as Error).message);
@@ -113,7 +122,7 @@ function Registration() {
       if (!res.ok)
         throw new Error(data.message ?? "Could not save. Try again.");
       setParticipant(data);
-      if (event !== "main") await joinEvent(event);
+      await join();
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -360,6 +369,14 @@ function Registration() {
       {error && (
         <p className={styles.error} role="alert">
           {error}
+        </p>
+      )}
+      {joinFailed && (
+        <p className={styles.error} role="alert">
+          You’re registered, but we couldn’t add you to the FUTMinna hackathon.{" "}
+          <button type="button" className="font-semibold underline" onClick={() => void join()}>
+            Try again
+          </button>
         </p>
       )}
     </>

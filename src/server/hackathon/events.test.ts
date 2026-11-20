@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { createTestDb, type Db } from "@/server/db/client";
 import { users } from "@/server/db/schema";
@@ -21,6 +21,12 @@ import { snapshotRanks, previousRanks } from "./ranks";
 let db: Db;
 beforeEach(async () => {
   db = await createTestDb();
+  // Submissions and approvals close at CLAIMS_CLOSE (10 Dec), so the clock is pinned before it.
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-11-21T12:00:00Z"));
+});
+afterEach(() => {
+  vi.useRealTimers();
 });
 const wallet = () => `0x${randomUUID().replaceAll("-", "").padEnd(40, "0")}` as `0x${string}`;
 async function voter(email: string | null = "student@example.com") {
