@@ -2,10 +2,12 @@
 
 import * as React from "react";
 
+import { useGoodIdVerify } from "@/components/auth/use-goodid-verify";
 import { BuyDialog } from "@/components/buy/buy-dialog";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { MICRO_PER_CREDIT, formatCredits, formatCreditsShort } from "@/lib/credits-math";
+import { LINK_WALLET_GUIDE } from "@/lib/goodid";
 import { isTxHash, redeemTx, shortHash, type RedeemOutcome } from "./pending-payments";
 import { UNITS, estimateGdWei, formatGd, useBuyCredits, useCreditsInfo, type ChainInfo } from "./use-buy-credits";
 
@@ -21,6 +23,7 @@ export function AddCredits({ className }: { className?: string }) {
   const [open, setOpen] = React.useState(false);
   const { info, pricing, reload } = useCreditsInfo(open);
   const { phase, setPhase, buy, wallet, recoveredMicro } = useBuyCredits(info);
+  const { busy: verifyBusy, note: verifyNote, showLinkGuide, verify } = useGoodIdVerify(reload);
   const [credits, setCredits] = React.useState("100");
   const [buyAsset, setBuyAsset] = React.useState<"g" | "celo" | null>(null);
 
@@ -76,7 +79,16 @@ export function AddCredits({ className }: { className?: string }) {
               {!pricing.verified && valid && (
                 <p className="rounded-xl bg-tint px-3 py-2 text-xs text-grey-600">
                   Verify with GoodDollar for <b>10% more credits</b> on every purchase, up to 1,000 bonus credits a month per person.{" "}
-                  <a className="underline" href="https://goodid.gooddollar.org" target="_blank" rel="noopener noreferrer">Verify</a>
+                  {/* Not a bare link: GoodDollar's page needs the signed login data, or it says "Login information is missing". */}
+                  <button type="button" className="font-semibold underline disabled:opacity-60" disabled={verifyBusy || busy} onClick={() => void verify()}>
+                    {verifyBusy ? "Opening GoodDollar…" : "Verify"}
+                  </button>
+                  {verifyNote && <span role="alert" className="mt-1 block text-warning">{verifyNote}</span>}
+                  {showLinkGuide && (
+                    <a className="mt-1 block underline" href={LINK_WALLET_GUIDE} target="_blank" rel="noopener noreferrer">
+                      Already verified under another wallet? Link it.
+                    </a>
+                  )}
                 </p>
               )}
               {phase.name === "error" && (

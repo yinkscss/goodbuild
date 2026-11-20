@@ -1,5 +1,5 @@
 {
-  "id": "e1181a25-799d-4366-9c33-de2199c1f6dc",
+  "id": "ce63252f-92c0-4bcf-ae81-85c3bcfe0d6d",
   "prevId": "a1a07902-e5d4-421f-a622-e69635a2f847",
   "version": "7",
   "dialect": "postgresql",
@@ -3204,7 +3204,7 @@
       "checkConstraints": {
         "app_settings_key_known": {
           "name": "app_settings_key_known",
-          "value": "\"app_settings\".\"key\" in ('mainnet_access', 'gas_grants')"
+          "value": "\"app_settings\".\"key\" in ('mainnet_access', 'gas_grants', 'gas_deploy_grants')"
         }
       },
       "isRLSEnabled": false
@@ -3873,8 +3873,8 @@
         }
       },
       "indexes": {
-        "hackathon_approvals_entry_root_idx": {
-          "name": "hackathon_approvals_entry_root_idx",
+        "hackathon_approvals_human_unique": {
+          "name": "hackathon_approvals_human_unique",
           "columns": [
             {
               "expression": "entry_id",
@@ -3889,28 +3889,7 @@
               "nulls": "last"
             }
           ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "hackathon_approvals_root_entry_idx": {
-          "name": "hackathon_approvals_root_entry_idx",
-          "columns": [
-            {
-              "expression": "goodid_root",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "entry_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
+          "isUnique": true,
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -4731,6 +4710,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "plan_key": {
+          "name": "plan_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "status": {
           "name": "status",
           "type": "text",
@@ -4803,6 +4788,65 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "gas_grants_vote_root_unique": {
+          "name": "gas_grants_vote_root_unique",
+          "columns": [
+            {
+              "expression": "goodid_root",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"gas_grants\".\"reason\" = 'hackathon_vote'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "gas_grants_plan_unique": {
+          "name": "gas_grants_plan_unique",
+          "columns": [
+            {
+              "expression": "goodid_root",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "plan_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"gas_grants\".\"plan_key\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "gas_grants_root_day_idx": {
+          "name": "gas_grants_root_day_idx",
+          "columns": [
+            {
+              "expression": "goodid_root",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -4821,15 +4865,7 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "gas_grants_goodid_root_unique": {
-          "name": "gas_grants_goodid_root_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "goodid_root"
-          ]
-        }
-      },
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
         "gas_grants_status_known": {
@@ -4839,6 +4875,10 @@
         "gas_grants_reason_known": {
           "name": "gas_grants_reason_known",
           "value": "\"gas_grants\".\"reason\" in ('hackathon_vote', 'deploy')"
+        },
+        "gas_grants_plan_key_check": {
+          "name": "gas_grants_plan_key_check",
+          "value": "(\"gas_grants\".\"reason\" = 'deploy') = (\"gas_grants\".\"plan_key\" is not null)"
         }
       },
       "isRLSEnabled": false

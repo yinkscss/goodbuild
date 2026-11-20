@@ -10,8 +10,9 @@ import { readGoodIdRoot } from "@/server/goodid";
 
 /**
  * Gas grant (D41, amended 18 Nov 2026, see DECISIONS.md D124): the gas wallet tops a GoodDollar-verified
- * person's session wallet up to 0.3 CELO, once per person, at most 50 a day, so they can vote on FlowState
- * and later deploy without buying CELO. Design and red team: MAINNET_PLAN.md section 7.
+ * person's session wallet up to 0.3 CELO, once per person, at most 50 a day, so they can vote on FlowState.
+ * Mainnet deploys have their own, silent top-up (D157, deploy-grant.ts) that signs through the same code.
+ * Design and red team: MAINNET_PLAN.md section 7.
  *
  * Rules kept from that design:
  *  - The amount goes to the session wallet only. Nothing here takes an address from a request.
@@ -41,6 +42,22 @@ const LOCK_GRANTS = 4_104_201;
 
 export type GrantReason = "hackathon_vote" | "deploy";
 
+/** What differs between a vote grant and a deploy grant. Everything else (lock, nonce, signing) is shared. */
+export interface GrantRule {
+  reason: GrantReason;
+  /** The balance the wallet is topped up to. */
+  targetWei: bigint;
+  /** Deploy grants: makes the same plan on the same day a single grant. Null for votes (one per person). */
+  planKey: string | null;
+  /** The most grants of this reason per UTC day, counted over everyone (votes) or over this person (deploys). */
+  dayLimit: number;
+  scope: "everyone" | "person";
+  /** The most CELO of this reason that may go out per UTC day, over everyone. */
+  dayBudgetWei?: bigint;
+}
+
+const VOTE_RULE: GrantRule = { reason: "hackathon_vote", targetWei: GRANT_TARGET_WEI, planKey: null, dayLimit: GRANTS_PER_DAY, scope: "everyone" };
+
 export type GrantOutcome =
   | { kind: "enough" }
   | { kind: "granted"; amountWei: bigint; txHash: Hex };
@@ -49,7 +66,7 @@ export type GrantOutcome =
 export class GasGrantError extends Error {
   constructor(
     message: string,
-    readonly code: "off" | "not_verified" | "used" | "daily_limit" | "empty" | "too_expensive" | "pending" | "review",
+    readonly code: "off" | "not_verified" | "used" | "daily_limit" | "budget" | "empty" | "too_expensive" | "pending" | "review",
     readonly telegram = true,
   ) {
     super(message);
@@ -127,9 +144,9 @@ export function viemGrantChain(client: PublicClient): GrantChain {
 }
 
 /** The switch: "off" stops new grants at once. A missing row means on. An unreadable value means off. */
-export async function grantsEnabled(db: Db): Promise<boolean> {
+export async function grantsEnabled(db: Db, key = GAS_GRANTS_KEY): Promise<boolean> {
   try {
-    const [row] = await db.select({ value: appSettings.value }).from(appSettings).where(eq(appSettings.key, GAS_GRANTS_KEY)).limit(1);
+    const [row] = await db.select({ value: appSettings.value }).from(appSettings).where(eq(appSettings.key, key)).limit(1);
     return !row || row.value === "on";
   } catch (error) {
     console.error("gas grant switch unreadable, treating it as off", error);
@@ -149,6 +166,7 @@ export async function ensureGas(
   needWei: bigint,
   reason: GrantReason,
   deps: GrantDeps,
+  rule: GrantRule = VOTE_RULE,
 ): Promise<GrantOutcome> {
   const wallet = user.wallet.toLowerCase() as Address;
   const { chain } = deps;
@@ -157,17 +175,23 @@ export async function ensureGas(
   const root = (await chain.readRoot(wallet))?.toLowerCase();
   if (!root) throw new GasGrantError("Verify with GoodDollar first, then we can cover your network fee.", "not_verified", false);
 
-  const [existing] = await db.select().from(gasGrants).where(eq(gasGrants.goodidRoot, root)).limit(1);
-  if (existing && existing.status !== "claimed") return finishExisting(db, existing, deps);
+  const [existing] = await findGrant(db, root, rule);
+  if (existing && existing.status !== "claimed") return finishExisting(db, existing, deps, rule);
 
-  if (needWei > GRANT_TARGET_WEI)
+  if (needWei > rule.targetWei)
     throw new GasGrantError("Network fees are unusually high right now. Please try again later.", "too_expensive");
   if (!deps.signer || !(await grantsEnabled(db)))
     throw new GasGrantError("We can’t cover network fees right now. Message us on Telegram and we’ll help.", "off");
 
-  const signed = await claimAndSign(db, { userId: user.id, wallet, root, needWei, reason }, deps);
+  const signed = await claimAndSign(db, { userId: user.id, wallet, root, needWei, reason, rule }, deps);
   if (signed.kind === "enough") return signed;
-  return finishExisting(db, signed.row, deps);
+  return finishExisting(db, signed.row, deps, rule);
+}
+
+/** The person's existing grant row for this rule: their one vote grant, or the one for this plan. */
+function findGrant(db: Pick<Db, "select">, root: string, rule: GrantRule) {
+  const same = rule.planKey === null ? and(eq(gasGrants.reason, "hackathon_vote")) : eq(gasGrants.planKey, rule.planKey);
+  return db.select().from(gasGrants).where(and(eq(gasGrants.goodidRoot, root), same)).limit(1);
 }
 
 type Signed = { kind: "enough" } | { kind: "signed"; row: GasGrant };
@@ -175,7 +199,7 @@ type Signed = { kind: "enough" } | { kind: "signed"; row: GasGrant };
 /** Under the lock: daily limit, the claim, a second identity read, the amount, the nonce, the signature, saved. */
 async function claimAndSign(
   db: Db,
-  a: { userId: string; wallet: Address; root: string; needWei: bigint; reason: GrantReason },
+  a: { userId: string; wallet: Address; root: string; needWei: bigint; reason: GrantReason; rule: GrantRule },
   deps: GrantDeps,
 ): Promise<Signed> {
   const { chain } = deps;
@@ -193,7 +217,7 @@ async function claimAndSign(
   ]);
   if (rootAgain?.toLowerCase() !== a.root) throw new GasGrantError("Verify with GoodDollar first, then we can cover your network fee.", "not_verified", false);
   if (balance >= a.needWei) return { kind: "enough" };
-  const amount = GRANT_TARGET_WEI - balance;
+  const amount = a.rule.targetWei - balance;
   const cost = amount + TRANSFER_GAS * fees.maxFeePerGas;
   if (gasBalance < cost) {
     await deps.alert(`GoodBuild gas wallet ${signer.address} is out of CELO (${formatEther(gasBalance)} left). Grants are paused until it's refilled.`).catch(() => {});
@@ -202,17 +226,26 @@ async function claimAndSign(
 
   const row = await db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(${LOCK_GRANTS})`);
-    const [{ today }] = await tx.select({ today: sql<number>`count(*)::int` }).from(gasGrants).where(gte(gasGrants.createdAt, dayStart));
-    const [mine] = await tx.select().from(gasGrants).where(eq(gasGrants.goodidRoot, a.root)).limit(1);
+    const [{ everyone, own, spent }] = await tx
+      .select({
+        everyone: sql<number>`count(*)::int`,
+        own: sql<number>`(count(*) filter (where ${gasGrants.goodidRoot} = ${a.root}))::int`,
+        spent: sql<string>`coalesce(sum(${gasGrants.amountWei}::numeric), 0)::text`,
+      })
+      .from(gasGrants)
+      .where(and(gte(gasGrants.createdAt, dayStart), eq(gasGrants.reason, a.rule.reason)));
+    const [mine] = await findGrant(tx, a.root, a.rule);
     if (mine && mine.status !== "claimed") return mine;
-    if (!mine && today >= GRANTS_PER_DAY)
+    if (!mine && (a.rule.scope === "person" ? own : everyone) >= a.rule.dayLimit)
       throw new GasGrantError("Today’s free network fees are used up. Message us on Telegram, or try again tomorrow.", "daily_limit");
+    if (!mine && a.rule.dayBudgetWei !== undefined && BigInt(spent.split(".")[0]) + amount > a.rule.dayBudgetWei)
+      throw new GasGrantError("Today’s free network fees are used up. Message us on Telegram, or try again tomorrow.", "budget");
     // Earlier transfers that are signed but not yet seen mined: settle or resend them first. A transfer that
     // never reached the chain (a restart between saving and broadcasting) would otherwise block every
     // later nonce. If one stays unmined for 2 minutes, stop new grants rather than pile nonces on a gap.
     let top: number | null = null;
     for (const prev of await tx.select().from(gasGrants).where(eq(gasGrants.status, "signed"))) {
-      if (prev.goodidRoot === a.root || !prev.txHash || !prev.rawTx) continue;
+      if (prev.id === mine?.id || !prev.txHash || !prev.rawTx) continue;
       const got = await chain.receipt(prev.txHash as Hex);
       if (got === "success") {
         await tx.update(gasGrants).set({ status: "confirmed", confirmedAt: now }).where(eq(gasGrants.id, prev.id));
@@ -252,17 +285,18 @@ async function claimAndSign(
       type: "eip1559",
     });
     const values = { status: "signed", amountWei: String(amount), nonce, rawTx: raw, txHash: keccak256(raw), sentAt: now, wallet: a.wallet };
+    const insertKey = { goodidRoot: a.root, userId: a.userId, reason: a.rule.reason, planKey: a.rule.planKey, createdAt: now };
     if (mine) {
       const [u] = await tx.update(gasGrants).set(values).where(and(eq(gasGrants.id, mine.id), eq(gasGrants.status, "claimed"))).returning();
       return u ?? mine;
     }
     const [inserted] = await tx
       .insert(gasGrants)
-      .values({ goodidRoot: a.root, userId: a.userId, reason: a.reason, ...values })
-      .onConflictDoNothing({ target: gasGrants.goodidRoot })
+      .values({ ...insertKey, ...values })
+      .onConflictDoNothing()
       .returning();
     if (inserted) return inserted;
-    const [winner] = await tx.select().from(gasGrants).where(eq(gasGrants.goodidRoot, a.root)).limit(1);
+    const [winner] = await findGrant(tx, a.root, a.rule);
     return winner;
   });
 
@@ -276,7 +310,7 @@ async function claimAndSign(
 }
 
 /** Broadcast (again, if needed) the saved transaction and wait for it. Never signs anything new. */
-async function finishExisting(db: Db, row: GasGrant, deps: GrantDeps): Promise<GrantOutcome> {
+async function finishExisting(db: Db, row: GasGrant, deps: GrantDeps, rule: GrantRule = VOTE_RULE): Promise<GrantOutcome> {
   if (row.status === "confirmed")
     throw new GasGrantError("You’ve already received your free network fee. Add a little CELO to this wallet, or message us on Telegram.", "used");
   if (row.status === "needs_review") throw new GasGrantError("Your network-fee top-up is being checked by our team. Message us on Telegram if it takes long.", "review");
@@ -312,7 +346,9 @@ async function finishExisting(db: Db, row: GasGrant, deps: GrantDeps): Promise<G
 /** For the admin page: how many grants went out, and how many are left in the wallet. */
 export async function grantSummary(db: Db, chain: Pick<GrantChain, "getBalance">, gasWallet: Address | null, now = new Date()) {
   const dayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-  const rows = await db.select({ status: gasGrants.status, createdAt: gasGrants.createdAt }).from(gasGrants);
+  const all = await db.select({ status: gasGrants.status, createdAt: gasGrants.createdAt, reason: gasGrants.reason, amountWei: gasGrants.amountWei }).from(gasGrants);
+  const rows = all.filter((r) => r.reason === "hackathon_vote");
+  const deploys = all.filter((r) => r.reason === "deploy");
   const balance = gasWallet ? await chain.getBalance(gasWallet).catch(() => null) : null;
   return {
     enabled: (await grantsEnabled(db)) && gasWallet !== null,
@@ -320,6 +356,11 @@ export async function grantSummary(db: Db, chain: Pick<GrantChain, "getBalance">
     balanceWei: balance,
     total: rows.filter((r) => r.status === "confirmed").length,
     today: rows.filter((r) => r.createdAt >= dayStart).length,
-    needsReview: rows.filter((r) => r.status === "needs_review").length,
+    needsReview: all.filter((r) => r.status === "needs_review").length,
+    deploy: {
+      total: deploys.filter((r) => r.status === "confirmed").length,
+      today: deploys.filter((r) => r.createdAt >= dayStart).length,
+      todayWei: deploys.filter((r) => r.createdAt >= dayStart).reduce((n, r) => n + BigInt(r.amountWei ?? "0"), BigInt(0)),
+    },
   };
 }
