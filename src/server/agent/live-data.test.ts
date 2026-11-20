@@ -32,7 +32,7 @@ interface Bundle {
     useRead: <T>(fn: () => Promise<T>, deps: unknown[], enabled?: boolean, options?: { live?: boolean }) => { data: T | undefined; loading: boolean; refreshing: boolean; error: string | null; updatedAt: number | null; refresh: () => Promise<void> };
     useTx: () => { run: (send: () => Promise<{ status: string }>) => Promise<unknown> };
   };
-  RefreshButton: (props: { read?: unknown; label?: string }) => unknown;
+  RefreshButton: import("react").FC<{ read?: unknown; label?: string }>;
   React: typeof import("react");
   createRoot: (el: Element) => { render: (node: unknown) => void; unmount: () => void };
   act: (fn: () => unknown) => Promise<void>;
@@ -322,7 +322,7 @@ describe("existing projects and the build check", () => {
     expect(starter["src/components/ui/refresh-button.tsx"]).toContain("export function RefreshButton");
 
     const { HOOKS_BEFORE_LIVE, CHAIN_BEFORE_LIVE } = await import("./fixtures/live-before");
-    const old = { ...starter, "src/lib/hooks.ts": HOOKS_BEFORE_LIVE, "src/lib/chain.ts": CHAIN_BEFORE_LIVE };
+    const old: Record<string, string> = { ...starter, "src/lib/hooks.ts": HOOKS_BEFORE_LIVE, "src/lib/chain.ts": CHAIN_BEFORE_LIVE };
     delete old[LIVE_PATH];
     delete old["src/components/ui/refresh-button.tsx"];
     const moved = withStarterHelpers(old);
