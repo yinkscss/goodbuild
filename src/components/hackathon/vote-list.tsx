@@ -8,23 +8,26 @@ import { allocateHackathonRewards } from "@/lib/hackathon-rewards";
 import { MAX_APPROVALS_PER_PERSON, type VoteStatus } from "@/lib/hackathon-vote";
 import { FlowstateVote } from "./flowstate-vote";
 import { ProjectVoteLink } from "./project-vote-link";
+import { eventApi, type HackathonEvent } from "@/lib/hackathon-events";
+import { useHackathonEvent } from "./use-event";
 
 type Entry = { id: string; alias: string; title: string; pitch: string; liveUrl: string; sourceUrl: string; approvals: number };
 
-const PENDING_KEY = "gb:hk-vote:pending";
+/** Each hackathon remembers its own picked project across the GoodDollar trip (D160). */
+const pendingKey = (event: HackathonEvent) => (event === "main" ? "gb:hk-vote:pending" : `gb:hk-vote:pending:${event}`);
 const EMPTY: VoteStatus = { max: MAX_APPROVALS_PER_PERSON, used: 0, entryIds: [], signedIn: false, verified: false, voted: false };
 
-function readPending(): string | null {
+function readPending(event: HackathonEvent): string | null {
   try {
-    return sessionStorage.getItem(PENDING_KEY);
+    return sessionStorage.getItem(pendingKey(event));
   } catch {
     return null;
   }
 }
-function writePending(id: string | null) {
+function writePending(event: HackathonEvent, id: string | null) {
   try {
-    if (id) sessionStorage.setItem(PENDING_KEY, id);
-    else sessionStorage.removeItem(PENDING_KEY);
+    if (id) sessionStorage.setItem(pendingKey(event), id);
+    else sessionStorage.removeItem(pendingKey(event));
   } catch {
     // Storage blocked: the pop-up just doesn't reopen after the GoodDollar trip.
   }
@@ -38,6 +41,7 @@ function writePending(id: string | null) {
  */
 export function VoteList() {
   const { user, ready } = useAuth();
+  const { event } = useHackathonEvent();
   const { openConnect } = useSendGate();
   const [entries, setEntries] = React.useState<Entry[] | null>(null);
   const [status, setStatus] = React.useState<VoteStatus>(EMPTY);
@@ -49,21 +53,21 @@ export function VoteList() {
 
   const loadEntries = React.useCallback(async () => {
     try {
-      const res = await fetch("/api/hackathon/projects", { cache: "no-store" });
+      const res = await fetch(eventApi("/api/hackathon/projects", event), { cache: "no-store" });
       if (!res.ok) throw new Error();
       setEntries((await res.json()) as Entry[]);
     } catch {
       setError("The projects couldn’t load. Reload to try again.");
     }
-  }, []);
+  }, [event]);
   const loadStatus = React.useCallback(async () => {
     try {
-      const res = await fetch("/api/hackathon/votes", { cache: "no-store" });
+      const res = await fetch(eventApi("/api/hackathon/votes", event), { cache: "no-store" });
       setStatus(res.ok ? ((await res.json()) as VoteStatus) : EMPTY);
     } catch {
       setStatus(EMPTY);
     }
-  }, []);
+  }, [event]);
 
   React.useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- loads data after mount
@@ -74,20 +78,20 @@ export function VoteList() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- loads data after mount
     void loadStatus();
     // Back from GoodDollar: bring the pop-up back on the project they picked.
-    const pending = readPending();
+    const pending = readPending(event);
     if (pending && user) setPicked(pending);
-  }, [ready, user, loadStatus]);
+  }, [ready, user, loadStatus, event]);
 
   React.useEffect(() => {
     if (!entries || shareLinkHandled.current) return;
     shareLinkHandled.current = true;
     const requested = new URLSearchParams(window.location.search).get("vote");
     if (requested && entries.some((entry) => entry.id === requested)) {
-      writePending(requested);
+      writePending(event, requested);
       // eslint-disable-next-line react-hooks/set-state-in-effect -- a shared URL selects its project on arrival
       setPicked(requested);
     }
-  }, [entries]);
+  }, [entries, event]);
 
   // Published projects first by rank, then ideas that have no live app yet (they can't be approved).
   const ladder = entries ? allocateHackathonRewards(entries).map((entry) => ({ entry })) : [];
@@ -100,7 +104,7 @@ export function VoteList() {
     setError("");
     setNotice("");
     try {
-      const res = await fetch("/api/hackathon/projects", {
+      const res = await fetch(eventApi("/api/hackathon/projects", event), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ entryId: id }),
@@ -116,7 +120,7 @@ export function VoteList() {
       setError((e as Error).message);
     } finally {
       setBusyId(null);
-      writePending(null);
+      writePending(event, null);
       if (!keepDialogOpen) setPicked(null);
     }
   }
@@ -128,7 +132,7 @@ export function VoteList() {
       void approve(id);
       return;
     }
-    writePending(id);
+    writePending(event, id);
     setPicked(id);
   }
 
@@ -214,7 +218,7 @@ export function VoteList() {
         refresh={loadStatus}
         onApprove={() => pickedEntry && void approve(pickedEntry.id)}
         onClose={() => {
-          writePending(null);
+          writePending(event, null);
           setPicked(null);
         }}
         openConnect={openConnect}

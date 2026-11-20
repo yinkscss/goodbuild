@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useHackathonEvent } from "./use-event";
 
 /** A direct link that opens the selected project's approval steps. */
 export function ProjectVoteLink({
@@ -12,11 +13,13 @@ export function ProjectVoteLink({
 }) {
   const [copied, setCopied] = React.useState(false);
   const [link, setLink] = React.useState("");
+  // A FUTMinna project's link opens the FUTMinna page (D160).
+  const votePage = useHackathonEvent().config.votePage;
 
   React.useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- the origin only exists in the browser
-    setLink(`${window.location.origin}/hackathon/projects?vote=${encodeURIComponent(entryId)}`);
-  }, [entryId]);
+    setLink(`${window.location.origin}${votePage}?vote=${encodeURIComponent(entryId)}`);
+  }, [entryId, votePage]);
 
   async function copy() {
     if (!link) return;

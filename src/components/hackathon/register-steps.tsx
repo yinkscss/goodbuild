@@ -14,6 +14,11 @@ import {
   useHackathonClaim,
 } from "./use-hackathon-claim";
 import { FlowstateVote } from "./flowstate-vote";
+import { useHackathonEvent } from "./use-event";
+/** Adds the signed-in person to another hackathon's signup list with the email they gave (D160). */
+async function joinEvent(event: string) {
+  await fetch(`/api/hackathon/participants?event=${event}&join=1`, { method: "POST" }).catch(() => undefined);
+}
 type Participant = {
   email: string;
   flowstate: "pending" | "visited" | "skipped" | "voted";
@@ -25,6 +30,9 @@ export function RegisterSteps() {
 }
 function Registration() {
   const auth = useAuth();
+  // On the FUTMinna pages (D160) the same steps run: the main signup unlocks the shared credit claim,
+  // and the person is also added to the FUTMinna signup list.
+  const { event, config } = useHackathonEvent();
   const { openConnect } = useSendGate();
   const user = auth.user;
   const [participant, setParticipant] = React.useState<Participant | null>(
@@ -40,7 +48,7 @@ function Registration() {
   const claim = useHackathonClaim(user && verified ? user.id : null, celebrate);
   const { busy, note, showLinkGuide, verify } = useGoodIdVerify(
     () => setVerifiedHere(true),
-    () => `${window.location.origin}/hackathon#register`,
+    () => `${window.location.origin}${config.page}#register`,
   );
   React.useEffect(() => {
     if (!user) return;
@@ -70,6 +78,7 @@ function Registration() {
         if (!stopped && data) {
           setParticipant(data);
           setEmail(data.email);
+          if (event !== "main") await joinEvent(event);
         }
       } catch (e) {
         if (!stopped) setError((e as Error).message);
@@ -78,7 +87,7 @@ function Registration() {
     return () => {
       stopped = true;
     };
-  }, [user]);
+  }, [user, event]);
   async function save() {
     setSaving(true);
     setError("");
@@ -92,6 +101,7 @@ function Registration() {
       if (!res.ok)
         throw new Error(data.message ?? "Could not save. Try again.");
       setParticipant(data);
+      if (event !== "main") await joinEvent(event);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -301,7 +311,7 @@ function Registration() {
                 <Link className={styles.cta} href="/">
                   Start building →
                 </Link>
-                <Link className={styles.ghostLight} href="/home/hackathon/project">
+                <Link className={styles.ghostLight} href={`${config.app}/project`}>
                   Submit or update your project
                 </Link>
                 {claim.status.deployPending && (

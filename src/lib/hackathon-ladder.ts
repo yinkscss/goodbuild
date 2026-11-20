@@ -34,14 +34,17 @@ export interface Ladder<T extends Entry> {
   gapToPrizeZone: number | null;
 }
 
-/** Build the ranked ladder from the public entry list; `myId` marks the viewer's own project. */
-export function buildLadder<T extends Entry>(entries: T[], myId?: string | null): Ladder<T> {
+/**
+ * Build the ranked ladder from the public entry list; `myId` marks the viewer's own project. `zone` is
+ * how many places count as the prize zone: the top 20 by default, the FUTMinna shortlist of 5 (D160).
+ */
+export function buildLadder<T extends Entry>(entries: T[], myId?: string | null, zone: number = REWARD_SLOTS): Ladder<T> {
   const rows = allocateHackathonRewards(entries)
     .filter((e): e is typeof e & { rank: number } => e.rank !== null)
     .map((entry) => ({
       entry,
       league: leagueFor(entry.approvals),
-      inPrizeZone: entry.rank <= REWARD_SLOTS,
+      inPrizeZone: entry.rank <= zone,
       moved: entry.prevRank ? entry.prevRank - entry.rank : 0,
       stars: entry.stars ?? [],
     }));
@@ -55,7 +58,7 @@ export function buildLadder<T extends Entry>(entries: T[], myId?: string | null)
         const test = allocateHackathonRewards(
           entries.map((e) => (e.id === myId ? { ...e, approvals: e.approvals + k } : e)),
         ).find((e) => e.id === myId);
-        if (test && test.rank !== null && test.rank <= REWARD_SLOTS) {
+        if (test && test.rank !== null && test.rank <= zone) {
           gap = k;
           break;
         }

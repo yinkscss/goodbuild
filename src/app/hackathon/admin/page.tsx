@@ -82,7 +82,10 @@ function ReportView({ r }: { r: HackathonReport }) {
   const flagged = r.rows.filter((x) => x.freshWallet).length;
   return (
     <div className="mt-8 space-y-4">
-      <a href="/api/hackathon/export" className="inline-flex rounded-full bg-ink px-5 py-3 text-sm text-white">Export all signup emails & progress (CSV)</a>
+      <div className="flex flex-wrap gap-3">
+        <a href="/api/hackathon/export" className="inline-flex rounded-full bg-ink px-5 py-3 text-sm text-white">Export all signup emails & progress (CSV)</a>
+        <a href="/api/hackathon/export?event=futminna" className="inline-flex rounded-full bg-violet px-5 py-3 text-sm text-white">Export FUTMinna signups & projects (CSV)</a>
+      </div>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <Tile label="Registered" value={fmt(r.registered)} note={`${START_CREDITS} credits each`} />
         <Tile label="Deployed" value={fmt(r.deployed)} note={`${DEPLOY_CREDITS} more each`} />

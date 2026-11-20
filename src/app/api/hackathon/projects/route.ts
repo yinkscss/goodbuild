@@ -14,17 +14,21 @@ import {
   saveEntry,
 } from "@/server/hackathon/community";
 import { withRankMoves } from "@/server/hackathon/ranks";
+import { parseEvent } from "@/lib/hackathon-events";
 const headers = { "Cache-Control": "no-store" };
+/** `?event=futminna` picks the hackathon (D160); without it, the main one. */
 export async function GET(request: Request) {
   try {
-    if (new URL(request.url).searchParams.has("mine")) {
+    const params = new URL(request.url).searchParams;
+    const event = parseEvent(params.get("event"));
+    if (params.has("mine")) {
       const s = await requireSession();
-      return NextResponse.json(await ownEntry(await getDb(), s.user.id), {
+      return NextResponse.json(await ownEntry(await getDb(), s.user.id, event), {
         headers,
       });
     }
     const db = await getDb();
-    return NextResponse.json(await withRankMoves(db, await listEntries(db)), { headers });
+    return NextResponse.json(await withRankMoves(db, await listEntries(db, event), new Date(), event), { headers });
   } catch (e) {
     return errorResponse(e);
   }
@@ -32,6 +36,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const s = await requireSession();
+    const event = parseEvent(new URL(request.url).searchParams.get("event"));
     const body = await request.json().catch(() => null);
     const approval = z.object({ entryId: z.uuid() }).safeParse(body);
     if (approval.success) {
@@ -42,6 +47,8 @@ export async function POST(request: Request) {
           s.user,
           approval.data.entryId,
           recordingRootReader(db, s.user, publicClientFor(celo.id)),
+          new Date(),
+          event,
         ),
         { headers },
       );
@@ -56,7 +63,7 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     return NextResponse.json(
-      await saveEntry(await getDb(), s.user, entry.data),
+      await saveEntry(await getDb(), s.user, entry.data, event),
       { headers },
     );
   } catch (e) {

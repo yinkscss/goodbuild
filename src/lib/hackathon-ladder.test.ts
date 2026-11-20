@@ -41,3 +41,12 @@ it("works out places moved from the previous snapshot, and treats a missing one 
   expect(moved).toEqual({ climber: 2, slider: -1, steady: 0, fresh: 0 });
   expect(buildLadder([{ ...live("x", 3), stars: [1, 3] }]).rows[0].stars).toEqual([1, 3]);
 });
+
+it("uses a smaller zone for the FUTMinna shortlist (D160)", () => {
+  const entries = Array.from({ length: 7 }, (_, i) => ({ id: `e${i}`, liveUrl: "https://x.example", approvals: 10 - i }));
+  const { rows, mine, gapToPrizeZone } = buildLadder(entries, "e6", 5);
+  expect(rows.filter((r) => r.inPrizeZone).map((r) => r.entry.id)).toEqual(["e0", "e1", "e2", "e3", "e4"]);
+  expect(mine?.inPrizeZone).toBe(false);
+  // e4 has 6 approvals and e6 has 4: 2 more ties e4, and the earlier submission keeps the place, so 3.
+  expect(gapToPrizeZone).toBe(3);
+});
