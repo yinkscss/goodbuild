@@ -1,5 +1,6 @@
 "use client";
 import * as React from "react";
+import Link from "next/link";
 import { invitePath } from "@/lib/referral";
 
 interface Summary {
@@ -77,6 +78,7 @@ export function InviteFriendsCard() {
           </button>
         )}
       </div>
+      <Link href="/home/referrals" className="mt-4 inline-block text-sm font-semibold text-violet underline">Track referrals and G$ earnings →</Link>
       <p className="mt-3 text-xs text-grey-600">
         {summary.invited} joined · {summary.voted} voted · {summary.earnedCredits} credits earned
       </p>

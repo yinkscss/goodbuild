@@ -1898,6 +1898,13 @@ The owner approved implementing all five parts of the first-build fix and openin
 - **Open:** whether GoodDollar counts these events (Q9, UNVERIFIED). Settled: mainnet only; Celoscan key set on the server.
 - Claude's input: the registry never gates a deploy, sign-up or publish.
 
+### Ambassador G$ earnings and manual payout requests (20 Nov 2026; extends D155)
+- Owner approved 5,000 G$ per qualifying new referral, no referral cap, launch onward. Minimum request is five qualified unpaid referrals (25,000 G$), any day; manual payment target is within 24 hours. The earlier Friday schedule is superseded.
+- Existing credit bonuses remain independent. New earnings require server-confirmed GoodDollar identity and settled FlowState support, one reward per identity. Identities recorded before attribution do not count. AMBASSADOR_START controls launch; old referrals are not backfilled into earnings.
+- `/home/referrals` shows anonymous referral progress, available/requested/paid G$, receiving wallet, requests and payment links. `/home/referrals/admin` uses ADMIN_WALLETS for evidence review and manual payout reconciliation.
+- Payout requests freeze the entire available balance, wallet and earning allocations. One open request per ambassador. Processing requires manual payment; the recorded transfer must match the official Celo G$ contract, approved sender, recipient, exact amount and 30-block finality. A transaction log cannot pay two requests. Audit records retain admin transitions and reasons.
+- No automatic transfers or payout keys. Set AMBASSADOR_PAYOUT_WALLETS before confirming receipts. Dashboard refresh repairs interrupted qualification from stored voter records with fresh chain checks. Live payout/browser verification is still required before launch.
+
 ### D157. Mainnet deploys: the gas wallet silently covers the network fee, a few a day (19 Nov 2026; completes D124's deploy path)
 - Decided by: the owner (keep the vote grant at 0.3 CELO; pay the fee at deploy time instead; no message to the user; 10 a day for people who have bought credits). The other numbers below are Claude's defaults, for the owner to change.
 - **What:** when a GoodDollar-verified person prepares a Celo mainnet deploy and their wallet can't pay the estimated fee, `POST /api/projects/[id]/deploy/prepare` tops the wallet up to that estimate from the gas wallet before returning the plan. **The person still signs and sends every deploy themselves** (D2, CLAUDE.md rule 8): GoodBuild only sends CELO and never holds a key or sends a deploy. **Silent:** no new text in the modal. If a top-up can't happen (not verified, off, empty, limit reached, too dear), prepare carries on as before and the modal's existing "add CELO" help applies. It never fails a prepare.
