@@ -11,6 +11,8 @@
  * these files but not edit them, so the front end can't drift from the contract.
  */
 
+import { createHash } from "node:crypto";
+
 import { NETWORKS } from "@/config/networks";
 import { chainSourceFor, CONNECT_BUTTON, USE_WALLET, walletHelpersFor, withCurrentWalletHelpers } from "./wallet-template";
 
@@ -218,46 +220,81 @@ export function errorMessage(e: unknown): string {
 const HOOKS = `import { useCallback, useEffect, useRef, useState } from "react";
 import type { TransactionReceipt } from "viem";
 import { errorMessage } from "./format";
+import { markChanged, subscribeChanges } from "./goodbuild/live";
 
 /**
- * Run an async read (usually publicClient.readContract) with loading and error state.
- * Pass enabled=false to skip it (e.g. no wallet or no deployed address yet).
+ * Run an async read (usually publicClient.readContract) with loading and error state, and keep it
+ * up to date by itself (D158): it fetches again after any confirmed transaction (writeContract, useTx),
+ * a saved-data write, a wallet switch, the tab coming back, and on a slow shared timer while the page
+ * is open, so other people's changes show too. Never call refresh() after a write just to update it.
+ * Pass enabled=false to skip it (e.g. no wallet or no deployed address yet), and { live: false } for a
+ * value that can never change (a token's name or decimals).
  *   const tips = useRead(() => publicClient.readContract({ address, abi, functionName: "totalTips" }), [address], !!address);
+ * loading is the first load only (show a Skeleton). refreshing is a fetch with the old value still on
+ * screen (don't hide it); updatedAt is when it last arrived. Put <RefreshButton read={tips} /> next to it.
  */
-export function useRead<T>(fn: () => Promise<T>, deps: unknown[], enabled = true) {
+export function useRead<T>(fn: () => Promise<T>, deps: unknown[], enabled = true, options: { live?: boolean } = {}) {
   const [data, setData] = useState<T | undefined>(undefined);
   const [loading, setLoading] = useState(enabled);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [updatedAt, setUpdatedAt] = useState<number | null>(null);
   const fnRef = useRef(fn);
   fnRef.current = fn;
+  const seq = useRef(0);
+  const hasData = useRef(false);
+  const live = options.live !== false;
 
-  const refresh = useCallback(async () => {
+  // background: keep the value and any earlier error on screen, and don't show a failed timer fetch.
+  const load = useCallback(async (background: boolean) => {
     if (!enabled) {
       setLoading(false);
       return;
     }
-    setLoading(true);
-    setError(null);
+    const id = ++seq.current;
+    if (hasData.current) setRefreshing(true);
+    else setLoading(true);
+    if (!background) setError(null);
     try {
-      setData(await fnRef.current());
+      const next = await fnRef.current();
+      if (id !== seq.current) return; // A newer fetch started: its answer wins.
+      hasData.current = true;
+      setData(next);
+      setError(null);
+      setUpdatedAt(Date.now());
     } catch (e) {
-      setError(errorMessage(e));
+      if (id !== seq.current) return;
+      if (!background || !hasData.current) setError(errorMessage(e));
     } finally {
-      setLoading(false);
+      if (id === seq.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, ...deps]);
 
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
+  const loadRef = useRef(load);
+  loadRef.current = load;
 
-  return { data, loading, error, refresh };
+  useEffect(() => {
+    // New inputs (another account, another address) start fresh rather than refresh the old value.
+    hasData.current = false;
+    void load(false);
+  }, [load]);
+
+  useEffect(() => {
+    if (!enabled || !live) return;
+    return subscribeChanges((kinds) => loadRef.current(!kinds.has("manual")));
+  }, [enabled, live]);
+
+  const refresh = useCallback(() => loadRef.current(false), []);
+  return { data, loading, refreshing, error, updatedAt, refresh };
 }
 
 /**
  * Track one wallet transaction: pending while the wallet signs and the chain confirms,
- * then success or a readable error.
+ * then success or a readable error. Once it succeeds, every useRead on the page fetches again.
  *   const tx = useTx();
  *   await tx.run(() => writeContract({ ... }));  // returns the receipt, or undefined on error
  */
@@ -274,6 +311,7 @@ export function useTx() {
       const r = await send();
       if (r.status !== "success") throw new Error("The transaction was reverted.");
       setReceipt(r);
+      void markChanged("tx");
       return r;
     } catch (e) {
       setError(errorMessage(e));
@@ -286,6 +324,9 @@ export function useTx() {
   return { run, pending, error, receipt, reset: () => (setError(null), setReceipt(null)) };
 }
 `;
+
+/** hooks.ts as GoodBuild wrote it before D158. An untouched copy moves to the live one. */
+const HOOKS_BEFORE_LIVE_SHA256 = "963faadf84cc4850ac684ca5c4da481591eccf938cd0442da43773a7cb1957a5";
 
 const TOKENS = `import { erc20Abi } from "viem";
 
@@ -315,6 +356,7 @@ const DATA_RULES = `{
 
 /** Written by GoodBuild. Talks to the published app's own host, and to a stand-in in the preview. */
 const DB = `import { createWalletClient, custom, getAddress } from "viem";
+import { markChanged } from "./goodbuild/live";
 import { appChain as chain, connectWallet, hasWallet, walletProvider } from "./goodbuild/wallet";
 import rules from "./dataRules.json";
 
@@ -779,30 +821,39 @@ export function collection<T = unknown>(name: string) {
     },
     /** Save under a key you choose, replacing your earlier record with that key. Other wallets' records with the same key are separate. */
     async put(key: string, value: T): Promise<DbRecord<T>> {
-      if (isPreview) return previewPut(name, key, value);
-      return api<DbRecord<T>>(path + "/" + encodeURIComponent(key), { method: "PUT", body: JSON.stringify({ value }) });
+      if (isPreview) return changed(previewPut(name, key, value));
+      return changed(await api<DbRecord<T>>(path + "/" + encodeURIComponent(key), { method: "PUT", body: JSON.stringify({ value }) }));
     },
     /** Save a new record with a generated key. Works without sign-in where the rule says "create": "anyone". */
     async add(value: T): Promise<DbRecord<T>> {
-      if (isPreview) return previewPut(name, newRecordKey(), value);
-      return api<DbRecord<T>>(path, { method: "POST", body: JSON.stringify({ value }) });
+      if (isPreview) return changed(previewPut(name, newRecordKey(), value));
+      return changed(await api<DbRecord<T>>(path, { method: "POST", body: JSON.stringify({ value }) }));
     },
     /** Delete your own record. The app's owner can pass owner to delete someone else's, where the rule allows it. */
     async remove(key: string, options: { owner?: string | null } = {}): Promise<void> {
       if (isPreview) {
         const owner = options.owner ?? previewSubject() ?? PREVIEW_ANON;
         savePreview(previewRecords().filter((r) => !(r.key === key && r.owner === owner && r.collection === name)));
+        changed(null);
         return;
       }
       await api(path + "/" + encodeURIComponent(key) + (options.owner ? "?owner=" + encodeURIComponent(options.owner) : ""), { method: "DELETE" });
+      changed(null);
     },
   };
+}
+
+/** A write went through: every list on the page that shows saved data fetches again (D158). */
+function changed<R>(result: R): R {
+  void markChanged("data");
+  return result;
 }
 `;
 
 const USE_DB = `import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { collection, isPreview, sendEmailCode, sessionInfo, signIn as dbSignIn, signOut as dbSignOut, verifyEmailCode, type DbRecord, type DbWhere } from "./db";
 import { errorMessage } from "./format";
+import { markChanged, subscribeChanges } from "./goodbuild/live";
 import { subscribeWallet, walletState } from "./goodbuild/wallet";
 import { useRead } from "./hooks";
 
@@ -934,10 +985,17 @@ export function useCollection<T>(
   const { owner, limit, enabled = true, wallet, where, orderBy, dir, liveEvery } = options;
   const store = collection<T>(name);
   const queryKey = JSON.stringify([where ?? [], orderBy ?? "", dir ?? ""]);
-  const read = useRead(() => store.list({ owner, limit, where, orderBy, dir }), [name, owner, limit, wallet, queryKey], enabled);
-  // Live apps (a lobby, a turn-based game): fetch again every few seconds while the page is showing.
+  // live: false, because saved data listens here, without the chain's timer (D158): it fetches again
+  // after any saved-data write, a wallet switch, the tab coming back and the refresh button, so
+  // GoodBuild's server only sees a read when something could have changed.
+  const read = useRead(() => store.list({ owner, limit, where, orderBy, dir }), [name, owner, limit, wallet, queryKey], enabled, { live: false });
   const refreshRef = useRef(read.refresh);
   refreshRef.current = read.refresh;
+  useEffect(() => {
+    if (!enabled) return;
+    return subscribeChanges(() => refreshRef.current(), { on: ["data", "wallet", "focus", "manual"] });
+  }, [enabled]);
+  // Live apps (a lobby, a turn-based game): fetch again every few seconds while the page is showing.
   useEffect(() => {
     if (!enabled || !liveEvery) return;
     const timer = setInterval(() => {
@@ -948,9 +1006,10 @@ export function useCollection<T>(
   // Not while disabled, so one visitor's records don't stay on screen after they sign out.
   const records: DbRecord<T>[] = enabled ? read.data?.records ?? [] : [];
 
+  // The write already told the page; waiting for that refresh means the list is new when this resolves.
   async function after<R>(write: Promise<R>): Promise<R> {
     const result = await write;
-    await read.refresh();
+    await markChanged("data");
     return result;
   }
   return {
@@ -958,6 +1017,9 @@ export function useCollection<T>(
     /** True when the server read only the newest 500 records for this filtered or ordered list. */
     truncated: enabled ? read.data?.truncated === true : false,
     loading: read.loading,
+    /** Fetching again with the old list still on screen: keep showing it. (Read loosely: an app's own older hooks.ts has neither.) */
+    refreshing: (read as { refreshing?: boolean }).refreshing === true,
+    updatedAt: (read as { updatedAt?: number | null }).updatedAt ?? null,
     error: read.error,
     refresh: read.refresh,
     add: (value: T) => after(store.add(value)),
@@ -1115,6 +1177,76 @@ export function Textarea({ className, ...props }: React.TextareaHTMLAttributes<H
 }
 `;
 
+/**
+ * The refresh button next to anything that changes (D158). Values already refresh by themselves, so
+ * this is the visitor's "check now": one per card or section, not one per number.
+ */
+const REFRESH_BUTTON = `import { RotateCw } from "lucide-react";
+import { useState, useSyncExternalStore } from "react";
+import { lastRefreshedAt, refreshAll, subscribeRefreshed } from "../../lib/goodbuild/live";
+import { cn } from "../../lib/utils";
+
+interface Refreshable {
+  refresh: () => Promise<unknown>;
+  refreshing?: boolean;
+  updatedAt?: number | null;
+}
+
+function ago(at: number | null | undefined, now: number): string {
+  if (!at) return "Refresh";
+  const s = Math.max(0, Math.round((now - at) / 1000));
+  if (s < 5) return "Updated just now";
+  if (s < 60) return "Updated " + s + "s ago";
+  const m = Math.round(s / 60);
+  return m < 60 ? "Updated " + m + " min ago" : "Updated over an hour ago";
+}
+
+/**
+ * A small round-arrow button that fetches again and spins while it does. Hovering shows when the
+ * value last arrived.
+ *   <RefreshButton read={balance} />   one useRead or useCollection (it also spins on their own refreshes)
+ *   <RefreshButton />                  everything on the page (refreshAll)
+ * Put it in a card's header, next to its title, or beside a big number. Values refresh on their own
+ * after transactions and saved-data writes, so it's the fallback, not the way things update.
+ */
+export function RefreshButton({ read, label = "Refresh", className }: { read?: Refreshable; label?: string; className?: string }) {
+  const [busy, setBusy] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+  const pageAt = useSyncExternalStore(subscribeRefreshed, lastRefreshedAt, lastRefreshedAt);
+  const spinning = busy || read?.refreshing === true;
+  const updatedAt = read ? read.updatedAt : pageAt;
+
+  async function onClick() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await (read ? read.refresh() : refreshAll());
+    } finally {
+      setBusy(false);
+      setNow(Date.now());
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      onPointerEnter={() => setNow(Date.now())}
+      onFocus={() => setNow(Date.now())}
+      aria-label={label}
+      aria-busy={spinning}
+      title={spinning ? "Refreshing…" : ago(updatedAt, now)}
+      className={cn(
+        "inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
+        className,
+      )}
+    >
+      <RotateCw className={cn("size-4", spinning && "motion-safe:animate-spin")} aria-hidden="true" />
+    </button>
+  );
+}
+`;
+
 /** Files every project starts with (paths without a leading slash). */
 export function starterFiles(chainId = NETWORKS["celo-sepolia"].chainId): Record<string, string> {
   return {
@@ -1143,6 +1275,7 @@ export function starterFiles(chainId = NETWORKS["celo-sepolia"].chainId): Record
     "src/components/ui/skeleton.tsx": SKELETON,
     "src/components/ui/notice.tsx": NOTICE,
     "src/components/ui/textarea.tsx": TEXTAREA,
+    "src/components/ui/refresh-button.tsx": REFRESH_BUTTON,
     // Dialog, sheet, tabs, select, dropdown menu, tooltip, toast, accordion, avatar and switch (D89).
     ...UI_PRIMITIVES,
   };
@@ -1154,6 +1287,8 @@ export function starterFiles(chainId = NETWORKS["celo-sepolia"].chainId): Record
  */
 export function withStarterHelpers(files: Record<string, string>, chainId = NETWORKS["celo-sepolia"].chainId): Record<string, string> {
   const out = withCurrentWalletHelpers(withCurrentDataHelpers(files), chainId);
+  // An untouched hooks.ts from before D158 moves to the live one; an edited one stays the builder's.
+  if (out["src/lib/hooks.ts"] && createHash("sha256").update(out["src/lib/hooks.ts"]).digest("hex") === HOOKS_BEFORE_LIVE_SHA256) out["src/lib/hooks.ts"] = HOOKS;
   for (const [p, content] of Object.entries(starterFiles(chainId))) {
     if (/^src\/(lib|components\/ui)\//.test(p) && !(p in out)) out[p] = content;
   }

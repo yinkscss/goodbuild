@@ -31,7 +31,7 @@ export interface CheckIssue {
   file: string;
   line?: number;
   message: string;
-  source: "solc" | "guardrail" | "syntax" | "imports" | "paths" | "test" | "manifest" | "runtime" | "types" | "acceptance";
+  source: "solc" | "guardrail" | "syntax" | "imports" | "paths" | "test" | "manifest" | "runtime" | "types" | "acceptance" | "live";
 }
 
 export interface CompiledContract {
@@ -72,8 +72,9 @@ export const MAX_CONTRACT_BYTES = 24_576;
 /**
  * Files in one project, starter and kits included. It was 80 while the starter had 27 files; the ten
  * further UI pieces (D89) added 11, so this went up by as much (rounded) and an app has the room it had.
+ * Live data (D158) added 2 (src/lib/goodbuild/live.ts and the refresh button), so it went up by 2.
  */
-export const MAX_FILES = 92;
+export const MAX_FILES = 94;
 
 const DATA_HELPER_STEMS = ["src/lib/db", "src/lib/useDb"];
 
@@ -91,7 +92,7 @@ export function pathProblem(p: string, kits: Kit[] = []): string | null {
     return `${DATA_HELPER_STEMS.find((stem) => p.startsWith(stem))}.ts is written by GoodBuild, so an app can't quietly send visitors' data elsewhere. Use it as it is (see the app-data guide). Who can read what goes in ${DATA_RULES_PATH}.`;
   }
   if (p.startsWith(WALLET_DIR) || p === WALLET_DIR.slice(0, -1) || p.startsWith(WALLET_DIR.slice(0, -1) + ".")) {
-    return `${WALLET_DIR} is GoodBuild's wallet layer (wallet list, WalletConnect, MiniPay). Use connectWallet / writeContract from src/lib/chain.ts, useWallet and ConnectButton instead of changing it.`;
+    return `${WALLET_DIR} is GoodBuild's wallet and live-data layer (wallet list, WalletConnect, MiniPay, refreshing after changes). Use connectWallet / writeContract from src/lib/chain.ts, useWallet, ConnectButton, useRead and RefreshButton instead of changing it.`;
   }
   if (p.startsWith("src/assets/")) return "src/assets/ is written by GoodBuild from the user's uploads. Import { assets } from it, or use the /assets/<name> path.";
   if (p === SPEC_PATH) return `${SPEC_PATH} is the app's spec, written by GoodBuild's planner. Follow it; if it is wrong, say so in your reply instead of changing it.`;

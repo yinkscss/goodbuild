@@ -666,6 +666,7 @@ export function buzz(kind: keyof typeof PATTERNS = "tap"): void {
 export const CHAIN_TX = `import { createWalletClient, custom, erc20Abi, type Abi, type Address } from "viem";
 
 import { chain, publicClient, writeContract } from "../lib/chain";
+import { markChanged } from "../lib/goodbuild/live";
 import { connectWallet, isMiniPay, walletProvider } from "../lib/goodbuild/wallet";
 
 /** Dollar coins that can pay Celo's network fee, per network (MiniPay players hold these, not CELO). */
@@ -684,6 +685,8 @@ export async function sendGameTx(args: { address: Address; abi: Abi; functionNam
   const hash = await wallet.writeContract({ ...args, feeCurrency, type: "legacy" } as never);
   const receipt = await publicClient.waitForTransactionReceipt({ hash });
   if (receipt.status !== "success") throw new Error("That didn't go through. Nothing was taken except the network fee. Please try again.");
+  // Balances, items and scores on screen fetch again (D158).
+  void markChanged("tx");
   return receipt;
 }
 

@@ -16,6 +16,8 @@
 
 import { createHash } from "node:crypto";
 
+import { LIVE, LIVE_PATH } from "./live-template";
+
 export const WALLET_DIR = "src/lib/goodbuild/";
 
 const WALLET = String.raw`/**
@@ -30,6 +32,7 @@ const WALLET = String.raw`/**
  */
 import type { Address, EIP1193Provider } from "viem";
 import { celo, celoSepolia } from "viem/chains";
+import { markChanged } from "./live";
 import { openWalletChooser } from "./walletChooser";
 
 /** Written by GoodBuild for this project's target network. */
@@ -91,8 +94,11 @@ function emit() {
 }
 
 function setState(next: Partial<WalletState>) {
+  const before = state.account;
   state = { ...state, ...next };
   emit();
+  // A different account sees different balances: every read on the page fetches again (D158).
+  if (state.account !== before) void markChanged("wallet");
 }
 
 /** The current account, wallet and whether a connection is in progress. Stable between changes. */
@@ -803,6 +809,7 @@ export const WALLET_PATHS = {
   wallet: WALLET_DIR + "wallet.ts",
   chooser: WALLET_DIR + "walletChooser.tsx",
   walletConnect: WALLET_DIR + "walletConnect.tsx",
+  live: LIVE_PATH,
 } as const;
 
 /** GoodBuild's wallet files: always present and always current in every project. */
@@ -827,6 +834,8 @@ export function walletHelpersFor(chainId = SEPOLIA_CHAIN_ID): Record<string, str
     [WALLET_PATHS.wallet]: walletSourceFor(chainId),
     [WALLET_PATHS.chooser]: CHOOSER,
     [WALLET_PATHS.walletConnect]: WALLETCONNECT_STUB,
+    // Live data (D158): one refresh signal per tab, GoodBuild's like the wallet layer.
+    [WALLET_PATHS.live]: LIVE,
   };
 }
 
@@ -836,6 +845,7 @@ export const WALLET_HELPERS: Record<string, string> = walletHelpersFor();
 
 export const CHAIN = String.raw`import { createPublicClient, createWalletClient, custom, http, type Abi, type Address } from "viem";
 import { celo, celoSepolia } from "viem/chains";
+import { markChanged } from "./goodbuild/live";
 import { requireWallet } from "./goodbuild/wallet";
 
 // The wallet itself (finding wallets, the wallet list, WalletConnect, MiniPay) is GoodBuild's,
@@ -848,7 +858,10 @@ export const chains = { [celoSepolia.id]: celoSepolia, [celo.id]: celo } as cons
 
 export const publicClient = createPublicClient({ chain, transport: http() });
 
-/** Send a contract write from the connected wallet (connecting first if needed) and wait for the receipt. */
+/**
+ * Send a contract write from the connected wallet (connecting first if needed) and wait for the receipt.
+ * Once it's confirmed, every useRead on the page fetches again by itself: no refresh() needed.
+ */
 export async function writeContract(args: {
   address: Address;
   abi: Abi;
@@ -860,7 +873,9 @@ export async function writeContract(args: {
   const wallet = createWalletClient({ account, chain, transport: custom(provider) });
   const { request } = await publicClient.simulateContract({ ...args, account } as never);
   const hash = await wallet.writeContract(request as never);
-  return publicClient.waitForTransactionReceipt({ hash });
+  const receipt = await publicClient.waitForTransactionReceipt({ hash });
+  void markChanged("tx");
+  return receipt;
 }
 `;
 
@@ -870,7 +885,17 @@ export function chainSourceFor(chainId = SEPOLIA_CHAIN_ID): string {
 }
 
 const hash = (source: string) => createHash("sha256").update(source).digest("hex");
-const CHAIN_TEMPLATE_HASHES = new Set([hash(CHAIN), hash(chainSourceFor(MAINNET_CHAIN_ID))]);
+/**
+ * Untouched copies of chain.ts GoodBuild wrote, now and before (they're regenerated, so they pick up
+ * changes such as D158's refresh after a transaction). Add the old pair whenever CHAIN changes.
+ */
+const CHAIN_TEMPLATE_HASHES = new Set([
+  hash(CHAIN),
+  hash(chainSourceFor(MAINNET_CHAIN_ID)),
+  // Before D158 (no markChanged after the receipt): Celo Sepolia, then Celo.
+  "6b3e857c02a9b67195573fd4afa2a298bc92324f45f40179ccebf4ba2aa3c03b",
+  "243d89dfc51c49f6f3e45b2bd62bb1f821f312dbba5762be80b02abdf4e8e477",
+]);
 
 function legacyChainFor(source: string, chainId: number): string {
   return source.replace("export const chain = celoSepolia;", `export const chain = ${chainExportName(chainId)};`);

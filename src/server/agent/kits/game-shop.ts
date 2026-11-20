@@ -295,6 +295,7 @@ import { encodeAbiParameters, formatUnits, parseUnits, type Abi, type Address } 
 import { publicClient } from "../lib/chain";
 import { errorMessage } from "../lib/format";
 import { gdTokenAbi } from "../lib/tokens";
+import { subscribeChanges } from "../lib/goodbuild/live";
 import { subscribeWallet, walletState } from "../lib/goodbuild/wallet";
 import { sendGameTx } from "./chainTx";
 
@@ -411,6 +412,10 @@ export function useShop(items: ShopItem[], abi: Abi | readonly unknown[], addres
   useEffect(() => {
     void load();
   }, [load]);
+
+  // A purchase anywhere in the game, the tab coming back, a refresh button: fetch again (D158). No
+  // timer: prices and items only change when someone buys or the owner edits them.
+  useEffect(() => subscribeChanges(() => load(), { on: ["tx", "wallet", "focus", "manual"] }), [load]);
 
   // The pass ends with the season, even while the game stays open past it: re-render then.
   const [now, setNow] = useState(() => Date.now());
@@ -636,5 +641,7 @@ export const gameShop: Kit = {
     "src/game/shop.ts": SHOP_TS,
     "src/game/Store.tsx": STORE_TSX,
   },
+  // Before live data (D158): it didn't ride the shared refresh.
+  superseded: { "src/game/shop.ts": ["d9fa1fe2a78d6c917e89786e54c25b931b0abb3f9ba12a49e1b9aa8a326c0566"] },
   guide: GUIDE,
 };

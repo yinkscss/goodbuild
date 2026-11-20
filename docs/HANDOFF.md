@@ -2,6 +2,9 @@
 
 Written 4 Nov 2026 at the end of the first build session (claude.ai), for whoever continues in Claude Code. Read CLAUDE.md and docs/BUILD_PROMPT_STAGE1.md first; this file only covers where things stand.
 
+## Live values in every app: one shared refresh and a refresh button (20 Nov 2026, D158, branch `claude/vigilant-cerf-4ogmnl`)
+Generated apps now update by themselves after a confirmed transaction, a saved-data write, a wallet switch and the tab coming back, and contract reads also on one slow shared timer per tab (15 s, 60 s when idle, none when hidden, jittered), so other people's changes show without a reload. Saved data never polls on the timer. New: `src/lib/goodbuild/live.ts` (GoodBuild-owned), `RefreshButton` (`src/components/ui/refresh-button.tsx`), `useRead` keeps the old value while `refreshing`. A build rule in the prompt, and a check that notes (never blocks) reads in `useEffect`, page reloads and a missing refresh button: watch the worker log for `! live values:`. Untouched `hooks.ts`/`chain.ts` upgrade on the next turn. No migration. **UNVERIFIED** with a real model, on a real phone, in MiniPay, and the RPC load with many tabs.
+
 ## Harness v2, PR 1: Sonnet plans and writes contracts, the builder checks its own work (19 Nov 2026, D152, branch `claude/elegant-pasteur-j73em3`)
 **On for every user since 20 Nov 2026** (hard-coded; `HARNESS_V2` no longer does anything). What it does:
 - a spec call on Sonnet writes `src/spec.json` (pages, direction, contracts, acceptance flows);
