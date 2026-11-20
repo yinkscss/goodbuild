@@ -1,23 +1,21 @@
-import { adminWallets } from "@/server/settings/mainnet-access";
-
 /**
  * Harness v2 (D152, docs/HARNESS_V2_PLAN.md): Sonnet writes the spec and the contracts, DeepSeek the front
- * end, the builder checks its own work. HARNESS_V2 = off (default) | admins (wallets in ADMIN_WALLETS) | on.
- * Decided once when a turn's setup is made and saved with it, so a resumed turn keeps the harness it began with.
+ * end, the builder checks its own work. It is every build's harness, with no setting to turn it off. Decided
+ * when a turn's setup is made and saved with it, so a turn that began on v1 resumes on v1.
  */
-export type HarnessMode = "off" | "admins" | "on";
+let v1ForTests = false;
 
-export function harnessMode(env: Record<string, string | undefined> = process.env): HarnessMode {
-  const raw = (env.HARNESS_V2 ?? "").trim().toLowerCase();
-  return raw === "on" || raw === "admins" ? raw : "off";
+/** Whether a new build uses harness v2: always, outside the tests of the earlier v1 loop. */
+export function usesHarnessV2(): boolean {
+  return !v1ForTests;
 }
 
-/** Whether a build by this wallet uses harness v2. */
-export function usesHarnessV2(wallet: string | null | undefined, env: Record<string, string | undefined> = process.env): boolean {
-  const mode = harnessMode(env);
-  if (mode === "on") return true;
-  if (mode === "admins") return Boolean(wallet && adminWallets(env.ADMIN_WALLETS).has(wallet.toLowerCase()));
-  return false;
+/**
+ * Test-only: run new builds on the v1 loop, which still runs turns saved before v2 shipped. vitest.setup.ts
+ * turns it on for every test file; the v2 tests turn it off.
+ */
+export function setV1HarnessForTests(on: boolean): void {
+  v1ForTests = on;
 }
 
 function positive(raw: string | undefined, fallback: number): number {

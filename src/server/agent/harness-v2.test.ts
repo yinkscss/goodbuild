@@ -9,7 +9,7 @@ import { createProjectFromPrompt } from "@/server/projects";
 import { costMicro } from "@/lib/pricing";
 import { checkContracts, pathProblem } from "./checks";
 import { scriptedModel } from "./fake-model";
-import { harnessLimits, harnessMode, usesHarnessV2 } from "./harness";
+import { harnessLimits, setV1HarnessForTests, usesHarnessV2 } from "./harness";
 import { toSdkMessages, type ChatMessage } from "./model";
 import { requestView } from "./request-view";
 import { fixTierByWriter, runTurn } from "./runner";
@@ -38,19 +38,14 @@ const SPEC = {
 };
 
 describe("harness flag (D152)", () => {
-  it("is off unless HARNESS_V2 says on or admins", () => {
-    expect(harnessMode({})).toBe("off");
-    expect(harnessMode({ HARNESS_V2: "yes" })).toBe("off");
-    expect(harnessMode({ HARNESS_V2: " ON " })).toBe("on");
-    expect(harnessMode({ HARNESS_V2: "admins" })).toBe("admins");
-  });
-  it("in admins mode, turns on only for wallets in ADMIN_WALLETS", () => {
-    const env = { HARNESS_V2: "admins", ADMIN_WALLETS: `${ADMIN.toUpperCase().replace("0X", "0x")}, junk` };
-    expect(usesHarnessV2(ADMIN, env)).toBe(true);
-    expect(usesHarnessV2("0x2222222222222222222222222222222222222222", env)).toBe(false);
-    expect(usesHarnessV2(null, env)).toBe(false);
-    expect(usesHarnessV2("0xabc", { HARNESS_V2: "on" })).toBe(true);
-    expect(usesHarnessV2(ADMIN, {})).toBe(false);
+  it("is on for every build, with no setting to turn it off", () => {
+    setV1HarnessForTests(false);
+    // The old setting does nothing now.
+    process.env.HARNESS_V2 = "off";
+    expect(usesHarnessV2()).toBe(true);
+    delete process.env.HARNESS_V2;
+    setV1HarnessForTests(true);
+    expect(usesHarnessV2()).toBe(false);
   });
   it("raises the limits only through positive whole numbers", () => {
     expect(harnessLimits({})).toEqual({ maxCalls: 90, maxRounds: 40, checkBudgetMs: 240_000 });
@@ -174,7 +169,7 @@ describe("runTurn with harness v2", { timeout: 120_000 }, () => {
   let userId: string;
   let projectId: string;
   let queuedId: string;
-  const saved = { HARNESS_V2: process.env.HARNESS_V2, ADMIN_WALLETS: process.env.ADMIN_WALLETS };
+  const saved = { ACCEPTANCE: process.env.ACCEPTANCE };
 
   beforeEach(async () => {
     db = await createTestDb();
@@ -186,6 +181,7 @@ describe("runTurn with harness v2", { timeout: 120_000 }, () => {
     queuedId = m.id;
   });
   afterEach(() => {
+    setV1HarnessForTests(true);
     for (const [k, v] of Object.entries(saved)) {
       if (v === undefined) delete process.env[k];
       else process.env[k] = v;
@@ -195,7 +191,7 @@ describe("runTurn with harness v2", { timeout: 120_000 }, () => {
   const opened: RunCheckResult = { ran: true, issues: [], note: "opened the app with no errors", ms: 5, outline: "route: /\nh1: Tips" };
 
   it("writes the spec and the contracts on the strong model, then the front end on the fast one", async () => {
-    process.env.HARNESS_V2 = "on";
+    setV1HarnessForTests(false);
     const { client, requests } = scriptedModel([
       { tools: [{ name: "run_checks", args: {} }, { name: "write_spec", args: SPEC }] },
       { tools: [{ name: "create_file", args: { path: "contracts/TipJar.sol", content: TIP_JAR } }, { name: "create_file", args: { path: "src/App.tsx", content: "nope" } }, { name: "add_kit", args: { name: "motion" } }] },
@@ -243,7 +239,7 @@ describe("runTurn with harness v2", { timeout: 120_000 }, () => {
   });
 
   it("sends the first fix of the front end back to the fast model that wrote it", async () => {
-    process.env.HARNESS_V2 = "on";
+    setV1HarnessForTests(false);
     const broken = 'import { Missing } from "./Missing";\nexport default function App() { return <main><Missing /></main>; }\n';
     const { client, requests } = scriptedModel([
       { tools: [{ name: "write_spec", args: { ...SPEC, contracts: [] } }] },
@@ -260,7 +256,7 @@ describe("runTurn with harness v2", { timeout: 120_000 }, () => {
   });
 
   it("refuses write_spec in a v1 build", async () => {
-    process.env.HARNESS_V2 = "off";
+    setV1HarnessForTests(true);
     const { client, requests } = scriptedModel([
       { tools: [{ name: "write_spec", args: SPEC }, { name: "create_file", args: { path: "src/App.tsx", content: APP } }] },
       { text: "Built it." },
@@ -270,19 +266,6 @@ describe("runTurn with harness v2", { timeout: 120_000 }, () => {
     expect((await loadFiles(db, projectId))[SPEC_PATH]).toBeUndefined();
   });
 
-  it("stays on v1 for a wallet that isn't an admin in admins mode", async () => {
-    process.env.HARNESS_V2 = "admins";
-    process.env.ADMIN_WALLETS = "0x2222222222222222222222222222222222222222";
-    const { client, requests } = scriptedModel([
-      { tools: [{ name: "create_file", args: { path: "src/App.tsx", content: "export default function App() { return <main>Ready</main>; }\n" } }] },
-      { text: "Built it." },
-    ]);
-    const record = await runTurn({ db, model: client }, { projectId, userId, mode: "build", userMessageId: queuedId }, () => {});
-    expect(record.status).toBe("ready");
-    expect(requests.map((r) => r.tier)).toEqual(["cheap", "cheap"]);
-    expect(requests[0].tools?.map((t) => t.function.name)).not.toContain("write_spec");
-    expect(record.log).not.toContain("harness: v2 (D152)");
-  });
 });
 
 describe("acceptance flows in a v2 build (D152 PR 2)", { timeout: 120_000 }, () => {
@@ -290,7 +273,7 @@ describe("acceptance flows in a v2 build (D152 PR 2)", { timeout: 120_000 }, () 
   let userId: string;
   let projectId: string;
   let queuedId: string;
-  const saved = { HARNESS_V2: process.env.HARNESS_V2, ACCEPTANCE: process.env.ACCEPTANCE };
+  const saved = { ACCEPTANCE: process.env.ACCEPTANCE };
 
   beforeEach(async () => {
     db = await createTestDb();
@@ -300,9 +283,10 @@ describe("acceptance flows in a v2 build (D152 PR 2)", { timeout: 120_000 }, () 
     projectId = p.id;
     const [m] = await db.select().from(messages).where(eq(messages.projectId, projectId));
     queuedId = m.id;
-    process.env.HARNESS_V2 = "on";
+    setV1HarnessForTests(false);
   });
   afterEach(() => {
+    setV1HarnessForTests(true);
     for (const [k, v] of Object.entries(saved)) {
       if (v === undefined) delete process.env[k];
       else process.env[k] = v;
@@ -377,7 +361,7 @@ describe("acceptance flows in a v2 build (D152 PR 2)", { timeout: 120_000 }, () 
   });
 
   it("v1 never runs acceptance flows, even with a spec file", async () => {
-    process.env.HARNESS_V2 = "off";
+    setV1HarnessForTests(true);
     seen.length = 0;
     const { client } = scriptedModel([
       { tools: [{ name: "create_file", args: { path: "src/App.tsx", content: withoutTips } }] },
