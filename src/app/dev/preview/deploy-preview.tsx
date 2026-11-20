@@ -132,7 +132,7 @@ const STATES: Record<string, DeployState> = {
 };
 
 export function DeployPreview({ state }: { state: string }) {
-  const s = STATES[state] ?? base;
+  const s = STATES[state === "done-busy" ? "done" : state] ?? base;
   const deploy = {
     state: s,
     prepare: async () => {},
@@ -145,7 +145,7 @@ export function DeployPreview({ state }: { state: string }) {
   } as unknown as React.ComponentProps<typeof DeployModal>["deploy"];
   return (
     <AuthContextProvider value={auth}>
-      <DeployModal open onOpenChange={() => {}} deploy={deploy} chainId={11142220} onFix={() => {}} />
+      <DeployModal open onOpenChange={() => {}} deploy={deploy} chainId={11142220} onFix={() => {}} busy={state === "done-busy"} onSwitchNetwork={async () => {}} />
     </AuthContextProvider>
   );
 }

@@ -143,7 +143,7 @@ export default function HackathonPage() {
         <section id="vote" className={styles.section}>
           <div className={styles.shead}>
             <h2 className={styles.disp}>Vote for a project</h2>
-            <p>Each verified person gets 3 approvals. Pick a project and we’ll walk you through the three steps: connect your email, verify with GoodDollar, support us on FlowState.</p>
+            <p>Each verified person gets 3 approvals. Put them all on one project or spread them around. Pick a project and we’ll walk you through three steps: connect your email, verify with GoodDollar, then support GoodBuildIt on FlowState using the votes you have left.</p>
           </div>
           <VoteList />
         </section>

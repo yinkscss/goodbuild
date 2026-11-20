@@ -9,7 +9,7 @@ import { DEPLOY_CREDITS, START_CREDITS, useHackathonClaim } from "./use-hackatho
 const NEXT = [
   { href: "/home/hackathon/project", title: "My project", body: "Add your app and publish it so people can approve it." },
   { href: "/home/hackathon/leaderboard", title: "Leaderboard", body: "See the top 20 and what every project is earning." },
-  { href: "/home/hackathon/vote", title: "Vote", body: "Approve up to 3 projects you’d actually use." },
+  { href: "/home/hackathon/vote", title: "Vote", body: "Use all 3 approvals on one project or spread them around." },
 ];
 
 /**

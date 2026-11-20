@@ -162,9 +162,9 @@ export async function listEntries(db: Db) {
     );
 }
 /**
- * Approve a published project. Each verified person (one GoodDollar identity) has three approvals in
- * total (D155), needs a confirmed FlowState vote first, and can't approve their own project. The
- * count and the insert run under a per-identity lock, so parallel requests can't slip past three.
+ * Add one approval unit to a published project. Each verified person (one GoodDollar identity) has
+ * three units in total (D132), can assign several to one project, needs a confirmed FlowState vote
+ * first, and can't approve their own project. The count and insert run under a per-identity lock.
  */
 export async function approveEntry(
   db: Db,
@@ -214,20 +214,21 @@ export async function approveEntry(
       sql`select pg_advisory_xact_lock(hashtext(${`hackathon:approve:${person}`}))`,
     );
     const mine = await approvedEntryIds(tx, person);
-    // Approving the same project again is a no-op and doesn't use another of the three.
-    if (!mine.includes(entryId)) {
-      if (mine.length >= MAX_APPROVALS_PER_PERSON)
-        throw new CommunityError(
-          `You've used all ${MAX_APPROVALS_PER_PERSON} of your approvals.`,
-          403,
-        );
-      await tx
-        .insert(hackathonApprovals)
-        .values({ entryId, goodidRoot: person })
-        .onConflictDoNothing();
-      mine.push(entryId);
-    }
-    return { approved: true, used: mine.length, max: MAX_APPROVALS_PER_PERSON };
+    if (mine.length >= MAX_APPROVALS_PER_PERSON)
+      throw new CommunityError(
+        `You've used all ${MAX_APPROVALS_PER_PERSON} of your approvals.`,
+        403,
+      );
+    await tx
+      .insert(hackathonApprovals)
+      .values({ entryId, goodidRoot: person });
+    mine.push(entryId);
+    return {
+      approved: true,
+      used: mine.length,
+      max: MAX_APPROVALS_PER_PERSON,
+      entryApprovals: mine.filter((id) => id === entryId).length,
+    };
   });
 }
 
@@ -253,7 +254,7 @@ async function hasVoted(db: Db, userId: string) {
   return signup?.flowstate === "voted";
 }
 
-/** The entries one verified person has approved in this hackathon, whichever wallet they used. */
+/** Each approval unit assigned by one verified person, whichever wallet they used. */
 async function approvedEntryIds(db: Db, root: string) {
   const rows = await db
     .select({ entryId: hackathonApprovals.entryId })

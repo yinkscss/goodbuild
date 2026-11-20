@@ -236,8 +236,15 @@
     {
       "idx": 33,
       "version": "7",
-      "when": 1795133249071,
-      "tag": "0033_ambassador_payouts",
+      "when": 1795130048965,
+      "tag": "0033_multi_project_approvals",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1795137116930,
+      "tag": "0034_ambassador_payouts",
       "breakpoints": true
     }
   ]
