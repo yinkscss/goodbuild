@@ -20,7 +20,7 @@ function Step({ n, title, done, active, children }: { n: number; title: string; 
   );
 }
 
-/** Sign in, verify with GoodDollar, one-tap vote (D155). Each step opens when the one before it is done. */
+/** Sign in, verify with GoodDollar, one-tap vote split with GoodCash (D155, D158). Each step opens when the one before it is done. */
 export function InviteSteps({ code }: { code: string }) {
   const auth = useAuth();
   const { openConnect } = useSendGate();
@@ -70,8 +70,8 @@ export function InviteSteps({ code }: { code: string }) {
             </p>
           )}
         </Step>
-        <Step n={3} title="Vote for GoodBuild" done={voted} active={signedIn && verified}>
-          <p className="text-sm text-grey-600">One tap. We check you&rsquo;re eligible and cast your vote. We cover the network fee.</p>
+        <Step n={3} title="Vote for GoodBuild and GoodCash" done={voted} active={signedIn && verified}>
+          <p className="text-sm text-grey-600">One tap. We check you&rsquo;re eligible and split all your votes equally between GoodBuild and our partner GoodCash. We cover the network fee.</p>
           <FlowstateVote label="Tap to vote" verifyHref={invitePath(code)} onConfirmed={() => setVoted(true)} />
         </Step>
       </ol>

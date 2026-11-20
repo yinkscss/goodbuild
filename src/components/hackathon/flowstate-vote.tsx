@@ -12,8 +12,8 @@ import {
   FLOWSTATE_ABI,
   FLOWSTATE_CHAIN_ID,
   FLOWSTATE_COUNCIL,
-  GOODBUILDIT_RECIPIENT,
   flowstateClaimMessage,
+  flowstateVoteArgs,
   type FlowstateStatus,
 } from "@/lib/flowstate/config";
 import { styles } from "./styles";
@@ -23,6 +23,8 @@ import "./hackathon.css";
 type Review = FlowstateStatus & {
   additional: string;
   after: string;
+  /** GoodCash's new total, or null when the vote goes to GoodBuildIt only (D158). */
+  partnerAfter: string | null;
   gas: string;
   maxFeePerGas: string;
   maxPriorityFeePerGas: string;
@@ -60,8 +62,9 @@ async function request(body?: unknown) {
   return data;
 }
 /**
- * One tap (D155): checks the wallet, turns voting on if it isn't yet, gives all of the person's free
- * points to GoodBuildIt, and confirms it on-chain. No slider, no amounts.
+ * One tap (D155, D158): checks the wallet, turns voting on if it isn't yet, splits all of the person's
+ * free points 50/50 between GoodBuildIt and our partner GoodCash in one transaction, and confirms it
+ * on-chain. No slider, no amounts.
  */
 export function FlowstateVote({
   onConfirmed,
@@ -134,8 +137,9 @@ export function FlowstateVote({
       let next: FlowstateStatus = await request();
       applyStatus(next);
       if (!next.verified) return; // the pop-up shows the verify step
-      // Already voted for us (here, on /hackathon, or on FlowState itself)? Don't ask again: confirm it.
-      if (BigInt(next.support) > BigInt(0)) {
+      // Every point left goes into the vote (D158). Already voted for us with nothing left (here, on
+      // /hackathon, or on FlowState itself)? Don't ask again: confirm it.
+      if (next.registered && BigInt(next.available) <= BigInt(0) && BigInt(next.support) > BigInt(0)) {
         await confirmExisting();
         return;
       }
@@ -190,7 +194,7 @@ export function FlowstateVote({
     return next;
   }
   /**
-   * Gives every available point to GoodBuildIt: switch to Celo, price the vote (covering the network
+   * Gives every available point, split between GoodBuildIt and GoodCash (D158): switch to Celo, price the vote (covering the network
    * fee if the wallet is short), then the wallet's own confirmation. Pricing runs after every wallet
    * prompt that can move the ballot, so what the wallet shows is what the server just checked.
    */
@@ -209,7 +213,7 @@ export function FlowstateVote({
       address: FLOWSTATE_COUNCIL,
       abi: FLOWSTATE_ABI,
       functionName: "vote",
-      args: [[{ recipient: GOODBUILDIT_RECIPIENT, amount: BigInt(ready.after) }]],
+      args: [flowstateVoteArgs(ready.after, ready.partnerAfter ?? null)],
       gas: BigInt(ready.gas),
       maxFeePerGas: BigInt(ready.maxFeePerGas),
       maxPriorityFeePerGas: BigInt(ready.maxPriorityFeePerGas),
@@ -253,10 +257,11 @@ export function FlowstateVote({
           }}
         >
           <DialogTitle className="pr-8 text-2xl font-bold">
-            Support our project
+            Support GoodBuild and GoodCash
           </DialogTitle>
           <DialogDescription className="sr-only">
-            Vote for GoodBuildIt on FlowState with your signed-in wallet.
+            Vote on FlowState with your signed-in wallet. Your votes are split equally between GoodBuildIt
+            and our partner GoodCash.
           </DialogDescription>
           {busy && (
             <p role="status" className="rounded-block bg-tint p-3 text-sm text-violet">

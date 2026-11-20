@@ -2,6 +2,8 @@ import { expect, it } from "vitest";
 import {
   flowstateClaimMessage,
   GOODBUILDIT_RECIPIENT,
+  GOODCASH_RECIPIENT,
+  flowstateVoteArgs,
   planFlowstateSupport,
 } from "./config";
 const status = {
@@ -11,13 +13,61 @@ const status = {
   allocated: "7",
   available: "3",
   support: "2",
+  partnerSupport: "0",
+  partnerActive: true,
+  spreadLeft: null as number | null,
   spreadFull: false,
 };
-it("adds support only to GoodBuildIt while preserving the rest of the ballot", () => {
-  expect(planFlowstateSupport(status, BigInt(1))).toEqual({
+it("splits the new points 50/50 with GoodCash, the odd point to GoodBuildIt, keeping existing totals", () => {
+  expect(planFlowstateSupport(status, BigInt(3))).toEqual({
+    after: BigInt(4),
+    partnerAfter: BigInt(1),
+    votes: [
+      { recipient: GOODBUILDIT_RECIPIENT, amount: BigInt(4) },
+      { recipient: GOODCASH_RECIPIENT, amount: BigInt(1) },
+    ],
+  });
+  expect(
+    planFlowstateSupport(
+      { ...status, available: "10", support: "0", partnerSupport: "5" },
+      BigInt(10),
+    ).votes,
+  ).toEqual([
+    { recipient: GOODBUILDIT_RECIPIENT, amount: BigInt(5) },
+    { recipient: GOODCASH_RECIPIENT, amount: BigInt(10) },
+  ]);
+});
+it("gives everything to GoodBuildIt when the split can't happen", () => {
+  const solo = (s: typeof status, n: number) => planFlowstateSupport(s, BigInt(n));
+  // One point only.
+  expect(solo(status, 1)).toEqual({
     after: BigInt(3),
+    partnerAfter: null,
     votes: [{ recipient: GOODBUILDIT_RECIPIENT, amount: BigInt(3) }],
   });
+  // GoodCash not an active recipient.
+  expect(solo({ ...status, partnerActive: false }, 3).votes).toEqual([
+    { recipient: GOODBUILDIT_RECIPIENT, amount: BigInt(5) },
+  ]);
+  // Room for one new project only, and both are new.
+  expect(solo({ ...status, support: "0", spreadLeft: 1 }, 3).votes).toEqual([
+    { recipient: GOODBUILDIT_RECIPIENT, amount: BigInt(3) },
+  ]);
+  // GoodBuildIt already on the ballot, room for GoodCash.
+  expect(solo({ ...status, spreadLeft: 1 }, 2).votes).toHaveLength(2);
+  // No room at all, but both already on the ballot: still splits.
+  expect(solo({ ...status, partnerSupport: "1", spreadLeft: 0 }, 2).votes).toHaveLength(2);
+});
+it("builds wallet args only from the pinned recipients", () => {
+  expect(flowstateVoteArgs("6", "4")).toEqual([
+    { recipient: GOODBUILDIT_RECIPIENT, amount: BigInt(6) },
+    { recipient: GOODCASH_RECIPIENT, amount: BigInt(4) },
+  ]);
+  expect(flowstateVoteArgs("6", null)).toEqual([
+    { recipient: GOODBUILDIT_RECIPIENT, amount: BigInt(6) },
+  ]);
+});
+it("refuses votes it can't cast", () => {
   expect(() => planFlowstateSupport(status, BigInt(4))).toThrow(/available/);
   expect(() => planFlowstateSupport(status, BigInt(0))).toThrow();
   expect(() =>
@@ -25,7 +75,7 @@ it("adds support only to GoodBuildIt while preserving the rest of the ballot", (
   ).toThrow(/GoodDollar/);
   expect(() =>
     planFlowstateSupport(
-      { ...status, support: "0", spreadFull: true },
+      { ...status, support: "0", spreadLeft: 0, spreadFull: true },
       BigInt(1),
     ),
   ).toThrow(/maximum/);

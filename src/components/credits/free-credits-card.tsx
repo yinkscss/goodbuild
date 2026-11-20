@@ -228,7 +228,7 @@ export function FreeCreditsCard({ compact = false, onChange: onChangeProp }: { c
           Unlock {status.welcomeCredits} free credits
         </p>
         <p className="mt-1 text-sm text-grey-600">
-          You&apos;re verified. Last step: support our project by voting. It takes a minute, and we cover the network fee.
+          You&apos;re verified. Last step: vote for us and our partner GoodCash. It takes a minute, and we cover the network fee.
         </p>
         <div className="mt-3">
           <FlowstateVote onConfirmed={() => void afterVote()} />

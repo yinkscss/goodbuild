@@ -7,6 +7,7 @@ import { FlowstateVote } from "./flowstate-vote";
 import {
   FLOWSTATE_COUNCIL,
   GOODBUILDIT_RECIPIENT,
+  GOODCASH_RECIPIENT,
 } from "@/lib/flowstate/config";
 const wallet = "0x1111111111111111111111111111111111111111";
 const hash = "0x" + "a".repeat(64);
@@ -17,12 +18,16 @@ const status = {
   allocated: "0",
   available: "10",
   support: "0",
+  partnerSupport: "0",
+  partnerActive: true,
+  spreadLeft: null,
   spreadFull: false,
 };
 const review = {
   ...status,
   additional: "10",
-  after: "10",
+  after: "5",
+  partnerAfter: "5" as string | null,
   gas: "100000",
   maxFeePerGas: "2000000000",
   maxPriorityFeePerGas: "1000000000",
@@ -45,7 +50,7 @@ function setup() {
       const body = init?.body ? JSON.parse(String(init.body)) : null;
       let data = status;
       if (body?.action === "prepare") data = review;
-      if (body?.action === "confirm") data = { ...status, support: "10" };
+      if (body?.action === "confirm") data = { ...status, available: "0", support: "5", partnerSupport: "5" };
       return new Response(JSON.stringify(data));
     }),
   );
@@ -63,7 +68,7 @@ function setup() {
   );
   return { client, onConfirmed };
 }
-it("votes with one tap: Celo first, then all available points priced by the server, then confirms", async () => {
+it("votes with one tap: Celo first, then all available points split with GoodCash, then confirms", async () => {
   const { client, onConfirmed } = setup();
   await userEvent.click(screen.getByRole("button", { name: "Vote here with your wallet" }));
   await screen.findByText("✓ Thank you for voting!");
@@ -77,7 +82,12 @@ it("votes with one tap: Celo first, then all available points priced by the serv
     expect.objectContaining({
       address: FLOWSTATE_COUNCIL,
       functionName: "vote",
-      args: [[{ recipient: GOODBUILDIT_RECIPIENT, amount: BigInt(10) }]],
+      args: [
+        [
+          { recipient: GOODBUILDIT_RECIPIENT, amount: BigInt(5) },
+          { recipient: GOODCASH_RECIPIENT, amount: BigInt(5) },
+        ],
+      ],
       gas: BigInt(100000),
     }),
   );
@@ -159,11 +169,12 @@ it("sends someone who isn't verified to the verify step, without touching the wa
   expect(client.signMessage).not.toHaveBeenCalled();
   expect(client.writeContract).not.toHaveBeenCalled();
 });
-it("never asks someone who already voted to vote again: it confirms the vote on opening", async () => {
+it("never asks someone who already used every vote to vote again: it confirms the vote on opening", async () => {
   const client = { getAddresses: vi.fn(async () => [wallet]), signMessage: vi.fn(), writeContract: vi.fn() };
   const fetcher = vi.fn(async (_url, init?: RequestInit) => {
     const body = init?.body ? JSON.parse(String(init.body)) : null;
-    return new Response(JSON.stringify(body?.action === "existing" ? { ...status, support: "10", hash: null } : { ...status, support: "10" }));
+    const spent = { ...status, allocated: "10", available: "0", support: "10" };
+    return new Response(JSON.stringify(body?.action === "existing" ? { ...spent, hash: null } : spent));
   });
   vi.stubGlobal("fetch", fetcher);
   const onConfirmed = vi.fn();
@@ -185,38 +196,69 @@ it("never asks someone who already voted to vote again: it confirms the vote on 
   expect(onConfirmed).toHaveBeenCalledOnce();
 });
 
-it("lets a voter give the remaining points with one more tap after an earlier partial vote", async () => {
+it("an earlier partial vote doesn't stop the tap: the points left are split and cast", async () => {
   const { client } = setup();
   const remaining = { ...status, allocated: "1", available: "9", support: "1" };
-  vi.stubGlobal("fetch", vi.fn(async (_url, init?: RequestInit) => {
+  const fetcher = vi.fn(async (_url, init?: RequestInit) => {
     const body = init?.body ? JSON.parse(String(init.body)) : null;
-    if (body?.action === "existing") return new Response(JSON.stringify(remaining));
-    if (body?.action === "prepare") return new Response(JSON.stringify({ ...review, ...remaining, additional: body.additional, after: "10" }));
-    if (body?.action === "confirm") return new Response(JSON.stringify({ ...remaining, available: "0", support: "10" }));
+    if (body?.action === "prepare") return new Response(JSON.stringify({ ...review, ...remaining, additional: body.additional, after: "6", partnerAfter: "4" }));
+    if (body?.action === "confirm") return new Response(JSON.stringify({ ...remaining, available: "0", support: "6", partnerSupport: "4" }));
     return new Response(JSON.stringify(remaining));
-  }));
+  });
+  vi.stubGlobal("fetch", fetcher);
   await userEvent.click(screen.getByRole("button", { name: "Vote here with your wallet" }));
-  await userEvent.click(await screen.findByRole("button", { name: "Vote my remaining points" }));
-  await waitFor(() => expect(client.writeContract).toHaveBeenCalledTimes(1));
-  expect(client.writeContract).toHaveBeenLastCalledWith(expect.objectContaining({
-    args: [[{ recipient: GOODBUILDIT_RECIPIENT, amount: BigInt(10) }]],
-  }));
   await screen.findByText("You have no votes left right now.");
+  expect(fetcher.mock.calls.map(([, init]) => (init?.body ? JSON.parse(String(init.body)).action : "status"))).not.toContain("existing");
+  expect(client.writeContract).toHaveBeenCalledTimes(1);
+  expect(client.writeContract).toHaveBeenLastCalledWith(expect.objectContaining({
+    args: [[
+      { recipient: GOODBUILDIT_RECIPIENT, amount: BigInt(6) },
+      { recipient: GOODCASH_RECIPIENT, amount: BigInt(4) },
+    ]],
+  }));
 });
 
-it("hides the ballot until existing support has finished checking", async () => {
+it("lets a voter give points that appear later with one more tap", async () => {
+  const { client } = setup();
+  const spent = { ...status, allocated: "10", available: "0", support: "10" };
+  let current: typeof status = spent;
+  vi.stubGlobal("fetch", vi.fn(async (_url, init?: RequestInit) => {
+    const body = init?.body ? JSON.parse(String(init.body)) : null;
+    if (body?.action === "existing") return new Response(JSON.stringify({ ...spent, hash: null }));
+    if (body?.action === "prepare") return new Response(JSON.stringify({ ...review, ...current, additional: body.additional, after: "11", partnerAfter: "1" }));
+    if (body?.action === "confirm") return new Response(JSON.stringify({ ...current, available: "0", support: "11", partnerSupport: "1" }));
+    return new Response(JSON.stringify(current));
+  }));
+  await userEvent.click(screen.getByRole("button", { name: "Vote here with your wallet" }));
+  await screen.findByText("You have no votes left right now.");
+  expect(client.writeContract).not.toHaveBeenCalled();
+  // More voting power arrives (FlowState can raise it); the dialog offers the rest on reopen.
+  current = { ...spent, votingPower: "12", available: "2" };
+  await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+  await userEvent.click(screen.getByRole("button", { name: "✓ Vote confirmed" }));
+  await waitFor(() => expect(client.writeContract).toHaveBeenCalledTimes(1));
+  expect(client.writeContract).toHaveBeenLastCalledWith(expect.objectContaining({
+    args: [[
+      { recipient: GOODBUILDIT_RECIPIENT, amount: BigInt(11) },
+      { recipient: GOODCASH_RECIPIENT, amount: BigInt(1) },
+    ]],
+  }));
+});
+
+it("hides the result until existing support has finished checking", async () => {
   setup();
   let resolveExisting!: (value: Response) => void;
   const existing = new Promise<Response>((resolve) => { resolveExisting = resolve; });
+  const spent = { ...status, allocated: "10", available: "0", support: "10" };
   const fetcher = vi.fn(async (_url, init?: RequestInit) => {
     const body = init?.body ? JSON.parse(String(init.body)) : null;
     if (body?.action === "existing") return existing;
-    return new Response(JSON.stringify({ ...status, available: "9", support: "1" }));
+    return new Response(JSON.stringify(spent));
   });
   vi.stubGlobal("fetch", fetcher);
   await userEvent.click(screen.getByRole("button", { name: "Vote here with your wallet" }));
   await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
-  expect(screen.queryByRole("button", { name: "Vote my remaining points" })).not.toBeInTheDocument();
-  resolveExisting(new Response(JSON.stringify({ ...status, available: "9", support: "1" })));
+  expect(screen.queryByText("✓ Thank you for voting!")).not.toBeInTheDocument();
+  resolveExisting(new Response(JSON.stringify({ ...spent, hash: null })));
   await screen.findByText("✓ Thank you for voting!");
 });

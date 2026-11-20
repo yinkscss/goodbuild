@@ -13,6 +13,7 @@ import {
   FLOWSTATE_COUNCIL,
   FLOWSTATE_RUNTIME_HASH,
   GOODBUILDIT_RECIPIENT,
+  GOODCASH_RECIPIENT,
   planFlowstateSupport,
   type FlowstateStatus,
 } from "@/lib/flowstate/config";
@@ -28,24 +29,32 @@ export class FlowstateError extends Error {
   }
 }
 
-/** A changed contract must be re-reviewed before this app will ever request a signature. */
-async function assertDeployment(client: PublicClient) {
+/**
+ * A changed contract must be re-reviewed before this app will ever request a signature. Returns whether
+ * GoodCash is an active recipient too (D158); if it isn't, votes go to GoodBuildIt only.
+ */
+async function assertDeployment(client: PublicClient): Promise<boolean> {
   const code = await client.getCode({ address: FLOWSTATE_COUNCIL });
   if (!code || keccak256(code) !== FLOWSTATE_RUNTIME_HASH)
     throw new FlowstateError(
       "FlowState’s voting contract has changed or could not be verified. Use the official site while we recheck it.",
       503,
     );
-  const [recipient] = await client.readContract({
-    address: FLOWSTATE_COUNCIL,
-    abi: FLOWSTATE_ABI,
-    functionName: "recipients",
-    args: [GOODBUILDIT_RECIPIENT],
-  });
+  const [[recipient], [partner]] = await Promise.all(
+    [GOODBUILDIT_RECIPIENT, GOODCASH_RECIPIENT].map((address) =>
+      client.readContract({
+        address: FLOWSTATE_COUNCIL,
+        abi: FLOWSTATE_ABI,
+        functionName: "recipients",
+        args: [address],
+      }),
+    ),
+  );
   if (recipient.toLowerCase() !== GOODBUILDIT_RECIPIENT)
     throw new FlowstateError(
       "GoodBuildIt is not an active recipient in this Flow Council.",
     );
+  return partner.toLowerCase() === GOODCASH_RECIPIENT;
 }
 
 export async function flowstateStatus(
@@ -53,7 +62,7 @@ export async function flowstateStatus(
   wallet: Address,
   blockNumber?: bigint,
 ): Promise<FlowstateStatus> {
-  await assertDeployment(client);
+  const partnerActive = await assertDeployment(client);
   const [root, voter, votes, maxSpread] = await Promise.all([
     readGoodIdRoot(client, wallet),
     client.readContract({
@@ -79,19 +88,22 @@ export async function flowstateStatus(
   ]);
   const allocated = votes.reduce((sum, vote) => sum + vote.amount, BigInt(0));
   const power = voter[1];
+  const amountFor = (recipient: string) =>
+    votes.find((v) => v.recipient.toLowerCase() === recipient)?.amount ??
+    BigInt(0);
+  const backed = votes.filter((v) => v.amount > BigInt(0)).length;
+  const spreadLeft = maxSpread > 0 ? Math.max(0, maxSpread - backed) : null;
   return {
     verified: Boolean(root),
     registered: voter[0] !== zeroAddress && power > BigInt(0),
     votingPower: String(power),
     allocated: String(allocated),
     available: String(power > allocated ? power - allocated : BigInt(0)),
-    support: String(
-      votes.find((v) => v.recipient.toLowerCase() === GOODBUILDIT_RECIPIENT)
-        ?.amount ?? BigInt(0),
-    ),
-    spreadFull:
-      maxSpread > 0 &&
-      votes.filter((v) => v.amount > BigInt(0)).length >= maxSpread,
+    support: String(amountFor(GOODBUILDIT_RECIPIENT)),
+    partnerSupport: String(amountFor(GOODCASH_RECIPIENT)),
+    partnerActive,
+    spreadLeft,
+    spreadFull: spreadLeft === 0,
   };
 }
 
@@ -129,6 +141,8 @@ export async function prepareFlowstateVote(
     ...status,
     additional: String(additional),
     after: String(plan.after),
+    /** GoodCash's new total, or null when this vote goes to GoodBuildIt only (D158). */
+    partnerAfter: plan.partnerAfter === null ? null : String(plan.partnerAfter),
     gas: String(gas),
     maxFeePerGas: String(maxFeePerGas),
     maxPriorityFeePerGas: String(maxPriorityFeePerGas),
@@ -169,17 +183,25 @@ export async function confirmFlowstateVote(
   const decoded = decodeFunctionData({ abi: FLOWSTATE_ABI, data: tx.input });
   if (decoded.functionName !== "vote" || !decoded.args)
     throw new FlowstateError("This transaction does not vote for GoodBuildIt.");
+  // GoodBuildIt alone, or GoodBuildIt then GoodCash (D158). Nothing else counts as our vote.
   const votes = decoded.args[0];
+  const ours = votes[0];
+  const partner = votes[1];
   if (
-    votes.length !== 1 ||
-    votes[0].recipient.toLowerCase() !== GOODBUILDIT_RECIPIENT ||
-    votes[0].amount <= BigInt(0)
+    votes.length < 1 ||
+    votes.length > 2 ||
+    ours.recipient.toLowerCase() !== GOODBUILDIT_RECIPIENT ||
+    ours.amount <= BigInt(0) ||
+    (partner &&
+      (partner.recipient.toLowerCase() !== GOODCASH_RECIPIENT ||
+        partner.amount <= BigInt(0)))
   )
     throw new FlowstateError(
       "This transaction does not contain the expected GoodBuildIt vote.",
     );
+  // Credits and invites depend on GoodBuildIt's support only, so that is the amount that must match.
   const status = await flowstateStatus(client, wallet);
-  if (BigInt(status.support) !== votes[0].amount)
+  if (BigInt(status.support) !== ours.amount)
     throw new FlowstateError(
       "Your current FlowState allocation differs from that transaction. Refresh to check your ballot.",
       410,
