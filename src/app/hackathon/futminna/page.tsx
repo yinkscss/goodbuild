@@ -94,7 +94,7 @@ export default function FutminnaHackathonPage() {
             </span>
             <span className={styles.tag}>FUTMinna students · ends 10 Dec</span>
           </div>
-          <h1 className={cn(styles.disp, styles.posterTitle)}>
+          <h1 className={cn(styles.disp, styles.posterTitle, "hk-fit")}>
             <span className={styles.line}><span>Build a GoodDollar</span></span>
             <span className={styles.line}><span>app or game.</span></span>
             <span className={styles.line}><span><span className={styles.big}>Win a scholarship.</span></span></span>
@@ -115,7 +115,7 @@ export default function FutminnaHackathonPage() {
 
         <section id="scholarship" className={styles.section}>
           <div className={styles.shead}>
-            <h2 className={styles.disp}>The scholarship</h2>
+            <h2 className={cn(styles.disp, "hk-fit")}>The scholarship</h2>
             <p>
               One {NAIRA} scholarship for the best GoodDollar app or game. Votes rank the leaderboard; the top {FUTMINNA.shortlist} make
               the shortlist, and {FUTMINNA.judges} pick the winner.
@@ -137,7 +137,7 @@ export default function FutminnaHackathonPage() {
 
         <section id="how" className={styles.section}>
           <div className={styles.shead}>
-            <h2 className={styles.disp}>How to enter</h2>
+            <h2 className={cn(styles.disp, "hk-fit")}>How to enter</h2>
             <p>Three rules. One winner.</p>
           </div>
           <ol className="m-0 grid list-none gap-4 p-0 md:grid-cols-3">
@@ -162,7 +162,7 @@ export default function FutminnaHackathonPage() {
 
         <section id="register" className={styles.section}>
           <div className={styles.shead}>
-            <h2 className={styles.disp}>
+            <h2 className={cn(styles.disp, "hk-fit")}>
               Register in
               <br />
               four easy steps
@@ -180,7 +180,7 @@ export default function FutminnaHackathonPage() {
 
         <section id="leaderboard" className={styles.section}>
           <div className={styles.shead}>
-            <h2 className={styles.disp}>FUTMinna leaderboard</h2>
+            <h2 className={cn(styles.disp, "hk-fit")}>FUTMinna leaderboard</h2>
             <p>Only FUTMinna projects. The top {FUTMINNA.shortlist} by verified approvals make the shortlist.</p>
           </div>
           <div className={cn(styles.card, styles.pad32)}>
@@ -190,7 +190,7 @@ export default function FutminnaHackathonPage() {
 
         <section id="vote" className={styles.section}>
           <div className={styles.shead}>
-            <h2 className={styles.disp}>Vote for a project</h2>
+            <h2 className={cn(styles.disp, "hk-fit")}>Vote for a project</h2>
             <p>
               Anyone verified with GoodDollar can vote. You get 3 FUTMinna approvals, separate from the main hackathon’s. Put them all on
               one project or spread them around.
