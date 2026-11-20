@@ -118,6 +118,36 @@ describe("DeployModal", () => {
     expect(screen.getByRole("link", { name: /View Tip on the explorer/ })).toHaveAttribute("href", `https://celo-sepolia.blockscout.com/address/${address}`);
   });
 
+  it("offers mainnet after a testnet deploy, without the try-Sepolia-first prompt", async () => {
+    const onSwitchNetwork = vi.fn().mockResolvedValue(undefined);
+    const done = state({ stage: "done", steps: [{ name: "Tip", phase: "done", address: "0x3333333333333333333333333333333333333333" as never }] });
+    const api = { state: done, prepare: vi.fn(), start: vi.fn(), reset: vi.fn(), retry: vi.fn(), claimTestGd: vi.fn() };
+    render(
+      <AuthContextProvider value={auth}>
+        <DeployModal open onOpenChange={() => {}} deploy={api as never} chainId={11142220} onFix={vi.fn()} onSwitchNetwork={onSwitchNetwork} />
+      </AuthContextProvider>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Deploy on mainnet" }));
+    expect(onSwitchNetwork).toHaveBeenCalledWith(42220);
+  });
+
+  it("waits for the post-deploy build before offering mainnet", () => {
+    const done = state({ stage: "done", steps: [{ name: "Tip", phase: "done", address: "0x3333333333333333333333333333333333333333" as never }] });
+    const api = { state: done, prepare: vi.fn(), start: vi.fn(), reset: vi.fn(), retry: vi.fn(), claimTestGd: vi.fn() };
+    render(
+      <AuthContextProvider value={auth}>
+        <DeployModal open onOpenChange={() => {}} deploy={api as never} chainId={11142220} onFix={vi.fn()} busy onSwitchNetwork={vi.fn()} />
+      </AuthContextProvider>,
+    );
+    expect(screen.getByRole("button", { name: /Updating your app/ })).toBeDisabled();
+    expect(screen.getByText(/You can deploy on mainnet when that finishes/)).toBeInTheDocument();
+  });
+
+  it("doesn't offer mainnet when the project's network is fixed", () => {
+    renderModal(state({ stage: "done", steps: [{ name: "Tip", phase: "done", address: "0x3333333333333333333333333333333333333333" as never }] }));
+    expect(screen.queryByRole("button", { name: "Deploy on mainnet" })).not.toBeInTheDocument();
+  });
+
   it("warns before replacing a live contract, saying what stays behind", () => {
     const address = "0x3333333333333333333333333333333333333333" as const;
     renderModal(state({ plan: { ...plan, replaces: [{ name: "Tip", address, gdBalance: "1200500000000000000000" }] } }));

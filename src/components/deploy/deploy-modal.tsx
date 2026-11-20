@@ -536,7 +536,43 @@ function LockContract({ name, deploy }: { name: string; deploy: Deploy }) {
   );
 }
 
-function Success({ state, chainId, deploy }: { state: DeployState; chainId: number; deploy: Deploy }) {
+/**
+ * After a testnet deploy, the way on to mainnet. The network picker is hidden once everything is live,
+ * so without this a tested project had no path forward. Waits while the post-deploy build wires the
+ * new addresses into the app, the same rule that greys out the header Deploy button.
+ */
+function MainnetNext({ busy, switching, onSwitch }: { busy: boolean; switching: boolean; onSwitch: () => void }) {
+  return (
+    <div className="mt-4 flex flex-col gap-3 rounded-block bg-tint px-4 py-3 text-sm sm:flex-row sm:items-center">
+      <p className="min-w-0 flex-1 text-violet-ink">
+        {busy ? "We're updating your app to use these addresses. You can deploy on mainnet when that finishes." : "Works on testnet? Deploy the same contracts to Celo mainnet for real users. You pay the fee in real CELO."}
+      </p>
+      <Button
+        variant="secondary"
+        size="sm"
+        className="w-full sm:w-auto"
+        disabled={busy || switching}
+        onClick={() => {
+          // They just tested on Sepolia, so the "try Sepolia first" prompt would be backwards.
+          mainnetAcknowledged = true;
+          onSwitch();
+        }}
+      >
+        {busy ? (
+          <>
+            <Loader2 className="animate-spin motion-reduce:animate-none" /> Updating your app…
+          </>
+        ) : switching ? (
+          "Switching…"
+        ) : (
+          "Deploy on mainnet"
+        )}
+      </Button>
+    </div>
+  );
+}
+
+function Success({ state, chainId, deploy, next }: { state: DeployState; chainId: number; deploy: Deploy; next?: React.ReactNode }) {
   const upgraded = (state.plan?.upgrades ?? []).length > 0;
   return (
     <div className="mt-5">
@@ -550,6 +586,7 @@ function Success({ state, chainId, deploy }: { state: DeployState; chainId: numb
         {upgraded ? "Upgraded. Same address, and its funds and data are where they were. " : ""}
         {state.steps.length > 1 ? "All contracts are live" : "Your contract is live"} on {chainLabel(chainId)}. Your app now uses {state.steps.length > 1 ? "these addresses" : "this address"}.
       </p>
+      {next}
       <ul className="mt-4 space-y-2">
         {state.steps.map((s) => (
           <li key={s.name} className="rounded-block bg-canvas p-3.5">
@@ -599,6 +636,7 @@ export function DeployModal({
   onFix,
   onPublish,
   switching = false,
+  busy = false,
   onSwitchNetwork,
 }: {
   open: boolean;
@@ -608,6 +646,8 @@ export function DeployModal({
   onFix: (prompt: string) => void;
   onPublish?: () => void;
   switching?: boolean;
+  /** A build is running in the workspace (after a deploy, it wires the new addresses into the app). */
+  busy?: boolean;
   /** Moves the project to another network. Without it the network is fixed for the project. */
   onSwitchNetwork?: (chainId: number) => Promise<void>;
 }) {
@@ -747,7 +787,14 @@ export function DeployModal({
           </>
         )}
 
-        {state.stage === "done" && <Success state={state} chainId={state.plan?.chainId ?? chainId} deploy={deploy} />}
+        {state.stage === "done" && (
+          <Success
+            state={state}
+            chainId={state.plan?.chainId ?? chainId}
+            deploy={deploy}
+            next={!isMainnet && onSwitchNetwork && <MainnetNext busy={busy} switching={switching} onSwitch={() => void onSwitchNetwork(42220)} />}
+          />
+        )}
         {state.stage === "error" && <ErrorCard deploy={deploy} onFix={onFix} chainId={chainId} />}
 
         {wrongAccount && (

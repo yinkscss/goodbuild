@@ -10,7 +10,7 @@ import { MiniPayPreview } from "./minipay-preview";
  * connect modal and wallet states can be reviewed without a Magic key.
  * Try ?state=modal | code | connecting | error | connected | wrong-network.
  * MiniPay guide (D88): ?minipay=deploy | publish | ready.
- * Deploy modal (M5): ?deploy=ready | preparing | signing | broadcasting | second | opcode | failed | manifest | done. 404s in production.
+ * Deploy modal (M5): ?deploy=ready | preparing | signing | broadcasting | second | opcode | failed | manifest | done | done-busy. 404s in production.
  */
 export default function PreviewPage({ searchParams }: PageProps<"/dev/preview">) {
   if (process.env.NODE_ENV === "production") notFound();
