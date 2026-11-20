@@ -11,6 +11,7 @@ import { LOGO_32_DATA_URI } from "./logo-data";
 import { publishRuntimeDir } from "./runtime";
 
 import { CAN_BE_CHANGED_LABEL } from "@/lib/deploy/upgradeable";
+import { explorerAddressUrl } from "@/lib/deploy/explorer";
 import { hasMiniPayKit } from "@/lib/minipay-checklist";
 import { ALLOWED_DEPENDENCIES, PLATFORM_DEPENDENCIES, WALLET_DIR } from "@/server/agent/template";
 
@@ -230,6 +231,17 @@ export const UNAUDITED_LABEL = "Unaudited contract";
 /** The project has contracts of its own (not tests), so its published page says they're unaudited. */
 export const hasOwnContracts = (files: Record<string, string>) => Object.keys(files).some((p) => /^contracts\/.+\.sol$/.test(p) && !p.startsWith("contracts/test/") && !p.endsWith(".t.sol"));
 
+/** Celo mainnet addresses the platform wrote into src/contracts/*.ts after each deploy, in file order. Links the unaudited notice to Celoscan (D156). */
+export function mainnetContractAddresses(files: Record<string, string>): string[] {
+  const out: string[] = [];
+  for (const [p, code] of Object.entries(files).sort(([a], [b]) => a.localeCompare(b))) {
+    if (!/^src\/contracts\/[^/]+\.ts$/.test(p)) continue;
+    const m = /"42220":\s*"(0x[0-9a-fA-F]{40})"/.exec(code);
+    if (m && !out.includes(m[1].toLowerCase())) out.push(m[1].toLowerCase());
+  }
+  return out;
+}
+
 /**
  * Just the logo at the bottom left, with a cross to close it (D56). The words "Built with GoodBuild" are in the
  * link's label for screen readers. Notices that matter (demo, changeable, report) sit beside the logo when there are any.
@@ -237,13 +249,16 @@ export const hasOwnContracts = (files: Record<string, string>) => Object.keys(fi
  * or unaudited-contract notice, because visitors need to know. With none of those, no bar at all (see hasBar).
  * `unaudited` (D109): the app has its own contracts, which GoodBuild hasn't audited; shown whatever the owner's setting.
  */
-export function bar(hasUndeployedContracts: boolean, reportUrl?: string, changeableContract = false, sameTab = false, showBadge = true, unaudited = false) {
+export function bar(hasUndeployedContracts: boolean, reportUrl?: string, changeableContract = false, sameTab = false, showBadge = true, unaudited = false, contractAddresses: string[] = []) {
   if (!hasBar(hasUndeployedContracts, changeableContract, showBadge, unaudited)) return "";
   // MiniPay has no tabs, so in a MiniPay app (D88) the bar's links open in the same view.
   const blank = sameTab ? "" : ` target="_blank"`;
   const report = reportUrl ? `<a href="${escapeHtml(reportUrl)}"${blank} rel="noreferrer" style="color:inherit;text-decoration:underline">Report</a>` : "";
   const demo = hasUndeployedContracts ? "Demo: this app's contract isn't deployed yet, so on-chain actions won't work." : "";
-  const notices = [unaudited ? UNAUDITED_LABEL : "", changeableContract ? CAN_BE_CHANGED_LABEL : "", demo, report].filter(Boolean).join(" · ");
+  // Mainnet contracts link to Celoscan, so a visitor can read what the address runs (D156).
+  const scan = contractAddresses.map((a, i) => `<a href="${escapeHtml(explorerAddressUrl(42220, a))}"${blank} rel="noreferrer" style="color:inherit;text-decoration:underline">${contractAddresses.length > 1 ? `Celoscan ${i + 1}` : "Celoscan"}</a>`);
+  const unauditedNote = unaudited ? [UNAUDITED_LABEL, scan.length ? `(${scan.join(", ")})` : ""].filter(Boolean).join(" ") : "";
+  const notices = [unauditedNote, changeableContract ? CAN_BE_CHANGED_LABEL : "", demo, report].filter(Boolean).join(" · ");
   const note = notices ? `<span style="padding:0 4px">${notices}</span>` : "";
   const logo = `<a href="https://goodbuildit.xyz"${blank} rel="noreferrer" aria-label="Built with GoodBuild" title="Built with GoodBuild" style="display:inline-flex;align-items:center;padding:2px"><img src="${LOGO_32_DATA_URI}" alt="" width="20" height="20" style="display:block;width:20px;height:20px" /></a>`;
   const close = `<label for="gb-bar-off" aria-hidden="true" title="Close" style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:999px;cursor:pointer;font-size:15px;line-height:1;opacity:.6">&times;</label>`;
@@ -284,7 +299,7 @@ export async function buildPublishedApp(input: BuildInput): Promise<PublishedFil
   page = page.replace("</head>", () => `${dataMeta}${walletMeta}<link rel="stylesheet" href="/${cssName}" />\n</head>`);
   const bridge = input.preview?.bridge(js, jsName);
   const unaudited = hasOwnContracts(files);
-  if (!input.preview) page = page.replace(/<body[^>]*>/, (open) => `${open}\n${bar(input.hasUndeployedContracts, input.reportUrl, input.changeableContract, hasMiniPayKit(files), input.showBadge ?? true, unaudited)}`);
+  if (!input.preview) page = page.replace(/<body[^>]*>/, (open) => `${open}\n${bar(input.hasUndeployedContracts, input.reportUrl, input.changeableContract, hasMiniPayKit(files), input.showBadge ?? true, unaudited, mainnetContractAddresses(files))}`);
   // The bridge is a classic script, so it is listening before the app's module runs.
   const showBadge = input.showBadge ?? true;
   const space = input.preview || !hasBar(input.hasUndeployedContracts, !!input.changeableContract, showBadge, unaudited) ? "" : `${barSpace(input.hasUndeployedContracts || !!input.reportUrl || !!input.changeableContract || unaudited)}\n`;
