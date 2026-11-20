@@ -7,7 +7,7 @@ import type { PublicClient } from "viem";
 
 import { DATA_RULES_PATH, parseDataRules, parseSignIn } from "@/lib/app-data";
 import { isStarterApp, withCurrentDataHelpers, withCurrentWalletHelpers } from "@/server/agent/template";
-import { slugFromName, slugProblem } from "@/lib/published-host";
+import { SUGGESTED_SLUG_MAX_LENGTH, slugFromName, slugProblem } from "@/lib/published-host";
 import { dbAssetStore } from "@/server/agent/asset-store";
 import { loadFiles } from "@/server/agent/store";
 import { enqueueForProject } from "@/server/registry/outbox";
@@ -20,7 +20,7 @@ import { publicClientFor } from "@/server/deploy/service";
 import { hasChangeableContracts } from "@/server/deploy/upgradeable";
 import { buildPublishedApp, PublishBuildError, type PublishedFile } from "./build";
 
-export type PublishErrorCode = "invalid_slug" | "reserved_slug" | "slug_taken" | "busy" | "disabled" | "build_failed" | "not_published";
+export type PublishErrorCode = "invalid_slug" | "reserved_slug" | "slug_taken" | "slug_locked" | "busy" | "disabled" | "build_failed" | "not_published";
 
 export class PublishError extends Error {
   constructor(
@@ -61,6 +61,8 @@ export interface PublishStatus {
   /** Live right now. False if never published, unpublished or taken down. */
   live: boolean;
   disabled: boolean;
+  /** Once published, this project keeps the same public address on every update. */
+  addressLocked: boolean;
   publishedVersion: number | null;
   currentVersion: number;
   /** Contracts that would show the demo notice if published now. */
@@ -71,7 +73,8 @@ export interface PublishStatus {
 async function suggestedSlug(db: Db, project: Pick<Project, "id" | "name">): Promise<string> {
   const base = slugFromName(project.name);
   if (await slugAvailable(db, base, project.id)) return base;
-  return `${base.slice(0, 33).replace(/-+$/, "")}-${project.id.slice(0, 6)}`;
+  const suffix = project.id.slice(0, 6);
+  return `${base.slice(0, SUGGESTED_SLUG_MAX_LENGTH - suffix.length - 1).replace(/-+$/, "")}-${suffix}`;
 }
 
 async function publicationOf(db: Db, projectId: string): Promise<Publication | undefined> {
@@ -85,6 +88,7 @@ export async function publishStatus(db: Db, project: Project): Promise<PublishSt
     slug: row?.slug ?? (await suggestedSlug(db, project)),
     live: Boolean(row && !row.unpublishedAt && !row.disabledAt),
     disabled: Boolean(row?.disabledAt),
+    addressLocked: Boolean(row),
     publishedVersion: row && !row.unpublishedAt ? row.versionNumber : null,
     currentVersion: project.currentVersion,
     undeployed: await undeployedContracts(db, project, files),
@@ -110,6 +114,7 @@ export async function publishApp(db: Db, project: Project, slug: string, deps: {
   if (project.turnStartedAt) throw new PublishError("busy", "Wait for the build to finish, then publish.");
   const existing = await publicationOf(db, project.id);
   if (existing?.disabledAt) throw new PublishError("disabled", "This app was taken down and can't be published.");
+  if (existing && existing.slug !== slug) throw new PublishError("slug_locked", "This project's address can't be changed after its first publish.");
   if (!(await slugAvailable(db, slug, project.id))) throw new PublishError("slug_taken", "That address is taken. Try another.");
 
   const saved = await loadFiles(db, project.id);

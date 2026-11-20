@@ -17,6 +17,7 @@ const STATUS: Record<PublishError["code"], number> = {
   invalid_slug: 422,
   reserved_slug: 422,
   slug_taken: 409,
+  slug_locked: 409,
   busy: 409,
   disabled: 403,
   build_failed: 422,
