@@ -12,7 +12,9 @@ import { DEPLOY_CREDITS, START_CREDITS } from "@/server/hackathon/claim";
 import { hackathonReport, type HackathonReport } from "@/server/hackathon/admin";
 import { loadSession } from "@/server/home-data";
 import { isAdminWallet } from "@/server/settings/mainnet-access";
+import { DEPLOY_DAY_BUDGET_WEI } from "@/server/gas-grant/deploy-grant";
 import { GRANT_TARGET_WEI, GRANTS_PER_DAY, grantSummary } from "@/server/gas-grant/grant";
+import { formatEther } from "viem";
 import { gasGrantDeps } from "@/server/gas-grant/runtime";
 
 export const metadata: Metadata = { title: "Hackathon claims · GoodBuild", robots: { index: false } };
@@ -54,11 +56,12 @@ function GasTiles({ g }: { g: Awaited<ReturnType<typeof grantSummary>> }) {
   const celo = g.balanceWei === null ? null : Number(g.balanceWei) / 1e18;
   const left = g.balanceWei === null ? null : Number(g.balanceWei / GRANT_TARGET_WEI);
   return (
-    <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
       <Tile label="Network-fee fund" value={celo === null ? "—" : `${celo.toFixed(2)} CELO`} note={g.enabled ? `Enough for about ${left} more people` : "Off: no key installed or switched off"} />
-      <Tile label="Fees covered" value={fmt(g.total)} note="People topped up to 0.3 CELO" />
+      <Tile label="Fees covered" value={fmt(g.total)} note={`People topped up to ${formatEther(GRANT_TARGET_WEI)} CELO for the vote`} />
       <Tile label="Today" value={`${fmt(g.today)} / ${GRANTS_PER_DAY}`} note="Daily limit, resets at midnight UTC" />
       <Tile label="Needs a look" value={fmt(g.needsReview)} note="Top-ups that didn't confirm; not retried" />
+      <Tile label="Deploy fees today" value={`${fmt(g.deploy.today)} · ${(Number(g.deploy.todayWei) / 1e18).toFixed(2)} CELO`} note={`Budget ${formatEther(DEPLOY_DAY_BUDGET_WEI)} CELO a day; ${fmt(g.deploy.total)} covered in all`} />
     </div>
   );
 }

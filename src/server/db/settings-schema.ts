@@ -14,5 +14,5 @@ export const appSettings = pgTable(
     /** Lowercased admin wallet that last changed it, or null when it was set by hand in SQL. */
     updatedBy: text("updated_by"),
   },
-  (t) => [check("app_settings_key_known", sql`${t.key} in ('mainnet_access', 'gas_grants')`)],
+  (t) => [check("app_settings_key_known", sql`${t.key} in ('mainnet_access', 'gas_grants', 'gas_deploy_grants')`)],
 );

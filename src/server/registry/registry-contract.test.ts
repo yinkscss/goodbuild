@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { decodeEventLog, encodeDeployData, encodeFunctionData, getAddress, zeroAddress, zeroHash, type Abi, type Hex } from "viem";
 
+import { REGISTRY_ABI } from "./outbox";
 import { LocalChain } from "@/server/deploy/local-chain";
 import { compileRegistry } from "../../../scripts/compile-credits.mjs";
 
@@ -43,5 +44,13 @@ describe("GoodBuildRegistry", () => {
     expect(chain.receipts.get(await call(STRANGER, "setRecorder", [STRANGER]))!.status).toBe("reverted");
     expect(chain.receipts.get(await call(ADMIN, "setRecorder", [STRANGER]))!.status).toBe("success");
     expect(chain.receipts.get(await call(RECORDER, "recordBatch", [[one]]))!.status).toBe("reverted");
+  });
+  it("is called with the same function the server sends", async () => {
+    const { abi } = compileRegistry() as { abi: Abi };
+    const a = abi.find((f) => f.type === "function" && f.name === "recordBatch") as unknown as { inputs: { components: { name: string; type: string }[] }[] };
+    const server = REGISTRY_ABI[0].inputs[0].components.map((c) => `${c.type} ${c.name}`);
+    expect(server).toEqual(a.inputs[0].components.map((c) => `${c.type} ${c.name}`));
+    const entry = { kind: 0, builder: B, app: zeroHash, target: zeroAddress, txHash: zeroHash, at: BigInt(1) };
+    expect(encodeFunctionData({ abi: REGISTRY_ABI, functionName: "recordBatch", args: [[entry]] }).slice(0, 10)).toBe(encodeFunctionData({ abi, functionName: "recordBatch", args: [[entry]] } as never).slice(0, 10));
   });
 });

@@ -229,8 +229,15 @@
     {
       "idx": 32,
       "version": "7",
-      "when": 1795131226170,
-      "tag": "0032_ambassador_payouts",
+      "when": 1795130048964,
+      "tag": "0032_gas_deploy_grants",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1795133249071,
+      "tag": "0033_ambassador_payouts",
       "breakpoints": true
     }
   ]
