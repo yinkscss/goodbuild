@@ -258,7 +258,7 @@ function StepsDialog({
       <DialogContent className="sm:max-w-md">
         <DialogTitle className="pr-10 text-xl font-semibold">Verify, then approve {entry?.title ?? "this project"}</DialogTitle>
         <DialogDescription className="mt-1 text-sm text-grey-600">
-          Step 3 supports GoodBuildIt on FlowState. {approvalsLeft > 0
+          {approvalsLeft > 0
             ? `You have ${approvalsLeft} approval${approvalsLeft === 1 ? "" : "s"} left. Add one per click; you can put several on ${entry?.title ?? "this project"}.`
             : `You’ve used all ${status.max} approvals.`}
         </DialogDescription>
@@ -277,8 +277,8 @@ function StepsDialog({
             </button>
             {verify.note && <p role="alert" className="mt-2 text-xs text-danger">{verify.note}</p>}
           </Step>
-          <Step n={3} done={status.voted} title="Support GoodBuildIt and GoodCash on FlowState" note="We check your ballot and split its remaining votes equally between GoodBuildIt and our partner GoodCash. This does not approve your friend’s project. We cover the network fee.">
-            {status.signedIn && status.verified ? <FlowstateVote onConfirmed={() => void refresh()} /> : <p className="text-xs text-grey-600">Finish the steps above first.</p>}
+          <Step n={3} done={status.voted} title="Support us">
+            {status.signedIn && status.verified ? <FlowstateVote label="Support" onConfirmed={() => void refresh()} /> : <p className="text-xs text-grey-600">Finish the steps above first.</p>}
           </Step>
         </ol>
         <button
@@ -300,7 +300,7 @@ function StepsDialog({
 
 const BTN = "rounded-full bg-violet px-4 py-2 text-sm font-medium text-white outline-none focus-visible:shadow-focus disabled:opacity-50";
 
-function Step({ n, done, title, note, children }: { n: number; done: boolean; title: string; note: string; children: React.ReactNode }) {
+function Step({ n, done, title, note, children }: { n: number; done: boolean; title: string; note?: string; children: React.ReactNode }) {
   return (
     <li className="flex gap-3 rounded-block bg-tint p-4">
       <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-xs font-bold ${done ? "bg-success text-white" : "bg-surface text-violet"}`}>
@@ -308,7 +308,7 @@ function Step({ n, done, title, note, children }: { n: number; done: boolean; ti
       </span>
       <div className="min-w-0 flex-1">
         <p className="text-sm font-semibold">{title}</p>
-        <p className="mb-2 text-xs text-grey-600">{note}</p>
+        {note ? <p className="mb-2 text-xs text-grey-600">{note}</p> : <div className="mb-2" />}
         {!done && children}
       </div>
     </li>
