@@ -2,6 +2,9 @@
 
 Written 4 Nov 2026 at the end of the first build session (claude.ai), for whoever continues in Claude Code. Read CLAUDE.md and docs/BUILD_PROMPT_STAGE1.md first; this file only covers where things stand.
 
+## One-tap vote split with GoodCash (20 Nov 2026, D158, branch `claude/nice-brown-jb0s8r`)
+Every vote button (invite step 3, /hackathon, the vote list, the free-credits card) now splits all of the person's available FlowState points 50/50 between GoodBuildIt and partner GoodCash in one transaction with one wallet confirmation. It falls back to GoodBuildIt only if GoodCash stops being a recipient or the ballot has no room for both. Someone who voted earlier but has points left gets them split on the next tap. Credits, invites and ambassador earnings still depend on GoodBuildIt support only. No migration. **UNVERIFIED** against live Celo/FlowState: after the deploy, vote once and check both projects' totals on FlowState.
+
 ## Harness v2, PR 1: Sonnet plans and writes contracts, the builder checks its own work (19 Nov 2026, D152, branch `claude/elegant-pasteur-j73em3`)
 **On for every user since 20 Nov 2026** (hard-coded; `HARNESS_V2` no longer does anything). What it does:
 - a spec call on Sonnet writes `src/spec.json` (pages, direction, contracts, acceptance flows);
