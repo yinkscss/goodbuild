@@ -17,7 +17,6 @@ import {
   FlowstateError,
 } from "@/server/flowstate/service";
 import { claimFlowstateEligibility } from "@/server/flowstate/eligibility";
-import { HACKATHON_ID } from "@/server/hackathon/claim";
 import { ensureGas, GasGrantError } from "@/server/gas-grant/grant";
 import { gasGrantDeps } from "@/server/gas-grant/runtime";
 import { SUPPORT_TELEGRAM_URL } from "@/config/site-links";
@@ -173,7 +172,8 @@ export async function POST(request: Request) {
       })
       .where(eq(flowstateVoters.userId, s.user.id))
       .returning({ id: flowstateVoters.userId });
-    // Hackathon signups keep their own copy, for the CSV and the hackathon credit claim.
+    // Hackathon signups keep their own copy, for the CSV and the hackathon credit claim. Every hackathon
+    // this person signed up for gets it (D160), so the FUTMinna list shows the vote too.
     await db
       .update(hackathonParticipants)
       .set({
@@ -182,10 +182,7 @@ export async function POST(request: Request) {
         flowstateVotedAt: votedAt,
       })
       .where(
-        and(
-          eq(hackathonParticipants.userId, s.user.id),
-          eq(hackathonParticipants.hackathon, HACKATHON_ID),
-        ),
+        eq(hackathonParticipants.userId, s.user.id),
       );
     if (!recorded.length)
       throw new FlowstateError(

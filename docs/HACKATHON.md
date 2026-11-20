@@ -93,3 +93,6 @@ The required FlowState step supports direct voting with the existing Magic email
 
 ## 14. Referral credits (19 Nov 2026, D136)
 You and a friend each get 10 credits when they register through your link and deploy their first app. One bonus per GoodDollar identity; up to 3 friends can pay you; the friend is always paid. Own pot of 1,000 credits (`HACKATHON_REFERRAL_BUDGET_CREDITS`), separate from the registration budget. Nothing after 10 Dec.
+
+## 10. FUTMinna hackathon (20 Nov 2026, D160)
+A second hackathon for FUTMinna students, ₦150,000 scholarship, closing 10 Dec. Public page `/hackathon/futminna`, in-app tabs at `/home/hackathon/futminna`. Its entries, approvals (3 per person, separate from the main hackathon's), leaderboard (top 5 = shortlist, judges pick) and signup list live under the id `futminna-2026` in the same tables. Registration and credits are the main hackathon's: one grant per GoodDollar identity, one shared budget (default now 10,000 credits). Each builder enters one hackathon. Event list and copy: `src/lib/hackathon-events.ts`. Admin CSV: `/api/hackathon/export?event=futminna`. People who register from a FUTMinna page (or join with the button on its in-app tab) are FUTMinna members, and `/home/hackathon` opens on FUTMinna for them (D161).

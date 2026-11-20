@@ -21,8 +21,11 @@ import { recordReferral, referralHeld, settleReferral } from "./referrals";
 export { HACKATHON_ID };
 export const START_CREDITS = 20;
 export const DEPLOY_CREDITS = 30;
-/** Default cap on everything granted: 100 builders x 50 credits. HACKATHON_BUDGET_CREDITS overrides. */
-export const DEFAULT_BUDGET_CREDITS = 5_000;
+/**
+ * Default cap on everything granted: 200 builders x 50 credits, raised from 5,000 for the FUTMinna
+ * hackathon, which shares this budget (D160). HACKATHON_BUDGET_CREDITS overrides.
+ */
+export const DEFAULT_BUDGET_CREDITS = 10_000;
 export { CLAIMS_CLOSE };
 /** Celo mainnet and Celo Sepolia. */
 export const DEPLOY_CHAINS = [42220, 11142220];
