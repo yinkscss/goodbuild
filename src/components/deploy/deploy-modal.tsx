@@ -748,6 +748,23 @@ export function DeployModal({
         )}
 
         {state.stage === "done" && <Success state={state} chainId={state.plan?.chainId ?? chainId} deploy={deploy} />}
+        {state.stage === "done" && !isMainnet && onSwitchNetwork && (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-block bg-tint px-4 py-3 text-sm">
+            <span className="min-w-0 flex-1 text-violet-ink">Works on testnet? Deploy the same contracts to Celo mainnet for real users. You pay the fee in real CELO.</span>
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={switching}
+              onClick={() => {
+                // They just tested on Sepolia, so the "try Sepolia first" prompt would be backwards.
+                mainnetAcknowledged = true;
+                void onSwitchNetwork(42220);
+              }}
+            >
+              {switching ? "Switching…" : "Deploy on mainnet"}
+            </Button>
+          </div>
+        )}
         {state.stage === "error" && <ErrorCard deploy={deploy} onFix={onFix} chainId={chainId} />}
 
         {wrongAccount && (
