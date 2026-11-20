@@ -6,7 +6,7 @@ import { ChevronDown, History } from "lucide-react";
 
 import { WalletButton } from "@/components/auth/wallet-button";
 import { Logo } from "@/components/brand/logo";
-import { DeployButton, DeployProvider } from "@/components/deploy/deploy-trigger";
+import { DeployButton, DeployProvider, switchChainError } from "@/components/deploy/deploy-trigger";
 import { contractAddressKey, contractsToWire, deployedContracts, wirePrompt } from "@/lib/deploy/wiring";
 import { isDeployableSource } from "@/lib/deploy/test-file";
 import { CreditsPill } from "@/components/home/credits-pill";
@@ -91,10 +91,10 @@ export function Workspace({ initial }: { initial: WorkspaceState }) {
       onFix={(prompt) => ws.send(prompt, "build")}
       onPublish={() => setPublishOpen(true)}
       onSwitchChain={async (chainId) => {
-        const res = await fetch(`/api/projects/${state.project.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chainId }) });
-        if (!res.ok) return false;
-        await ws.refresh();
-        return true;
+        const res = await fetch(`/api/projects/${state.project.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chainId }) }).catch(() => null);
+        if (!res?.ok) return switchChainError(res?.status, ((await res?.json().catch(() => null)) as { error?: string } | null)?.error);
+        if (!(await ws.refresh().catch(() => null))) return "Switched, but we couldn't reload the project. Refresh the page.";
+        return null;
       }}
     >
     <div className="flex h-dvh min-w-0 flex-col gap-3 p-3 sm:gap-4 sm:p-4">

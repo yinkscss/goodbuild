@@ -43,14 +43,15 @@ export function DeployProvider({
   onFix: (prompt: string) => void;
   /** Offered once deployed: republishing is what puts the new addresses in the public app. */
   onPublish?: () => void;
-  /** Move the project to another network (saves it on the server and reloads the workspace). True when it moved. */
-  onSwitchChain?: (chainId: number) => Promise<boolean>;
+  /** Move the project to another network (saves it on the server and reloads the workspace). Null when it moved, else why not. */
+  onSwitchChain?: (chainId: number) => Promise<string | null>;
   children: React.ReactNode;
 }) {
   const [open, setOpen] = React.useState(false);
   const deploy = useDeploy({ projectId, chainId, onDeployed });
   const { prepare, reset } = deploy;
   const [switching, setSwitching] = React.useState(false);
+  const [switchError, setSwitchError] = React.useState<string | null>(null);
   // The project moved to another network while the modal is open: plan again for it.
   const lastChain = React.useRef(chainId);
   React.useEffect(() => {
@@ -81,18 +82,25 @@ export function DeployProvider({
         open={open}
         onOpenChange={(next) => {
           setOpen(next);
-          if (!next) reset();
+          if (!next) {
+            reset();
+            setSwitchError(null);
+          }
         }}
         deploy={deploy}
         chainId={chainId}
         switching={switching}
+        switchError={switchError}
         busy={busy}
         onSwitchNetwork={
           onSwitchChain &&
           (async (next) => {
             setSwitching(true);
+            setSwitchError(null);
             try {
-              await onSwitchChain(next);
+              setSwitchError(await onSwitchChain(next));
+            } catch {
+              setSwitchError(switchChainError());
             } finally {
               setSwitching(false);
             }
@@ -114,6 +122,18 @@ export function DeployProvider({
       />
     </Ctx.Provider>
   );
+}
+
+/**
+ * Why the project couldn't move network, in words for the owner. The server refuses while a build
+ * runs (409 busy) and when mainnet is closed to this wallet (403 mainnet_closed, D50). These used to
+ * be swallowed, so a tap on a network did nothing and the modal stayed on the old one.
+ */
+export function switchChainError(status?: number, code?: string): string {
+  if (code === "mainnet_closed") return "Mainnet deploys aren't open for your account right now. Your testnet deploy is safe.";
+  if (code === "busy" || status === 409) return "A build is still running on this project. Try again when it finishes.";
+  if (status === 401) return "Your session ended. Sign in again, then try again.";
+  return "We couldn't switch networks. Check your connection and try again.";
 }
 
 export function useDeployAction(): DeployContext {

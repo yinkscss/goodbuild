@@ -6,6 +6,7 @@ import userEvent from "@testing-library/user-event";
 import { AuthContextProvider, unconfiguredAuth } from "@/lib/auth/context";
 import type { Plan } from "@/lib/deploy/run";
 import { DeployModal, keepsLine, stageIndex } from "./deploy-modal";
+import { switchChainError } from "./deploy-trigger";
 import type { DeployState, StepView } from "./use-deploy";
 
 const wallet = "0x7a3000000000000000000000000000000000e41c" as const;
@@ -143,6 +144,17 @@ describe("DeployModal", () => {
     expect(screen.getByText(/You can deploy on mainnet when that finishes/)).toBeInTheDocument();
   });
 
+  it("says why the switch to mainnet was refused instead of doing nothing", () => {
+    const done = state({ stage: "done", steps: [{ name: "Tip", phase: "done", address: "0x3333333333333333333333333333333333333333" as never }] });
+    const api = { state: done, prepare: vi.fn(), start: vi.fn(), reset: vi.fn(), retry: vi.fn(), claimTestGd: vi.fn() };
+    render(
+      <AuthContextProvider value={auth}>
+        <DeployModal open onOpenChange={() => {}} deploy={api as never} chainId={11142220} onFix={vi.fn()} switchError={switchChainError(403, "mainnet_closed")} onSwitchNetwork={vi.fn()} />
+      </AuthContextProvider>,
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent(/Mainnet deploys aren't open for your account/);
+  });
+
   it("doesn't offer mainnet when the project's network is fixed", () => {
     renderModal(state({ stage: "done", steps: [{ name: "Tip", phase: "done", address: "0x3333333333333333333333333333333333333333" as never }] }));
     expect(screen.queryByRole("button", { name: "Deploy on mainnet" })).not.toBeInTheDocument();
@@ -262,5 +274,14 @@ describe("DeployModal, upgradeable trial (D33)", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(/can't be undone/);
     await user.click(screen.getByRole("button", { name: "Lock it for good" }));
     expect(lockContract).toHaveBeenCalledWith("Tip");
+  });
+});
+
+describe("switchChainError", () => {
+  it("names each refusal the server gives", () => {
+    expect(switchChainError(403, "mainnet_closed")).toMatch(/aren't open for your account/);
+    expect(switchChainError(409, "busy")).toMatch(/build is still running/);
+    expect(switchChainError(401)).toMatch(/Sign in again/);
+    expect(switchChainError()).toMatch(/couldn't switch networks/);
   });
 });

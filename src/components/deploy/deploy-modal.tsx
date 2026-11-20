@@ -541,9 +541,19 @@ function LockContract({ name, deploy }: { name: string; deploy: Deploy }) {
  * so without this a tested project had no path forward. Waits while the post-deploy build wires the
  * new addresses into the app, the same rule that greys out the header Deploy button.
  */
-function MainnetNext({ busy, switching, onSwitch }: { busy: boolean; switching: boolean; onSwitch: () => void }) {
+function SwitchError({ message }: { message: string }) {
   return (
-    <div className="mt-4 flex flex-col gap-3 rounded-block bg-tint px-4 py-3 text-sm sm:flex-row sm:items-center">
+    <p role="alert" className="mt-3 flex items-start gap-2 text-sm text-warning">
+      <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
+      {message}
+    </p>
+  );
+}
+
+function MainnetNext({ busy, switching, error, onSwitch }: { busy: boolean; switching: boolean; error: string | null; onSwitch: () => void }) {
+  return (
+    <div className="mt-4">
+      <div className="flex flex-col gap-3 rounded-block bg-tint px-4 py-3 text-sm sm:flex-row sm:items-center">
       <p className="min-w-0 flex-1 text-violet-ink">
         {busy ? "We're updating your app to use these addresses. You can deploy on mainnet when that finishes." : "Works on testnet? Deploy the same contracts to Celo mainnet for real users. You pay the fee in real CELO."}
       </p>
@@ -568,6 +578,8 @@ function MainnetNext({ busy, switching, onSwitch }: { busy: boolean; switching: 
           "Deploy on mainnet"
         )}
       </Button>
+      </div>
+      {error && <SwitchError message={error} />}
     </div>
   );
 }
@@ -637,6 +649,7 @@ export function DeployModal({
   onPublish,
   switching = false,
   busy = false,
+  switchError = null,
   onSwitchNetwork,
 }: {
   open: boolean;
@@ -648,6 +661,8 @@ export function DeployModal({
   switching?: boolean;
   /** A build is running in the workspace (after a deploy, it wires the new addresses into the app). */
   busy?: boolean;
+  /** Why the last network switch was refused, shown where the person tapped. */
+  switchError?: string | null;
   /** Moves the project to another network. Without it the network is fixed for the project. */
   onSwitchNetwork?: (chainId: number) => Promise<void>;
 }) {
@@ -717,6 +732,7 @@ export function DeployModal({
             ))}
           </div>
         )}
+        {switchError && state.stage !== "done" && <SwitchError message={switchError} />}
 
         {state.plan && state.stage !== "done" && state.stage !== "preparing" && (
           <>
@@ -792,7 +808,7 @@ export function DeployModal({
             state={state}
             chainId={state.plan?.chainId ?? chainId}
             deploy={deploy}
-            next={!isMainnet && onSwitchNetwork && <MainnetNext busy={busy} switching={switching} onSwitch={() => void onSwitchNetwork(42220)} />}
+            next={!isMainnet && onSwitchNetwork && <MainnetNext busy={busy} switching={switching} error={switchError} onSwitch={() => void onSwitchNetwork(42220)} />}
           />
         )}
         {state.stage === "error" && <ErrorCard deploy={deploy} onFix={onFix} chainId={chainId} />}
