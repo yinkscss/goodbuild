@@ -22,7 +22,9 @@ import * as gasGrantSchema from "./gas-grant-schema";
 import * as registrySchema from "./registry-schema";
 import * as referralSchema from "./referral-schema";
 
-const schema = { ...coreSchema, ...deploySchema, ...publishSchema, ...appDataSchema, ...settingsSchema, ...onchainCreditsSchema, ...creditQuotesSchema, ...githubSchema, ...hackathonSchema, ...gasGrantSchema, ...referralSchema, ...registrySchema };
+import * as ambassadorSchema from "./ambassador-schema";
+
+const schema = { ...coreSchema, ...deploySchema, ...publishSchema, ...appDataSchema, ...settingsSchema, ...onchainCreditsSchema, ...creditQuotesSchema, ...githubSchema, ...hackathonSchema, ...gasGrantSchema, ...referralSchema, ...registrySchema, ...ambassadorSchema };
 
 /** Driver-agnostic handle: postgres-js in production, PGlite in dev and tests. */
 export type Db = PgDatabase<PgQueryResultHKT, typeof schema>;

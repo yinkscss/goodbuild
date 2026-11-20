@@ -685,7 +685,7 @@ export async function sendGameTx(args: { address: Address; abi: Abi; functionNam
   const hash = await wallet.writeContract({ ...args, feeCurrency, type: "legacy" } as never);
   const receipt = await publicClient.waitForTransactionReceipt({ hash });
   if (receipt.status !== "success") throw new Error("That didn't go through. Nothing was taken except the network fee. Please try again.");
-  // Balances, items and scores on screen fetch again (D158).
+  // Balances, items and scores on screen fetch again (D159).
   void markChanged("tx");
   return receipt;
 }

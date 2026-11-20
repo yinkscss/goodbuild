@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * Live data in generated apps (D158), run as the app would run it: the starter's files are bundled
+ * Live data in generated apps (D159), run as the app would run it: the starter's files are bundled
  * with esbuild (React 18 and viem from publish-runtime, like a published app) and loaded fresh for
  * each test, so the shared timer and its listeners never leak between tests.
  */

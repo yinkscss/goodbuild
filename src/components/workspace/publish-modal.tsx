@@ -201,7 +201,7 @@ function PublishBody({
                 id="publish-slug"
                 value={slug}
                 onChange={(e) => setTyped(e.target.value.toLowerCase().trim())}
-                disabled={Boolean(working)}
+                disabled={Boolean(working) || info.addressLocked}
                 spellCheck={false}
                 autoComplete="off"
                 maxLength={40}
@@ -212,7 +212,7 @@ function PublishBody({
               <span className="shrink-0 text-grey-600">.{info.domain}</span>
             </div>
             <p id="publish-slug-note" className={cn("mt-1.5 min-h-4 text-xs", SLUG_COPY[check] ? "text-danger" : "text-grey-600")} aria-live="polite">
-              {SLUG_COPY[check] ?? (check === "checking" ? "Checking…" : check === "free" ? "This address is free." : "")}
+              {info.addressLocked ? "Your address stays the same after the first publish." : SLUG_COPY[check] ?? (check === "checking" ? "Checking…" : check === "free" ? "This address is free." : "")}
             </p>
 
             <dl className="mt-3 divide-y divide-ink/5 rounded-block bg-canvas px-4 text-sm">

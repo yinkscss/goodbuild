@@ -957,7 +957,7 @@ describe("the 2D games kit", { timeout: 120_000 }, () => {
     const ok = await runCheck(withScoresRule(project(BOARD_GAME)));
     expect(ok.issues).toEqual([]);
     expect(ok.note).toMatch(/a score was posted and shown on the board/);
-    // PostScore and Leaderboard on two different boards: since live data (D158) the post's saved-data
+    // PostScore and Leaderboard on two different boards: since live data (D159) the post's saved-data
     // write refreshes every board on the page, so the one on screen shows it too.
     const split = BOARD_GAME.replace("  const board = useLeaderboard();", "  const board = useLeaderboard();\n  const other = useLeaderboard();").replace("<PostScore board={board}", "<PostScore board={other}");
     const shared = await runCheck(withScoresRule(project(split)));

@@ -224,7 +224,7 @@ import { markChanged, subscribeChanges } from "./goodbuild/live";
 
 /**
  * Run an async read (usually publicClient.readContract) with loading and error state, and keep it
- * up to date by itself (D158): it fetches again after any confirmed transaction (writeContract, useTx),
+ * up to date by itself (D159): it fetches again after any confirmed transaction (writeContract, useTx),
  * a saved-data write, a wallet switch, the tab coming back, and on a slow shared timer while the page
  * is open, so other people's changes show too. Never call refresh() after a write just to update it.
  * Pass enabled=false to skip it (e.g. no wallet or no deployed address yet), and { live: false } for a
@@ -325,7 +325,7 @@ export function useTx() {
 }
 `;
 
-/** hooks.ts as GoodBuild wrote it before D158. An untouched copy moves to the live one. */
+/** hooks.ts as GoodBuild wrote it before D159. An untouched copy moves to the live one. */
 const HOOKS_BEFORE_LIVE_SHA256 = "963faadf84cc4850ac684ca5c4da481591eccf938cd0442da43773a7cb1957a5";
 
 const TOKENS = `import { erc20Abi } from "viem";
@@ -843,7 +843,7 @@ export function collection<T = unknown>(name: string) {
   };
 }
 
-/** A write went through: every list on the page that shows saved data fetches again (D158). */
+/** A write went through: every list on the page that shows saved data fetches again (D159). */
 function changed<R>(result: R): R {
   void markChanged("data");
   return result;
@@ -985,7 +985,7 @@ export function useCollection<T>(
   const { owner, limit, enabled = true, wallet, where, orderBy, dir, liveEvery } = options;
   const store = collection<T>(name);
   const queryKey = JSON.stringify([where ?? [], orderBy ?? "", dir ?? ""]);
-  // live: false, because saved data listens here, without the chain's timer (D158): it fetches again
+  // live: false, because saved data listens here, without the chain's timer (D159): it fetches again
   // after any saved-data write, a wallet switch, the tab coming back and the refresh button, so
   // GoodBuild's server only sees a read when something could have changed.
   const read = useRead(() => store.list({ owner, limit, where, orderBy, dir }), [name, owner, limit, wallet, queryKey], enabled, { live: false });
@@ -1178,7 +1178,7 @@ export function Textarea({ className, ...props }: React.TextareaHTMLAttributes<H
 `;
 
 /**
- * The refresh button next to anything that changes (D158). Values already refresh by themselves, so
+ * The refresh button next to anything that changes (D159). Values already refresh by themselves, so
  * this is the visitor's "check now": one per card or section, not one per number.
  */
 const REFRESH_BUTTON = `import { RotateCw } from "lucide-react";
@@ -1287,7 +1287,7 @@ export function starterFiles(chainId = NETWORKS["celo-sepolia"].chainId): Record
  */
 export function withStarterHelpers(files: Record<string, string>, chainId = NETWORKS["celo-sepolia"].chainId): Record<string, string> {
   const out = withCurrentWalletHelpers(withCurrentDataHelpers(files), chainId);
-  // An untouched hooks.ts from before D158 moves to the live one; an edited one stays the builder's.
+  // An untouched hooks.ts from before D159 moves to the live one; an edited one stays the builder's.
   if (out["src/lib/hooks.ts"] && createHash("sha256").update(out["src/lib/hooks.ts"]).digest("hex") === HOOKS_BEFORE_LIVE_SHA256) out["src/lib/hooks.ts"] = HOOKS;
   for (const [p, content] of Object.entries(starterFiles(chainId))) {
     if (/^src\/(lib|components\/ui)\//.test(p) && !(p in out)) out[p] = content;

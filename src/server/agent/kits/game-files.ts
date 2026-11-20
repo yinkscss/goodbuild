@@ -191,7 +191,7 @@ export function useLeaderboard(options: { collection?: string; chain?: ChainBoar
   }, [load]);
 
   // Someone's new score (a saved-data write or a MiniPay transaction), the tab coming back, a refresh
-  // button: fetch again (D158). No timer: scores change when a game ends, not every few seconds.
+  // button: fetch again (D159). No timer: scores change when a game ends, not every few seconds.
   useEffect(() => subscribeChanges(() => load(), { on: ["data", "tx", "wallet", "focus", "manual"] }), [load]);
 
   /** Post a finished run. Asks for the wallet when needed. Never throws: read the result and board.error. */

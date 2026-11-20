@@ -413,7 +413,7 @@ export function useShop(items: ShopItem[], abi: Abi | readonly unknown[], addres
     void load();
   }, [load]);
 
-  // A purchase anywhere in the game, the tab coming back, a refresh button: fetch again (D158). No
+  // A purchase anywhere in the game, the tab coming back, a refresh button: fetch again (D159). No
   // timer: prices and items only change when someone buys or the owner edits them.
   useEffect(() => subscribeChanges(() => load(), { on: ["tx", "wallet", "focus", "manual"] }), [load]);
 
@@ -641,7 +641,7 @@ export const gameShop: Kit = {
     "src/game/shop.ts": SHOP_TS,
     "src/game/Store.tsx": STORE_TSX,
   },
-  // Before live data (D158): it didn't ride the shared refresh.
+  // Before live data (D159): it didn't ride the shared refresh.
   superseded: { "src/game/shop.ts": ["d9fa1fe2a78d6c917e89786e54c25b931b0abb3f9ba12a49e1b9aa8a326c0566"] },
   guide: GUIDE,
 };

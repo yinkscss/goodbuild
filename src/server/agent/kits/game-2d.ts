@@ -849,7 +849,7 @@ export const game2d: Kit = {
     "src/game/hud.ts": ["5d3eb1ea19c9a7e1b7fd387599ed7c802259096a1ca0ef9b7e5fa3dd9eb09f96"],
     // Its comment pointed at useCollection for leaderboards (D93).
     "src/game/storage.ts": ["ad445565329f58a977216f4ed062c26609a13e2afd9e14a96e7b114e6eae65fa"],
-    // Before live data (D158): the board didn't refetch on new scores and blanked while it loaded; game transactions didn't announce themselves.
+    // Before live data (D159): the board didn't refetch on new scores and blanked while it loaded; game transactions didn't announce themselves.
     "src/game/leaderboard.ts": ["32b0df9d7458a8dcf3648902502a68046da00f6436ec0be51edb3e6a66621252"],
     "src/game/chainTx.ts": ["7b39f2c6749163172b91dca5313a21a6b4dd9a2cd4e15e80c6842fe6f21d7492"],
   },

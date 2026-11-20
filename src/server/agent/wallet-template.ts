@@ -97,7 +97,7 @@ function setState(next: Partial<WalletState>) {
   const before = state.account;
   state = { ...state, ...next };
   emit();
-  // A different account sees different balances: every read on the page fetches again (D158).
+  // A different account sees different balances: every read on the page fetches again (D159).
   if (state.account !== before) void markChanged("wallet");
 }
 
@@ -834,7 +834,7 @@ export function walletHelpersFor(chainId = SEPOLIA_CHAIN_ID): Record<string, str
     [WALLET_PATHS.wallet]: walletSourceFor(chainId),
     [WALLET_PATHS.chooser]: CHOOSER,
     [WALLET_PATHS.walletConnect]: WALLETCONNECT_STUB,
-    // Live data (D158): one refresh signal per tab, GoodBuild's like the wallet layer.
+    // Live data (D159): one refresh signal per tab, GoodBuild's like the wallet layer.
     [WALLET_PATHS.live]: LIVE,
   };
 }
@@ -887,12 +887,12 @@ export function chainSourceFor(chainId = SEPOLIA_CHAIN_ID): string {
 const hash = (source: string) => createHash("sha256").update(source).digest("hex");
 /**
  * Untouched copies of chain.ts GoodBuild wrote, now and before (they're regenerated, so they pick up
- * changes such as D158's refresh after a transaction). Add the old pair whenever CHAIN changes.
+ * changes such as D159's refresh after a transaction). Add the old pair whenever CHAIN changes.
  */
 const CHAIN_TEMPLATE_HASHES = new Set([
   hash(CHAIN),
   hash(chainSourceFor(MAINNET_CHAIN_ID)),
-  // Before D158 (no markChanged after the receipt): Celo Sepolia, then Celo.
+  // Before D159 (no markChanged after the receipt): Celo Sepolia, then Celo.
   "6b3e857c02a9b67195573fd4afa2a298bc92324f45f40179ccebf4ba2aa3c03b",
   "243d89dfc51c49f6f3e45b2bd62bb1f821f312dbba5762be80b02abdf4e8e477",
 ]);

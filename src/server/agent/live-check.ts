@@ -1,5 +1,5 @@
 /**
- * The live-values build rule (D158), checked: values that can change must come from useRead or
+ * The live-values build rule (D159), checked: values that can change must come from useRead or
  * useCollection (which refresh by themselves after transactions and saved-data writes), and a page
  * that shows them needs a RefreshButton. These are notes, never errors: they're shown to the builder
  * when it runs the checks and logged for the owner, and a build never fails on them. Once real builds

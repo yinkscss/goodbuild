@@ -1,5 +1,5 @@
 /**
- * Live data for every generated app (D158): src/lib/goodbuild/live.ts.
+ * Live data for every generated app (D159): src/lib/goodbuild/live.ts.
  *
  * Before this, a number on the page (a balance, a pot, a score, a list) was fetched once and only
  * changed if the builder remembered to call that read's refresh() after a transaction, which it often

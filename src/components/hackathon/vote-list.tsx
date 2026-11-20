@@ -273,7 +273,7 @@ function StepsDialog({
             </button>
             {verify.note && <p role="alert" className="mt-2 text-xs text-danger">{verify.note}</p>}
           </Step>
-          <Step n={3} done={status.voted} title="Support GoodBuildIt on FlowState" note="We check your ballot and use its remaining votes for GoodBuildIt. This does not approve your friend’s project. We cover the network fee.">
+          <Step n={3} done={status.voted} title="Support GoodBuildIt and GoodCash on FlowState" note="We check your ballot and split its remaining votes equally between GoodBuildIt and our partner GoodCash. This does not approve your friend’s project. We cover the network fee.">
             {status.signedIn && status.verified ? <FlowstateVote onConfirmed={() => void refresh()} /> : <p className="text-xs text-grey-600">Finish the steps above first.</p>}
           </Step>
         </ol>

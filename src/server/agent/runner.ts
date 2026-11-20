@@ -1681,7 +1681,7 @@ async function runChecks(
     }
   }
   const blocking = types?.enforce ? typed : [];
-  // The live-values rule (D158): notes for the builder, never blocking.
+  // The live-values rule (D159): notes for the builder, never blocking.
   const live = liveValueIssues(files);
   if (live.length) {
     log(`! live values: ${plural(live.length, "note")}, not blocking`);

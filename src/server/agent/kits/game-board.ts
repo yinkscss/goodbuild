@@ -264,7 +264,7 @@ export const gameBoard: Kit = {
     "contracts/test/GameBoard.t.sol": GAME_BOARD_TEST,
     "src/game/chainBoard.ts": CHAIN_BOARD,
   },
-  // Before live data (D158): it didn't ride the shared refresh.
+  // Before live data (D159): it didn't ride the shared refresh.
   superseded: { "src/game/chainBoard.ts": ["59c371e5f074608943bbe769765851dec71239cb768277fa13d813a7caa6ba90"] },
   guide: GUIDE,
 };

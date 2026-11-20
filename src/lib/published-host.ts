@@ -5,6 +5,7 @@
  */
 
 const SLUG = /^[a-z0-9](?:[a-z0-9-]{1,38})[a-z0-9]$/;
+export const SUGGESTED_SLUG_MAX_LENGTH = 24;
 
 /** Infrastructure names, plus names a published app could use to pass as an official one. */
 const RESERVED = new Set([
@@ -36,7 +37,7 @@ export function slugFromName(name: string): string {
     .normalize("NFKD")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
-    .slice(0, 40)
+    .slice(0, SUGGESTED_SLUG_MAX_LENGTH)
     .replace(/-+$/, "");
   return slugProblem(base) ? `${base || "my"}-app`.replace(/^-+/, "") : base;
 }

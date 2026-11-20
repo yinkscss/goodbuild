@@ -148,7 +148,7 @@ import { subscribeChanges } from "../lib/goodbuild/live";
 
 /**
  * Run a loader now and keep it up to date while the page is open. It rides GoodBuild's shared refresh
- * (D158): after any transaction or saved-data write, a wallet switch, the tab coming back, and the slow
+ * (D159): after any transaction or saved-data write, a wallet switch, the tab coming back, and the slow
  * shared timer while the page is showing (one per tab, slower when nobody is using the page, none while
  * it's hidden). everyMs is the least time between timer fetches for this loader (never under the
  * shared timer). Returns the latest data, whether the first load is still going, and a problem to show.
@@ -228,7 +228,7 @@ export const dashboard: Kit = {
     "src/dash/Charts.tsx": CHARTS,
     "src/dash/live.ts": LIVE_TS,
   },
-  // Before live data (D158): it didn't ride the shared refresh.
+  // Before live data (D159): it didn't ride the shared refresh.
   superseded: { "src/dash/live.ts": ["ef9ac0d3351bfc378818a0330ea0e29d373990296a57d5bd2ec231212600f991"] },
   guide: GUIDE,
   replaces: ["recharts", "chart.js", "react-chartjs-2", "victory", "d3", "apexcharts", "react-apexcharts", "@nivo/core"],

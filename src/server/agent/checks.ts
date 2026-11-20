@@ -72,7 +72,7 @@ export const MAX_CONTRACT_BYTES = 24_576;
 /**
  * Files in one project, starter and kits included. It was 80 while the starter had 27 files; the ten
  * further UI pieces (D89) added 11, so this went up by as much (rounded) and an app has the room it had.
- * Live data (D158) added 2 (src/lib/goodbuild/live.ts and the refresh button), so it went up by 2.
+ * Live data (D159) added 2 (src/lib/goodbuild/live.ts and the refresh button), so it went up by 2.
  */
 export const MAX_FILES = 94;
 
