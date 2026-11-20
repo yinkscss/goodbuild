@@ -44,8 +44,19 @@ function Registration() {
   const [verifiedHere, setVerifiedHere] = React.useState(false);
   const verified = Boolean(user?.verified) || verifiedHere;
   const confettiRef = React.useRef<HTMLCanvasElement>(null);
-  const celebrate = React.useCallback(() => burst(confettiRef.current), []);
+  // Registering from a FUTMinna page makes the person a FUTMinna member (D161): at the email step, or
+  // when credits are claimed here. Only looking at the page changes nothing.
+  const wasRegistered = React.useRef(true);
+  const celebrate = React.useCallback(() => {
+    burst(confettiRef.current);
+    if (event !== "main" && !wasRegistered.current) void joinEvent(event);
+  }, [event]);
   const claim = useHackathonClaim(user && verified ? user.id : null, celebrate);
+  // Only the first registration counts: collecting the later deploy credits here doesn't join anyone.
+  const registeredNow = claim.status ? claim.status.registered : true;
+  React.useEffect(() => {
+    wasRegistered.current = registeredNow;
+  }, [registeredNow]);
   const { busy, note, showLinkGuide, verify } = useGoodIdVerify(
     () => setVerifiedHere(true),
     () => `${window.location.origin}${config.page}#register`,
@@ -63,6 +74,7 @@ function Registration() {
             "Could not load your signup. Please refresh to try again.",
           );
         let data = await res.json();
+        const fresh = !data && Boolean(user.email);
         if (!data && user.email) {
           const saved = await fetch("/api/hackathon/participants", {
             method: "POST",
@@ -78,7 +90,7 @@ function Registration() {
         if (!stopped && data) {
           setParticipant(data);
           setEmail(data.email);
-          if (event !== "main") await joinEvent(event);
+          if (fresh && event !== "main") await joinEvent(event);
         }
       } catch (e) {
         if (!stopped) setError((e as Error).message);

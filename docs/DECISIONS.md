@@ -1946,3 +1946,14 @@ The owner approved implementing all five parts of the first-build fix and openin
 - **Admin:** a second CSV export, `?event=futminna`. The claims report stays the main hackathon's, which is where all credits are.
 - **Known side effect:** FUTMinna registrants also appear in the main hackathon's signup CSV, because the shared credit claim needs that signup.
 - **Not verified** against a live database with real sign-ins. Tests: per-event entries, approvals, signups, snapshots and the one-hackathon rule on PGlite; the FUTMinna leaderboard component.
+
+### D161. FUTMinna members: whoever registers from a FUTMinna page opens on FUTMinna (20 Nov 2026; extends D160)
+- Decided by: the owner (people who register from the FUTMinna page should default to FUTMinna and not be confused by the main hackathon; they may still take part in it). Approach by Claude.
+- **The record:** a FUTMinna signup row (`hackathon_participants` under `futminna-2026`) marks a member. No new column or migration. It is written when someone:
+  - saves their email or starts their signup on a FUTMinna page;
+  - claims their first credits there;
+  - presses **Join the FUTMinna hackathon** on the in-app FUTMinna tab;
+  - enters a FUTMinna project.
+- **Not written by looking:** opening a FUTMinna page, or claiming the later deploy credits there, adds nobody. The in-app FUTMinna tab no longer joins main hackathon builders by itself; it shows the Join button.
+- **What members see:** `/home/hackathon` (the side menu and wallet menu both link there) sends them to `/home/hackathon/futminna`. The switch still offers the main hackathon; choosing it adds `?stay` and they stay there. Main hackathon builders see no change.
+- **Not changed:** credits (one grant per person, D160), each builder entering one hackathon, and the main hackathon's own pages.

@@ -29,35 +29,38 @@ export function GetStarted() {
   return <Signed key={user.id} userId={user.id} />;
 }
 
-/** True when this person's project is entered in FUTMinna and not in the main hackathon (D160). */
-function useFutminnaBuilder(userId: string) {
-  const [yes, setYes] = React.useState(false);
+/**
+ * Whether this person is a FUTMinna member (D161): they registered from a FUTMinna page, joined with the
+ * button, or entered a FUTMinna project. The record is their FUTMinna signup row. `null` while loading.
+ */
+function useFutminnaMember(userId: string) {
+  const [member, setMember] = React.useState<boolean | null>(null);
+  const check = React.useCallback(async () => {
+    const row = await fetch("/api/hackathon/participants?event=futminna", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null);
+    // The route answers with the main signup when there is no FUTMinna one, so check whose row it is.
+    setMember(row?.hackathon === HACKATHON_EVENTS.futminna.id);
+  }, []);
   React.useEffect(() => {
-    let stopped = false;
-    const mine = (q: string) =>
-      fetch(`/api/hackathon/projects?mine=1${q}`, { cache: "no-store" })
-        .then((r) => (r.ok ? r.json() : null))
-        .catch(() => null);
-    void Promise.all([mine(""), mine("&event=futminna")]).then(([main, futminna]) => {
-      if (!stopped && !main && futminna) setYes(true);
-    });
-    return () => {
-      stopped = true;
-    };
-  }, [userId]);
-  return yes;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- loads membership after mount
+    void check();
+  }, [check, userId]);
+  return { member, recheck: check };
 }
 
 function Signed({ userId }: { userId: string }) {
   const claim = useHackathonClaim(userId, () => undefined);
   const router = useRouter();
-  // A FUTMinna builder lands on their own hackathon's tabs; the switch brings them back here.
-  const futminnaBuilder = useFutminnaBuilder(userId);
+  // FUTMinna members land on their own hackathon's tabs (D161); the switch brings them back here.
+  const { member } = useFutminnaMember(userId);
+  // `?stay` is set by the hackathon switch: someone who picked the main hackathon stays on it.
+  const [stay] = React.useState(() => typeof window !== "undefined" && new URLSearchParams(window.location.search).has("stay"));
+  const toFutminna = Boolean(member) && !stay;
   React.useEffect(() => {
-    // `?stay` is set by the hackathon switch: someone who picked the main hackathon stays on it.
-    if (futminnaBuilder && !new URLSearchParams(window.location.search).has("stay"))
-      router.replace(HACKATHON_EVENTS.futminna.app);
-  }, [futminnaBuilder, router]);
+    if (toFutminna) router.replace(HACKATHON_EVENTS.futminna.app);
+  }, [toFutminna, router]);
+  if (toFutminna) return <p role="status">Opening your FUTMinna hackathon…</p>;
   if (!claim.status) return <p role="status">Loading your hackathon status…</p>;
   if (!claim.status.registered) return <RegisterSteps />;
   const { startCredits, deployCredits, deployPending, referralPending } = claim.status;
@@ -108,17 +111,53 @@ const FUTMINNA_NEXT = [
 
 /**
  * FUTMinna's Get started (D160). Registration and credits are the main hackathon's (one grant per
- * person), so the steps are the same; once registered, the person is on the FUTMinna list too.
+ * person), so the steps are the same, and registering here makes the person a FUTMinna member. Someone
+ * registered for the main hackathon only joins with a button, so just looking at this tab changes
+ * nothing about where their hackathon opens (D161).
  */
 function FutminnaSigned({ userId }: { userId: string }) {
   const claim = useHackathonClaim(userId, () => undefined);
+  const { member, recheck } = useFutminnaMember(userId);
+  const [joining, setJoining] = React.useState(false);
+  const [joinError, setJoinError] = React.useState("");
   const app = HACKATHON_EVENTS.futminna.app;
-  const registered = Boolean(claim.status?.registered);
-  React.useEffect(() => {
-    if (registered) void fetch("/api/hackathon/participants?event=futminna&join=1", { method: "POST" }).catch(() => undefined);
-  }, [registered]);
-  if (!claim.status) return <p role="status">Loading your hackathon status…</p>;
+  async function join() {
+    setJoining(true);
+    setJoinError("");
+    try {
+      const res = await fetch("/api/hackathon/participants?event=futminna&join=1", { method: "POST" });
+      const row = res.ok ? await res.json() : null;
+      if (!row) throw new Error("Add your email on the main hackathon’s Get started first, then join here.");
+      await recheck();
+    } catch (e) {
+      setJoinError((e as Error).message);
+    } finally {
+      setJoining(false);
+    }
+  }
+  if (!claim.status || member === null) return <p role="status">Loading your hackathon status…</p>;
   if (!claim.status.registered) return <RegisterSteps />;
+  if (!member)
+    return (
+      <div className="rounded-card bg-surface p-8 shadow-card">
+        <p className="text-[11px] font-semibold uppercase tracking-[.18em] text-violet">FUTMinna hackathon</p>
+        <h2 className="display mt-3 text-[24px] font-extrabold sm:text-[32px]">FUTMinna student? Join this hackathon.</h2>
+        <p className="mt-3 max-w-xl text-grey-600">
+          You’re registered for the main hackathon. FUTMinna has its own leaderboard and a ₦
+          {FUTMINNA.scholarshipNaira.toLocaleString("en-US")} scholarship. Your credits carry over. Once you join, your hackathon
+          opens here, and you can still switch back.
+        </p>
+        <button
+          type="button"
+          disabled={joining}
+          onClick={() => void join()}
+          className="mt-5 rounded-full bg-violet px-6 py-3 text-sm font-medium text-white outline-none focus-visible:shadow-focus disabled:opacity-60"
+        >
+          {joining ? "Joining…" : "Join the FUTMinna hackathon"}
+        </button>
+        {joinError && <p role="alert" className="mt-3 text-sm text-danger">{joinError}</p>}
+      </div>
+    );
   const { startCredits, deployCredits, deployPending } = claim.status;
   return (
     <div className="grid gap-4">
