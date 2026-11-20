@@ -89,7 +89,10 @@ export const hackathonApprovals = pgTable("hackathon_approvals", {
   entryId: uuid("entry_id").notNull().references(() => hackathonEntries.id, { onDelete: "cascade" }),
   goodidRoot: text("goodid_root").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-}, t => [uniqueIndex("hackathon_approvals_human_unique").on(t.entryId, t.goodidRoot)]);
+}, (t) => [
+  index("hackathon_approvals_entry_root_idx").on(t.entryId, t.goodidRoot),
+  index("hackathon_approvals_root_entry_idx").on(t.goodidRoot, t.entryId),
+]);
 
 /**
  * FlowState vote state per account (D126), for everyone who votes through GoodBuild's dialog, with or

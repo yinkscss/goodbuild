@@ -4,7 +4,7 @@ export const MAX_APPROVALS_PER_PERSON = 3;
 export interface VoteStatus {
   max: number;
   used: number;
-  /** Entries this person has approved. */
+  /** One entry ID per approval unit; an ID can appear more than once. */
   entryIds: string[];
   signedIn: boolean;
   verified: boolean;
