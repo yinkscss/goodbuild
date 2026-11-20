@@ -3,7 +3,7 @@
 Written 4 Nov 2026 at the end of the first build session (claude.ai), for whoever continues in Claude Code. Read CLAUDE.md and docs/BUILD_PROMPT_STAGE1.md first; this file only covers where things stand.
 
 ## Harness v2, PR 1: Sonnet plans and writes contracts, the builder checks its own work (19 Nov 2026, D152, branch `claude/elegant-pasteur-j73em3`)
-Behind `HARNESS_V2=off|admins|on`, **off by default**, so merging changes nothing for users. With it on:
+**On for every user since 20 Nov 2026** (hard-coded; `HARNESS_V2` no longer does anything). What it does:
 - a spec call on Sonnet writes `src/spec.json` (pages, direction, contracts, acceptance flows);
 - Sonnet writes and tests the contracts, which are compiled before DeepSeek writes the front end;
 - the first fix goes to the model that wrote the failing files;

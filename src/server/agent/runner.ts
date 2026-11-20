@@ -8,7 +8,7 @@ import { designTemplateFiles } from "./design-templates";
 import { templateImageFiles } from "./template-images";
 import { TEMPLATE_MINIPAY_NOTE, gameTemplateById, withGameTemplate } from "./game-templates";
 import type { Db } from "@/server/db/client";
-import { buildDeliveries, buildDrafts, messages, projects, users } from "@/server/db/schema";
+import { buildDeliveries, buildDrafts, messages, projects } from "@/server/db/schema";
 import { checkApp, checkContracts, formatIssues, mentionsGd, mentionsNativeCelo, type CheckIssue, type CheckReport, type ContractCheckOptions } from "./checks";
 import { runContractTests } from "./contract-tests";
 import { createHash } from "node:crypto";
@@ -1318,9 +1318,9 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     const latest = latestIntake(chat);
     const brief = planBrief(latest, firstBuild);
     const appInfo = input.mode === "build" ? miniAppInfo(latest, project.name) : undefined;
-    // Harness v2 (D152) is decided here, once, and saved with the setup.
-    const [owner] = await db.select({ wallet: users.wallet }).from(users).where(eq(users.id, input.userId)).limit(1);
-    const v2 = input.mode === "build" && usesHarnessV2(owner?.wallet);
+    // Harness v2 (D152) is every build's harness. Decided here and saved with the setup, so a turn that began
+    // on v1 before this shipped resumes on v1.
+    const v2 = input.mode === "build" && usesHarnessV2();
     // Plan mode may ask its own questions, but never twice in a row (D103). This turn's own messages are already in the chat.
     const canAsk = input.mode === "plan" && !askedJustBefore(chat.filter((m) => m.id !== assistantId && m.id !== userMessageId));
     const chosenPalette = firstBuild ? paletteById(brief.paletteId) : undefined;
