@@ -86,6 +86,7 @@ export function DeployProvider({
         deploy={deploy}
         chainId={chainId}
         switching={switching}
+        busy={busy}
         onSwitchNetwork={
           onSwitchChain &&
           (async (next) => {
