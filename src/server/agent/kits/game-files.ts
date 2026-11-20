@@ -58,6 +58,7 @@ export const LEADERBOARD_TS = `import { useCallback, useEffect, useRef, useState
 
 import { collection, currentWallet, signIn } from "../lib/db";
 import { errorMessage } from "../lib/format";
+import { subscribeChanges } from "../lib/goodbuild/live";
 import { isMiniPay, subscribeWallet, walletState } from "../lib/goodbuild/wallet";
 
 /**
@@ -153,8 +154,10 @@ export function useLeaderboard(options: { collection?: string; chain?: ChainBoar
   const [account, setAccount] = useState<string | null>(() => walletState().account?.toLowerCase() ?? null);
   useEffect(() => subscribeWallet(() => setAccount(walletState().account?.toLowerCase() ?? null)), []);
 
+  const loaded = useRef(false);
   const load = useCallback(async () => {
-    setLoading(true);
+    // Only the first load shows the skeleton; later ones keep the board on screen.
+    if (!loaded.current) setLoading(true);
     setError(null);
     try {
       const chain = chainRef.current;
@@ -175,6 +178,7 @@ export function useLeaderboard(options: { collection?: string; chain?: ChainBoar
         chain ? chain.top().catch(() => [] as BoardEntry[]) : Promise.resolve([] as BoardEntry[]),
       ]);
       setTop(merge([...saved, ...onChain], size));
+      loaded.current = true;
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -185,6 +189,10 @@ export function useLeaderboard(options: { collection?: string; chain?: ChainBoar
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Someone's new score (a saved-data write or a MiniPay transaction), the tab coming back, a refresh
+  // button: fetch again (D159). No timer: scores change when a game ends, not every few seconds.
+  useEffect(() => subscribeChanges(() => load(), { on: ["data", "tx", "wallet", "focus", "manual"] }), [load]);
 
   /** Post a finished run. Asks for the wallet when needed. Never throws: read the result and board.error. */
   const post = useCallback(

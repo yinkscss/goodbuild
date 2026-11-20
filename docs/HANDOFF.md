@@ -2,6 +2,9 @@
 
 Written 4 Nov 2026 at the end of the first build session (claude.ai), for whoever continues in Claude Code. Read CLAUDE.md and docs/BUILD_PROMPT_STAGE1.md first; this file only covers where things stand.
 
+## Live values in every app: one shared refresh and a refresh button (20 Nov 2026, D159, branch `claude/vigilant-cerf-4ogmnl`)
+Generated apps now update by themselves after a confirmed transaction, a saved-data write, a wallet switch and the tab coming back, and contract reads also on one slow shared timer per tab (15 s, 60 s when idle, none when hidden, jittered), so other people's changes show without a reload. Saved data never polls on the timer. New: `src/lib/goodbuild/live.ts` (GoodBuild-owned), `RefreshButton` (`src/components/ui/refresh-button.tsx`), `useRead` keeps the old value while `refreshing`. A build rule in the prompt, and a check that notes (never blocks) reads in `useEffect`, page reloads and a missing refresh button: watch the worker log for `! live values:`. Untouched `hooks.ts`/`chain.ts` upgrade on the next turn. No migration. **UNVERIFIED** with a real model, on a real phone, in MiniPay, and the RPC load with many tabs.
+
 ## One-tap vote split with GoodCash (20 Nov 2026, D158, branch `claude/nice-brown-jb0s8r`)
 Every vote button (invite step 3, /hackathon, the vote list, the free-credits card) now splits all of the person's available FlowState points 50/50 between GoodBuildIt and partner GoodCash in one transaction with one wallet confirmation. It falls back to GoodBuildIt only if GoodCash stops being a recipient or the ballot has no room for both. Someone who voted earlier but has points left gets them split on the next tap. Credits, invites and ambassador earnings still depend on GoodBuildIt support only. No migration. **UNVERIFIED** against live Celo/FlowState: after the deploy, vote once and check both projects' totals on FlowState.
 

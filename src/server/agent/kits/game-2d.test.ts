@@ -957,9 +957,15 @@ describe("the 2D games kit", { timeout: 120_000 }, () => {
     const ok = await runCheck(withScoresRule(project(BOARD_GAME)));
     expect(ok.issues).toEqual([]);
     expect(ok.note).toMatch(/a score was posted and shown on the board/);
-    // PostScore and Leaderboard on two different boards: the post works, but the board on screen never hears of it.
+    // PostScore and Leaderboard on two different boards: since live data (D159) the post's saved-data
+    // write refreshes every board on the page, so the one on screen shows it too.
     const split = BOARD_GAME.replace("  const board = useLeaderboard();", "  const board = useLeaderboard();\n  const other = useLeaderboard();").replace("<PostScore board={board}", "<PostScore board={other}");
-    const r = await runCheck(withScoresRule(project(split)));
+    const shared = await runCheck(withScoresRule(project(split)));
+    expect(shared.issues).toEqual([]);
+    // A board on screen that never shows what's posted is still caught.
+    const frozen = BOARD_GAME.replace("  const board = useLeaderboard();", "  const live = useLeaderboard();\n  const board = { ...live, top: [] as typeof live.top, mine: undefined };").replace("<PostScore board={board}", "<PostScore board={live}");
+    expect(frozen).not.toEqual(BOARD_GAME);
+    const r = await runCheck(withScoresRule(project(frozen)));
     expect(r.issues.map((i) => i.message).join(" ")).toMatch(/didn't put it on the leaderboard/);
   });
 

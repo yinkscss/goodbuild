@@ -144,10 +144,14 @@ export function DataTable({ columns, rows }: { columns: string[]; rows: ReactNod
 `;
 
 const LIVE_TS = `import { useCallback, useEffect, useRef, useState } from "react";
+import { subscribeChanges } from "../lib/goodbuild/live";
 
 /**
- * Run a loader now and again every few seconds while the page is open (and visible). Returns the
- * latest data, whether the first load is still going, and a problem to show if it failed.
+ * Run a loader now and keep it up to date while the page is open. It rides GoodBuild's shared refresh
+ * (D159): after any transaction or saved-data write, a wallet switch, the tab coming back, and the slow
+ * shared timer while the page is showing (one per tab, slower when nobody is using the page, none while
+ * it's hidden). everyMs is the least time between timer fetches for this loader (never under the
+ * shared timer). Returns the latest data, whether the first load is still going, and a problem to show.
  * Use it with publicClient reads from src/lib/chain.ts, or with the app's saved data.
  */
 export function useLive<T>(load: () => Promise<T>, everyMs = 15_000) {
@@ -168,13 +172,20 @@ export function useLive<T>(load: () => Promise<T>, everyMs = 15_000) {
     }
   }, []);
 
+  const last = useRef(0);
+  const run = useCallback(async () => {
+    last.current = Date.now();
+    await refresh();
+  }, [refresh]);
+
   useEffect(() => {
-    void refresh();
-    const timer = setInterval(() => {
-      if (document.visibilityState === "visible") void refresh();
-    }, everyMs);
-    return () => clearInterval(timer);
-  }, [refresh, everyMs]);
+    void run();
+    return subscribeChanges((kinds) => {
+      // A timer tick alone waits for everyMs; anything else (a transaction, a write, a button) fetches now.
+      if (kinds.size === 1 && kinds.has("tick") && Date.now() - last.current < everyMs * 0.9) return;
+      return run();
+    });
+  }, [run, everyMs]);
 
   return { data, loading, problem, refresh };
 }
@@ -199,7 +210,7 @@ export function compact(n: number): string {
 
 const GUIDE = `Dashboards. The kit's files are in src/dash/: use them, don't rewrite them.
 - Charts.tsx has Stat (one number), LineChart and BarChart (a list of { label, value } points), ShareBars (shares of a whole: use this, not a pie) and DataTable. They are plain SVG and Tailwind, sized to the width they are given, with no package behind them. Don't add a charting package.
-- live.ts has useLive(load, everyMs) which loads now and refreshes while the page is open, perDay(items) which sums values by day from timestamps in seconds, and compact(n) for big numbers.
+- live.ts has useLive(load, everyMs) which loads now and refreshes while the page is open (after transactions and saved-data writes too, through GoodBuild's shared refresh); put <RefreshButton /> (src/components/ui/refresh-button.tsx) in the page header, perDay(items) which sums values by day from timestamps in seconds, and compact(n) for big numbers.
 - Real numbers only. A dashboard reads what is true: contract state through publicClient.readContract, past activity through publicClient.getLogs on the contract's events (read it in chunks of at most 5,000 blocks, newest first, and stop when it has enough), or the app's saved data through useDb. Never hard-code numbers to look good. If the project has no data yet, show "Nothing to show yet." plainly. In the preview there is no chain, so the page must still render with that message and no error.
 - Amounts: format token amounts with formatUnits and the token's real decimals, then compact() for big ones. Show G$ amounts as "G$ 1,200".
 - Lay it out for a phone first: one column of Stat cards in a grid-cols-2 row at the top (the two numbers that matter most), then the main chart, then the table. At sm and up, use more columns. Tables scroll sideways inside DataTable.
@@ -217,6 +228,8 @@ export const dashboard: Kit = {
     "src/dash/Charts.tsx": CHARTS,
     "src/dash/live.ts": LIVE_TS,
   },
+  // Before live data (D159): it didn't ride the shared refresh.
+  superseded: { "src/dash/live.ts": ["ef9ac0d3351bfc378818a0330ea0e29d373990296a57d5bd2ec231212600f991"] },
   guide: GUIDE,
   replaces: ["recharts", "chart.js", "react-chartjs-2", "victory", "d3", "apexcharts", "react-apexcharts", "@nivo/core"],
 };

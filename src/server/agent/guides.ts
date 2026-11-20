@@ -105,6 +105,7 @@ export const GUIDES: Guide[] = [
     await notes.remove(record.key);
     const bookings = useCollection<Booking>("bookings");   // a form sent without sign-in: no enabled check needed to add
     await bookings.add({ name, phone, day, time });        // a taken slot throws with code "duplicate": say it's taken
+  Lists stay current by themselves: any saved-data write on the page, a wallet switch or the tab coming back fetches every list again (records stay on screen while refreshing is true), so never call refresh() after add, put or remove. Other people's new records appear on those moments or with <RefreshButton read={notes} /> in the list's header; only a screen that must feel live (a lobby, a chat) adds liveEvery (see the multiplayer guide).
   notes.records is newest first; each has key, owner (lowercase, or null when you only see its public fields), value, createdAt, updatedAt. The owner removes someone else's record with remove(record.key, record.owner). Show a public feed with useCollection<Post>("posts") and no sign-in; add { owner: address } for one person's records. For one record outside React: const r = await collection<Profile>("profiles").get("me") from src/lib/db.ts (null if there's none; { owner } reads someone else's public record).
 - Names: collections use lowercase letters, numbers, - and _, starting with a letter. Keys use letters, numbers, _ . : -, starting with a letter or number, and at most 128 characters.
 - Limits: 16 KB per value, 1,000 records and 2 MB per wallet, 20,000 records and 20 MB per app. Values are JSON: no files or images. Writes throw when a limit is reached, with a message you can show: wrap them in try/catch and show errorMessage(e) in a Notice. list() returns 50 at a time, 100 at most; pass nextCursor as cursor for more.
@@ -164,7 +165,7 @@ export const GUIDES: Guide[] = [
     name: "dashboard-and-data",
     when: "stats, balances, leaderboards, history, lists or tables of on-chain data",
     body: `Dashboards and on-chain data.
-- Read through the contract's view functions with useRead (from src/lib/hooks.ts); refresh after each write. Prefer bounded views (recent(limit), page(offset, limit)) over unbounded arrays.
+- Read through the contract's view functions with useRead (from src/lib/hooks.ts); they refresh by themselves after each confirmed write, so don't call refresh(). Prefer bounded views (recent(limit), page(offset, limit)) over unbounded arrays.
 - Stats row: 2 to 4 cards (grid-cols-2 sm:grid-cols-4), label text-xs text-muted-foreground, value text-2xl font-semibold tabular-nums, formatted with formatAmount; a Skeleton while loading and "–" when the contract isn't deployed.
 - Lists and leaderboards: rows with shortAddress, amount right-aligned tabular-nums, relative time if available; highlight the connected account's row (bg-accent/5). Empty state with a short sentence and the main action.
 - Tables only on wide screens; on mobile, render each row as a stacked card.
@@ -276,7 +277,7 @@ export const GUIDES: Guide[] = [
 - Error: Notice tone="danger" with errorMessage(e) in plain words and a retry (refresh from useRead, or re-enable the form). Keep the rest of the page usable. A user rejecting the wallet prompt is not an error: show nothing or a quiet "Cancelled".
 - Not deployed: when the contract address is undefined, a friendly Notice ("Deploy the contract to go live") with the page shown in a disabled state and placeholder values labelled as examples.
 - Not connected: actions that need a wallet show the ConnectButton in place of the action button, with one line explaining why. ConnectButton opens GoodBuild's wallet list (browser wallets, phone wallets by WalletConnect once published, MiniPay on its own); closing the list is not an error.
-- Success: Notice tone="success" after a write with what happened ("Tipped 50 G$"), then refresh reads. Clear the form.
+- Success: Notice tone="success" after a write with what happened ("Tipped 50 G$"). Reads refresh by themselves; keep their old values on screen while they do. Clear the form.
 - 404 page and a fallback for unknown routes (pages-and-routing).`,
   },
   {

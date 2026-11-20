@@ -173,6 +173,7 @@ const FEE_COINS = JSON.stringify(
 const CHAIN_BOARD = `import { createWalletClient, custom, erc20Abi, type Abi, type Address } from "viem";
 
 import { chain, connectWallet, publicClient, walletProvider } from "../lib/chain";
+import { markChanged } from "../lib/goodbuild/live";
 import { isMiniPay } from "../lib/goodbuild/wallet";
 import type { BoardEntry, ChainBoard } from "./leaderboard";
 
@@ -214,6 +215,7 @@ export function gameBoard(abi: Abi | readonly unknown[], address: Address | unde
       } as never);
       const receipt = await publicClient.waitForTransactionReceipt({ hash });
       if (receipt.status !== "success") throw new Error("The score wasn't saved. Nothing was charged except the network fee. Please try again.");
+      void markChanged("tx");
       return true;
     },
   };
@@ -262,5 +264,7 @@ export const gameBoard: Kit = {
     "contracts/test/GameBoard.t.sol": GAME_BOARD_TEST,
     "src/game/chainBoard.ts": CHAIN_BOARD,
   },
+  // Before live data (D159): it didn't ride the shared refresh.
+  superseded: { "src/game/chainBoard.ts": ["59c371e5f074608943bbe769765851dec71239cb768277fa13d813a7caa6ba90"] },
   guide: GUIDE,
 };

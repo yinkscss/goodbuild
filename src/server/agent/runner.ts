@@ -9,6 +9,7 @@ import { templateImageFiles } from "./template-images";
 import { TEMPLATE_MINIPAY_NOTE, gameTemplateById, withGameTemplate } from "./game-templates";
 import type { Db } from "@/server/db/client";
 import { buildDeliveries, buildDrafts, messages, projects } from "@/server/db/schema";
+import { liveValueIssues } from "./live-check";
 import { checkApp, checkContracts, formatIssues, mentionsGd, mentionsNativeCelo, type CheckIssue, type CheckReport, type ContractCheckOptions } from "./checks";
 import { runContractTests } from "./contract-tests";
 import { createHash } from "node:crypto";
@@ -1680,14 +1681,21 @@ async function runChecks(
     }
   }
   const blocking = types?.enforce ? typed : [];
+  // The live-values rule (D159): notes for the builder, never blocking.
+  const live = liveValueIssues(files);
+  if (live.length) {
+    log(`! live values: ${plural(live.length, "note")}, not blocking`);
+    for (const e of live.slice(0, 3)) log(`! ${e.file.split("/").pop()}${e.line ? `:${e.line}` : ""} ${e.message.slice(0, 160)}`);
+  }
+  const notes = [...(typed.length && !types?.enforce ? typed : []), ...live];
   return {
     ok: contracts.ok && app.ok && runtime.length === 0 && blocking.length === 0,
     errors: [...contracts.errors, ...app.errors, ...blocking, ...runtime],
     warnings: contracts.warnings,
     contracts: contracts.contracts,
     compilerVersion: contracts.compilerVersion,
-    // Type errors in "warn" mode: shown to the builder when it asks, never held against the build.
-    ...(typed.length && !types?.enforce ? { notes: typed } : {}),
+    // Type errors in "warn" mode and live-value notes: shown to the builder when it asks, never held against the build.
+    ...(notes.length ? { notes } : {}),
   };
 }
 
