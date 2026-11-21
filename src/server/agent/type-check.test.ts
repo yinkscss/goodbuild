@@ -5,7 +5,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { starterFiles } from "./template";
-import { typeCheck, typeCheckMode } from "./type-check";
+import { isViemLooseMisread, typeCheck, typeCheckMode } from "./type-check";
 
 const page = (body: string, imports = "") => `${imports}\nexport default function App() {\n${body}\n}\n`;
 
@@ -51,6 +51,39 @@ describe("typeCheck", { timeout: 120_000 }, () => {
     expect(at(7)).toMatch(/'number' is not assignable to parameter of type 'bigint'/);
     expect(at(7)).toMatch(/Cannot find name 'total'/);
     expect(r.note).toBe("5 type errors");
+  });
+
+  it("passes valid wallet code the builder writes, which viem's types misread with the loose settings (D163)", async () => {
+    // The first live run's false alarm: a hook calling the wallet directly, plus the kit's own hooks.
+    const hook = `import { useEffect, useState } from "react";
+import { walletProvider, chain } from "./chain";
+
+export function useChainStatus() {
+  const [chainId, setChainId] = useState<number | null>(null);
+  useEffect(() => {
+    const provider = walletProvider();
+    if (!provider) return;
+    void provider.request({ method: "eth_chainId" }).then((hex) => setChainId(parseInt(hex as string, 16)));
+  }, []);
+  const switchToCelo = async () => {
+    await walletProvider()?.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0x" + chain.id.toString(16) }] });
+  };
+  return { chainId, onCelo: chainId === chain.id, switchToCelo };
+}
+`;
+    const card = page(
+      "  const { account, onRightNetwork, wrongNetwork, switchNetwork, networkName } = useWallet();\n  const gd = useGdBalance();\n  const s = useChainStatus();\n  return <main>{account}{onRightNetwork ? networkName : null}{wrongNetwork ? <button onClick={switchNetwork}>Switch</button> : null}{gd.formatted}{String(s.onCelo)}</main>;",
+      'import { useWallet } from "./lib/useWallet";\nimport { useGdBalance } from "./lib/goodbuild/gooddollar";\nimport { useChainStatus } from "./lib/useChainStatus";',
+    );
+    const r = await typeCheck({ ...starterFiles(), "src/lib/useChainStatus.ts": hook, "src/App.tsx": card });
+    expect(r.ran).toBe(true);
+    expect(r.issues).toEqual([]);
+  });
+
+  it("drops only viem's two loose-mode misreads", () => {
+    expect(isViemLooseMisread("Argument of type '{ method: string; }' is not assignable to parameter of type '{ method: unknown; params: unknown; }'. Property 'params' is missing")).toBe(true);
+    expect(isViemLooseMisread("Argument of type '{ message: string; }' is not assignable to parameter of type 'SignMessageParameters<{ address: `0x${string}`; type: \"json-rpc\"; }>'. Property 'account' is missing in type '{ message: string; }' but required in type 'SignMessageParameters<{ address: `0x${string}`; type: \"json-rpc\"; }>'.")).toBe(true);
+    expect(isViemLooseMisread("Property 'getBlokNumber' does not exist on type 'PublicClient'.")).toBe(false);
   });
 
   it("is skipped, not failed, where the packages' types aren't installed", async () => {

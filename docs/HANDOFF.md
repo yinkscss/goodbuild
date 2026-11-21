@@ -2,6 +2,13 @@
 
 Written 4 Nov 2026 at the end of the first build session (claude.ai), for whoever continues in Claude Code. Read CLAUDE.md and docs/BUILD_PROMPT_STAGE1.md first; this file only covers where things stand.
 
+## The wallet milestone is plug and play (21 Nov 2026, D163, branch `claude/elegant-pasteur-j73em3`)
+- `useWallet()` now gives the network (`chainId`, `onRightNetwork`, `wrongNetwork`, `switchNetwork()`), and `ConnectButton` offers "Switch to <network>".
+- `src/lib/goodbuild/gooddollar.ts` gives the real G$ address for the project's network and `useGdBalance()`.
+- The type check no longer misreads valid wallet code.
+- A fix doesn't chase leftover notes and takes at most 12 rounds.
+- The build refuses typed-in addresses.
+
 ## The builder fixes its own mistakes and spends fewer tokens (21 Nov 2026, D162, branch `claude/elegant-pasteur-j73em3`)
 After the failed savings-goals run. Plan: [BUILDER_RELIABILITY_PLAN.md](BUILDER_RELIABILITY_PLAN.md).
 - **Tokens:** every build's log ends with a token report by step and model, also saved on the turn.

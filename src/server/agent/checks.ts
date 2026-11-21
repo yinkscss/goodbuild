@@ -679,6 +679,8 @@ const BARE_OKXWALLET = /(?<![\w$.])okxwallet\s*\??\./;
  */
 export function walletIssues(files: Record<string, string>): CheckIssue[] {
   const issues: CheckIssue[] = [];
+  // A kit's own files carry the known addresses GoodBuild put there (MiniPay's stablecoins, say).
+  const kitFiles = new Set(kitsOf(files).flatMap((k) => Object.keys(k.files)));
   for (const [file, content] of Object.entries(files)) {
     if (!/\.(tsx?|jsx?)$/.test(file) || file.startsWith(WALLET_DIR) || file.startsWith(PLATFORM_DIR) || LEGACY_WALLET_FILES.has(file)) continue;
     const m = WINDOW_ETHEREUM.exec(content) ?? BARE_OKXWALLET.exec(content);
@@ -690,9 +692,34 @@ export function walletIssues(files: Record<string, string>): CheckIssue[] {
         source: "imports",
       });
     }
+    if (file.startsWith("src/") && !DATA_HELPER_FILES.has(file) && !kitFiles.has(file)) {
+      for (const a of content.matchAll(TYPED_ADDRESS)) {
+        if (/^0x(?:0{40}|0{36}dead)$/i.test(a[1])) continue;
+        // Only an address code will use as a token or contract: sample addresses in demo data stay allowed.
+        const lineStart = content.lastIndexOf("\n", a.index) + 1;
+        const before = content.slice(lineStart, a.index);
+        const after = content.slice(a.index + a[0].length, a.index + a[0].length + 30);
+        if (!USED_AS_TOKEN_OR_CONTRACT.test(before) && !/\baddress\s*:\s*$/.test(before) && !/^\s*as\s+(?:const\s+as\s+)?Address\b/.test(after)) continue;
+        issues.push({
+          file,
+          line: content.slice(0, a.index).split("\n").length,
+          message: `Don't type an address (${a[1].slice(0, 10)}…) into the app: a typed address is easy to get wrong and breaks on another network. For G$ use gdAddress or useGdBalance() from src/lib/goodbuild/gooddollar; for this app's contracts, <Name>Address[chain.id] from ./contracts; for the visitor, the account from useWallet().`,
+          source: "imports",
+        });
+        break;
+      }
+    }
   }
   return issues;
 }
+
+/**
+ * A token or contract address typed into the front end (D163). In the first live run the builder typed the G$ address from
+ * memory, wrong and one character short, and the balance broke. GoodBuild supplies every address an app needs.
+ */
+const TYPED_ADDRESS = /["'`](0x[0-9a-fA-F]{38,42})["'`]/g;
+const USED_AS_TOKEN_OR_CONTRACT = /token|contract|\bg_?d\b|g_?dollar|gooddollar|usdc|cusd|usdt|stable|erc20/i;
+const DATA_HELPER_FILES = new Set(["src/lib/db.ts", "src/lib/useDb.ts"]);
 
 const COLLECTION_CALL = /\b(?:collection|useCollection)(?:<[^>()]*>)?\(\s*["'`]([^"'`]*)["'`]/g;
 
