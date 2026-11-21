@@ -45,3 +45,19 @@ it("shows the out-of-credits card when even the credits can't cover the fix", as
   await waitFor(() => expect(result.current.needsCredits).toBe(true));
   expect(result.current.error).toBeNull();
 });
+
+it("keeps the preview's crash for the next try when a retry is turned away, and says why (D163)", async () => {
+  let answer: () => Response = () => Response.json({ error: "one_build_at_a_time", message: "Another of your builds is running." }, { status: 402 });
+  const fetcher = vi.fn(async (url: string) => (url.endsWith("/retry") ? answer() : Response.json(initial)));
+  vi.stubGlobal("fetch", fetcher);
+  const { result } = renderHook(() => useWorkspace(initial));
+  act(() => result.current.onPreviewError({ title: "TypeError", message: "x is undefined" }, 1));
+  await waitFor(() => expect(result.current.previewError?.message).toBe("x is undefined"));
+  act(() => result.current.retry("failed-job", false, "The preview shows this error. Fix it:\nTypeError\nx is undefined"));
+  await waitFor(() => expect(result.current.error).toBe("Another of your builds is running."));
+  expect(result.current.needsCredits).toBe(false);
+  expect(result.current.previewError?.message).toBe("x is undefined");
+  answer = () => Response.json({ jobId: "child" }, { status: 202 });
+  act(() => result.current.retry("failed-job", false, "The preview shows this error. Fix it:\nTypeError\nx is undefined"));
+  await waitFor(() => expect(result.current.previewError).toBeNull());
+});

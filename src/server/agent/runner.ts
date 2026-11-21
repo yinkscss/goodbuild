@@ -533,7 +533,8 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     /** Record next-step chips from suggest_next. Fix passes (quiet) don't change them. */
     const takeSuggestions = (items: string[] | undefined, quiet: boolean, said?: { works?: string[]; later?: string }) => {
       if (!items?.length || quiet) return;
-      if (said?.works?.length) builderSaid = { works: said.works, later: said.later };
+      // The latest accepted reply speaks for the build, even when it leaves the list out (D163).
+      builderSaid = { works: said?.works, later: said?.later };
       record.suggestions = items;
       out({ type: "suggestions", items });
     };
@@ -1282,7 +1283,12 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       out({ type: "text_set", text });
     }
     // D163: a finished build with the builder's list of what works shows a headline and that list.
-    if (report.ok && !record.outcome && builderSaid.works?.length) record.outcome = { headline: firstSentence(text).slice(0, 200), works: builderSaid.works, ...(builderSaid.later ? { later: builderSaid.later } : {}) };
+    if (report.ok && !record.outcome && builderSaid.works?.length) {
+      const headline = firstSentence(text).slice(0, 200);
+      // The rest of the reply (deploy details such as constructor arguments) shows under the headline.
+      const detail = text.replace(/\s+/g, " ").trim().slice(headline.length).trim();
+      record.outcome = { headline, works: builderSaid.works, ...(detail ? { detail } : {}), ...(builderSaid.later ? { later: builderSaid.later } : {}) };
+    }
     summary = firstLine(text) || summary;
     emit({ type: "snapshot", text, record: structuredClone(record) });
     if (save) record.changes = ws.netChanges().filter((c) => !c.path.startsWith(PLATFORM_DIR));

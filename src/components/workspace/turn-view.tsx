@@ -440,6 +440,7 @@ export function ReviewNote({ record, onFix, disabled }: { record: TurnRecord; on
 export function FinishedBuild({
   record,
   headline,
+  detail,
   works,
   later,
   chainId,
@@ -447,9 +448,14 @@ export function FinishedBuild({
   disabled,
   onUndo,
   checking,
+  checkFailed,
 }: {
   record: TurnRecord;
   headline: string;
+  /** The rest of the reply, such as what deploying will ask for. */
+  detail?: string;
+  /** Why the preview check has no result, when it has none. */
+  checkFailed?: string | null;
   works: string[];
   later?: string;
   chainId: number;
@@ -474,6 +480,7 @@ export function FinishedBuild({
           Ready to try
         </span>
         <p className="text-[17px] leading-snug font-semibold text-balance">{headline}</p>
+        {detail && <p className="text-sm leading-relaxed text-grey-600">{detail}</p>}
       </div>
       <ul className="rounded-block bg-[#FAFAFA] px-4 py-1.5" aria-label="What works">
         {works.map((w) => (
@@ -534,8 +541,12 @@ export function FinishedBuild({
             <span className="inline-flex items-center gap-1">
               <Eye className="size-3.5 animate-pulse motion-reduce:animate-none" aria-hidden /> Checking the preview…
             </span>
+          ) : checkFailed ? (
+            <span className="inline-flex items-center gap-1">
+              <Eye className="size-3.5" aria-hidden /> {checkFailed}
+            </span>
           ) : null}
-          {looked || checking ? <span className="text-grey-400" aria-hidden>·</span> : null}
+          {looked || checking || checkFailed ? <span className="text-grey-400" aria-hidden>·</span> : null}
           {stepCount > 0 && (
             <button type="button" aria-expanded={showSteps} onClick={() => setShowSteps((v) => !v)} className="rounded-full underline decoration-grey-200 underline-offset-[3px] outline-none hover:text-violet focus-visible:shadow-focus">
               {stepCount} {stepCount === 1 ? "step" : "steps"}
@@ -621,6 +632,7 @@ export function TurnView({
       <FinishedBuild
         record={record}
         headline={outcome.headline || text.split(/(?<=[.!?])\s/)[0]}
+        detail={outcome.detail}
         works={outcome.works}
         later={outcome.later}
         chainId={chainId}
@@ -628,6 +640,7 @@ export function TurnView({
         disabled={fixDisabled}
         onUndo={onUndo}
         checking={checking}
+        checkFailed={checkFailed}
       />
     );
   }

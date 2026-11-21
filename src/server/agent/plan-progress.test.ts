@@ -31,6 +31,14 @@ describe("a milestone's end in plain words (D163)", () => {
   });
 });
 
+describe("the builder's list of what works (D163)", () => {
+  it("strips list markers but keeps numbers that belong to the words", async () => {
+    const { Workspace } = await import("./workspace");
+    const out = new Workspace({}).execute("suggest_next", JSON.stringify({ suggestions: ["Next"], works: ["2. See every tip", "3D maze gameplay", "24-hour history"] }), "build");
+    expect(out.works).toEqual(["See every tip", "3D maze gameplay", "24-hour history"]);
+  });
+});
+
 describe("forgetting what GoodBuild remembers (D163)", () => {
   it("removes one decision and keeps the rest", () => {
     expect(withoutDecision({ summary: "s", decisions: ["Brand colour #0f766e", "Tips at least 5 G$"], upTo: 9 }, "Tips at least 5 G$")).toEqual({ summary: "s", decisions: ["Brand colour #0f766e"], upTo: 9 });

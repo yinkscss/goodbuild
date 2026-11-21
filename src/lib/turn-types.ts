@@ -137,7 +137,7 @@ export interface TurnRecord {
    * A finished build's end in plain words (D163): a one-sentence headline, what the person can do now (the
    * builder's short list from suggest_next), and what comes later. A milestone build fills in what it knows.
    */
-  outcome?: { headline?: string; works: string[]; later?: string };
+  outcome?: { headline?: string; works: string[]; later?: string; /** The rest of the reply after the headline. */ detail?: string };
   status: "ready" | "needs_fix" | "answered" | "error" | "stopped";
   checks?: { errors: number; warnings: number };
   contracts?: Array<{ name: string; file: string; bytecodeBytes: number }>;

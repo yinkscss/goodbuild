@@ -366,7 +366,8 @@ describe("runTurn", { timeout: 120_000 }, () => {
     ]);
     const record = await runTurn({ db, model: client }, { projectId, userId, mode: "build", userMessageId: queuedId }, () => {});
     expect(record.status).toBe("ready");
-    expect(record.outcome).toEqual({ headline: "Your tip page works.", works: ["Send a tip", "See every tip", "Share the page"], later: "Real tips need a wallet first." });
+    // The rest of the reply (deploy details, say) stays under the headline.
+    expect(record.outcome).toEqual({ headline: "Your tip page works.", detail: "Supporters can send a tip and see the list.", works: ["Send a tip", "See every tip", "Share the page"], later: "Real tips need a wallet first." });
   });
 
   it("keeps the reply that comes with suggest_next, saves the chips and ends the pass", async () => {

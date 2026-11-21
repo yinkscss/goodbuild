@@ -119,7 +119,7 @@ export class Workspace {
           .slice(0, 2);
         if (!items.length) return { ok: false, result: "Error: give one or two suggestions." };
         // D163: what works now, as a short list the person reads under the reply's first sentence.
-        const line = (x: unknown, max: number) => String(x ?? "").replace(/\s+/g, " ").replace(/^[-*•\d.)\s]+/, "").trim().slice(0, max);
+        const line = (x: unknown, max: number) => String(x ?? "").replace(/\s+/g, " ").trim().replace(/^(?:[-*•]\s+|\d+[.)]\s+)/, "").trim().slice(0, max);
         const works = (Array.isArray(args.works) ? args.works : []).map((x) => line(x, 120)).filter(Boolean).slice(0, 3);
         const later = line(args.later, 160);
         return { ok: true, result: "Suggestions shown. You're done; don't call more tools.", suggestions: items, ...(works.length ? { works } : {}), ...(later ? { later } : {}) };

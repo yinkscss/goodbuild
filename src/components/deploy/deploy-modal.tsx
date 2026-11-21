@@ -182,7 +182,7 @@ export function FaucetGuide({ className }: { className?: string }) {
         </a>
       ),
     },
-    { title: "Paste your address and ask for test CELO", body: <span className="mt-1 block text-xs text-grey-600">Pick Celo Sepolia (Celo\u2019s free test network), paste the address, and confirm. The test CELO arrives in under a minute.</span> },
+    { title: "Paste your address and ask for test CELO", body: <span className="mt-1 block text-xs text-grey-600">Pick Celo Sepolia (Celo&rsquo;s free test network), paste the address, and confirm. The test CELO arrives in under a minute.</span> },
     { title: "Come back and try again", body: <span className="mt-1 block text-xs text-grey-600">Test CELO has no value. It only pays the network fee on Sepolia.</span> },
   ];
   return (

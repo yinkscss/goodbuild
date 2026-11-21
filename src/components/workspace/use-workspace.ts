@@ -182,7 +182,6 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
   const retry = React.useCallback((jobId: string, useCredits = false, note?: string) => {
     sending.current = sending.current.then(async () => {
       setError(null);
-      setPreviewError(null);
       try {
         const post = (paid: boolean) => fetch(`/api/projects/${projectId}/turns/${jobId}/retry`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ useCredits: paid, ...(note ? { note: note.slice(0, 3000) } : {}) }) });
         let res = await post(useCredits);
@@ -193,9 +192,14 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
           body = res.ok ? {} : await res.json().catch(() => ({})) as { message?: string; error?: string };
         }
         if (!res.ok) {
-          if (res.status === 402) setNeedsCredits(true);
+          // A build running in another project isn't about credits: say so, and keep the preview's crash for the next try.
+          if (res.status === 402 && body.error !== "one_build_at_a_time") setNeedsCredits(true);
           else setError(body.message ?? "Couldn't pick up this build. Reload and try again.");
-        } else setNeedsCredits(false);
+        } else {
+          setNeedsCredits(false);
+          // The builder has the crash now; a newer one reported meanwhile stays.
+          if (note) setPreviewError((current) => (current && note.includes(current.message) ? null : current));
+        }
       } catch { setError("Couldn't reach GoodBuild. Your files are saved."); }
       await refresh().catch(() => undefined);
     });

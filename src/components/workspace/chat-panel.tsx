@@ -464,11 +464,20 @@ export function Composer({
  */
 export function Remembered({ items, projectId, onChange }: { items: string[]; projectId: string; onChange: () => Promise<unknown> }) {
   const [busy, setBusy] = React.useState<string | null>(null);
+  const [failed, setFailed] = React.useState<string | null>(null);
   const forget = async (item: string) => {
     setBusy(item);
+    setFailed(null);
     try {
-      await fetch(`/api/projects/${projectId}/memory`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ remove: item }) });
-      await onChange();
+      const res = await fetch(`/api/projects/${projectId}/memory`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ remove: item }) });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { message?: string };
+        setFailed(body.message ?? "That wasn't forgotten. Try again.");
+        return;
+      }
+      await onChange().catch(() => undefined);
+    } catch {
+      setFailed("Couldn't reach GoodBuild, so that wasn't forgotten. Try again.");
     } finally {
       setBusy(null);
     }
@@ -478,6 +487,11 @@ export function Remembered({ items, projectId, onChange }: { items: string[]; pr
       <summary className="w-fit cursor-pointer rounded-full outline-none select-none focus-visible:shadow-focus">
         What GoodBuild remembers about this app ({items.length})
       </summary>
+      {failed && (
+        <p className="mt-2 text-warning" role="alert">
+          {failed}
+        </p>
+      )}
       <ul className="mt-2 grid gap-1.5" aria-label="What GoodBuild remembers">
         {items.map((item) => (
           <li key={item} className="flex items-start justify-between gap-3 rounded-block bg-canvas px-3 py-2">
