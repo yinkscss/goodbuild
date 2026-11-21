@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 
+import { RefreshCredits } from "@/components/credits/refresh-credits";
 import { AddCredits } from "@/components/credits/add-credits";
 import { FreeCreditsCard } from "@/components/credits/free-credits-card";
 import { AppShell } from "@/components/home/app-shell";
@@ -61,7 +62,7 @@ async function CreditsBody() {
     <>
       <div className="mt-8 flex flex-col gap-4 rounded-card bg-surface p-6 shadow-card sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="text-xs font-semibold tracking-[.14em] text-grey-400 uppercase">Available</p>
+          <div className="flex items-center gap-2"><p className="text-xs font-semibold tracking-[.14em] text-grey-400 uppercase">Available</p><RefreshCredits /></div>
           <p className="display mt-1 text-[40px] font-extrabold">{totalMicro === null ? "Unavailable" : formatCredits(totalMicro)}</p>
           <p className="mt-1 text-sm text-grey-600">{balanceMicro === null ? "We couldn't read your balance. Reload to try again." : grants ? "Bought credits and free credits together. Each build uses a few credits, and planning is free." : freeMicro === null ? `${formatCredits(balanceMicro)} paid, plus unlimited free AI. Each build uses a few credits.` : `${formatCredits(balanceMicro)} paid + ${formatCredits(freeMicro)} of free AI left. Free AI is used first. Each build uses a few credits.`}</p>
         </div>

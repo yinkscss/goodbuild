@@ -34,6 +34,10 @@ describe("pending credit payments (GB-01)", () => {
     expect(await redeemTx(42220, hash(4), (async () => Promise.reject(new Error("offline"))) as never)).toEqual({ kind: "failed" });
   });
 
+  it("reports the settled purchase amount when the scanner credited it first", async () => {
+    expect(await redeemTx(42220, hash(4), reply(200, { events: 1, creditedMicro: 0, settledMicro: 1_000_000, balanceMicro: 1_650_000 }) as never)).toEqual({ kind: "credited", addedMicro: 1_000_000, balanceMicro: 1_650_000 });
+  });
+
   it("on the next page load, sends saved payments again and forgets only the settled ones", async () => {
     savePending(42220, hash(10)); // credited now
     savePending(42220, hash(11)); // not mined yet

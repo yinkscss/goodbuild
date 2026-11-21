@@ -3,7 +3,9 @@ import "server-only";
 import { getDb } from "@/server/db/client";
 import { creditsClient } from "./chain-client";
 import { creditsContract, syncRedemptions } from "./onchain";
+import { createPaymentMonitor } from "./payment-monitor";
 
+const monitorPayments = createPaymentMonitor();
 const SYNC_MS = 60_000;
 const CHAIN_IDS = [42220, 11142220];
 const g = globalThis as { __gbCreditsSync?: ReturnType<typeof setInterval> };
@@ -15,16 +17,28 @@ export function startCreditsSync() {
     // GB-01: with no start block, the first scan reads from block 0, which takes many hours on mainnet.
     if (creditsContract(chainId) && !process.env[`CREDITS_START_BLOCK_${chainId}`]) console.warn(`[credits] CREDITS_START_BLOCK_${chainId} is not set: the first scan starts at block 0. Set it to the contract's deploy block.`);
   }
+  let running = false;
   const tick = async () => {
-    const db = await getDb();
-    for (const chainId of CHAIN_IDS) {
-      if (!creditsContract(chainId)) continue;
-      try {
-        await syncRedemptions(db, creditsClient(chainId), chainId);
-      } catch (error) {
-        console.error(`[credits] sync failed on ${chainId}`, error);
+    if (running) return;
+    running = true;
+    try {
+      const db = await getDb();
+      for (const chainId of CHAIN_IDS) {
+        if (!creditsContract(chainId)) continue;
+        try {
+          await syncRedemptions(db, creditsClient(chainId), chainId);
+        } catch (error) {
+          console.error(`[credits] sync failed on ${chainId}`, error);
+        }
+        try {
+          await monitorPayments(db, chainId, await creditsClient(chainId).getBlockNumber());
+        } catch (error) {
+          console.error("[credits] payment_monitor_failed", { chainId, error });
+        }
       }
-    }
+    } catch (error) {
+      console.error("[credits] sync_unavailable", error);
+    } finally { running = false; }
   };
   g.__gbCreditsSync = setInterval(() => void tick(), SYNC_MS);
   g.__gbCreditsSync.unref?.();

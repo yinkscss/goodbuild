@@ -58,7 +58,8 @@ export function forgetPending(hash: string) {
 
 /**
  * What the server said about one transaction:
- * - `credited`: credit was added now (`addedMicro` > 0) or had already been added (0).
+ * - `credited`: the canonical settled payment amount, whether applied now or earlier.
+ *   Older servers may return only the newly applied amount (zero on replay).
  * - `not_credits`: the transaction failed on-chain or isn't a GoodBuild credits payment on that network.
  * - `pending`: not confirmed yet; ask again later.
  * - `failed`: the server couldn't answer; ask again later.
@@ -72,26 +73,26 @@ export type RedeemOutcome =
 export async function redeemTx(chainId: number, hash: string, fetcher: typeof fetch = fetch): Promise<RedeemOutcome> {
   let r: Response;
   try {
-    r = await fetcher("/api/credits/redeem", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ chainId, txHash: hash }) });
+    r = await fetcher("/api/credits/redeem", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, signal: AbortSignal.timeout(15_000), body: JSON.stringify({ chainId, txHash: hash }) });
   } catch {
     return { kind: "failed" };
   }
   if (r.status === 202) return { kind: "pending" };
-  const out = (await r.json().catch(() => ({}))) as { events?: number; creditedMicro?: number; balanceMicro?: number; message?: string };
+  const out = (await r.json().catch(() => ({}))) as { events?: number; creditedMicro?: number; settledMicro?: number; balanceMicro?: number; message?: string };
   if (!r.ok) return { kind: "failed", message: out.message };
   if (!out.events) return { kind: "not_credits" };
-  return { kind: "credited", addedMicro: out.creditedMicro ?? 0, balanceMicro: out.balanceMicro ?? 0 };
+  return { kind: "credited", addedMicro: out.settledMicro ?? out.creditedMicro ?? 0, balanceMicro: out.balanceMicro ?? 0 };
 }
 
-/** Send every saved payment again and forget the ones the server has settled. Returns credit added now. */
-export async function retryPending(fetcher: typeof fetch = fetch): Promise<number> {
-  let added = 0;
-  for (const p of readPending()) {
+/** Send every saved payment again and forget the ones the server has settled. Returns the settled amount of recovered payments. */
+export async function retryPending(fetcher: typeof fetch = fetch, strict = false): Promise<number> {
+  const results = await Promise.all(readPending().slice(0, 5).map(async (p) => {
     const out = await redeemTx(p.chainId, p.hash, fetcher);
-    if (out.kind === "credited") added += out.addedMicro;
     if (out.kind === "credited" || out.kind === "not_credits") forgetPending(p.hash);
-  }
-  return added;
+    return out;
+  }));
+  if (strict && results.some((out) => out.kind === "failed")) throw new Error("We couldn't check a pending payment. Try refreshing again in a moment.");
+  return results.reduce((total, out) => total + (out.kind === "credited" ? out.addedMicro : 0), 0);
 }
 
 /** "0x1234…abcd" for showing a transaction in a sentence. */

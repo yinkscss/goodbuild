@@ -103,6 +103,21 @@ describe.each(testBackends())("on-chain credits on $name", (backend) => {
       expect(await getBalanceMicro(db, u.id)).toBe(3_000_000);
     });
 
+    it("reports the canonical settled amount on replay, once per ref and only for its owner", async () => {
+      const u = await account();
+      const other = await account();
+      const hash = tx();
+      const ref = newRef();
+      const logs = [redeemedLog(u.wallet, BigInt(1_100_000), 0, hash, CONTRACT, BigInt(10), ref)];
+      await redeemFromReceipt(db, receiptClient(logs), 42220, hash, ENV);
+      const replay = await redeemFromReceipt(db, receiptClient([...logs, { ...logs[0], logIndex: 1 }]), 42220, hash, ENV, u.id);
+      expect(replay).toMatchObject({ creditedMicro: 0, settledMicro: 1_100_000 });
+      const wrong = await redeemFromReceipt(db, receiptClient(logs), 42220, hash, ENV, other.id);
+      expect(wrong).toMatchObject({ creditedMicro: 0, settledMicro: 0 });
+      expect(await getBalanceMicro(db, u.id)).toBe(1_100_000);
+      expect(await getBalanceMicro(db, other.id)).toBe(0);
+    });
+
     it("ignores a Redeemed event from any other contract (a forged token can't mint credit)", async () => {
       const u = await account();
       const hash = tx();

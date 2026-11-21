@@ -149,7 +149,7 @@ type ReceiptClient = Pick<PublicClient, "getTransactionReceipt" | "getBlockNumbe
  * submitting another wallet's hash only speeds up that wallet's credit. A transaction fewer than
  * SYNC_CONFIRMATIONS blocks deep answers `pending` and records nothing yet (GB-13); the screen asks again.
  */
-export async function redeemFromReceipt(db: Db, client: ReceiptClient, chainId: number, txHash: Hex, env: NodeJS.ProcessEnv = process.env): Promise<{ events: number; creditedMicro: number; pending?: true }> {
+export async function redeemFromReceipt(db: Db, client: ReceiptClient, chainId: number, txHash: Hex, env: NodeJS.ProcessEnv = process.env, userId?: string): Promise<{ events: number; creditedMicro: number; settledMicro?: number; pending?: true }> {
   const contract = creditsContract(chainId, env);
   if (!contract) throw new CreditsNotConfiguredError(chainId);
   const receipt = await client.getTransactionReceipt({ hash: txHash });
@@ -158,11 +158,18 @@ export async function redeemFromReceipt(db: Db, client: ReceiptClient, chainId: 
   if (receipt.status !== "success") return { events: 0, creditedMicro: 0 };
   const logs = parseEventLogs({ abi: CREDITS_ABI, eventName: "Redeemed", logs: receipt.logs.filter((l) => l.address.toLowerCase() === contract.toLowerCase()) });
   let creditedMicro = 0;
+  let settledMicro = 0;
+  const refs = new Set<string>();
   for (const l of logs) {
     const r = await recordRedemption(db, { chainId, txHash, logIndex: l.logIndex, blockNumber: Number(l.blockNumber), wallet: l.args.account, amountMicro: Number(l.args.credits), ref: l.args.ref });
-    if (r.credited) creditedMicro += r.amountMicro;
+    if (!userId || r.userId === userId) {
+      if (r.credited) creditedMicro += r.amountMicro;
+      // recordRedemption returns the canonical row's amount and ledger owner, including replays.
+      if (r.userId && !refs.has(l.args.ref.toLowerCase())) settledMicro += r.amountMicro;
+    }
+    refs.add(l.args.ref.toLowerCase());
   }
-  return { events: logs.length, creditedMicro };
+  return { events: logs.length, creditedMicro, ...(userId ? { settledMicro } : {}) };
 }
 
 export class CreditsNotConfiguredError extends Error {

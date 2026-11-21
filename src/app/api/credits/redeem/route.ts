@@ -24,15 +24,16 @@ export async function POST(request: Request) {
     const db = await getDb();
     let result;
     try {
-      result = await redeemFromReceipt(db, creditsClient(parsed.data.chainId), parsed.data.chainId, parsed.data.txHash as `0x${string}`);
+      result = await redeemFromReceipt(db, creditsClient(parsed.data.chainId), parsed.data.chainId, parsed.data.txHash as `0x${string}`, process.env, session.user.id);
     } catch (error) {
       if (error instanceof CreditsNotConfiguredError) return NextResponse.json({ error: "not_live", message: "Credits aren't live on that network yet." }, { status: 409, headers: NO_STORE });
       if ((error as Error).name === "TransactionReceiptNotFoundError") return NextResponse.json({ pending: true }, { status: 202, headers: NO_STORE });
       throw error;
     }
     if (result.pending) return NextResponse.json({ pending: true }, { status: 202, headers: NO_STORE });
+    if (result.events > 0 && result.settledMicro === 0) return NextResponse.json({ error: "different_wallet", message: "This payment belongs to another wallet. Sign in with the wallet that paid to check its balance." }, { status: 409, headers: NO_STORE });
     const balanceMicro = await getBalanceMicro(db, session.user.id);
-    return NextResponse.json({ ...result, balanceMicro }, { headers: NO_STORE });
+    return NextResponse.json({ ...result, settlementStatus: result.creditedMicro > 0 ? "applied" : "already_credited", balanceMicro }, { headers: NO_STORE });
   } catch (error) {
     return errorResponse(error);
   }
