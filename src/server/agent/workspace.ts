@@ -20,6 +20,9 @@ export interface ToolOutcome {
   plan?: { summary: string; steps: string[] };
   /** Next-step suggestions from suggest_next. */
   suggestions?: string[];
+  /** From suggest_next (D163): what the person can do in the app now, and what doesn't work yet. */
+  works?: string[];
+  later?: string;
   /** Guides returned to the model by this call (for the build log). */
   guides?: string[];
   /** A read, listing or search, for the build log (the harness eval counts these). */
@@ -115,7 +118,11 @@ export class Workspace {
           .filter(Boolean)
           .slice(0, 2);
         if (!items.length) return { ok: false, result: "Error: give one or two suggestions." };
-        return { ok: true, result: "Suggestions shown. You're done; don't call more tools.", suggestions: items };
+        // D163: what works now, as a short list the person reads under the reply's first sentence.
+        const line = (x: unknown, max: number) => String(x ?? "").replace(/\s+/g, " ").replace(/^[-*•\d.)\s]+/, "").trim().slice(0, max);
+        const works = (Array.isArray(args.works) ? args.works : []).map((x) => line(x, 120)).filter(Boolean).slice(0, 3);
+        const later = line(args.later, 160);
+        return { ok: true, result: "Suggestions shown. You're done; don't call more tools.", suggestions: items, ...(works.length ? { works } : {}), ...(later ? { later } : {}) };
       }
       case "read_guide": {
         const g = loadGuides(args.name);

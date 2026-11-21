@@ -133,8 +133,11 @@ export interface TurnRecord {
   jobId?: string;
   draftSaved?: boolean;
   delivery?: { title: string; remaining: string[]; demo: boolean };
-  /** A milestone build's end, in plain words (D163): what works now, what doesn't yet, and the next step. */
-  outcome?: { works: string; notYet?: string; next?: string };
+  /**
+   * A finished build's end in plain words (D163): a one-sentence headline, what the person can do now (the
+   * builder's short list from suggest_next), and what comes later. A milestone build fills in what it knows.
+   */
+  outcome?: { headline?: string; works: string[]; later?: string };
   status: "ready" | "needs_fix" | "answered" | "error" | "stopped";
   checks?: { errors: number; warnings: number };
   contracts?: Array<{ name: string; file: string; bytecodeBytes: number }>;

@@ -2013,7 +2013,15 @@ The owner approved implementing all five parts of the first-build fix and openin
   - Guide reads and the plan row are hidden.
   - "Fixing errors (attempt 1 of 3)" becomes "Fixing a small thing it found", and "Auto-fix: failed · 1 error left" becomes "1 problem still needs a fix".
   - A test checks that no label shown to a person contains a file extension.
-- **The end of a milestone** is "Works now / Not yet / Next" (`record.outcome`), replacing "implementation saved; live behaviour still needs verification". Milestones have plain names: "Your app's screens", "Connect a wallet", "Play with others", "Sign-in and saved data" and "Payments on Celo". A test checks that each name, sent as a request, picks its own milestone.
+- **A finished build reads like the owner's approved mock** (asked for: "I'd like to see the response in a much cleaner way").
+  - The card shows a "Ready to try" pill and one headline: the reply's first sentence, or the milestone's.
+  - Below it, a short list: what works (green ticks) and what comes later (an empty circle).
+  - One violet "Next: …" button carries the first suggestion; the other is a chip.
+  - One quiet footer line holds the check ("✓ Checked on a phone and a computer"), the steps (folded, tap to open), the cost and Undo.
+  - The list comes from the builder: `suggest_next` takes optional `works` (1–3 short lines) and `later` (one line), so there's no extra model call. It's saved as `record.outcome`.
+  - A milestone build writes the headline and "later" itself, for example "Connect a wallet, payments on Celo come next. Payments are off until then." This replaces "implementation saved; live behaviour still needs verification".
+  - Without a list (older turns, or a builder that didn't give one), the reply shows as before.
+- **Milestones have plain names:** "Your app's screens", "Connect a wallet", "Play with others", "Sign-in and saved data" and "Payments on Celo". A test checks that each name, sent as a request, picks its own milestone.
 - **One problem card, one button.** Whatever went wrong (the build stopped, still needs a fix, or the preview crashed), the newest reply shows one card with one button, "Fix it for me".
   - It continues the failed build from its saved files and carries the preview's crash, so one press fixes both. The retry route takes an optional `note` (up to 3,000 characters), which is added to the draft's notes for the builder.
   - The preview's own error card is hidden while this card shows. The check notes have no button of their own then.
@@ -2021,7 +2029,7 @@ The owner approved implementing all five parts of the first-build fix and openin
 - **No dead end on a second fix, and no talk of free fixes** (the owner). When GoodBuild's repair allowance doesn't cover a retry, the workspace runs it on credits at once. It doesn't show the old refusal and the "Continue using credits" button. The cost shows only where costs already show, beside the prompt box. If the credits can't cover it, the out-of-credits card shows, as for any build. The server's refusal is unchanged; the workspace answers it.
 - **Plain errors.** An unexpected error reads as one sentence for its cause (`plainError`), such as "We lost the connection to one of our services while building. That wasn't something you did." Anything unknown reads "Something went wrong on our side". The raw message stays on the record, behind "Technical details (for support)", which replaces "Logs".
 - **The preview's crash card** says "The goal list crashed when it opened" and has "Fix it for me". The file, line and message are behind the same fold.
-- **Undo this change.** The newest finished build has an "Undo this change" button with a confirm in the page. It goes back to the version before it with the existing revert, and costs nothing. The Versions menu says "Go back to v3?" instead of "Revert".
+- **Undo this change.** The newest finished build has "Undo" (in the footer of a finished build, otherwise a button) with a confirm in the page. It goes back to the version before it with the existing revert, and costs nothing. The Versions menu says "Go back to v3?" instead of "Revert".
 - **Smaller changes:**
   - Plan / Build has a visible hint on phones too: "Talk it through. Nothing changes." / "Changes your app."
   - The two checks read the same: "Checked on a phone and a computer: looks right".

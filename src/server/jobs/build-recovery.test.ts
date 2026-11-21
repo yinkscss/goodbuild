@@ -58,9 +58,8 @@ describe("first delivery and recovery", () => {
     expect((await db.select().from(usageEvents)).every((u) => u.funding === "platform")).toBe(true);
     expect(record.delivery?.remaining).toEqual(["Wallet connection", "Multiplayer", "On-chain features and payments"]);
     // D163: the end in plain words, and next steps a person understands.
-    expect(record.outcome?.works).toMatch(/^Your app's screens are built/);
-    expect(record.outcome?.notYet).toBe("Still to come: connect a wallet, play with others, payments on Celo. Payments stay switched off until then.");
-    expect(record.outcome?.next).toBe("Connect a wallet");
+    expect(record.outcome?.headline).toMatch(/^Your app's screens are built\./);
+    expect(record.outcome?.later).toBe("Connect a wallet, play with others, payments on Celo come next. Payments are off until then.");
     expect(record.suggestions).toEqual(["Connect a wallet", "Play with others"]);
     expect((await db.select().from(buildDeliveries))[0].plan.completed).toBe(1);
     expect(model.requests[0].messages.some((m) => String(m.content).includes("Build ONLY milestone 1"))).toBe(true);

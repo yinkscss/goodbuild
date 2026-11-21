@@ -5,7 +5,8 @@ Written 4 Nov 2026 at the end of the first build session (claude.ai), for whoeve
 ## What a person sees while it builds (21 Nov 2026, D163, branch `claude/wizardly-mendel-yayvkq`)
 Plan: [BUILD_CLARITY_PLAN.md](BUILD_CLARITY_PLAN.md). Mock: [GoodBuild Build Clarity](https://claude.ai/artifact/Qp4xxF5J7o4oiEXPpkLHsC).
 - **Checklist:** in Build mode, the plan shows as a checklist with GoodBuild's own last step, and one trail line under the working step that fades when that part is done (`PlanProgress`, `TrailLine` in `turn-view.tsx`; `Step.plan`, `planStepFor` in `runner.ts`).
-- **Plain words:** steps (`src/lib/plain-steps.ts`), errors and milestone names (`src/lib/plain-words.ts`). Milestones end with "Works now / Not yet / Next" (`record.outcome`).
+- **Plain words:** steps (`src/lib/plain-steps.ts`), errors and milestone names (`src/lib/plain-words.ts`).
+- **A finished build** is a "Ready to try" headline, a short list of what works and what comes later, one "Next" button and one quiet footer (`FinishedBuild`). The list is the builder's: `suggest_next` takes `works` and `later`, saved as `record.outcome`.
 - **One problem card, one button, "Fix it for me":** it retries from the saved files with the preview's crash as a `note`. A retry the repair allowance doesn't cover runs on credits straight away; the cost shows only beside the prompt box.
 - **Undo this change** on the newest build. **What GoodBuild remembers** is listed under the chat, each item with Forget.
 - **No migration.** Turns saved before have no `Step.plan`, and keep plain step rows.

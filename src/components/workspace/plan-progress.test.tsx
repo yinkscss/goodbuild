@@ -59,11 +59,33 @@ describe("the plan as a checklist (D163)", () => {
     expect(screen.getByText("1 step done")).toBeInTheDocument();
   });
 
-  it("shows a milestone's end as Works now, Not yet and Next", () => {
-    render(view(record([], { outcome: { works: "Your app's screens are built.", notYet: "Still to come: connect a wallet.", next: "Connect a wallet" } }), false));
-    expect(screen.getByText("Works now")).toBeInTheDocument();
-    expect(screen.getByText("Still to come: connect a wallet.")).toBeInTheDocument();
-    expect(screen.getByText("Next")).toBeInTheDocument();
+  it("shows a finished build as the mock: a headline, what works, one Next button and one quiet footer", async () => {
+    const onSuggest = vi.fn();
+    const onUndo = vi.fn();
+    const done = record(running.map((s) => ({ ...s, status: "done" as const })), {
+      outcome: { headline: "Your savings goals app works.", works: ["Add, edit and remove goals", "Goals are saved on this device"], later: "Putting real money aside comes next." },
+      suggestions: ["Connect a wallet", "Change the colours"],
+      review: { ok: true, issues: [], fixed: false },
+      chargedMicro: 380_000,
+      version: 4,
+    });
+    render(view(done, false, { onSuggest, onUndo }));
+    expect(screen.getByText("Ready to try")).toBeInTheDocument();
+    expect(screen.getByText("Your savings goals app works.")).toBeInTheDocument();
+    const list = screen.getByRole("list", { name: "What works" });
+    expect(within(list).getAllByLabelText("Works")).toHaveLength(2);
+    expect(within(list).getByText("Putting real money aside comes next.")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /Next: connect a wallet/ }));
+    expect(onSuggest).toHaveBeenCalledWith("Connect a wallet");
+    expect(screen.getByRole("button", { name: /Change the colours/ })).toBeInTheDocument();
+    expect(screen.getByText(/Checked on a phone and a computer/)).toBeInTheDocument();
+    // The steps are folded behind the footer.
+    expect(screen.queryByRole("list", { name: "Build plan" })).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "3 steps" }));
+    expect(screen.getByRole("list", { name: "Build plan" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /Undo/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Go back" }));
+    expect(onUndo).toHaveBeenCalledOnce();
   });
 });
 

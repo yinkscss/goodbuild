@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ArrowUpRight, Check, Eye, Hexagon, RotateCw, Undo2, Wrench } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Check, Eye, Hexagon, RotateCw, Undo2, Wrench } from "lucide-react";
 
 import { DeployButton, useDeployAction } from "@/components/deploy/deploy-trigger";
 import { Button } from "@/components/ui/button";
@@ -137,7 +137,7 @@ export function tracksPlan(record: Pick<TurnRecord, "mode" | "plan" | "steps">):
  * The builder's plan as a checklist (D163, after Codex's update_plan): its steps, then GoodBuild's own
  * "checking it works". One step works at a time, with the trail line under it. Once the turn ends it folds away.
  */
-export function PlanProgress({ record, live }: { record: TurnRecord; live: boolean }) {
+export function PlanProgress({ record, live, open = false }: { record: TurnRecord; live: boolean; open?: boolean }) {
   const items = [...(record.plan?.steps ?? []).map(planStepText), CHECKING_STEP];
   const tracked = record.steps.filter((s) => s.plan !== undefined);
   const active = Math.min(items.length - 1, Math.max(0, ...tracked.map((s) => s.plan!)));
@@ -168,7 +168,7 @@ export function PlanProgress({ record, live }: { record: TurnRecord; live: boole
       })}
     </ol>
   );
-  if (live || !ok) return list;
+  if (live || !ok || open) return list;
   return (
     <details className="mt-3 text-xs text-grey-600">
       <summary className="w-fit cursor-pointer rounded-full outline-none select-none focus-visible:shadow-focus">All {items.length} steps done</summary>
@@ -433,6 +433,133 @@ export function ReviewNote({ record, onFix, disabled }: { record: TurnRecord; on
 }
 
 /**
+ * A finished build, as in the owner's mock (D163): "Ready to try", one headline, a short list of what works
+ * (ticks) and what comes later (an empty circle), one "Next" button, and one quiet footer line with the check,
+ * the steps (folded), the cost and Undo.
+ */
+export function FinishedBuild({
+  record,
+  headline,
+  works,
+  later,
+  chainId,
+  onSuggest,
+  disabled,
+  onUndo,
+  checking,
+}: {
+  record: TurnRecord;
+  headline: string;
+  works: string[];
+  later?: string;
+  chainId: number;
+  onSuggest?: (prompt: string) => void;
+  disabled: boolean;
+  onUndo?: () => void;
+  checking?: boolean;
+}) {
+  const [showSteps, setShowSteps] = React.useState(false);
+  const [asking, setAsking] = React.useState(false);
+  const review = record.review;
+  const visual = record.visualCheck;
+  const looked = review ? review.ok || review.fixed : visual?.ok;
+  const lookedNote = review && !review.ok && !review.fixed ? <ReviewNote record={record} onFix={onSuggest} disabled={disabled} /> : !review && visual && !visual.ok ? <VisualCheckNote record={record} onFix={onSuggest} disabled={disabled} /> : null;
+  const stepCount = tracksPlan(record) ? (record.plan?.steps.length ?? 0) + 1 : record.steps.filter((s) => plainStep(s) && !s.parent).length;
+  const [next, ...more] = onSuggest ? record.suggestions ?? [] : [];
+  return (
+    <div className="grid gap-3">
+      <div className="grid gap-1.5">
+        <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-success/10 px-2.5 py-1 text-[11px] font-semibold tracking-[.06em] text-success uppercase">
+          <span className="size-1.5 rounded-full bg-success" aria-hidden />
+          Ready to try
+        </span>
+        <p className="text-[17px] leading-snug font-semibold text-balance">{headline}</p>
+      </div>
+      <ul className="rounded-block bg-[#FAFAFA] px-4 py-1.5" aria-label="What works">
+        {works.map((w) => (
+          <li key={w} className="grid grid-cols-[18px_minmax(0,1fr)] gap-2.5 border-hairline py-2.5 text-sm leading-normal [&+li]:border-t">
+            <span className="mt-px grid size-[18px] place-items-center rounded-full bg-success text-white" aria-label="Works">
+              <Check className="size-3" strokeWidth={3.5} />
+            </span>
+            <span>{w}</span>
+          </li>
+        ))}
+        {later && (
+          <li className="grid grid-cols-[18px_minmax(0,1fr)] gap-2.5 border-t border-hairline py-2.5 text-sm leading-normal">
+            <span className="mt-px size-[18px] rounded-full border-2 border-grey-200" aria-label="Comes later" />
+            <span className="text-grey-600">{later}</span>
+          </li>
+        )}
+      </ul>
+      <DeployCard record={record} chainId={chainId} />
+      {lookedNote}
+      {next && onSuggest && (
+        <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Next steps">
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => onSuggest(next)}
+            className="inline-flex max-w-full items-center gap-2 rounded-full bg-violet py-2 pr-2 pl-4 text-left text-sm font-medium text-white outline-none hover:bg-violet/92 focus-visible:shadow-focus disabled:opacity-55"
+          >
+            <span className="min-w-0">Next: {next.charAt(0).toLowerCase() + next.slice(1)}</span>
+            <span className="grid size-6 shrink-0 place-items-center rounded-full bg-pink text-violet-ink" aria-hidden>
+              <ArrowRight className="size-3.5" strokeWidth={2.5} />
+            </span>
+          </button>
+          {more.map((m) => (
+            <Button key={m} type="button" variant="chip" size="chip" disabled={disabled} onClick={() => onSuggest(m)} className="h-auto max-w-full text-left whitespace-normal">
+              <span>{m}</span>
+              <ArrowUpRight className="size-3.5 shrink-0" aria-hidden />
+            </Button>
+          ))}
+        </div>
+      )}
+      {asking && onUndo ? (
+        <div className="flex flex-wrap items-center justify-end gap-2 rounded-block bg-canvas px-3 py-2 text-xs" role="group" aria-label="Undo this change">
+          <span className="mr-auto text-grey-600">Your app goes back to how it was before this message. The chat stays.</span>
+          <Button variant="ghost" size="sm" className="h-8 px-3 text-xs" onClick={() => setAsking(false)}>
+            Keep it
+          </Button>
+          <Button variant="chipSelected" size="sm" className="h-8 px-3 text-xs" disabled={disabled} onClick={() => { setAsking(false); onUndo(); }}>
+            Go back
+          </Button>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 border-t border-hairline pt-3 text-xs text-grey-600">
+          {looked ? (
+            <span className="inline-flex items-center gap-1 font-semibold text-success">
+              <Check className="size-3.5" strokeWidth={3} aria-hidden /> Checked on {review ? "a phone and a computer" : visual && visual.width <= 600 ? "a phone" : "a computer"}
+            </span>
+          ) : checking ? (
+            <span className="inline-flex items-center gap-1">
+              <Eye className="size-3.5 animate-pulse motion-reduce:animate-none" aria-hidden /> Checking the preview…
+            </span>
+          ) : null}
+          {looked || checking ? <span className="text-grey-400" aria-hidden>·</span> : null}
+          {stepCount > 0 && (
+            <button type="button" aria-expanded={showSteps} onClick={() => setShowSteps((v) => !v)} className="rounded-full underline decoration-grey-200 underline-offset-[3px] outline-none hover:text-violet focus-visible:shadow-focus">
+              {stepCount} {stepCount === 1 ? "step" : "steps"}
+            </button>
+          )}
+          {record.chargedMicro > 0 && (
+            <>
+              <span className="text-grey-400" aria-hidden>·</span>
+              <span>{formatCredits(record.chargedMicro)}</span>
+            </>
+          )}
+          {onUndo && (
+            <button type="button" disabled={disabled} onClick={() => setAsking(true)} className="ml-auto inline-flex items-center gap-1 rounded-full font-medium text-violet outline-none hover:underline focus-visible:shadow-focus disabled:opacity-55">
+              <Undo2 className="size-3.5" aria-hidden /> Undo
+            </button>
+          )}
+        </div>
+      )}
+      {showSteps && (tracksPlan(record) ? <PlanProgress record={record} live={false} open /> : <StepRows steps={record.steps} />)}
+    </div>
+  );
+}
+
+/**
  * An assistant turn: text, steps, then the plan's questions, the deploy card or an error card. The
  * build log and file changes stay on the record (the error card's Logs, the Code tab) but aren't
  * shown here: people found them confusing, and they say nothing someone building an app needs.
@@ -488,21 +615,25 @@ export function TurnView({
   // D163: the plan as a checklist once the builder has one; before that, one trail line under "Thinking".
   const checklist = tracksPlan(record);
   const latest = [...record.steps].reverse().find((s) => plainStep(s));
-  const outcome = !live && record.status === "ready" ? record.outcome : undefined;
+  const outcome = !live && record.status === "ready" && (record.outcome?.works.length || record.outcome?.later) ? record.outcome : undefined;
+  if (outcome) {
+    return (
+      <FinishedBuild
+        record={record}
+        headline={outcome.headline || text.split(/(?<=[.!?])\s/)[0]}
+        works={outcome.works}
+        later={outcome.later}
+        chainId={chainId}
+        onSuggest={onSuggest}
+        disabled={fixDisabled}
+        onUndo={onUndo}
+        checking={checking}
+      />
+    );
+  }
   return (
     <div>
-      {outcome ? (
-        <dl className="grid gap-1.5 text-sm" aria-label="What this build did">
-          {[["Works now", outcome.works, "text-success"], ["Not yet", outcome.notYet, "text-warning"], ["Next", outcome.next, "text-violet"]].map(([k, v, c]) =>
-            v ? (
-              <div key={k} className="grid grid-cols-[76px_minmax(0,1fr)] gap-2">
-                <dt className={cn("pt-0.5 text-[11px] font-semibold tracking-[.08em] uppercase", c)}>{k}</dt>
-                <dd className="m-0 leading-relaxed">{v}</dd>
-              </div>
-            ) : null,
-          )}
-        </dl>
-      ) : text ? (
+      {text ? (
         <p className="text-sm leading-relaxed whitespace-pre-wrap">{text}</p>
       ) : live ? (
         <>

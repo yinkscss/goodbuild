@@ -20,14 +20,14 @@ describe("where the build is on its plan (D163)", () => {
 });
 
 describe("a milestone's end in plain words (D163)", () => {
-  it("says what works, what doesn't yet, and the next step", () => {
-    expect(milestoneOutcome({ id: "interface", checked: true, later: ["wallet", "payments"] })).toEqual({
-      works: "Your app's screens are built.",
-      notYet: "Still to come: connect a wallet, payments on Celo. Payments stay switched off until then.",
-      next: "Connect a wallet",
+  it("gives a headline, the builder's list of what works, and what comes later", () => {
+    expect(milestoneOutcome({ id: "interface", checked: true, later: ["wallet", "payments"], works: ["Add and remove goals"] })).toEqual({
+      headline: "Your app's screens are built. Try it in the preview.",
+      works: ["Add and remove goals"],
+      later: "Connect a wallet, payments on Celo come next. Payments are off until then.",
     });
-    expect(milestoneOutcome({ id: "wallet", checked: false, later: [] }).works).toBe("Connecting a wallet works, and GoodBuild will try it again in a browser on your next change.");
-    expect(milestoneOutcome({ id: "payments", checked: true, later: [] })).toEqual({ works: "Payments on Celo are built.", notYet: "To take real payments, deploy your contract and sign from your wallet.", next: "Deploy your contract" });
+    expect(milestoneOutcome({ id: "wallet", checked: false, later: [] })).toEqual({ headline: "Connecting a wallet works. GoodBuild will try it again in a browser on your next change.", works: [] });
+    expect(milestoneOutcome({ id: "payments", checked: true, later: [] }).later).toBe("To take real payments, deploy your contract and sign from your wallet.");
   });
 });
 
