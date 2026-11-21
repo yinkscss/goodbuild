@@ -28,6 +28,20 @@ import { FreeCreditsCard } from "@/components/credits/free-credits-card";
 import { VerifyCard } from "./verify-card";
 import { TemplateBanner } from "@/components/landing/template-slides";
 
+/** What "Fix it for me" (or Continue after a top-up) sends for the newest turn (D163). */
+export type RetryRequest = { kind: "job"; jobId: string; useCredits: boolean; note?: string } | { kind: "prompt"; prompt: string };
+
+/**
+ * One button, one request: continue the failed build from its saved files, carrying the preview's crash, or, with
+ * no job to continue, a fix message that names the crash. A build paused for credits continues as it was, without
+ * the crash note; after a top-up the retry runs on credits.
+ */
+export function retryRequest(record: TurnRecord | null | undefined, crash: string | undefined, opts: { afterTopUp?: boolean } = {}): RetryRequest {
+  const paused = record?.paused === "credits";
+  if (record?.jobId) return { kind: "job", jobId: record.jobId, useCredits: paused || Boolean(opts.afterTopUp), ...(paused || !crash ? {} : { note: crash }) };
+  return { kind: "prompt", prompt: paused ? CONTINUE_PROMPT : [FIX_PROMPT, crash].filter(Boolean).join("\n\n") };
+}
+
 /** Left pane of the workspace (mockup c): the conversation and the composer. */
 export function ChatPanel({
   ws,
@@ -85,10 +99,8 @@ export function ChatPanel({
   // The prompt the newest turn answered, for "Try again" on a failed or interrupted build.
   // D163: one button. It continues from the saved files and carries the preview's crash, if there is one.
   const crash = ws.previewError ? previewFixPrompt(ws.previewError, false) : undefined;
-  const retryRecord = (record?: TurnRecord | null) => {
-    if (record?.jobId) ws.retry(record.jobId, record.paused === "credits", record.paused === "credits" ? undefined : crash);
-    else send(record?.paused === "credits" ? CONTINUE_PROMPT : [FIX_PROMPT, crash].filter(Boolean).join("\n\n"), "build");
-  };
+  const runRetry = (r: RetryRequest) => (r.kind === "job" ? ws.retry(r.jobId, r.useCredits, r.note) : send(r.prompt, "build"));
+  const retryRecord = (record?: TurnRecord | null) => runRetry(retryRequest(record, crash));
   // "Undo this change" (D163): the newest finished build, when an earlier version exists to go back to.
   const previousVersion = state.versions.map((v) => v.number).filter((n) => n < state.project.currentVersion).sort((a, b) => b - a)[0];
   const crashWords = ws.previewError ? [ws.previewError.title, ws.previewError.message].filter(Boolean).join(": ") : null;
@@ -96,9 +108,8 @@ export function ChatPanel({
     ws.clearNeedsCredits();
     const last = [...state.messages].reverse().find((m) => m.role === "assistant");
     const record = last?.meta as TurnRecord | null;
-    // After a top-up the retry still carries the preview's crash (D163).
-    if (record?.jobId) ws.retry(record.jobId, true, record.paused === "credits" ? undefined : crash);
-    else retryRecord(record);
+    // After a top-up the retry runs on credits and still carries the preview's crash (D163).
+    runRetry(retryRequest(record, crash, { afterTopUp: true }));
   };
   const continueCost = { needMicro: state.estimate.buildMicro, haveMicro: state.availableMicro };
   return (
