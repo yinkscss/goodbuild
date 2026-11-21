@@ -6,7 +6,7 @@ import type { Browser, BrowserContext, Page, Route } from "playwright-core";
 import { buildPublishedApp, moduleStarts, PublishBuildError, type PublishedFile } from "@/server/publish/build";
 
 import type { CheckIssue } from "./checks";
-import { CHECK_WALLET_SHORT, checkControls, GAME_CHECK_SPEED, gameCanvas, gameCheckScript, insideMiniPay, judgeRounds, pickBrowserWallet, playRounds, probeReport, standInWalletScript, walletAndBoard } from "./game-check";
+import { CHECK_WALLET, checkControls, GAME_CHECK_SPEED, gameCanvas, gameCheckScript, insideMiniPay, judgeRounds, pickBrowserWallet, playRounds, probeReport, standInWalletScript, walletAndBoard } from "./game-check";
 import { ALL_FLOWS_MS, parseFlows, runFlows, type FlowResult } from "./acceptance";
 import { KITS, kitIdsOf } from "./kits/registry";
 
@@ -66,6 +66,8 @@ export interface RunCheckResult {
   /** False when the check couldn't run (no browser, too slow). That is never held against the app. */
   ran: boolean;
   deliveryVerified?: boolean;
+  /** The wallet steps ran and a stand-in wallet connected and showed its account (D162: a later build verifies an earlier wallet milestone). */
+  walletVerified?: boolean;
   issues: CheckIssue[];
   /** Why it didn't run, or what it covered, for the build log. */
   note: string;
@@ -390,12 +392,14 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
   await open(page);
   let deliveryVerified = options.delivery?.id === "interface";
   const deliveryIssues: string[] = [];
+  let walletOk: boolean | undefined;
   if (options.delivery && /tic[- ]tac[- ]toe/i.test(options.delivery.goal)) deliveryIssues.push(...await checkTicTacToe(page));
   if (options.delivery?.id === "wallet" || options.delivery?.verifyWallet) {
     const wallet = await walletAndBoard(page, { board: false });
     deliveryIssues.push(...wallet.issues);
     const walletVerified = wallet.note.includes("a browser wallet connected");
     if (options.delivery?.id === "wallet") deliveryVerified = walletVerified;
+    walletOk = walletVerified && !wallet.issues.length;
     if (!walletVerified && !wallet.issues.length) deliveryIssues.push("Wallet milestone: add a working Connect wallet button that asks the browser wallet for an account and displays it.");
   }
   // A 3D game on a checker with no WebGL shows Scene3D's plain message: there is nothing to play or judge,
@@ -564,12 +568,24 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
         },
         open,
         connectWallet: async (p) => {
+          // The page shows the account in any common form: the full address, or shortened with … or ...
+          const showsAccount = (timeout: number) =>
+            p
+              .waitForFunction(
+                ([full, head, tail]) => {
+                  const text = document.body.innerText.toLowerCase();
+                  return text.includes(full) || (text.includes(head) && text.includes(tail));
+                },
+                [CHECK_WALLET.toLowerCase(), CHECK_WALLET.slice(0, 6).toLowerCase(), CHECK_WALLET.slice(-4).toLowerCase()],
+                { timeout },
+              )
+              .then(() => true)
+              .catch(() => false);
           const button = p.getByRole("button", { name: /connect( a| your)? wallet/i }).first();
-          if (!(await button.isVisible().catch(() => false))) return "there is no Connect wallet button";
+          if (!(await button.isVisible().catch(() => false))) return (await showsAccount(500)) ? null : "there is no Connect wallet button";
           await button.click({ timeout: 1_500 });
           await pickBrowserWallet(p);
-          const shown = await p.waitForFunction((short) => document.body.innerText.includes(short), CHECK_WALLET_SHORT, { timeout: 3_000 }).then(() => true).catch(() => false);
-          return shown ? null : "the wallet connected but the page didn't show its address";
+          return (await showsAccount(5_000)) ? null : "the wallet connected but the page didn't show its address";
         },
         outline: (p) => p.evaluate(pageOutline),
       }, options.acceptance.only)),
@@ -643,7 +659,7 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
   }
   const opened = issues.length ? `${issues.length} problem${issues.length === 1 ? "" : "s"} when the app ran` : `opened ${routes.length === 1 ? "the app" : `${routes.length} pages`} with no errors`;
   const note = gameNotes.length ? `${opened}; ${gameNotes.filter(Boolean).join("; ")}` : opened;
-  return { ran: true, deliveryVerified: Boolean(deliveryVerified && !issues.length), issues, note, ...(screenshots ? { screenshots } : {}), ...(outline !== undefined ? { outline } : {}), ...(acceptance ? { acceptance } : {}) };
+  return { ran: true, deliveryVerified: Boolean(deliveryVerified && !issues.length), ...(walletOk !== undefined ? { walletVerified: walletOk && !issues.length } : {}), issues, note, ...(screenshots ? { screenshots } : {}), ...(outline !== undefined ? { outline } : {}), ...(acceptance ? { acceptance } : {}) };
 }
 
 /** Runs in the page: what a person sees, as short lines (open_app, D152). Self-contained, it is serialised. */

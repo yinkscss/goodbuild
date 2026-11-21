@@ -40,9 +40,20 @@ End by explaining what works and what remains; offer the next saved milestone. N
 /** What the builder may say about milestones (in the system prompt). Without it, a refused builder invented a project setting that doesn't exist. */
 export const MILESTONE_FACTS = `GoodBuild picks the milestone from the person's own message: a request that names on-chain work (a contract, G$ payments, tips, staking, minting) starts the on-chain milestone, and "continue" starts the next saved one. There is no project setting, build-plan screen or switch for milestones; never tell the person to change one.`;
 
-/** The tool result a builder gets when a call is outside the current milestone. */
-export function scopeRefusal(plan: DeliveryPlan, index: number): string {
+/** GoodBuild's wallet layer: it already works, so no milestone edits it. */
+const WALLET_LAYER = ["src/lib/chain.ts", "src/lib/useWallet.ts"];
+
+/**
+ * The tool result a builder gets when a call is outside the current milestone. An edit to the wallet layer
+ * gets "it already works, use it like this" (D162): in the first live run the wallet milestone's builder was
+ * told to ask for the on-chain milestone, which can't help with connecting a wallet.
+ */
+export function scopeRefusal(plan: DeliveryPlan, index: number, args: Record<string, unknown> = {}): string {
   const title = plan.milestones[index]?.title ?? "current";
+  const walletFile = [args.path, args.from, args.to].find((p): p is string => typeof p === "string" && WALLET_LAYER.includes(p));
+  if (walletFile) {
+    return `Refused by the server: ${walletFile} is GoodBuild's wallet layer. It already works (connecting, showing the account, switching to the right network) and it stays as it is. Do not retry it. Use it from your own components instead: useWallet() from src/lib/useWallet.ts gives {account, walletName, connect, disconnect, connecting, error}; connect() asks the wallet for an account and switches it to the project's network; chain and publicClient from src/lib/chain.ts read the chain. Show the full account address (or its first 6 and last 4 characters) once connected, and the error when there is one. If a check failed, fix the component that shows the wallet, not this file.`;
+  }
   return `Refused by the server: this build is scoped to the "${title}" milestone, which cannot write contract files or wallet/chain wiring, or send transactions. Do not retry it. Keep the feature as a clearly labelled preview. Tell the person how to get it: send a new request that names the on-chain feature (for example "add a G$ tip jar contract"), and GoodBuild will start the on-chain milestone for it. There is no setting to change.`;
 }
 
@@ -58,7 +69,7 @@ export function milestoneAllows(plan: DeliveryPlan, index: number, name: string,
   const text = JSON.stringify(args);
   if (/writeContract|sendTransaction|signTransaction|transferAndCall|eth_send|wallet_send|createWalletClient/.test(text)) return false;
   if (["create_file", "edit_file", "delete_file", "rename_file"].includes(name)) {
-    return ![args.path, args.from, args.to].some((p) => typeof p === "string" && (p.startsWith("contracts/") || ["src/lib/chain.ts", "src/lib/useWallet.ts"].includes(p)));
+    return ![args.path, args.from, args.to].some((p) => typeof p === "string" && (p.startsWith("contracts/") || WALLET_LAYER.includes(p)));
   }
   // Kits can seed contracts and wire live payments; the scoped setup supplies safe kits instead.
   return name !== "add_kit" || !/shop|board|swap|token|vault|dao/i.test(String(args.id ?? args.name));

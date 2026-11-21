@@ -52,6 +52,8 @@ export interface TurnSetup {
   appInfo?: MiniAppInfo;
   /** Harness v2 (D152), decided when the setup was made. Missing: v1, so turns saved before it resume unchanged. */
   harness?: "v2";
+  /** D162: fixes, the visual fix and the contracts phase run in conversations of their own. Missing: a turn saved before, which resumes with the conversation it began with. */
+  focused?: true;
 }
 
 export interface LoggedUsage {

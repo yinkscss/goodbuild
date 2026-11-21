@@ -51,21 +51,34 @@ function StepDot({ status }: { status: Step["status"] }) {
   );
 }
 
-/** One step row. A running step shows its own seconds, its title breathes, and past 20s it explains. */
-function StepRow({ step, live }: { step: Step; live: boolean }) {
+/**
+ * One step row. A running step shows its own seconds, its title breathes, and past 20s it explains. A step
+ * with steps of its own (a fix attempt) lists them indented under it, and while it runs it says which one it
+ * is on, so its work is visibly part of it.
+ */
+function StepRow({ step, live, substeps = [] }: { step: Step; live: boolean; substeps?: Step[] }) {
   const running = live && step.status === "running";
   const seconds = useElapsed(running);
+  const current = running ? substeps.at(-1) : undefined;
+  const detail = current ? `Working on it: ${plainStepLabel(current.label)}` : step.detail;
   return (
     <li className={cn("py-2", live && "animate-lift motion-reduce:animate-none")}>
       <div className="flex items-start gap-3">
         <StepDot status={step.status} />
         <div className="min-w-0 flex-1">
           <p className={cn("text-sm font-medium", running && "animate-pulse-dot motion-reduce:animate-none")}>{plainStepLabel(step.label)}</p>
-          {step.detail && <p className="truncate text-xs text-grey-600">{step.detail}</p>}
+          {detail && <p className="truncate text-xs text-grey-600">{detail}</p>}
         </div>
         {running && seconds > 0 && <span className="mt-0.5 font-mono text-[11px] text-grey-600">{seconds}s</span>}
       </div>
-      {running && seconds >= SLOW_STEP_SECONDS && (
+      {substeps.length > 0 && (
+        <ol className="mt-1 ml-7 border-l border-grey-200 pl-3" aria-label={`${plainStepLabel(step.label)}: steps`}>
+          {substeps.map((c) => (
+            <StepRow key={c.id} step={c} live={live} />
+          ))}
+        </ol>
+      )}
+      {running && !current && seconds >= SLOW_STEP_SECONDS && (
         <WaitNote tone="calm" className="mt-2 ml-7">
           This part is taking longer than usual. Nothing is lost, and you can leave this tab open.
         </WaitNote>
@@ -79,9 +92,11 @@ export function StepRows({ steps, open = true, live = false }: { steps: Step[]; 
   if (!steps.length) return null;
   const rows = (
     <ol className="mt-3 rounded-block bg-[#FAFAFA] px-4 py-1" aria-label="Build steps">
-      {steps.map((s) => (
-        <StepRow key={s.id} step={s} live={live} />
-      ))}
+      {steps
+        .filter((s) => !s.parent || !steps.some((p) => p.id === s.parent))
+        .map((s) => (
+          <StepRow key={s.id} step={s} live={live} substeps={steps.filter((c) => c.parent === s.id)} />
+        ))}
     </ol>
   );
   if (open) return rows;
@@ -146,10 +161,10 @@ export function TurnError({ record, onFix, disabled, continueCost }: { record: T
           <span className="mt-1.5 size-2 shrink-0 rounded-full bg-danger" aria-hidden />
           <div>
             <p className="text-sm font-medium">
-              {paused ? "Paused: your credits ran low" : needsFix ? `Auto-fix ${autofix ? autofix.charAt(0).toLowerCase() + autofix.slice(1) : "couldn't fix every error"}` : "This build stopped"}
+              {paused ? "Paused: your credits ran low" : needsFix ? "This build still needs a fix" : "This build stopped"}
             </p>
             <p className="text-sm text-grey-600">
-              {needsFix ? "Your files are saved. Ask for a fix, or describe the change differently." : record.error ?? "Something went wrong."}
+              {needsFix ? `${autofix ? `${autofix}. ` : ""}Your files are saved. Tap Try fix and GoodBuild tries again a different way, or say what you want in your own words.` : record.error ?? "Something went wrong."}
             </p>
             {paused && continueCost && continueCost.needMicro > 0 && (
               <p className={cn("mt-1 text-xs", continueCost.haveMicro !== null && continueCost.haveMicro < continueCost.needMicro ? "text-warning" : "text-grey-600")}>

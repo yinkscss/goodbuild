@@ -235,6 +235,15 @@ function clean(value: unknown, max: number): string {
   return value.replace(/\s*—\s*/g, ", ").replace(/\s+/g, " ").trim().slice(0, max);
 }
 
+/**
+ * A sign-in option GoodBuild can build (D162). Apps sign in with the wallet or an email code (D31, the
+ * app-data guide); a planner that offered "a username and password" promised something no build can make.
+ */
+export function buildableSignIn(label: string): string {
+  if (/\b(user ?names?|pass ?words?|passcodes?|log ?ins? with google|google (?:log ?in|sign.?in|account))\b/i.test(label)) return "Yes, with an email code";
+  return label;
+}
+
 function parseOptions(raw: unknown): PlanOption[] {
   if (!Array.isArray(raw)) return [];
   const seen = new Set<string>();
@@ -243,7 +252,7 @@ function parseOptions(raw: unknown): PlanOption[] {
   for (const o of raw) {
     // Cheap models sometimes send plain strings instead of objects.
     const entry = (typeof o === "string" ? { label: o } : (o ?? {})) as { label?: unknown; detail?: unknown; recommended?: unknown };
-    const label = clean(entry.label, 80);
+    const label = buildableSignIn(clean(entry.label, 80));
     if (!label || /^other\b/i.test(label) || seen.has(label.toLowerCase())) continue;
     seen.add(label.toLowerCase());
     const detail = clean(entry.detail, 100);

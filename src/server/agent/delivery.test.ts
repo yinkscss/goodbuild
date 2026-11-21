@@ -56,3 +56,20 @@ describe("extending a delivery plan after the first message (D153)", () => {
     expect(MILESTONE_FACTS).toMatch(/no project setting/);
   });
 });
+
+describe("wallet layer refusal (D162)", () => {
+  it("tells the wallet milestone's builder the wallet layer already works and how to use it", () => {
+    const plan = deliveryFor("a G$ savings app where people connect their wallet");
+    const wallet = plan.milestones.findIndex((m) => m.id === "wallet");
+    expect(milestoneAllows(plan, wallet, "edit_file", { path: "src/lib/useWallet.ts" })).toBe(false);
+    const refusal = scopeRefusal(plan, wallet, { path: "src/lib/useWallet.ts" });
+    expect(refusal).toMatch(/GoodBuild's wallet layer\. It already works/);
+    expect(refusal).toMatch(/useWallet\(\)/);
+    expect(refusal).not.toMatch(/on-chain milestone/);
+  });
+
+  it("keeps the on-chain advice for contract files", () => {
+    const plan = deliveryFor("a G$ savings app where people connect their wallet");
+    expect(scopeRefusal(plan, 0, { path: "contracts/Savings.sol" })).toMatch(/on-chain milestone/);
+  });
+});

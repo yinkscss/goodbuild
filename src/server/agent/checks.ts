@@ -62,7 +62,7 @@ export interface CheckReport {
   /** Every ABI from the compile (project, tests, OpenZeppelin), for decoding reverts. */
   abis?: unknown[][];
   compilerVersion?: string;
-  /** Problems worth telling the builder about that don't fail the build (type errors while TYPE_CHECK is "warn"). */
+  /** Problems worth telling the builder about that don't fail the build (type errors after their one fix attempt, D162). */
   notes?: CheckIssue[];
 }
 

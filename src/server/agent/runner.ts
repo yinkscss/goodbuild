@@ -16,7 +16,7 @@ import { createHash } from "node:crypto";
 
 import { detectKits, kitById, kitGuideName, kitsOf, withKit, withKitHelpers } from "./kits";
 import { SHOP_WORDS } from "./kits/game-shop";
-import { parseReview, reviewEnabled, reviewFixMessage, reviewPrompt, REVIEW_MAX_TOKENS, worthReviewing } from "./review";
+import { parseReview, reviewFixMessage, reviewPrompt, REVIEW_MAX_TOKENS, worthReviewing } from "./review";
 import { runCheck, runCheckEnabled } from "./run-check";
 import { typeCheck, typeCheckMode, type TypeCheckMode } from "./type-check";
 import { dbAssetStore, type AssetStore } from "./asset-store";
@@ -25,10 +25,13 @@ import { HISTORY_WINDOW, memoryBlock, updateMemory, type Memory, type MemoryMess
 import { MODEL_IDS, TIER_FOR, ModelUnavailableError, type ChatMessage, type ModelClient, type ModelEvent, type ModelTier, type ToolCall, type UserPart } from "./model";
 import { INTAKE_MAX_TOKENS, INTAKE_PROMPT, PLAN_ASK_TOOL_NAME, askedJustBefore, fallbackIntake, intakeTools, intakeContext, isGameRequest, latestIntake, parseIntake, parsePlanQuestions, planBrief } from "./plan-intake";
 import { BUILD_TOOLS, SPEC_TOOLS, V2_BUILD_TOOLS, contextWithPicks, planTools, systemPrompt } from "./prompt";
-import { CONTRACT_WORK, SPEC_MAX_ROUNDS, acceptanceMode, harnessLimits, usesHarnessV2 } from "./harness";
-import { acceptanceIssues, acceptanceSummary, formatFlowResults, type FlowResult } from "./acceptance";
+import { CONTRACT_WORK, SPEC_MAX_ROUNDS, V2_LIMITS, usesHarnessV2 } from "./harness";
+import { acceptanceSummary, formatFlowResults, type FlowResult } from "./acceptance";
 import { SPEC_PATH, readSpec, specRequest, type AppSpec } from "./spec";
-import { requestView } from "./request-view";
+import { capResult, requestView } from "./request-view";
+import { readRange } from "./codebase";
+import { fixContext, reviewFixContext } from "./focused";
+import { addTokens, formatTokenReport } from "./token-report";
 import { checkpoint, claimTurn, loadFiles, recordUsage, releaseTurn } from "./store";
 import { decideFunding } from "@/server/credits/cap";
 import { CREDITS_PAUSED_MESSAGE, OutOfCreditsError, ensureHold, fitCall, headroomMicro, worstCaseCallMicro } from "@/server/credits/holds";
@@ -68,11 +71,11 @@ export interface TurnDeps {
   checkApp?: typeof checkApp;
   /** Opens the built app in a headless browser (D67). Default: the real one where the server turns it on, otherwise none. */
   runCheck?: typeof runCheck;
-  /** TypeScript over the app (D68). Default: the real one in the mode the server sets (TYPE_CHECK), otherwise none. */
+  /** TypeScript over the app (D68). Default: the real one on servers with the run check, otherwise none. */
   typeCheck?: typeof typeCheck;
-  /** "warn" notes type errors, "enforce" sends them to auto-fix. Default: TYPE_CHECK. */
+  /** "fix" (the default, D162) gives type errors one fix attempt, then notes them; "warn" only notes them; "enforce" blocks on them. */
   typeCheckMode?: TypeCheckMode;
-  /** The builder looks at screenshots of the finished page and fixes what it sees (D87). Default: VISUAL_REVIEW. Needs the run check. */
+  /** The builder looks at screenshots of the finished page and fixes what it sees (D87). Default: on (D162). Needs the run check. */
   review?: boolean;
   /** Uploaded assets (default: the DB store). */
   assets?: AssetStore;
@@ -164,27 +167,34 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
   let chainId: number | undefined;
   /** v2 (D152): the run check also runs the spec's acceptance flows; set once the setup says v2. */
   let acceptanceOn = false;
-  /** v2: this turn's spec step wrote the spec, so its flows describe this turn's request. */
-  let specThisTurn = false;
-  /** The flows' results from the latest run check, for run_checks to show when they fail (ACCEPTANCE=warn). */
+  /** The flows' results from the latest run check, for run_checks to show when they fail. */
   let lastAcceptance: FlowResult[] | undefined;
   const open = openWith ? async (files: Record<string, string>) => {
     const flows = acceptanceOn ? readSpec(files)?.acceptance ?? [] : [];
-    const result = await openWith(files, { assets: assetNames, chainId, ...(delivery && job.deliveryIndex !== undefined ? { delivery: { id: delivery.milestones[job.deliveryIndex].id, goal: delivery.goal, verifyWallet: delivery.verified?.includes("wallet") } } : {}), ...(flows.length ? { acceptance: { flows } } : {}) });
+    const result = await openWith(files, { assets: assetNames, chainId, ...(delivery && job.deliveryIndex !== undefined ? { delivery: { id: delivery.milestones[job.deliveryIndex].id, goal: delivery.goal, verifyWallet: walletDelivered(delivery) } } : {}), ...(flows.length ? { acceptance: { flows } } : {}) });
     runtimeRan = result.ran;
     lastAcceptance = result.acceptance;
-    const failing = result.acceptance ? acceptanceIssues(result.acceptance) : [];
-    // Flows are enforced on the turn whose spec wrote them. A later turn may change what they check (a renamed
-    // heading), so there they only warn: the builder sees them, and nothing sends it back to the old wording.
-    const enforcing = acceptanceMode() === "enforce" && specThisTurn;
-    if (result.acceptance) log(`acceptance: ${acceptanceSummary(result.acceptance)}${failing.length && !enforcing ? ` (${acceptanceMode() === "enforce" ? "the spec is from an earlier turn" : "warn"}: not blocking)` : ""}`);
-    const enforce = failing.length > 0 && enforcing;
-    deliveryVerified = result.deliveryVerified === true && !enforce;
-    return enforce ? { ...result, issues: [...result.issues, ...failing] } : result;
+    // Acceptance flows never block a build (owner, 21 Nov 2026): a flow the planner got wrong can't send the
+    // builder into fixes it can't make. The builder sees the failures in run_checks and run_acceptance.
+    if (result.acceptance) log(`acceptance: ${acceptanceSummary(result.acceptance)}${result.acceptance.some((r) => r.status === "fail") ? " (not blocking)" : ""}`);
+    deliveryVerified = result.deliveryVerified === true;
+    walletChecked = result.walletVerified === true;
+    return result;
   } : undefined;
-  const reviewOn = (deps.review ?? reviewEnabled()) && Boolean(openWith);
-  const typesMode = deps.typeCheckMode ?? (deps.typeCheck ? "enforce" : typeCheckMode());
-  const types = typesMode === "off" ? undefined : { run: deps.typeCheck ?? typeCheck, enforce: typesMode === "enforce" };
+  // The review runs wherever the run check does (D162): on DeepSeek it is cheap, and there is no setting.
+  const reviewOn = (deps.review ?? true) && Boolean(openWith);
+  const typesMode = deps.typeCheckMode ?? (deps.typeCheck ? "fix" : typeCheckMode());
+  /** "fix" (D162): type errors block until one fix attempt has had them, then they are notes and never block. */
+  let typeFixesLeft = 1;
+  const types = typesMode === "off" ? undefined : { run: deps.typeCheck ?? typeCheck, get enforce() { return typesMode === "enforce" || (typesMode === "fix" && typeFixesLeft > 0); } };
+  /** A report with its type errors moved to notes once their one fix attempt has run (D162). */
+  const settleTypes = (r: CheckReport): CheckReport => {
+    if (typesMode !== "fix" || typeFixesLeft > 0) return r;
+    const typed = r.errors.filter((e) => e.source === "types");
+    if (!typed.length) return r;
+    const errors = r.errors.filter((e) => e.source !== "types");
+    return { ...r, ok: errors.length === 0, errors, notes: [...(r.notes ?? []), ...typed] };
+  };
 
   if (!job.lockHeld && !(await claimTurn(db, input.projectId, input.userId))) throw new TurnBusyError();
   // Every usage row of the turn takes the job's funding (D48).
@@ -236,8 +246,12 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     if (job.signal?.aborted) throw new TurnStoppedError();
   };
 
-  const step = (s: Step) => {
-    const i = record.steps.findIndex((x) => x.id === s.id);
+  /** While a fix attempt runs, the steps it takes are shown under it. */
+  let stepParent: string | undefined;
+  const step = (input: Step) => {
+    const i = record.steps.findIndex((x) => x.id === input.id);
+    const parent = input.parent ?? (i >= 0 ? record.steps[i].parent : undefined) ?? (stepParent && stepParent !== input.id ? stepParent : undefined);
+    const s = parent ? { ...input, parent } : input;
     if (i >= 0) record.steps[i] = s;
     else record.steps.push(s);
     out({ type: "step", step: s });
@@ -254,6 +268,8 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
   let draftPersisted = false;
   let runtimeRan = false;
   let deliveryVerified = false;
+  /** A later build's run check connected a wallet to an earlier wallet milestone (D162). */
+  let walletChecked = false;
   let savePausedDraft: (() => Promise<boolean>) | undefined;
   const persistDraft = async (diagnostics = "") => {
     if (!workspace || !job.jobId || input.mode !== "build") return;
@@ -296,9 +312,9 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     const intake = setup.intake === true;
     // Harness v2 (D152): spec, contracts and front end by different models, the builder checks its own work.
     const v2 = setup.harness === "v2" && input.mode === "build" && !intake;
-    const limits = v2 ? harnessLimits() : { maxCalls: MAX_CALLS, maxRounds: MAX_TOOL_ROUNDS_PER_PHASE, checkBudgetMs: 0 };
+    const limits = v2 ? V2_LIMITS : { maxCalls: MAX_CALLS, maxRounds: MAX_TOOL_ROUNDS_PER_PHASE, checkBudgetMs: 0 };
     acceptanceOn = v2;
-    const convo: ChatMessage[] = [{ role: "system", content: intake ? INTAKE_PROMPT : systemPrompt(input.mode, setup.canAsk === true, v2) }, ...rehydrate(setup.prefix, images)];
+    let convo: ChatMessage[] = [{ role: "system", content: intake ? INTAKE_PROMPT : systemPrompt(input.mode, setup.canAsk === true, v2) }, ...rehydrate(setup.prefix, images)];
     // The tools of the phase that is running (v2's spec call has its own).
     let tools = intake ? intakeTools(setup.request) : input.mode === "plan" ? planTools(setup.canAsk === true) : v2 ? V2_BUILD_TOOLS : BUILD_TOOLS;
     /** v2: where the running phase began. Older file bodies and long results are trimmed from what is sent (requestView). */
@@ -314,6 +330,13 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     // call it was writing (usually a big create_file) was lost.
     let cutOff = false;
     let cutAtLimit = false;
+    /** v2: a check's long output keeps its start and end as it is recorded (D162). */
+    const capped = (text: string) => (v2 ? capResult(text) : text);
+    /** v2: calls of the front-end phase so far. Design-reference pictures go to the spec step and the first of them (D162). */
+    let frontEndCalls = 0;
+    const picturesWanted = () => stage === "spec" || (stage === "build" && frontEndCalls === 0);
+    /** The step the next model calls serve, for the token report (D162). */
+    let stage = intake ? "plan questions" : input.mode === "plan" ? "plan" : "build";
 
     /** Replay is over: tell the client the turn's state so far, then stream live again. */
     const goLive = () => {
@@ -385,6 +408,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       const addUsage = (u: LoggedUsage) => {
         if (funding === "platform") record.sponsoredMicro = (record.sponsoredMicro ?? 0) + u.chargedMicro;
         else record.chargedMicro += u.chargedMicro;
+        addTokens((record.tokens ??= []), stage, u);
         out({ type: "usage", chargedMicro: funding === "platform" ? 0 : u.chargedMicro, totalChargedMicro: record.chargedMicro, model: u.model, inputTokens: u.inputTokens, outputTokens: u.outputTokens, cachedInputTokens: u.cachedInputTokens });
       };
 
@@ -405,7 +429,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
         // for, so a resumed build replays it however it was fitted.
         const asked = side
           ? { tier, messages: side.messages, maxTokens: side.maxTokens }
-          : { tier, messages: v2 ? requestView(convo, trimBefore) : convo, tools, maxTokens: intake ? INTAKE_MAX_TOKENS : MAX_TOKENS, ...(intake ? { noThinking: true } : {}), ...(v2 && tier === "strong" ? { cacheTail: true } : {}) };
+          : { tier, messages: v2 ? requestView(convo, trimBefore, { dropImages: !picturesWanted() }) : convo, tools, maxTokens: intake ? INTAKE_MAX_TOKENS : MAX_TOKENS, ...(intake ? { noThinking: true } : {}), ...(v2 && tier === "strong" ? { cacheTail: true } : {}) };
         const ask = side ? asked : await fitToCredit(asked);
         for (let attempt = 0; ; attempt++) {
           try {
@@ -510,8 +534,15 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     const phase = async (tier: ModelTier, quiet = false, opts: PhaseOptions = {}) => {
       // v2: everything before this phase is sent trimmed, and stays byte-stable while the phase runs.
       if (v2) trimBefore = convo.length;
+      /** Where each round of this pass began, for the rolling trim below. */
+      const roundStarts: number[] = [];
       for (let round = 0; round < (opts.maxRounds ?? limits.maxRounds); round++) {
         stopIfRequested();
+        roundStarts.push(convo.length);
+        // v2 (D162): a long pass trims its own older rounds too. Every TRIM_EVERY rounds, file text written more
+        // than KEEP_ROUNDS rounds ago becomes a note (the files hold it) and long results keep their ends. The
+        // trim point only moves in steps, so the prefix stays the same between steps and the cache keeps hitting.
+        if (v2 && round > 0 && round % TRIM_EVERY === 0) trimBefore = Math.max(trimBefore, roundStarts[round - KEEP_ROUNDS]);
         // Out of free spend: end the pass the way running out of rounds does, so the reply and the save still happen.
         if (atFreeCeiling() || calls >= limits.maxCalls - 2) {
           budgetStopped = true;
@@ -520,6 +551,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
         }
         const beforeRound = filesKey(ws.files);
         const toolCalls = await callModel(tier, quiet);
+        if (stage === "build") frontEndCalls++;
         if (cutOff) {
           // Not finished: the model was mid-write. Run whatever calls did complete, then
           // ask it to continue in smaller pieces (below), instead of ending the pass.
@@ -541,22 +573,25 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
           }
           // Plan mode can't edit; a refused edit attempt isn't worth showing as a failed step.
           const label = input.mode === "plan" ? null : toolLabel(call);
-          if (label) step({ id: stepId, label, status: "running" });
+          // An edit is shown once it has changed a file (D162): a failed edit the builder retries, a refused one
+          // and one that changed nothing are part of the work, not steps the person needs to read.
+          const shownWhenChanged = EDIT_TOOLS.includes(call.name);
+          if (label && !shownWhenChanged) step({ id: stepId, label, status: "running" });
           if (call.name === "run_checks") {
-            convo.push({ role: "tool", tool_call_id: call.id, content: await checkForTheBuilder() });
+            convo.push({ role: "tool", tool_call_id: call.id, content: capped(await checkForTheBuilder()) });
             continue;
           }
           // v2's own checks (D152): the builder runs the tests and opens the app itself.
           if (v2 && call.name === "run_tests") {
-            convo.push({ role: "tool", tool_call_id: call.id, content: await testsForTheBuilder(stringArg(call, "filter")) });
+            convo.push({ role: "tool", tool_call_id: call.id, content: capped(await testsForTheBuilder(stringArg(call, "filter"))) });
             continue;
           }
           if (v2 && call.name === "open_app") {
-            convo.push({ role: "tool", tool_call_id: call.id, content: await openForTheBuilder(stringArg(call, "route")) });
+            convo.push({ role: "tool", tool_call_id: call.id, content: capped(await openForTheBuilder(stringArg(call, "route"))) });
             continue;
           }
           if (v2 && call.name === "run_acceptance") {
-            convo.push({ role: "tool", tool_call_id: call.id, content: await acceptanceForTheBuilder(stringArg(call, "flow")) });
+            convo.push({ role: "tool", tool_call_id: call.id, content: capped(await acceptanceForTheBuilder(stringArg(call, "flow"))) });
             continue;
           }
           // Plan mode's own questions (D103): shown as cards, and the turn ends so the answers can start the plan.
@@ -583,17 +618,17 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
           const kitPaths = call.name === "add_kit" ? Object.keys(kitById(String(args.name ?? "").trim())?.files ?? {}) : [];
           const gated = opts.gate && (EDIT_TOOLS.includes(call.name) || call.name === "add_kit") ? [args.path, args.from, args.to, ...kitPaths].map((p) => (typeof p === "string" ? opts.gate!(p) : null)).find(Boolean) : null;
           if (!gated && !allowed) scopeRefused++;
-          const outcome = gated ? { ok: false, result: `Error: ${gated}` } : allowed ? ws.execute(call.name, call.arguments, input.mode) : { ok: false, result: scopeRefusal(delivery!, job.deliveryIndex!) };
+          const outcome = gated ? { ok: false, result: `Error: ${gated}` } : allowed ? ws.execute(call.name, call.arguments, input.mode) : { ok: false, result: scopeRefusal(delivery!, job.deliveryIndex!, args) };
           const path = String(args.path ?? call.name);
           if (!outcome.ok && ["edit_file", "create_file"].includes(call.name)) {
             const count = (failures.get(path) ?? 0) + 1;
             failures.set(path, count);
             if (count >= 2 && ws.files[path] !== undefined) {
-              outcome.result += `\nRepeated edit failure. Current file:\n${ws.files[path]}\nRead these exact contents. Switch to a different search block or replace this file once with create_file. Do not repeat the failed edit.`;
+              outcome.result += repeatedEditNote(ws.files[path], v2);
               log(`· repeated edit failure in ${path}; supplied current contents and requested a different strategy`);
             }
           } else if (outcome.change) failures.delete(path);
-          if (call.name === "write_spec" && outcome.ok) specWritten = specThisTurn = true;
+          if (call.name === "write_spec" && outcome.ok) specWritten = true;
           if (opts.endOn === call.name && outcome.ok) ended = true;
           if (outcome.guides?.length) log(`guides: ${outcome.guides.join(", ")}`);
           if (outcome.access) log(`· ${outcome.access}`);
@@ -610,15 +645,16 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
             out({ type: "file", change: outcome.change });
             log(`→ ${outcome.change.op === "delete" ? "deleted" : "wrote"} ${outcome.change.path}`);
           }
-          if (label) {
+          if (!outcome.ok) log(`· ${call.name}${args.path ? ` ${String(args.path)}` : ""} didn't apply: ${outcome.result.replace(/^Error:\s*/, "").split("\n")[0].slice(0, 200)}`);
+          if (label && (!shownWhenChanged || outcome.change)) {
             step({
               id: stepId,
               label,
               status: outcome.ok ? "done" : "error",
-              detail: outcome.ok ? changeDetail(outcome.change) : outcome.result.replace(/^Error:\s*/, "").slice(0, 140),
+              detail: outcome.ok ? changeDetail(outcome.change) : plainToolFailure(outcome.result),
             });
           }
-          convo.push({ role: "tool", tool_call_id: call.id, content: outcome.result });
+          convo.push({ role: "tool", tool_call_id: call.id, content: call.name === "search_code" ? capped(outcome.result) : outcome.result });
         }
         await persistDraft();
         const roundKey = JSON.stringify(toolCalls.map((c) => [c.name, c.arguments]));
@@ -644,6 +680,29 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       }
       log("! stopped: too many tool rounds in one pass");
       return false;
+    };
+
+    /**
+     * v2 (D162): run one job in a conversation of its own (a fix attempt, the fix after the visual check), then go
+     * back to the build's conversation. Built only from the files and the checks, so a resumed build builds the
+     * same messages and its saved calls still line up.
+     */
+    const focused = async <T>(context: string | ChatMessage[], run: () => Promise<T>): Promise<T> => {
+      // A turn saved before D162 resumes in the conversation it began with, so its saved calls still line up.
+      if (!setup.focused) {
+        if (typeof context === "string") convo.push({ role: "user", content: context });
+        else convo.push(context[context.length - 1]);
+        return run();
+      }
+      const main = convo;
+      const mainTrim = trimBefore;
+      convo = [convo[0], ...(typeof context === "string" ? [{ role: "user" as const, content: context }] : context)];
+      try {
+        return await run();
+      } finally {
+        convo = main;
+        trimBefore = mainTrim;
+      }
     };
 
     // The person's colours stay, whatever the model wrote to the page (D32). The MiniPay kit's MINI_APP
@@ -690,8 +749,8 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       checked = { key: filesKey(ws.files), report };
       latestReport = report;
       const found = [...report.errors, ...(report.notes ?? [])];
-      // Flows that don't block (ACCEPTANCE=warn, or a spec from an earlier turn, D152): the builder still sees them.
-      const flowsFailing = !(acceptanceMode() === "enforce" && specThisTurn) ? ((lastAcceptance as FlowResult[] | undefined) ?? []).filter((r) => r.status === "fail") : [];
+      // Failing flows don't block (D152), but the builder sees them and can fix them.
+      const flowsFailing = ((lastAcceptance as FlowResult[] | undefined) ?? []).filter((r) => r.status === "fail");
       if (flowsFailing.length) return `${found.length ? `The checks found problems:\n${formatIssues(found)}\n\n` : ""}These acceptance flows from the spec fail (they show what doesn't work yet; fix the app, then run_acceptance):\n${formatFlowResults(flowsFailing)}`;
       if (!found.length) return "All checks pass. Don't run them again unless you edit more files.";
       return `${report.ok ? "Nothing blocks the build, but these are worth fixing" : "The checks found problems"}. Fix them with edit_file (read a file before editing it), then run_checks again if you changed more than a line or two:\n${formatIssues(found)}`;
@@ -700,9 +759,9 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     const checkNow = async (attempt: number | string): Promise<CheckReport> => {
       if (checked && checked.key === filesKey(ws.files)) {
         log("· checks: nothing changed since the builder's last check, using that result");
-        return checked.report;
+        return settleTypes(checked.report);
       }
-      latestReport = await runChecks(ws.files, compile, lint, step, log, attempt, contractOptions, runContractTests, stopIfRequested, open, types);
+      latestReport = settleTypes(await runChecks(ws.files, compile, lint, step, log, attempt, contractOptions, runContractTests, stopIfRequested, open, types));
       return latestReport;
     };
 
@@ -844,12 +903,14 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     const specAndContracts = async (): Promise<PhaseOptions["gate"]> => {
       const hasContracts = hasContractsIn(ws.files);
       const contractsAllowed = !delivery || job.deliveryIndex === undefined || delivery.milestones[job.deliveryIndex]?.id === "payments";
-      const wantSpec = job.deliveryIndex !== undefined || (setup.firstBuild && ws.files[SPEC_PATH] === undefined) || (hasContracts && CONTRACT_WORK.test(setup.request));
+      const wantSpec = wantsSpec({ spec: readSpec(ws.files), milestone: job.deliveryIndex !== undefined, contractsAllowed, hasContracts, firstBuild: setup.firstBuild, request: setup.request });
       if (!wantSpec || atFreeCeiling()) return undefined;
       step({ id: "spec", label: "Planning the app", status: "running" });
       tools = SPEC_TOOLS;
       convo.push({ role: "user", content: specRequest(hasContracts, contractsAllowed) });
+      stage = "spec";
       await phase(TIER_FOR.spec, true, { endOn: "write_spec", maxRounds: SPEC_MAX_ROUNDS });
+      stage = "build";
       tools = V2_BUILD_TOOLS;
       const spec = specWritten ? readSpec(ws.files) : null;
       if (!spec) {
@@ -865,7 +926,13 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
         step({ id: "contracts", label: "Writing the contracts", status: "running" });
         log("phase: contracts (strong model)");
         convo.push({ role: "user", content: contractsPhaseMessage(spec) });
-        await phase(TIER_FOR.contracts, true, { gate: (p) => (p.startsWith("contracts/") ? null : CONTRACTS_ONLY) });
+        stage = "contracts";
+        // Its own conversation (D162): the request and project context, and the contracts to write. The spec
+        // step's rounds and the pictures stay out, and the front end then doesn't re-read the contract work.
+        await focused([...convo.slice(1, 1 + setup.prefix.length), { role: "user", content: contractsPhaseMessage(spec) }], () =>
+          phase(TIER_FOR.contracts, true, { gate: (p) => (p.startsWith("contracts/") ? null : CONTRACTS_ONLY) }),
+        );
+        stage = "build";
         contractsWritten = true;
         // Compiled now, so the front end imports the real ABI instead of guessing it.
         let detail = "no contract files were written";
@@ -908,20 +975,22 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       // summary and follow-ups instead of an empty message. Tools stay declared (some
       // providers require it once the history has tool calls) but any calls are not run.
       convo.push({ role: "user", content: "Stop editing: you've used all your tool steps for this pass. Reply to the user now, as instructed (suggest_next is the only tool you may still call)." });
+      stage = "reply";
       const extra = await callModel(input.mode === "plan" ? TIER_FOR.plan : TIER_FOR.build, false, true);
+      stage = "build";
       for (const call of extra) {
         if (call.name === "suggest_next") {
           let args: Record<string, unknown> = {};
           try { const parsed = JSON.parse(call.arguments); if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) args = parsed; } catch { /* Workspace reports malformed arguments. */ }
           const allowed = !delivery || job.deliveryIndex === undefined || milestoneAllows(delivery, job.deliveryIndex, call.name, args);
           if (!allowed) scopeRefused++;
-          const outcome = allowed ? ws.execute(call.name, call.arguments, input.mode) : { ok: false, result: scopeRefusal(delivery!, job.deliveryIndex!) };
+          const outcome = allowed ? ws.execute(call.name, call.arguments, input.mode) : { ok: false, result: scopeRefusal(delivery!, job.deliveryIndex!, args) };
           const path = String(args.path ?? call.name);
           if (!outcome.ok && ["edit_file", "create_file"].includes(call.name)) {
             const count = (failures.get(path) ?? 0) + 1;
             failures.set(path, count);
             if (count >= 2 && ws.files[path] !== undefined) {
-              outcome.result += `\nRepeated edit failure. Current file:\n${ws.files[path]}\nRead these exact contents. Switch to a different search block or replace this file once with create_file. Do not repeat the failed edit.`;
+              outcome.result += repeatedEditNote(ws.files[path], v2);
               log(`· repeated edit failure in ${path}; supplied current contents and requested a different strategy`);
             }
           } else if (outcome.change) failures.delete(path);
@@ -968,7 +1037,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     }
 
     // The user's house style: no em dashes in what they read (the prompt asks too; models slip).
-    const styled = plainDashes(text);
+    const styled = tidyReply(text);
     if (styled !== text) {
       text = styled;
       out({ type: "text_set", text });
@@ -982,6 +1051,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     if (input.mode === "plan" || (!firstBuild && !ws.changed() && !unfinished)) {
       goLive();
       stopIfRequested();
+      for (const line of formatTokenReport(record.tokens ?? [])) log(line);
       record.status = "answered";
       await job.commit(async (tx) => {
         await scopeRefund(tx);
@@ -1010,11 +1080,16 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     let stopNote = "";
     const fixStartMicro = record.chargedMicro;
     let progress = { best: report.errors.length, stalls: 0 };
+    /** v2 (D162): when the same problems come back, one more attempt starts fresh and tries another way. */
+    let triedAnotherWay = false;
+    let beforeAttempt: Record<string, string> | undefined;
     for (let attempt = 1; !report.ok && attempt <= MAX_FIX_ATTEMPTS; attempt++) {
       const issues = formatIssues(report.errors);
-      if (issues === previous) {
-        log("! the same errors came back after a fix, stopping");
+      const same = issues === previous;
+      if (same && (!v2 || triedAnotherWay)) {
+        log(v2 ? "! the same errors came back after trying another way, stopping" : "! the same errors came back after a fix, stopping");
         stoppedEarly = true;
+        if (v2) stopNote = "the same problem came back after two different tries";
         break;
       }
       if (record.chargedMicro - fixStartMicro >= FIX_BUDGET_MICRO) {
@@ -1028,22 +1103,46 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
         stopNote = "this build reached the most one build may spend on free AI";
         break;
       }
+      if (same) {
+        triedAnotherWay = true;
+        log("! the same errors came back after a fix; trying once more, another way");
+      }
       previous = issues;
       attemptsUsed = attempt;
-      step({ id: `fix:${attempt}`, label: `Fixing errors (attempt ${attempt} of ${MAX_FIX_ATTEMPTS})`, detail: `${plural(report.errors.length, "error")} to fix: ${firstIssue(report.errors)}`, status: "running" });
-      convo.push({
-        role: "user",
-        content: `GoodBuild's checks failed. Fix these errors with edit_file. A [runtime] error is what happened when GoodBuild opened the built app in a browser, and a [types] error is TypeScript's: read the named file before changing it. If a contract test fails, decide whether the contract or the test is wrong: fix the contract when it misbehaves; change a test only when its expectation is mistaken, and never delete or weaken a check just to make it pass. Then stop with a very short note (the user sees the fix steps, not this note):\n${issues}`,
-      });
+      step({ id: `fix:${attempt}`, label: `Fixing errors (attempt ${attempt} of ${MAX_FIX_ATTEMPTS})`, detail: v2 ? `${plural(report.errors.length, "problem")} to fix${same ? ", trying another way" : ""}` : `${plural(report.errors.length, "error")} to fix: ${firstIssue(report.errors)}`, status: "running" });
+      if (v2) for (const e of report.errors.slice(0, 3)) log(`· to fix: ${firstIssue([e])}`);
+      // Type errors get this one attempt (D162); whatever is left of them afterwards is noted, not blocking.
+      if (typesMode === "fix" && report.errors.some((e) => e.source === "types")) {
+        typeFixesLeft = 0;
+        checked = undefined;
+      }
       const fixWith = v2 ? fixTierByWriter(attempt, report.errors, authors) : fixTier(attempt, report.errors);
-      if (v2) log(`· fix attempt ${attempt} on the ${fixWith === "cheap" ? "fast" : "strong"} model${attempt === 1 ? " (the files' writer)" : ""}`);
-      await phase(fixWith, true);
-      report = await checkNow(attempt);
+      if (v2) log(`· fix attempt ${attempt} on the ${fixWith === "cheap" ? "fast" : "strong"} model (the files' writer)${same ? ", started fresh" : ""}`);
+      stepParent = `fix:${attempt}`;
+      const startFiles = { ...ws.files };
+      try {
+        stage = "fix";
+        if (v2) {
+          // A conversation of its own (D162): the problems and the files they name, not the whole build so far.
+          const context = fixContext({ request: setup.request, summary: readSpec(ws.files)?.summary, issues, errors: report.errors, files: ws.files, ...(same && beforeAttempt ? { before: beforeAttempt } : {}) });
+          await focused(context, () => phase(fixWith, true));
+        } else {
+          convo.push({
+            role: "user",
+            content: `GoodBuild's checks failed. Fix these errors with edit_file. A [runtime] error is what happened when GoodBuild opened the built app in a browser, and a [types] error is TypeScript's: read the named file before changing it. If a contract test fails, decide whether the contract or the test is wrong: fix the contract when it misbehaves; change a test only when its expectation is mistaken, and never delete or weaken a check just to make it pass. Then stop with a very short note (the user sees the fix steps, not this note):\n${issues}`,
+          });
+          await phase(fixWith, true);
+        }
+        report = await checkNow(attempt);
+      } finally {
+        stepParent = undefined;
+      }
+      beforeAttempt = startFiles;
       if (calls >= limits.maxCalls - 2 || budgetStopped) { stoppedEarly = true; stopNote = "saved at this milestone's work limit"; break; }
       step({
         id: `fix:${attempt}`,
         label: `Fixing errors (attempt ${attempt} of ${MAX_FIX_ATTEMPTS})`,
-        detail: report.ok ? "all checks pass" : `${plural(report.errors.length, "error")} left: ${firstIssue(report.errors)}`,
+        detail: report.ok ? "all checks pass" : v2 ? `${plural(report.errors.length, "problem")} left` : `${plural(report.errors.length, "error")} left: ${firstIssue(report.errors)}`,
         status: report.ok ? "done" : "error",
       });
       progress = fixProgress(progress.best, progress.stalls, report.errors.length);
@@ -1069,6 +1168,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
         step({ id: "review", label: "Looking at the page", detail: "skipped", status: "done" });
       } else {
         const direction = record.plan?.summary;
+        stage = "review";
         await callModel(TIER_FOR.review, true, false, { messages: [{ role: "user", content: [{ type: "text", text: reviewPrompt({ request: setup.request, direction, pictures }) }, ...shots] }], maxTokens: REVIEW_MAX_TOKENS });
         const verdict = parseReview(sideReply);
         if (!verdict) {
@@ -1085,9 +1185,13 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
           const before = { ...ws.files };
           const beforeKey = filesKey(before);
           // What the browser check said about these files, restored with them if the fixes are rolled back.
-          const verifiedBefore = { runtimeRan, deliveryVerified, lastAcceptance };
-          convo.push({ role: "user", content: reviewFixMessage(verdict.issues) });
-          await phase(TIER_FOR.build, true, { gate: uiGate });
+          const verifiedBefore = { runtimeRan, deliveryVerified, walletChecked, lastAcceptance };
+          stage = "visual fix";
+          if (v2) await focused(reviewFixContext({ request: setup.request, message: reviewFixMessage(verdict.issues), files: ws.files, changed: ws.netChanges().map((c) => c.path) }), () => phase(TIER_FOR.build, true, { gate: uiGate }));
+          else {
+            convo.push({ role: "user", content: reviewFixMessage(verdict.issues) });
+            await phase(TIER_FOR.build, true, { gate: uiGate });
+          }
           keepTheme();
           const untouched = filesKey(ws.files) === beforeKey;
           const after = untouched ? report : await checkNow("review");
@@ -1100,7 +1204,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
             // A fix that breaks a check isn't worth a second round of fixing: the page goes back to how it was.
             for (const path of Object.keys(ws.files)) delete ws.files[path];
             Object.assign(ws.files, before);
-            ({ runtimeRan, deliveryVerified, lastAcceptance } = verifiedBefore);
+            ({ runtimeRan, deliveryVerified, walletChecked, lastAcceptance } = verifiedBefore);
             checked = undefined;
             record.review = { ok: false, issues: verdict.issues, fixed: false };
             log(untouched ? "· review: the builder changed nothing" : "! review: the fixes broke a check, so the page was left as it was");
@@ -1117,10 +1221,25 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       step({ id: "autofix", label: report.ok ? "Auto-fix: fixed" : "Auto-fix: failed", detail, status: report.ok ? "done" : "error" });
       log(`${report.ok ? "✓" : "✗"} ${detail.toLowerCase()}`);
     }
-    if (delivery && job.deliveryIndex !== undefined && (!runtimeRan || (["interface", "wallet"].includes(delivery.milestones[job.deliveryIndex].id) && !deliveryVerified) || isStarterApp(ws.files["src/App.tsx"]))) {
-      report = { ...report, ok: false, errors: [...report.errors, { file: "src/App.tsx", source: "runtime", message: !runtimeRan || !deliveryVerified ? "The milestone's browser acceptance has not passed; progress is saved for recovery." : "The first interface is still the starter app." }] };
+    // A milestone whose browser check ran and failed doesn't replace the working version. One whose check couldn't
+    // run at all (the checker was down or busy) is saved and marked as needing verification (D162, owner, 21 Nov
+    // 2026): nothing is wrong with the app, and the person can't fix our server. A later build checks it again.
+    if (delivery && job.deliveryIndex !== undefined && !runtimeRan && report.ok) log("· the browser check couldn't run, so this milestone is saved and marked as needing verification");
+    if (delivery && job.deliveryIndex !== undefined && ((runtimeRan && ["interface", "wallet"].includes(delivery.milestones[job.deliveryIndex].id) && !deliveryVerified) || isStarterApp(ws.files["src/App.tsx"]))) {
+      report = { ...report, ok: false, errors: [...report.errors, { file: "src/App.tsx", source: "runtime", message: !deliveryVerified && !isStarterApp(ws.files["src/App.tsx"]) ? "The milestone's browser acceptance has not passed; progress is saved for recovery." : "The first interface is still the starter app." }] };
     }
+    /** Milestones this build proved in the browser: its own, and an earlier wallet milestone a check connected to. */
+    const provedNow =
+      delivery && job.deliveryIndex !== undefined && report.ok
+        ? [
+            ...(deliveryVerified ? [delivery.milestones[job.deliveryIndex].id] : []),
+            ...(walletChecked ? ["wallet"] : []),
+            // A first interface saved while the checker was down is proved once a later build opens the app cleanly.
+            ...(runtimeRan && delivery.milestones.slice(0, delivery.completed).some((m) => m.id === "interface") ? ["interface"] : []),
+          ]
+        : [];
     await writeContractModules(report);
+    for (const line of formatTokenReport(record.tokens ?? [])) log(line);
     record.checks = { errors: report.errors.length, warnings: report.warnings.length };
     record.status = report.ok ? "ready" : "needs_fix";
     const endStatus = record.status;
@@ -1136,7 +1255,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     record.jobId = job.jobId;
     if (delivery && job.deliveryIndex !== undefined) {
       const index = job.deliveryIndex;
-      const verified = [...new Set([...(delivery.verified ?? []), ...(report.ok && deliveryVerified ? [delivery.milestones[index].id] : [])])];
+      const verified = [...new Set([...(delivery.verified ?? []), ...provedNow])];
       const remaining = delivery.milestones.flatMap((m, i) => i > index || !verified.includes(m.id) ? [`${m.title}${report.ok && i <= index && !verified.includes(m.id) ? " (needs verification)" : ""}`] : []);
       record.delivery = { title: delivery.milestones[index].title, remaining, demo: delivery.milestones[index].id !== "payments" };
       text = report.ok ? `${delivery.milestones[index].title}: ${deliveryVerified ? "browser acceptance passed" : "implementation saved; live behaviour still needs verification"}.${record.delivery.demo ? " Live payments remain disabled." : " Deployment and wallet confirmation are still required for live payments."}${remaining.length ? ` Still to finish: ${remaining.join(", ")}.` : " The saved milestones are complete."}` : "Your progress is saved. This milestone still needs a fix before it replaces your working version.";
@@ -1152,7 +1271,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     // job that runs again.
     await job.commit(async (tx) => {
       await scopeRefund(tx);
-      if (report.ok && delivery && job.deliveryIndex !== undefined) await tx.update(buildDeliveries).set({ plan: { ...delivery, completed: Math.max(delivery.completed, job.deliveryIndex + 1), verified: [...new Set([...(delivery.verified ?? []), ...(deliveryVerified ? [delivery.milestones[job.deliveryIndex].id] : [])])] } }).where(eq(buildDeliveries.projectId, input.projectId));
+      if (report.ok && delivery && job.deliveryIndex !== undefined) await tx.update(buildDeliveries).set({ plan: { ...delivery, completed: Math.max(delivery.completed, job.deliveryIndex + 1), verified: [...new Set([...(delivery.verified ?? []), ...provedNow])] } }).where(eq(buildDeliveries.projectId, input.projectId));
       if (save) record.version = await checkpoint(tx, { projectId: input.projectId, files: ws.files, summary, messageId: assistantId });
       await finish(tx, assistantId, text, record);
       await markImagesAttached(tx, setup);
@@ -1408,6 +1527,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
         });
         if (funding === "platform") record.sponsoredMicro = (record.sponsoredMicro ?? 0) + cost.chargedMicro;
         else record.chargedMicro += cost.chargedMicro;
+        addTokens((record.tokens ??= []), "memory", ev);
       }
       if (advanced) await tx.update(projects).set({ memory }).where(eq(projects.id, input.projectId));
     });
@@ -1470,7 +1590,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       recordAtStart: structuredClone(record),
       text,
       ...(appInfo ? { appInfo } : {}),
-      ...(v2 ? { harness: "v2" as const } : {}),
+      ...(v2 ? { harness: "v2" as const, focused: true as const } : {}),
     };
     await job.commit((tx) => job.saveSetup(tx, result));
     return result;
@@ -1480,6 +1600,11 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     if (!s.imageAssetIds.length) return;
     await (deps.assets ?? dbAssetStore(tx)).markAttached(input.projectId, s.imageAssetIds, assistantId);
   }
+}
+
+/** Whether a wallet milestone is done (verified or not): later builds then check the wallet still connects (D162). */
+function walletDelivered(plan: DeliveryPlan): boolean {
+  return Boolean(plan.verified?.includes("wallet") || plan.milestones.slice(0, plan.completed).some((m) => m.id === "wallet"));
 }
 
 /** What a phase may do (D152): which files it may write, a tool that ends it, its own round limit. */
@@ -1492,6 +1617,10 @@ interface PhaseOptions {
 }
 
 const EDIT_TOOLS = ["create_file", "edit_file", "delete_file", "rename_file"];
+/** v2's rolling trim inside one pass (D162): every this many rounds... */
+const TRIM_EVERY = 8;
+/** ...everything but the last this many rounds is trimmed. */
+const KEEP_ROUNDS = 4;
 const CHECK_BUDGET_USED = "The check time for this turn is used up. Finish the work and reply; GoodBuild checks everything again when you're done.";
 const CONTRACTS_ONLY = "This is the contracts phase: write only files under contracts/ (the contracts, contracts/test/ and contracts/deploy.json). The front end is written next.";
 const FRONT_END_NO_CONTRACTS = "The contracts were written and tested in the contracts phase, so contracts/ can't change now. If a contract needs a change, say what in your reply.";
@@ -1528,12 +1657,22 @@ ${JSON.stringify(spec, null, 2).slice(0, 12_000)}`;
 }
 
 /**
- * v2's first fix attempt (D152) goes back to whichever model wrote the failing files, which has their context:
- * the fast model for the front end, the strong one for contracts and tests. Files from earlier turns go by
- * path. A mixed set, or any later attempt, goes to the strong model.
+ * Whether a v2 turn runs the spec step (D152). The strong model plans once per app (owner, 21 Nov 2026): a later
+ * milestone reuses the spec and plans again only when it brings contracts the spec doesn't have yet. Outside
+ * milestones, a change to the contracts re-plans.
  */
-export function fixTierByWriter(attempt: number, errors: CheckIssue[], authors: Map<string, ModelTier>): ModelTier {
-  if (attempt > 1 || !errors.length) return TIER_FOR.fix;
+export function wantsSpec(o: { spec: AppSpec | null; milestone: boolean; contractsAllowed: boolean; hasContracts: boolean; firstBuild: boolean; request: string }): boolean {
+  const contractChange = o.hasContracts && CONTRACT_WORK.test(o.request);
+  if (!o.spec) return o.milestone || o.firstBuild || contractChange;
+  return o.milestone ? o.contractsAllowed && !o.spec.contracts.length : contractChange;
+}
+
+/**
+ * v2's fixes (D152) go back to whichever model wrote the failing files, on every attempt (owner, 21 Nov 2026):
+ * the fast model fixes the front end it wrote, the strong one the contracts and tests it wrote. Files from
+ * earlier turns go by path. Only a set that includes the strong model's files goes to it.
+ */
+export function fixTierByWriter(_attempt: number, errors: CheckIssue[], authors: Map<string, ModelTier>): ModelTier {
   const writers = errors.map((e) => authors.get(e.file) ?? (e.file.startsWith("contracts/") ? "strong" : "cheap"));
   return writers.every((t) => t === "cheap") ? "cheap" : "strong";
 }
@@ -1716,7 +1855,8 @@ async function screenshots(open: typeof runCheck, files: Record<string, string>,
   const result = await open(withContractModules(files, report.contracts), { ...options, screenshots: true });
   if (!result.ran || result.issues.length || !result.screenshots?.length) return { parts: [] };
   const parts: UserPart[] = [];
-  for (const shot of result.screenshots) parts.push({ type: "image", ...(await reviewImage(shot.png, shot.width)) });
+  // High detail (D162): the reviewer judges text size and contrast.
+  for (const shot of result.screenshots) parts.push({ type: "image", ...(await reviewImage(shot.png, shot.width)), detail: "high" });
   const game = result.screenshots.some((s) => s.shows);
   const pictures = game
     ? result.screenshots.map((s) => (s.shows === "start" ? "the game's start screen on a phone (375px), before Play" : s.shows === "playing" ? "the same game on a phone about two seconds after Play, while it runs" : `the page ${s.width}px wide (a computer), later on`))
@@ -1868,6 +2008,24 @@ function toolLabel(call: ToolCall): string | null {
   }
 }
 
+/**
+ * After a second failed edit of one file: its current text, so the next edit copies real lines. v2 (D162) sends a
+ * long file's first lines numbered, not all of it: the note is re-sent with every later call of the pass.
+ */
+export function repeatedEditNote(file: string, v2: boolean): string {
+  const advice = "Switch to a different search block or replace this file once with create_file. Do not repeat the failed edit.";
+  if (!v2 || file.length <= 8_000) return `\nRepeated edit failure. Current file:\n${file}\nRead these exact contents. ${advice}`;
+  const lines = file.split("\n");
+  return `\nRepeated edit failure. The file has ${lines.length} lines; its first 120 are below. Read the part you are changing with read_file start_line and end_line and copy it exactly. ${advice}\n${readRange(file, 1, 120)}`;
+}
+
+/** What a person reads when a tool didn't work (D162): plain words; the build log keeps the details. */
+export function plainToolFailure(result: string): string {
+  if (/^Refused by the server/.test(result)) return "not part of this step, so it was skipped";
+  if (/isn't on the allowed list/i.test(result)) return "that package isn't available, so the builder uses another way";
+  return "didn't work the first time, so the builder tries another way";
+}
+
 function changeDetail(change?: FileChange): string | undefined {
   if (!change) return undefined;
   if (change.op === "delete") return "removed";
@@ -1890,6 +2048,31 @@ function firstIssue(issues: CheckIssue[]): string {
   const where = `${e.file.split("/").pop()}${e.line ? `:${e.line}` : ""}`;
   const text = e.message.length > 90 ? `${e.message.slice(0, 89)}…` : e.message;
   return `${where} ${text}`;
+}
+
+/** A reply as people read it (D162): no em dashes, and no empty code boxes a model left behind. */
+export function tidyReply(text: string): string {
+  const lines = text.split("\n");
+  const kept: string[] = [];
+  let dropped = false;
+  for (let i = 0; i < lines.length; i++) {
+    if (/^\s*```[\w-]*\s*$/.test(lines[i])) {
+      // A fence that opens a block: find where it closes. Only a block with nothing but blank lines in it goes.
+      let j = i + 1;
+      while (j < lines.length && !/^\s*```\s*$/.test(lines[j])) j++;
+      if (j < lines.length && lines.slice(i + 1, j).every((l) => !l.trim())) {
+        dropped = true;
+        i = j;
+        continue;
+      }
+      kept.push(...lines.slice(i, Math.min(j + 1, lines.length)));
+      i = j;
+      continue;
+    }
+    kept.push(lines[i]);
+  }
+  const out = dropped ? kept.join("\n").replace(/\n{3,}/g, "\n\n").trim() : text;
+  return plainDashes(out);
 }
 
 /** Em dashes in a reply become commas (a spaced or unspaced dash between words). Replies only, never files. */

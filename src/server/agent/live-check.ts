@@ -3,7 +3,7 @@
  * useCollection (which refresh by themselves after transactions and saved-data writes), and a page
  * that shows them needs a RefreshButton. These are notes, never errors: they're shown to the builder
  * when it runs the checks and logged for the owner, and a build never fails on them. Once real builds
- * show how often they fire (and how often wrongly), they can be made to block, like TYPE_CHECK.
+ * show how often they fire (and how often wrongly), they can be made to block.
  *
  * Plain text matching on purpose: cheap, no parse, and false positives only cost a note.
  */

@@ -1848,6 +1848,13 @@ The owner approved implementing all five parts of the first-build fix and openin
   - A spec too long for the context block is shown compact with its flows first and says it was cut off. The fallback price includes the cache-write rate. Rolling back a visual fix restores the browser check's verdict with the files. The import check names the package to add for a companion (`@dnd-kit/core` for `@dnd-kit/utilities`).
   - Not changed: the front end still starts when the contracts phase leaves errors. Those errors reach the fix loop, which has no phase gate and whose first attempt goes to the strong model that wrote the contracts.
 - **On for every user (20 Nov 2026, decided by the owner, Olayinka, in chat: "Hard code it on", no environment variable):** `usesHarnessV2()` is always true in production, and `HARNESS_V2` and its `admins` mode are gone. The canary stage of the plan was skipped. A turn saved on v1 before this still resumes on v1, so the v1 loop and its tests stay; tests start on v1 through `setV1HarnessForTests` (test-only) and the v2 tests switch it off. Going back takes a code change.
+- **After the first live run (21 Nov 2026, decided by the owner in chat):**
+  - Acceptance flows never block a build: failures are logged "(not blocking)" and shown to the builder. `ACCEPTANCE` is removed. Why: a flow the planner got wrong ("connect a wallet, see 0x0000…00c1" when the app showed the full address) blocked a wallet milestone whose scope didn't let the builder change the wallet wiring.
+  - No settings for v2: `V2_MAX_CALLS`, `V2_MAX_ROUNDS` and `CHECK_BUDGET_MS` are removed; the values are in code (`V2_LIMITS`). The owner asks to be asked before a new setting is added.
+  - The wallet step accepts the account in any common form (full, or shortened), and passes when the wallet is already connected.
+  - Sonnet plans once per app (`wantsSpec`): a later milestone reuses the spec, and plans again only when it brings contracts the spec lacks. The spec step has 3 reading rounds, down from 6. Why: the run re-planned on every milestone and its resume, about 650K Sonnet input tokens in a day.
+  - Fixes go to the model that wrote the failing files on every attempt: DeepSeek fixes the front end, Sonnet only the contracts and tests it wrote.
+  - A fix attempt's edits and checks are shown under its step, which says what it is working on.
 - **Also changes v1 billing:** cache writes are now billed at Anthropic's write rate (1.25x input) for every Sonnet call, and a paid call's hold allows for them. v1 already cached the system prompt and context, and those writes were billed as plain input before.
 - **Checked:** unit and scripted-runner tests (`harness-v2.test.ts`); every existing agent, pricing and credit test passes.
 - **Live smoke run, 19 Nov 2026, DeepSeek only:** a local production build with `HARNESS_V2=on`, the run check on and no Anthropic key, so every strong call fell back to `deepseek-flash`. Sonnet itself is still **UNVERIFIED**; that is the owner's canary.
@@ -1957,3 +1964,37 @@ The owner approved implementing all five parts of the first-build fix and openin
 - **Not written by looking:** opening a FUTMinna page, or claiming the later deploy credits there, adds nobody. If the join request fails, the steps say so and offer Try again. The check that a builder has no entry in the other hackathon and the entry write run in one transaction under a per-builder lock. The in-app FUTMinna tab no longer joins main hackathon builders by itself; it shows the Join button.
 - **What members see:** `/home/hackathon` (the side menu and wallet menu both link there) sends them to `/home/hackathon/futminna`. The switch still offers the main hackathon; choosing it adds `?stay` and they stay there. Main hackathon builders see no change.
 - **Not changed:** credits (one grant per person, D160), each builder entering one hackathon, and the main hackathon's own pages.
+
+### D162. The builder fixes its own mistakes for people who don't code, and spends fewer tokens doing it (21 Nov 2026; amends D19, D68, D87, D152)
+- Decided by: the owner, in chat ("go, build the whole plan, merge when you're done if all the CI passes"), after the failed savings-goals run of 21 Nov 2026. Plan, research and build by Claude: [BUILDER_RELIABILITY_PLAN.md](BUILDER_RELIABILITY_PLAN.md). Ships with the D152 changes from the same run (commit 379e90b: flows never block, no v2 settings, Sonnet plans once, DeepSeek fixes its own code).
+- **Research.** GPT Engineer, the open-source predecessor of Lovable, starts each step as a short new conversation with only the files it needs, keeps the edits that apply, and logs tokens per step. Codex cuts long tool output as it arrives and restarts long conversations from a summary. Lovable's own code is not public and was not studied.
+- **Token report.** Each build logs and saves (`record.tokens`) its input, cached and output tokens by step (memory, spec, contracts, build, reply, fix, review, visual fix) and model. Replayed calls count too.
+- **Short conversations** (v2 builds):
+  - Each fix attempt gets the system prompt and one message: the request, the spec's summary, the problems, and the files they name with line numbers (at most 40,000 characters; longer files are named, to be read).
+  - The fix after the visual check gets its list and the page files this turn changed.
+  - The contracts phase gets the turn's context and its task, without the spec step's rounds, and the front end no longer re-reads the contract work.
+  - Built only from the files and the checks, so resumed builds still replay.
+- **Smaller context** (v2):
+  - Check, test, page and search results over 8,000 characters keep their first 5,000 and last 2,500.
+  - A whole `read_file` of a file over 16,000 characters returns its first lines and how to read the rest.
+  - After a second failed edit, a file over 8,000 characters is shown as its first 120 lines.
+  - Every 8 rounds of a pass, all but the last 4 rounds are trimmed like an earlier phase.
+  - Design-reference pictures go to the spec step and the first front-end call. After that, a note points to their text description in the asset list.
+- **Edits.** Of a batch of edits, the ones that match are applied and kept, and only the failed ones are asked for again. An edit that changes nothing, a failed edit and a refused one are no longer shown as steps; the log keeps them.
+- **The visual check is DeepSeek's, and on for every build the checker opens** (`TIER_FOR.review` is cheap; `VISUAL_REVIEW` is gone).
+  - It lists at most 3 problems, each starting "phone:", "computer:" or "both:"; any other is dropped.
+  - The prompt lists the false reports seen before as things not to report.
+  - Pictures go at `high` detail, measured live ([evals/REVIEW_DEEPSEEK.md](evals/REVIEW_DEEPSEEK.md)): at high detail, 3 of 3 good pages passed and 3 of 3 broken ones were caught. `low` saved about 450 tokens a look and invented a problem once in six runs.
+  - Anthropic's API has no detail setting.
+- **Type errors get one fix and never block** (mode "fix" on every server with the run check; `TYPE_CHECK` is gone). A type error goes to the fix loop once, on the model that wrote the file. Whatever is left after that attempt is a note.
+- **Another way before giving up.** When the same problems come back after a fix, one more attempt starts fresh. It is told the last attempt failed, shown what that attempt changed, and asked to find the real cause and fix it another way. Only then does the loop stop. The no-progress rule and the fix budget still apply.
+- **Plain words.** The failure card says "This build still needs a fix", and Try fix tries again another way. Fix steps say "N problems to fix" and "N problems left", and the details stay in the log. A tool that didn't work reads "didn't work the first time, so the builder tries another way". Empty code boxes are removed from replies.
+- **The wallet milestone's refusal.** An edit to GoodBuild's wallet layer (`src/lib/useWallet.ts`, `src/lib/chain.ts`) is told the layer already works and how to use it. It is no longer told to ask for the on-chain milestone.
+- **The planner never offers username and password sign-in.** An option naming a username, password, passcode or Google login becomes "Yes, with an email code" when the planner's answer is read; apps sign in with the wallet or an email code (D31). The planner's prompt is unchanged: its cost test has no room left.
+- **A milestone whose browser check couldn't run is saved** (asked by the owner on 21 Nov 2026: "because it's in the docs doesn't mean it's right"):
+  - Check ran and failed: the milestone stays a draft, as before.
+  - Check couldn't run (the checker down or busy): it is saved as the working version and listed as "(needs verification)". The other checks still ran, and the free first delivery is claimed when the build starts, so nothing extra is handed out.
+  - A later build verifies it. A clean run of the app proves an earlier interface. The wallet steps now run on every build after a wallet milestone, verified or not, and a stand-in wallet connecting proves it.
+  - PROGRESSIVE_DELIVERY.md is updated to match.
+- **Not changed:** v1 turns (saved before v2) keep their old fix loop.
+- **UNVERIFIED:** the token targets (Sonnet under about 80K input tokens for a milestone build, DeepSeek fix calls under about 20K) and the pass rate on real builds. The token report in each build's log measures both after deploy.

@@ -10,11 +10,12 @@ import { typeCheck, typeCheckMode } from "./type-check";
 const page = (body: string, imports = "") => `${imports}\nexport default function App() {\n${body}\n}\n`;
 
 describe("typeCheckMode", () => {
-  it("is off unless the server sets it", () => {
+  it("fixes type errors once on every server with the run check, with no setting (D162)", () => {
     expect(typeCheckMode({} as NodeJS.ProcessEnv)).toBe("off");
-    expect(typeCheckMode({ TYPE_CHECK: "warn" } as unknown as NodeJS.ProcessEnv)).toBe("warn");
-    expect(typeCheckMode({ TYPE_CHECK: "enforce" } as unknown as NodeJS.ProcessEnv)).toBe("enforce");
-    expect(typeCheckMode({ TYPE_CHECK: "1" } as unknown as NodeJS.ProcessEnv)).toBe("off");
+    expect(typeCheckMode({ RUN_CHECK_WS_ENDPOINT: "ws://checker:3001/" } as unknown as NodeJS.ProcessEnv)).toBe("fix");
+    expect(typeCheckMode({ RUN_CHECK: "1" } as unknown as NodeJS.ProcessEnv)).toBe("fix");
+    // The old setting does nothing now.
+    expect(typeCheckMode({ TYPE_CHECK: "enforce" } as unknown as NodeJS.ProcessEnv)).toBe("off");
   });
 });
 

@@ -1,6 +1,5 @@
 import type { Page } from "playwright-core";
 
-import type { CheckIssue } from "./checks";
 
 /**
  * Acceptance flows (D152, harness v2, docs/HARNESS_V2_PLAN.md WS3): short browser scripts the spec call writes
@@ -279,9 +278,3 @@ export function formatFlowResults(results: FlowResult[]): string {
     .join("\n\n");
 }
 
-/** Failed flows as check issues, for ACCEPTANCE=enforce. */
-export function acceptanceIssues(results: FlowResult[]): CheckIssue[] {
-  return results
-    .filter((r) => r.status === "fail")
-    .map((r) => ({ file: "src/App.tsx", source: "acceptance" as const, message: `Acceptance flow "${r.name}": ${r.reason ?? "failed"}. The spec's flows describe what the app must do; make the app do it (the wording and roles they name, too).` }));
-}

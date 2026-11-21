@@ -18,14 +18,17 @@ import { PLATFORM_DIR, WALLET_DIR } from "./template";
  * memory limit: viem's types take seconds to check.
  */
 
-export type TypeCheckMode = "off" | "warn" | "enforce";
-
 /**
- * "warn" lists type errors in the build log and gives them to the builder when it asks (run_checks),
- * but a build still finishes with them. "enforce" sends them to auto-fix like a compile error.
+ * "fix" (every server's mode since D162, owner, 21 Nov 2026: no setting): type errors go to auto-fix once,
+ * on the model that wrote the file, and if any are left after that one attempt the build still finishes
+ * with them noted. A type error is often a real bug, but a false alarm must never stop someone's build.
+ * "warn" only notes them and "enforce" blocks on them; tests use those.
  */
+export type TypeCheckMode = "off" | "warn" | "enforce" | "fix";
+
+/** The type check runs on servers that have the run check (the checker's packages are there too); off elsewhere. */
 export function typeCheckMode(env: NodeJS.ProcessEnv = process.env): TypeCheckMode {
-  return env.TYPE_CHECK === "enforce" ? "enforce" : env.TYPE_CHECK === "warn" ? "warn" : "off";
+  return env.RUN_CHECK === "1" || Boolean(env.RUN_CHECK_WS_ENDPOINT) ? "fix" : "off";
 }
 
 export interface TypeCheckResult {

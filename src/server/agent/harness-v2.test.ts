@@ -9,13 +9,13 @@ import { createProjectFromPrompt } from "@/server/projects";
 import { costMicro } from "@/lib/pricing";
 import { checkContracts, pathProblem } from "./checks";
 import { scriptedModel } from "./fake-model";
-import { harnessLimits, setV1HarnessForTests, usesHarnessV2 } from "./harness";
+import { V2_LIMITS, setV1HarnessForTests, usesHarnessV2 } from "./harness";
 import { toSdkMessages, type ChatMessage } from "./model";
-import { requestView } from "./request-view";
-import { fixTierByWriter, runTurn } from "./runner";
+import { capResult, requestView } from "./request-view";
+import { changesSince, fixContext } from "./focused";
+import { fixTierByWriter, repeatedEditNote, runTurn, wantsSpec } from "./runner";
 import { SPEC_PATH, parseSpec, readSpec } from "./spec";
-import { loadFiles, saveFiles } from "./store";
-import { starterFiles } from "./template";
+import { loadFiles } from "./store";
 import { Workspace } from "./workspace";
 import type { RunCheckResult } from "./run-check";
 
@@ -47,9 +47,8 @@ describe("harness flag (D152)", () => {
     setV1HarnessForTests(true);
     expect(usesHarnessV2()).toBe(false);
   });
-  it("raises the limits only through positive whole numbers", () => {
-    expect(harnessLimits({})).toEqual({ maxCalls: 90, maxRounds: 40, checkBudgetMs: 240_000 });
-    expect(harnessLimits({ V2_MAX_CALLS: "120", V2_MAX_ROUNDS: "-1", CHECK_BUDGET_MS: "x" })).toEqual({ maxCalls: 120, maxRounds: 40, checkBudgetMs: 240_000 });
+  it("has its limits in code, with no setting", () => {
+    expect(V2_LIMITS).toEqual({ maxCalls: 90, maxRounds: 40, checkBudgetMs: 240_000 });
   });
 });
 
@@ -109,6 +108,26 @@ describe("Anthropic caching and billing (D152)", () => {
   });
 });
 
+describe("wantsSpec (D152)", () => {
+  const base = { milestone: false, contractsAllowed: true, hasContracts: false, firstBuild: false, request: "make the header blue" };
+  const planned = parseSpec({ summary: "s", direction: "d", pages: [], contracts: [], acceptance: [] });
+  const spec = planned.ok ? planned.spec : null;
+  it("plans a new app once, and a later milestone reuses that plan", () => {
+    expect(wantsSpec({ ...base, spec: null, firstBuild: true })).toBe(true);
+    expect(wantsSpec({ ...base, spec: null, milestone: true, contractsAllowed: false })).toBe(true);
+    // The wallet milestone: a plan exists and the milestone brings no contracts.
+    expect(wantsSpec({ ...base, spec, milestone: true, contractsAllowed: false })).toBe(false);
+    // The payments milestone brings contracts the plan doesn't have yet.
+    expect(wantsSpec({ ...base, spec, milestone: true, contractsAllowed: true })).toBe(true);
+    expect(wantsSpec({ ...base, spec: spec && { ...spec, contracts: [{ name: "Goals", purpose: "p", state: [], functions: [], events: [], invariants: [] }] }, milestone: true })).toBe(false);
+  });
+  it("outside milestones, plans again only for a contract change", () => {
+    expect(wantsSpec({ ...base, spec })).toBe(false);
+    expect(wantsSpec({ ...base, spec, hasContracts: true, request: "let people withdraw early" })).toBe(true);
+    expect(wantsSpec({ ...base, spec: null })).toBe(false);
+  });
+});
+
 describe("fixTierByWriter (D152)", () => {
   const ui = { file: "src/App.tsx", message: "x", source: "runtime" as const };
   const sol = { file: "contracts/TipJar.sol", message: "x", source: "solc" as const };
@@ -118,12 +137,14 @@ describe("fixTierByWriter (D152)", () => {
     expect(fixTierByWriter(1, [sol, test], new Map([["contracts/TipJar.sol", "strong"]]))).toBe("strong");
     expect(fixTierByWriter(1, [sol], new Map([["contracts/TipJar.sol", "cheap"]]))).toBe("cheap");
   });
-  it("goes by path for files from earlier turns, and to strong when mixed or later", () => {
+  it("goes by path for files from earlier turns, to strong only for its own files, on every attempt", () => {
     expect(fixTierByWriter(1, [ui], new Map())).toBe("cheap");
     expect(fixTierByWriter(1, [sol], new Map())).toBe("strong");
     expect(fixTierByWriter(1, [ui, sol], new Map([["src/App.tsx", "cheap"]]))).toBe("strong");
-    expect(fixTierByWriter(2, [ui], new Map([["src/App.tsx", "cheap"]]))).toBe("strong");
-    expect(fixTierByWriter(1, [], new Map())).toBe("strong");
+    // DeepSeek keeps fixing the front end it wrote, however many attempts it takes.
+    expect(fixTierByWriter(2, [ui], new Map([["src/App.tsx", "cheap"]]))).toBe("cheap");
+    expect(fixTierByWriter(5, [ui], new Map())).toBe("cheap");
+    expect(fixTierByWriter(3, [sol], new Map())).toBe("strong");
   });
 });
 
@@ -221,7 +242,13 @@ describe("runTurn with harness v2", { timeout: 120_000 }, () => {
     expect(toolResults(2).filter((c) => c.includes("This is the contracts phase")).length).toBe(2);
     expect(toolResults(5)).toContain("Error: write_spec isn't available in this step.");
     // The spec step's tools don't include the checks, and they are refused before they run.
-    expect(toolResults(1)).toContain("Error: run_checks isn't available in this step.");
+    expect(toolResults(4)).toContain("Error: run_checks isn't available in this step.");
+    // The contracts phase has a conversation of its own (D162): the request's context and its task, not the spec step's rounds.
+    expect(toolResults(1)).toEqual([]);
+    expect(requests[1].messages.map((m) => m.role)).toEqual(["system", "user", "user"]);
+    expect(String(requests[1].messages.at(-1)?.content)).toMatch(/^CONTRACTS\./);
+    // The front end doesn't re-read the contract work: it continues the build's own conversation.
+    expect(requests[4].messages.some((m) => m.role === "assistant" && m.tool_calls?.some((c) => c.function.name === "run_tests"))).toBe(false);
     // run_tests compiled the contract; the front end was told the ABI is ready; open_app showed the page.
     expect(toolResults(3).some((c) => c.includes("Compiled TipJar with no errors"))).toBe(true);
     expect(String(requests[4].messages.at(-1)?.content)).toContain('import { <Name>Abi, <Name>Address } from "./contracts" for TipJar');
@@ -253,6 +280,12 @@ describe("runTurn with harness v2", { timeout: 120_000 }, () => {
     expect(requests.map((r) => r.tier)).toEqual(["strong", "cheap", "cheap", "cheap", "cheap"]);
     expect(record.log).toContain("· fix attempt 1 on the fast model (the files' writer)");
     expect(record.log).not.toContain("phase: contracts (strong model)");
+    // The fix attempt's own edit and checks are shown under it; the steps before it stand alone.
+    const children = record.steps.filter((s) => s.parent === "fix:1");
+    expect(children.some((s) => s.label.startsWith("Writing App.tsx"))).toBe(true);
+    expect(children.some((s) => s.id.startsWith("checks:") || s.label === "Checking the app")).toBe(true);
+    expect(record.steps.find((s) => s.id === "fix:1")?.parent).toBeUndefined();
+    expect(record.steps.filter((s) => !s.parent).some((s) => s.label.startsWith("Writing App.tsx"))).toBe(true);
   });
 
   it("refuses write_spec in a v1 build", async () => {
@@ -294,7 +327,6 @@ describe("acceptance flows in a v2 build (D152 PR 2)", { timeout: 120_000 }, () 
   });
 
   const spec = { ...SPEC, contracts: [] };
-  const withTips = "export default function App() { return <main><h1>Tips</h1></main>; }\n";
   const withoutTips = "export default function App() { return <main><h1>Hello</h1></main>; }\n";
   // A run check that passes the spec's one flow only when the page says "Tips".
   const seen: Array<{ only?: string; flows: number }> = [];
@@ -325,39 +357,20 @@ describe("acceptance flows in a v2 build (D152 PR 2)", { timeout: 120_000 }, () 
     expect(results(4).some((c) => c.includes("These acceptance flows from the spec fail"))).toBe(true);
     expect(seen[0]).toEqual({ only: "home", flows: 1 });
     expect(record.status).toBe("ready");
-    expect(record.log.some((l) => l.startsWith("acceptance: 0 of 1 flows pass") && l.endsWith("(warn: not blocking)"))).toBe(true);
+    expect(record.log.some((l) => l.startsWith("acceptance: 0 of 1 flows pass") && l.endsWith("(not blocking)"))).toBe(true);
   });
 
-  it("enforce: a failing flow goes to the fix loop, back to the model that wrote the page", async () => {
+  it("never blocks on a failing flow, whatever the old ACCEPTANCE setting says", async () => {
     process.env.ACCEPTANCE = "enforce";
     const { client, requests } = scriptedModel([
       { tools: [{ name: "write_spec", args: spec }] },
       { tools: [{ name: "create_file", args: { path: "src/App.tsx", content: withoutTips } }] },
       { text: "Built the page." },
-      { tools: [{ name: "create_file", args: { path: "src/App.tsx", content: withTips } }] },
-      { text: "Fixed the heading." },
     ]);
     const record = await runTurn({ db, model: client, runCheck: flowCheck }, { projectId, userId, mode: "build", userMessageId: queuedId }, () => {});
     expect(record.status).toBe("ready");
-    expect(requests.map((r) => r.tier)).toEqual(["strong", "cheap", "cheap", "cheap", "cheap"]);
-    expect(String(requests[3].messages.at(-1)?.content)).toContain('[acceptance] Acceptance flow "Home loads"');
-    expect(record.steps.find((s) => s.id === "fix:1")).toMatchObject({ status: "done" });
-    const files = await loadFiles(db, projectId);
-    expect(files["src/App.tsx"]).toBe(withTips);
-  });
-
-  it("enforce: flows from an earlier turn's spec only warn, so a later change can reword the page", async () => {
-    process.env.ACCEPTANCE = "enforce";
-    await saveFiles(db, projectId, { ...starterFiles(), [SPEC_PATH]: JSON.stringify(spec) });
-    const { client, requests } = scriptedModel([
-      { tools: [{ name: "create_file", args: { path: "src/App.tsx", content: withoutTips } }, { name: "run_checks", args: {} }] },
-      { text: "Renamed the heading." },
-    ]);
-    const record = await runTurn({ db, model: client, runCheck: flowCheck }, { projectId, userId, mode: "build", userMessageId: queuedId }, () => {});
-    expect(record.status).toBe("ready");
-    expect(requests.map((r) => r.tier)).toEqual(["cheap", "cheap"]);
-    expect(requests[1].messages.filter((m) => m.role === "tool").some((m) => String(m.content).includes("These acceptance flows from the spec fail"))).toBe(true);
-    expect(record.log.some((l) => l.startsWith("acceptance: 0 of 1 flows pass") && l.endsWith("(the spec is from an earlier turn: not blocking)"))).toBe(true);
+    expect(requests).toHaveLength(3);
+    expect(record.steps.some((s) => s.id.startsWith("fix:"))).toBe(false);
   });
 
   it("v1 never runs acceptance flows, even with a spec file", async () => {
@@ -370,5 +383,163 @@ describe("acceptance flows in a v2 build (D152 PR 2)", { timeout: 120_000 }, () 
     const record = await runTurn({ db, model: client, runCheck: flowCheck }, { projectId, userId, mode: "build", userMessageId: queuedId }, () => {});
     expect(record.status).toBe("ready");
     expect(seen).toEqual([]);
+  });
+});
+
+describe("fixes in a v2 build (D162)", { timeout: 120_000 }, () => {
+  let db: Db;
+  let userId: string;
+  let projectId: string;
+  let queuedId: string;
+  const spec = { ...SPEC, contracts: [] };
+  const broken = 'import { Missing } from "./Missing";\nexport default function App() { return <main><Missing /></main>; }\n';
+  const fixed = "export default function App() { return <main><h1>Tips</h1></main>; }\n";
+
+  beforeEach(async () => {
+    db = await createTestDb();
+    const user = await signInUser(db, { wallet: ADMIN, walletKind: "external", attestation: { ageOk: true, notUsPerson: true } });
+    userId = user.id;
+    const p = await createProjectFromPrompt(db, userId, { prompt: "A tip jar for our football club", network: "celo-sepolia" });
+    projectId = p.id;
+    const [m] = await db.select().from(messages).where(eq(messages.projectId, projectId));
+    queuedId = m.id;
+    setV1HarnessForTests(false);
+  });
+  afterEach(() => setV1HarnessForTests(true));
+
+  it("fixes in a conversation of its own: the problems and the files they name, numbered", async () => {
+    const { client, requests } = scriptedModel([
+      { tools: [{ name: "write_spec", args: spec }] },
+      { tools: [{ name: "create_file", args: { path: "src/App.tsx", content: broken } }] },
+      { text: "Built the page." },
+      { tools: [{ name: "create_file", args: { path: "src/App.tsx", content: fixed } }] },
+      { text: "Fixed the import." },
+    ]);
+    const record = await runTurn({ db, model: client }, { projectId, userId, mode: "build", userMessageId: queuedId }, () => {});
+    expect(record.status).toBe("ready");
+    const fix = requests[3];
+    expect(fix.messages.map((m) => m.role)).toEqual(["system", "user"]);
+    expect(fix.messages[0].content).toBe(requests[1].messages[0].content);
+    const context = String(fix.messages[1].content);
+    expect(context).toMatch(/^FIX\. GoodBuild built this app/);
+    expect(context).toContain("The person asked for:");
+    expect(context).toContain(`The plan for the app: ${spec.summary}`);
+    expect(context).toContain('=== src/App.tsx ===');
+    expect(context).toContain('1| import { Missing } from "./Missing";');
+    // The token report (D162): every call counted under its step.
+    expect(record.tokens?.map((r) => r.step)).toEqual(expect.arrayContaining(["spec", "build", "fix"]));
+    expect(record.log.some((l) => l.startsWith("tokens by step: "))).toBe(true);
+  });
+
+  it("tries another way, fresh, when the same problem comes back, and stops after that", async () => {
+    const stillBroken = broken.replace("<main>", "<main className=\"p-4\">");
+    const { client, requests } = scriptedModel([
+      { tools: [{ name: "write_spec", args: spec }] },
+      { tools: [{ name: "create_file", args: { path: "src/App.tsx", content: broken } }] },
+      { text: "Built the page." },
+      { tools: [{ name: "create_file", args: { path: "src/App.tsx", content: stillBroken } }] },
+      { text: "Tried a fix." },
+      { tools: [{ name: "create_file", args: { path: "src/App.tsx", content: fixed } }] },
+      { text: "Fixed it another way." },
+    ]);
+    const record = await runTurn({ db, model: client }, { projectId, userId, mode: "build", userMessageId: queuedId }, () => {});
+    expect(record.status).toBe("ready");
+    expect(record.log).toContain("! the same errors came back after a fix; trying once more, another way");
+    const retry = String(requests[5].messages[1].content);
+    expect(requests[5].messages.map((m) => m.role)).toEqual(["system", "user"]);
+    expect(retry).toContain("Your last attempt didn't fix these problems");
+    expect(retry).toContain('+export default function App() { return <main className="p-4">');
+    expect(record.steps.find((s) => s.id === "fix:2")).toMatchObject({ status: "done", detail: "all checks pass" });
+  });
+
+  it("gives type errors one fix, then finishes the build with them noted", async () => {
+    const typeCheck = async (files: Record<string, string>) => ({
+      ran: true,
+      issues: files["src/App.tsx"]?.includes("count={") ? [{ file: "src/App.tsx", line: 1, source: "types" as const, message: "Property 'count' does not exist on type 'IntrinsicAttributes'." }] : [],
+      note: "checked",
+      ms: 1,
+    });
+    const typed = 'function Badge() { return <span>1</span>; }\nexport default function App() { return <main><Badge count={2} /></main>; }\n';
+    const { client, requests } = scriptedModel([
+      { tools: [{ name: "write_spec", args: spec }] },
+      { tools: [{ name: "create_file", args: { path: "src/App.tsx", content: typed } }] },
+      { text: "Built the page." },
+      { tools: [{ name: "create_file", args: { path: "src/App.tsx", content: typed.replace("<main>", "<main className=\"p-2\">") } }] },
+      { text: "Tried." },
+    ]);
+    const record = await runTurn({ db, model: client, typeCheck }, { projectId, userId, mode: "build", userMessageId: queuedId }, () => {});
+    expect(record.status).toBe("ready");
+    // One fix attempt had the type error; it was not fixed, and the build still finished.
+    expect(requests).toHaveLength(5);
+    expect(String(requests[3].messages[1].content)).toContain("Property 'count' does not exist");
+    expect(record.steps.some((s) => s.id === "fix:2")).toBe(false);
+    expect(record.checks).toEqual({ errors: 0, warnings: 0 });
+  });
+});
+
+describe("what v2 sends (D162)", () => {
+  it("sends design pictures until told to drop them, then a note", () => {
+    const convo: ChatMessage[] = [
+      { role: "system", content: "s" },
+      { role: "user", content: [{ type: "text", text: "context" }, { type: "image", data: "AAAA", mediaType: "image/png" }] },
+    ];
+    expect(requestView(convo, 1)).toEqual(convo);
+    const dropped = requestView(convo, 1, { dropImages: true });
+    const parts = dropped[1].content as Array<{ type: string; text?: string }>;
+    expect(parts.map((p) => p.type)).toEqual(["text", "text"]);
+    expect(parts[1].text).toMatch(/design reference picture was shown earlier/);
+  });
+
+  it("cuts long check output as it arrives and keeps its ends", () => {
+    const long = `first problem\n${"x".repeat(20_000)}\nsummary at the end`;
+    const out = capResult(long);
+    expect(out.length).toBeLessThan(8_200);
+    expect(out.startsWith("first problem")).toBe(true);
+    expect(out.endsWith("summary at the end")).toBe(true);
+    expect(capResult("short")).toBe("short");
+  });
+
+  it("reads a very long file a part at a time", () => {
+    const big = Array.from({ length: 2_000 }, (_, i) => `const line${i} = ${i};`).join("\n");
+    const ws = new Workspace({ "src/Big.ts": big, "src/App.tsx": APP }, { v2: true });
+    const whole = ws.execute("read_file", JSON.stringify({ path: "src/Big.ts" }), "build");
+    expect(whole.result.length).toBeLessThan(17_000);
+    expect(whole.result).toContain("2000 lines in all");
+    const part = ws.execute("read_file", JSON.stringify({ path: "src/Big.ts", start_line: 1990, end_line: 2000 }), "build");
+    expect(part.result).toContain("const line1999 = 1999;");
+  });
+
+  it("shows a long file's first lines, not all of it, after a repeated failed edit", () => {
+    const big = Array.from({ length: 900 }, (_, i) => `const line${i} = ${i};`).join("\n");
+    const note = repeatedEditNote(big, true);
+    expect(note).toContain("The file has 900 lines");
+    expect(note.length).toBeLessThan(5_000);
+    expect(repeatedEditNote("short file", true)).toContain("Current file:\nshort file");
+  });
+});
+
+describe("focused fix context (D162)", () => {
+  it("names what the last attempt changed when it starts again another way", () => {
+    const files = { "src/App.tsx": "new line\n", "src/Other.tsx": "x\n" };
+    const text = fixContext({
+      request: "A tip jar",
+      issues: "- src/App.tsx: [imports] ./Missing doesn't exist",
+      errors: [{ file: "src/App.tsx", source: "imports", message: "./Missing doesn't exist" }],
+      files,
+      before: { "src/App.tsx": "old line\n", "src/Other.tsx": "x\n" },
+    });
+    expect(text).toContain("Your last attempt didn't fix these problems");
+    expect(text).toContain("-old line");
+    expect(text).toContain("+new line");
+    expect(text).toContain("src/Other.tsx");
+    expect(changesSince({ a: "1" }, { a: "1" })).toBe("Nothing: it changed no files.");
+  });
+
+  it("names a file too long for its budget instead of sending it", () => {
+    const huge = "y\n".repeat(30_000);
+    const files = { "src/A.tsx": huge, "src/B.tsx": huge, "src/C.tsx": huge };
+    const text = fixContext({ request: "x", issues: "-", errors: ["src/A.tsx", "src/B.tsx", "src/C.tsx"].map((file) => ({ file, source: "types" as const, message: "m" })), files });
+    expect(text.length).toBeLessThan(45_000);
+    expect(text).toMatch(/Also named, not shown \(too long to include\): src\/C\.tsx/);
   });
 });

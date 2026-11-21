@@ -18,6 +18,8 @@ export interface Step {
   label: string;
   detail?: string;
   status: "running" | "done" | "error";
+  /** The step this one is part of (a fix attempt's edits and checks): shown indented under it. */
+  parent?: string;
 }
 
 /** One answer choice on a plan question. For a palette question the id is the palette's id. */
@@ -139,6 +141,18 @@ export interface TurnRecord {
   visualCheck?: VisualCheck;
   /** The builder's own look at the page on the server (D87). When it is here, the browser's visual check isn't run. */
   review?: PageReview;
+  /** Tokens this build used, by step and model (D162). */
+  tokens?: TokenRow[];
+}
+
+/** One step's tokens on one model (D162). */
+export interface TokenRow {
+  step: string;
+  model: string;
+  calls: number;
+  input: number;
+  cached: number;
+  output: number;
 }
 
 export interface PageReview {

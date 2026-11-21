@@ -2,6 +2,20 @@
 
 Written 4 Nov 2026 at the end of the first build session (claude.ai), for whoever continues in Claude Code. Read CLAUDE.md and docs/BUILD_PROMPT_STAGE1.md first; this file only covers where things stand.
 
+## The builder fixes its own mistakes and spends fewer tokens (21 Nov 2026, D162, branch `claude/elegant-pasteur-j73em3`)
+After the failed savings-goals run. Plan: [BUILDER_RELIABILITY_PLAN.md](BUILDER_RELIABILITY_PLAN.md).
+- **Tokens:** every build's log ends with a token report by step and model, also saved on the turn.
+- **Short conversations:** fix attempts, the fix after the visual check and the contracts phase each run in a short conversation of their own.
+- **Smaller context:** long check output and long file reads are cut as they arrive; long passes trim their older rounds; design pictures are sent to the first calls only; good edits in a batch are kept.
+- **Visual check:** runs on DeepSeek at high detail, on every build the checker opens.
+- **Type errors:** get one fix and never block.
+- **Same error twice:** one fresh attempt that tries another way.
+- **Plain words** on the failure card and the steps.
+- **Wallet milestone:** told the wallet layer already works.
+- **Planner:** never offers password sign-in.
+
+`VISUAL_REVIEW` and `TYPE_CHECK` do nothing now. No migration. **To check after deploy:** read the `tokens:` lines in the worker's log on a few real builds.
+
 ## Live values in every app: one shared refresh and a refresh button (20 Nov 2026, D159, branch `claude/vigilant-cerf-4ogmnl`)
 Generated apps now update by themselves after a confirmed transaction, a saved-data write, a wallet switch and the tab coming back, and contract reads also on one slow shared timer per tab (15 s, 60 s when idle, none when hidden, jittered), so other people's changes show without a reload. Saved data never polls on the timer. New: `src/lib/goodbuild/live.ts` (GoodBuild-owned), `RefreshButton` (`src/components/ui/refresh-button.tsx`), `useRead` keeps the old value while `refreshing`. A build rule in the prompt, and a check that notes (never blocks) reads in `useEffect`, page reloads and a missing refresh button: watch the worker log for `! live values:`. Untouched `hooks.ts`/`chain.ts` upgrade on the next turn. No migration. **UNVERIFIED** with a real model, on a real phone, in MiniPay, and the RPC load with many tabs.
 
@@ -21,7 +35,7 @@ A separate hackathon for FUTMinna students: `/hackathon/futminna` and in-app `/h
 - strong calls cache their tail;
 - the design rules are about direction, the motion and dashboard kits are the builder's choice, and `require` is allowed.
 
-No migration. **Also live for everyone:** Sonnet cache writes are now billed at Anthropic's 1.25x rate. **Needs the owner:** set `HARNESS_V2=admins` in `.env.production`, `up -d worker`, and run the canary in [HARNESS_V2_PLAN.md](HARNESS_V2_PLAN.md). Watch the worker log for `harness: v2`, `spec:`, `phase: contracts`, `phase: front end` and `fix attempt 1 on the`. **UNVERIFIED** with real models. **PR 2 (same branch):** the spec's acceptance flows run in the run check and through the builder's `run_acceptance`; `ACCEPTANCE=warn` by default (watch `acceptance:` lines), `enforce` after the canary. **PR 3 (same branch):** 13 vetted packages (zustand, immer, zod, react-hook-form, recharts, @dnd-kit, matter-js, howler, react-markdown, fuse.js, papaparse, nanoid) that only v2 builds may add, with a `packages` guide; the publish runtime grows by them. **UNVERIFIED:** each package in the Sandpack preview (CodeSandbox's packager is blocked here): in the canary, build one app that uses recharts and @dnd-kit and check the preview loads.
+No migration. **Also live for everyone:** Sonnet cache writes are now billed at Anthropic's 1.25x rate. (Since 20 Nov 2026 it needs no setting; see D162 for what changed after the first live run.) Watch the worker log for `harness: v2`, `spec:`, `phase: contracts`, `phase: front end` and `fix attempt 1 on the`. **UNVERIFIED** with real models. **PR 2 (same branch):** the spec's acceptance flows run in the run check and through the builder's `run_acceptance`; `ACCEPTANCE=warn` by default (watch `acceptance:` lines), `enforce` after the canary. **PR 3 (same branch):** 13 vetted packages (zustand, immer, zod, react-hook-form, recharts, @dnd-kit, matter-js, howler, react-markdown, fuse.js, papaparse, nanoid) that only v2 builds may add, with a `packages` guide; the publish runtime grows by them. **UNVERIFIED:** each package in the Sandpack preview (CodeSandbox's packager is blocked here): in the canary, build one app that uses recharts and @dnd-kit and check the preview loads.
 
 ## Low credits pause a build and keep its files; big plans get more passes (19 Nov 2026, D138, branch `claude/gallant-cori-0am2pm`)
 A paid build no longer stops on a call it can't afford at full size: the call moves to the fast model, then to a lower output limit, and only pauses when not even that fits. A paused build is saved as a draft (`needs_fix`, `paused: "credits"`) with a **Continue** button that picks up from its files. GoodBuild fills the MiniPay kit's MINI_APP from the plan, and missing-wiring errors get the fast model first. No migration. **UNVERIFIED** with a real model. Then (PR 2) Continue shows its cost and the composer warns before a build bigger than the balance; and (PR 3) a build whose reply says the plan isn't finished gets up to 2 more passes (`MORE_BUILD_PASSES`, 0 turns it off), a model stream silent for 2 minutes is retried (`MODEL_IDLE_MS`), and the chat's Thinking clock keeps running through quiet steps. Watch the worker log for `the builder said the plan isn't finished`.
