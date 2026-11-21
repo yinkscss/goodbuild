@@ -1257,6 +1257,8 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     record.checks = { errors: report.errors.length, warnings: report.warnings.length };
     record.status = report.ok ? "ready" : "needs_fix";
     const endStatus = record.status;
+    /** The builder's own words, before GoodBuild fills in a default or a milestone's summary (D163). */
+    const ownReply = text.replace(/\s+/g, " ").trim();
 
     if (!text.trim()) {
       text = report.ok ? "Your working version is saved. You can continue with the next change." : "Your progress is saved for recovery. The checks found issues to fix.";
@@ -1277,7 +1279,9 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       const later = delivery.milestones.slice(index + 1);
       if (report.ok) {
         record.outcome = milestoneOutcome({ id: milestone.id, checked: deliveryVerified, later: later.map((m) => m.id), works: builderSaid.works });
-        text = [record.outcome.headline, record.outcome.later].filter(Boolean).join(" ");
+        // The builder's reply (deploy details such as constructor arguments) stays, under the milestone's headline.
+        if (ownReply) record.outcome.detail = ownReply;
+        text = [record.outcome.headline, ownReply, record.outcome.later].filter(Boolean).join(" ");
       } else text = "Your files are saved. This part still needs a fix before it replaces your working version.";
       record.suggestions = report.ok && later.length ? later.slice(0, 2).map((m) => milestoneName(m.id, m.title)) : undefined;
       out({ type: "text_set", text });
@@ -2012,7 +2016,7 @@ function onlySuggestions(calls: ToolCall[]): boolean {
  * A milestone build's end in plain words (D163): a headline, what works (the builder's own list when it gave one)
  * and what comes later. The next step is the first suggestion, shown as the "Next" button.
  */
-export function milestoneOutcome(o: { id: string; checked: boolean; later: string[]; works?: string[] }): { headline: string; works: string[]; later?: string } {
+export function milestoneOutcome(o: { id: string; checked: boolean; later: string[]; works?: string[] }): { headline: string; works: string[]; later?: string; detail?: string } {
   const what = o.id === "interface" ? "Your app's screens are built" : o.id === "wallet" ? "Connecting a wallet works" : o.id === "multiplayer" ? "Playing with others is built" : o.id === "integrations" ? "Sign-in and saved data are built" : o.id === "payments" ? "Payments on Celo are built" : "This part is built";
   const headline = `${what}. ${o.checked ? "Try it in the preview." : "GoodBuild will try it again in a browser on your next change."}`;
   const names = o.later.map((id) => { const n = milestoneName(id); return n.charAt(0).toLowerCase() + n.slice(1); });

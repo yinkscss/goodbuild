@@ -96,7 +96,8 @@ export function ChatPanel({
     ws.clearNeedsCredits();
     const last = [...state.messages].reverse().find((m) => m.role === "assistant");
     const record = last?.meta as TurnRecord | null;
-    if (record?.jobId) ws.retry(record.jobId, true);
+    // After a top-up the retry still carries the preview's crash (D163).
+    if (record?.jobId) ws.retry(record.jobId, true, record.paused === "credits" ? undefined : crash);
     else retryRecord(record);
   };
   const continueCost = { needMicro: state.estimate.buildMicro, haveMicro: state.availableMicro };

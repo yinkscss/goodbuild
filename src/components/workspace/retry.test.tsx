@@ -61,3 +61,17 @@ it("keeps the preview's crash for the next try when a retry is turned away, and 
   act(() => result.current.retry("failed-job", false, "The preview shows this error. Fix it:\nTypeError\nx is undefined"));
   await waitFor(() => expect(result.current.previewError).toBeNull());
 });
+
+it("keeps a newer crash that came while the retry was being sent, even with the same message (D163)", async () => {
+  let accept: (r: Response) => void = () => undefined;
+  const fetcher = vi.fn((url: string) => (url.endsWith("/retry") ? new Promise<Response>((r) => { accept = r; }) : Promise.resolve(Response.json(initial))));
+  vi.stubGlobal("fetch", fetcher);
+  const { result } = renderHook(() => useWorkspace(initial));
+  act(() => result.current.onPreviewError({ title: "TypeError", message: "x is undefined", path: "/src/A.tsx", line: 3 }, 1));
+  act(() => result.current.retry("failed-job", false, "The preview shows this error in src/A.tsx:3. Fix it:\nTypeError\nx is undefined"));
+  await waitFor(() => expect(fetcher.mock.calls.some(([url]) => String(url).endsWith("/retry"))).toBe(true));
+  act(() => result.current.onPreviewError({ title: "TypeError", message: "x is undefined", path: "/src/B.tsx", line: 9 }, 1));
+  await act(async () => accept(Response.json({ jobId: "child" }, { status: 202 })));
+  await waitFor(() => expect(fetcher.mock.calls.filter(([url]) => !String(url).endsWith("/retry")).length).toBeGreaterThan(0));
+  expect(result.current.previewError?.path).toBe("/src/B.tsx");
+});

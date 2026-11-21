@@ -120,7 +120,14 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
   const [live, setLive] = React.useState<LiveTurn | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [needsCredits, setNeedsCredits] = React.useState(false);
-  const [previewError, setPreviewError] = React.useState<PreviewError | null>(null);
+  const [previewError, setPreviewErrorState] = React.useState<PreviewError | null>(null);
+  // The crash as it is now, for a retry to remember which one its note carried (D163).
+  const previewErrorRef = React.useRef<PreviewError | null>(null);
+  const setPreviewError = React.useCallback((next: PreviewError | null | ((current: PreviewError | null) => PreviewError | null)) => {
+    const value = typeof next === "function" ? next(previewErrorRef.current) : next;
+    previewErrorRef.current = value;
+    setPreviewErrorState(value);
+  }, []);
   const projectId = initial.project.id;
   const [autoFixVersion, setAutoFixVersion] = React.useState<number | null>(null);
   const [checkVersion, setCheckVersion] = React.useState<number | null>(null);
@@ -176,10 +183,12 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
         await refresh().catch(() => undefined);
       }
     },
-    [projectId, refresh],
+    [projectId, refresh, setPreviewError],
   );
 
   const retry = React.useCallback((jobId: string, useCredits = false, note?: string) => {
+    // The crash this note describes: cleared once a build has it, unless a newer one came meanwhile.
+    const carried = note ? previewErrorRef.current : null;
     sending.current = sending.current.then(async () => {
       setError(null);
       try {
@@ -198,12 +207,12 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
         } else {
           setNeedsCredits(false);
           // The builder has the crash now; a newer one reported meanwhile stays.
-          if (note) setPreviewError((current) => (current && note.includes(current.message) ? null : current));
+          if (carried) setPreviewError((current) => (current === carried ? null : current));
         }
       } catch { setError("Couldn't reach GoodBuild. Your files are saved."); }
       await refresh().catch(() => undefined);
     });
-  }, [projectId, refresh]);
+  }, [projectId, refresh, setPreviewError]);
 
   // Sends go out one at a time, so the server queues prompts in the order they were sent
   // (measured: three quick sends raced and were queued out of order).
@@ -405,7 +414,7 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
       setAutoFixVersion(null);
       void enqueue({ mode: "build", prompt: previewFixPrompt(error, true) });
     },
-    [autoFixVersion, enqueue, state.jobs.length],
+    [autoFixVersion, enqueue, state.jobs.length, setPreviewError],
   );
 
   /** A screenshot of the version just built: ask the server's vision check, then show the result. */
