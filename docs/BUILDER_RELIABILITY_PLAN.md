@@ -103,6 +103,10 @@ How we will know:
 - **D3.** A DECISIONS.md entry and a HANDOFF.md update.
 - **D4.** Anything else found while building that would stop a person's build gets fixed in this PR and listed in it.
 
+## Added before merge (owner, 21 Nov 2026)
+
+A milestone whose browser check couldn't run (the checker down or busy) is saved as the working version and marked as needing verification, instead of "still needs a fix". A check that ran and failed still blocks. A later build verifies it.
+
 ## Not taking
 
 - **Codex's model-written summary:** an extra paid call each time. Our files are the record, so a free note does the same job.

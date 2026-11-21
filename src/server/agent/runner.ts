@@ -171,13 +171,14 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
   let lastAcceptance: FlowResult[] | undefined;
   const open = openWith ? async (files: Record<string, string>) => {
     const flows = acceptanceOn ? readSpec(files)?.acceptance ?? [] : [];
-    const result = await openWith(files, { assets: assetNames, chainId, ...(delivery && job.deliveryIndex !== undefined ? { delivery: { id: delivery.milestones[job.deliveryIndex].id, goal: delivery.goal, verifyWallet: delivery.verified?.includes("wallet") } } : {}), ...(flows.length ? { acceptance: { flows } } : {}) });
+    const result = await openWith(files, { assets: assetNames, chainId, ...(delivery && job.deliveryIndex !== undefined ? { delivery: { id: delivery.milestones[job.deliveryIndex].id, goal: delivery.goal, verifyWallet: walletDelivered(delivery) } } : {}), ...(flows.length ? { acceptance: { flows } } : {}) });
     runtimeRan = result.ran;
     lastAcceptance = result.acceptance;
     // Acceptance flows never block a build (owner, 21 Nov 2026): a flow the planner got wrong can't send the
     // builder into fixes it can't make. The builder sees the failures in run_checks and run_acceptance.
     if (result.acceptance) log(`acceptance: ${acceptanceSummary(result.acceptance)}${result.acceptance.some((r) => r.status === "fail") ? " (not blocking)" : ""}`);
     deliveryVerified = result.deliveryVerified === true;
+    walletChecked = result.walletVerified === true;
     return result;
   } : undefined;
   // The review runs wherever the run check does (D162): on DeepSeek it is cheap, and there is no setting.
@@ -267,6 +268,8 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
   let draftPersisted = false;
   let runtimeRan = false;
   let deliveryVerified = false;
+  /** A later build's run check connected a wallet to an earlier wallet milestone (D162). */
+  let walletChecked = false;
   let savePausedDraft: (() => Promise<boolean>) | undefined;
   const persistDraft = async (diagnostics = "") => {
     if (!workspace || !job.jobId || input.mode !== "build") return;
@@ -1182,7 +1185,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
           const before = { ...ws.files };
           const beforeKey = filesKey(before);
           // What the browser check said about these files, restored with them if the fixes are rolled back.
-          const verifiedBefore = { runtimeRan, deliveryVerified, lastAcceptance };
+          const verifiedBefore = { runtimeRan, deliveryVerified, walletChecked, lastAcceptance };
           stage = "visual fix";
           if (v2) await focused(reviewFixContext({ request: setup.request, message: reviewFixMessage(verdict.issues), files: ws.files, changed: ws.netChanges().map((c) => c.path) }), () => phase(TIER_FOR.build, true, { gate: uiGate }));
           else {
@@ -1201,7 +1204,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
             // A fix that breaks a check isn't worth a second round of fixing: the page goes back to how it was.
             for (const path of Object.keys(ws.files)) delete ws.files[path];
             Object.assign(ws.files, before);
-            ({ runtimeRan, deliveryVerified, lastAcceptance } = verifiedBefore);
+            ({ runtimeRan, deliveryVerified, walletChecked, lastAcceptance } = verifiedBefore);
             checked = undefined;
             record.review = { ok: false, issues: verdict.issues, fixed: false };
             log(untouched ? "· review: the builder changed nothing" : "! review: the fixes broke a check, so the page was left as it was");
@@ -1218,9 +1221,23 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       step({ id: "autofix", label: report.ok ? "Auto-fix: fixed" : "Auto-fix: failed", detail, status: report.ok ? "done" : "error" });
       log(`${report.ok ? "✓" : "✗"} ${detail.toLowerCase()}`);
     }
-    if (delivery && job.deliveryIndex !== undefined && (!runtimeRan || (["interface", "wallet"].includes(delivery.milestones[job.deliveryIndex].id) && !deliveryVerified) || isStarterApp(ws.files["src/App.tsx"]))) {
-      report = { ...report, ok: false, errors: [...report.errors, { file: "src/App.tsx", source: "runtime", message: !runtimeRan || !deliveryVerified ? "The milestone's browser acceptance has not passed; progress is saved for recovery." : "The first interface is still the starter app." }] };
+    // A milestone whose browser check ran and failed doesn't replace the working version. One whose check couldn't
+    // run at all (the checker was down or busy) is saved and marked as needing verification (D162, owner, 21 Nov
+    // 2026): nothing is wrong with the app, and the person can't fix our server. A later build checks it again.
+    if (delivery && job.deliveryIndex !== undefined && !runtimeRan && report.ok) log("· the browser check couldn't run, so this milestone is saved and marked as needing verification");
+    if (delivery && job.deliveryIndex !== undefined && ((runtimeRan && ["interface", "wallet"].includes(delivery.milestones[job.deliveryIndex].id) && !deliveryVerified) || isStarterApp(ws.files["src/App.tsx"]))) {
+      report = { ...report, ok: false, errors: [...report.errors, { file: "src/App.tsx", source: "runtime", message: !deliveryVerified && !isStarterApp(ws.files["src/App.tsx"]) ? "The milestone's browser acceptance has not passed; progress is saved for recovery." : "The first interface is still the starter app." }] };
     }
+    /** Milestones this build proved in the browser: its own, and an earlier wallet milestone a check connected to. */
+    const provedNow =
+      delivery && job.deliveryIndex !== undefined && report.ok
+        ? [
+            ...(deliveryVerified ? [delivery.milestones[job.deliveryIndex].id] : []),
+            ...(walletChecked ? ["wallet"] : []),
+            // A first interface saved while the checker was down is proved once a later build opens the app cleanly.
+            ...(runtimeRan && delivery.milestones.slice(0, delivery.completed).some((m) => m.id === "interface") ? ["interface"] : []),
+          ]
+        : [];
     await writeContractModules(report);
     for (const line of formatTokenReport(record.tokens ?? [])) log(line);
     record.checks = { errors: report.errors.length, warnings: report.warnings.length };
@@ -1238,7 +1255,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     record.jobId = job.jobId;
     if (delivery && job.deliveryIndex !== undefined) {
       const index = job.deliveryIndex;
-      const verified = [...new Set([...(delivery.verified ?? []), ...(report.ok && deliveryVerified ? [delivery.milestones[index].id] : [])])];
+      const verified = [...new Set([...(delivery.verified ?? []), ...provedNow])];
       const remaining = delivery.milestones.flatMap((m, i) => i > index || !verified.includes(m.id) ? [`${m.title}${report.ok && i <= index && !verified.includes(m.id) ? " (needs verification)" : ""}`] : []);
       record.delivery = { title: delivery.milestones[index].title, remaining, demo: delivery.milestones[index].id !== "payments" };
       text = report.ok ? `${delivery.milestones[index].title}: ${deliveryVerified ? "browser acceptance passed" : "implementation saved; live behaviour still needs verification"}.${record.delivery.demo ? " Live payments remain disabled." : " Deployment and wallet confirmation are still required for live payments."}${remaining.length ? ` Still to finish: ${remaining.join(", ")}.` : " The saved milestones are complete."}` : "Your progress is saved. This milestone still needs a fix before it replaces your working version.";
@@ -1254,7 +1271,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     // job that runs again.
     await job.commit(async (tx) => {
       await scopeRefund(tx);
-      if (report.ok && delivery && job.deliveryIndex !== undefined) await tx.update(buildDeliveries).set({ plan: { ...delivery, completed: Math.max(delivery.completed, job.deliveryIndex + 1), verified: [...new Set([...(delivery.verified ?? []), ...(deliveryVerified ? [delivery.milestones[job.deliveryIndex].id] : [])])] } }).where(eq(buildDeliveries.projectId, input.projectId));
+      if (report.ok && delivery && job.deliveryIndex !== undefined) await tx.update(buildDeliveries).set({ plan: { ...delivery, completed: Math.max(delivery.completed, job.deliveryIndex + 1), verified: [...new Set([...(delivery.verified ?? []), ...provedNow])] } }).where(eq(buildDeliveries.projectId, input.projectId));
       if (save) record.version = await checkpoint(tx, { projectId: input.projectId, files: ws.files, summary, messageId: assistantId });
       await finish(tx, assistantId, text, record);
       await markImagesAttached(tx, setup);
@@ -1583,6 +1600,11 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     if (!s.imageAssetIds.length) return;
     await (deps.assets ?? dbAssetStore(tx)).markAttached(input.projectId, s.imageAssetIds, assistantId);
   }
+}
+
+/** Whether a wallet milestone is done (verified or not): later builds then check the wallet still connects (D162). */
+function walletDelivered(plan: DeliveryPlan): boolean {
+  return Boolean(plan.verified?.includes("wallet") || plan.milestones.slice(0, plan.completed).some((m) => m.id === "wallet"));
 }
 
 /** What a phase may do (D152): which files it may write, a tool that ends it, its own round limit. */

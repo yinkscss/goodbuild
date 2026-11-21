@@ -37,11 +37,11 @@ async function start(prompt = GOAL) {
   if ("refused" in result) throw new Error(result.refused.message);
   return result.job;
 }
-async function run(model: ModelClient, runtime = true) {
+async function run(model: ModelClient, runtime = true, verified = runtime) {
   const job = await claimJob(db, "test");
   if (!job) throw new Error("No job");
   const ctx = await jobContext(db, job, "test", new AbortController().signal);
-  return runTurn({ db, model, job: ctx, typeCheckMode: "off", review: false, runCheck: async () => ({ ran: runtime, issues: [], deliveryVerified: runtime, note: "Browser fixture", ms: 1 }) }, { projectId, userId, mode: "build", userMessageId: job.userMessageId }, () => {});
+  return runTurn({ db, model, job: ctx, typeCheckMode: "off", review: false, runCheck: async () => ({ ran: runtime, issues: [], deliveryVerified: verified, note: "Browser fixture", ms: 1 }) }, { projectId, userId, mode: "build", userMessageId: job.userMessageId }, () => {});
 }
 const writeApp = { tools: [{ name: "create_file", args: { path: "src/App.tsx", content: APP } }] };
 
@@ -108,9 +108,22 @@ describe("first delivery and recovery", () => {
     expect(await getBalanceMicro(db, userId)).toBe(0);
   });
 
-  it("keeps an unverified milestone in the draft without replacing the working version", async () => {
-    const job = await start();
+  it("saves a milestone whose browser check couldn't run, marked as needing verification (D162)", async () => {
+    await start();
     const result = await run(scriptedModel([writeApp, { text: "Done" }]).client, false);
+    expect(result.status).toBe("ready");
+    expect(result.version).toBe(1);
+    expect((await loadFiles(db, projectId))["src/App.tsx"]).toBe(APP);
+    const plan = (await db.select().from(buildDeliveries))[0].plan;
+    expect(plan.completed).toBe(1);
+    expect(plan.verified ?? []).not.toContain("interface");
+    expect(result.delivery?.remaining[0]).toBe("Working first interface (needs verification)");
+    expect(result.log).toContain("· the browser check couldn't run, so this milestone is saved and marked as needing verification");
+  });
+
+  it("keeps a milestone whose browser check ran and failed in the draft without replacing the working version", async () => {
+    const job = await start();
+    const result = await run(scriptedModel([writeApp, { text: "Done" }]).client, true, false);
     expect(result.status).toBe("needs_fix");
     expect(result.version).toBeUndefined();
     expect(await loadFiles(db, projectId)).toEqual({});

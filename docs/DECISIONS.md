@@ -1991,7 +1991,10 @@ The owner approved implementing all five parts of the first-build fix and openin
 - **Plain words.** The failure card says "This build still needs a fix", and Try fix tries again another way. Fix steps say "N problems to fix" and "N problems left", and the details stay in the log. A tool that didn't work reads "didn't work the first time, so the builder tries another way". Empty code boxes are removed from replies.
 - **The wallet milestone's refusal.** An edit to GoodBuild's wallet layer (`src/lib/useWallet.ts`, `src/lib/chain.ts`) is told the layer already works and how to use it. It is no longer told to ask for the on-chain milestone.
 - **The planner never offers username and password sign-in.** An option naming a username, password, passcode or Google login becomes "Yes, with an email code" when the planner's answer is read; apps sign in with the wallet or an email code (D31). The planner's prompt is unchanged: its cost test has no room left.
-- **Not changed:**
-  - a milestone still replaces the working version only after the browser check has run and passed (PROGRESSIVE_DELIVERY.md). When the checker is down, that milestone waits;
-  - v1 turns (saved before v2) keep their old fix loop.
+- **A milestone whose browser check couldn't run is saved** (asked by the owner on 21 Nov 2026: "because it's in the docs doesn't mean it's right"):
+  - Check ran and failed: the milestone stays a draft, as before.
+  - Check couldn't run (the checker down or busy): it is saved as the working version and listed as "(needs verification)". The other checks still ran, and the free first delivery is claimed when the build starts, so nothing extra is handed out.
+  - A later build verifies it. A clean run of the app proves an earlier interface. The wallet steps now run on every build after a wallet milestone, verified or not, and a stand-in wallet connecting proves it.
+  - PROGRESSIVE_DELIVERY.md is updated to match.
+- **Not changed:** v1 turns (saved before v2) keep their old fix loop.
 - **UNVERIFIED:** the token targets (Sonnet under about 80K input tokens for a milestone build, DeepSeek fix calls under about 20K) and the pass rate on real builds. The token report in each build's log measures both after deploy.
