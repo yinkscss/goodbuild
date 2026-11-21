@@ -20,6 +20,8 @@ export const BUILD_TOOLS: ToolSpec[] = [
   }, ["summary", "steps"]),
   fn("suggest_next", "Offer the user one or two next steps as clickable buttons. Call it once, in the same response as your final reply, as your last action. Each suggestion is the request the user would send, short and specific to this app.", {
     suggestions: { type: "array", items: { type: "string" }, description: 'One or two, e.g. "Add a leaderboard of top tippers"' },
+    works: { type: "array", items: { type: "string" }, description: 'After building: 1-3 short lines, what the person can do in the app now, e.g. "Add, edit and remove goals"' },
+    later: { type: "string", description: "After building: one short line on anything they asked for that doesn't work yet, and why" },
   }, ["suggestions"]),
   fn("read_guide", `Read one front-end guide by name: ${guideNames().join(", ")}.`, {
     name: { type: "string" },

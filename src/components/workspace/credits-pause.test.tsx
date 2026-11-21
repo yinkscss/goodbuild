@@ -46,12 +46,12 @@ describe("a build paused for credits (D138)", () => {
     expect(onFix).toHaveBeenCalledOnce();
   });
 
-  it("is plain Continue without a cost, and other errors keep their own buttons", () => {
+  it("is plain Continue without a cost, and other problems have one Fix it for me button", () => {
     const { unmount } = render(<TurnError record={paused} onFix={vi.fn()} disabled={false} />);
     expect(screen.getByRole("button", { name: "Continue" })).toBeInTheDocument();
     unmount();
     render(<TurnError record={{ ...paused, paused: undefined }} onFix={vi.fn()} disabled={false} continueCost={{ needMicro: 740_000, haveMicro: 0 }} />);
-    expect(screen.getByRole("button", { name: "Try fix" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Fix it for me" })).toBeInTheDocument();
     expect(screen.queryByText(/Continuing costs/)).toBeNull();
   });
 

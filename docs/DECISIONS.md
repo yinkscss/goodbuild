@@ -2020,3 +2020,43 @@ The owner approved implementing all five parts of the first-build fix and openin
   - Leftover notes during a fix are reported as information, the address check works, every network gets the right G$ address, and untouched copies are upgraded.
 - **Not changed:** strictNullChecks stays off for apps; turning it on would report loose code that runs fine, such as `useState(null)` followed by a value.
 - **UNVERIFIED:** the next real wallet milestone on the live site.
+
+### D164. What a person sees while GoodBuild builds: the plan as a checklist, one problem card with one button, plain words (21 Nov 2026; amends D87, D138, D153, D162, D163)
+- Decided by: the owner, in chat, after Claude's audit of the build screen and a mock ([GoodBuild Build Clarity](https://claude.ai/artifact/Qp4xxF5J7o4oiEXPpkLHsC)): "build the plan in one PR"; "two buttons would confuse the users, we are supposed to hold them like babies and guide them all step of the way"; "no need to show free fix, just show the credit cost in the text area". Plan and build by Claude: [BUILD_CLARITY_PLAN.md](BUILD_CLARITY_PLAN.md).
+- **Research.** From Codex: the live plan checklist (`update_plan`), the end-of-task summary, undo, and lasting project notes (AGENTS.md). From GPT Engineer: nothing new; its clarify step and self-heal are already here. Not taken: Codex's best-of-N (N times the cost, and picking code is a developer's job), and GPT Engineer's file picker and editable prompts (settings by another name).
+- **The plan as a checklist.** In Build mode, the builder's plan (`set_plan`, or the spec's plan in v2) shows as a checklist, with GoodBuild's own last step, "Checking it works on a phone and a computer". One step works at a time, and a "Step 2 of 5" counter sits on top.
+  - Each step row saves which plan step it belongs to (`Step.plan`).
+  - A file whose name matches a later plan step moves the checklist forward. A spec step's route or contract name counts, and a contract step doesn't take front-end files. The checks after the build move it to the last step. It never moves back.
+  - There's no new tool and no extra model call. **UNVERIFIED:** how often names match on real builds; when none match, the checklist stays put until the checks.
+- **One trail line.** Under the working step, one line in plain words says what's happening, with the file name faint at its end. It slides in and fades up and out (200 ms) when that part is done. It stays still for people who prefer reduced motion. Before the plan exists, the same line runs under "Thinking".
+- **Plain words for every step** (`src/lib/plain-steps.ts`), worked out on screen from the saved labels, so older turns read the same way:
+  - "Writing GoalCard.tsx" becomes "Building the goal card"; a hook becomes "Making goals work"; styles become "Choosing colours and layout".
+  - Deleting and renaming become "Tidying up", and a package becomes "Adding a building block".
+  - Guide reads and the plan row are hidden.
+  - "Fixing errors (attempt 1 of 3)" becomes "Fixing a small thing it found", and "Auto-fix: failed · 1 error left" becomes "1 problem still needs a fix".
+  - A test checks that no label shown to a person contains a file extension.
+- **A finished build reads like the owner's approved mock** (asked for: "I'd like to see the response in a much cleaner way").
+  - The card shows a "Ready to try" pill and one headline: the reply's first sentence, or the milestone's.
+  - Below it, a short list: what works (green ticks) and what comes later (an empty circle).
+  - One violet "Next: …" button carries the first suggestion; the other is a chip.
+  - One quiet footer line holds the check ("✓ Checked on a phone and a computer"), the steps (folded, tap to open), the cost and Undo.
+  - The list comes from the builder: `suggest_next` takes optional `works` (1–3 short lines) and `later` (one line), so there's no extra model call. It's saved as `record.outcome`.
+  - A milestone build writes the headline and "later" itself, for example "Connect a wallet, payments on Celo come next. Payments are off until then." This replaces "implementation saved; live behaviour still needs verification".
+  - Without a list (older turns, or a builder that didn't give one), the reply shows as before.
+- **Milestones have plain names:** "Your app's screens", "Connect a wallet", "Play with others", "Sign-in and saved data" and "Payments on Celo". A test checks that each name, sent as a request, picks its own milestone.
+- **One problem card, one button.** Whatever went wrong (the build stopped, still needs a fix, or the preview crashed), the newest reply shows one card with one button, "Fix it for me".
+  - It continues the failed build from its saved files and carries the preview's crash, so one press fixes both. The retry route takes an optional `note` (up to 3,000 characters), which is added to the draft's notes for the builder.
+  - The preview's own error card is hidden while this card shows. The check notes have no button of their own then.
+  - A build paused for credits keeps its own words and its Continue button.
+- **No dead end on a second fix, and no talk of free fixes** (the owner). When GoodBuild's repair allowance doesn't cover a retry, the workspace runs it on credits at once. It doesn't show the old refusal and the "Continue using credits" button. The cost shows only where costs already show, beside the prompt box. If the credits can't cover it, the out-of-credits card shows, as for any build. The server's refusal is unchanged; the workspace answers it. The "GoodBuild covered X of AI" line after a paid-for build is gone too (the owner: "yes").
+- **Plain errors.** An unexpected error reads as one sentence for its cause (`plainError`), such as "We lost the connection to one of our services while building. That wasn't something you did." Anything unknown reads "Something went wrong on our side". The raw message stays on the record, behind "Technical details (for support)", which replaces "Logs".
+- **The preview's crash card** says "The goal list crashed when it opened" and has "Fix it for me". The file, line and message are behind the same fold.
+- **Undo this change.** The newest finished build has "Undo" (in the footer of a finished build, otherwise a button) with a confirm in the page. It goes back to the version before it with the existing revert, and costs nothing. The Versions menu says "Go back to v3?" instead of "Revert".
+- **Smaller changes:**
+  - Plan / Build has a visible hint on phones too: "Talk it through. Nothing changes." / "Changes your app."
+  - The two checks read the same: "Checked on a phone and a computer: looks right".
+  - The deploy card says "one signature" instead of kB.
+  - "Upgrade" becomes "Update your live contract".
+  - The faucet guide is "Get free test money", and Sepolia is "Celo's free test network".
+- **What GoodBuild remembers** (P17 memory decisions) shows as a folded list under the chat, each with "Forget" (`POST /api/projects/[id]/memory`, refused while a build runs).
+- **Not changed:** the server's step labels, logs and errors (tests and support read them), how builds are charged, and the sponsorship rules.

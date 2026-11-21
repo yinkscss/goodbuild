@@ -136,9 +136,10 @@ describe("TurnView", () => {
     expect(record.log).toHaveLength(2); // the record itself is untouched
   });
 
-  it("keeps the step rows while running, and folds them away afterwards", () => {
+  it("shows one plain trail line while running, and folded step rows afterwards (D164)", () => {
     const { rerender, container } = render(view({ ...record }, true));
-    expect(screen.getByText("Writing App.tsx")).toBeTruthy();
+    expect(screen.getByText("Building the main screen")).toBeTruthy();
+    expect(container.querySelector("ol")).toBeNull();
     expect(container.querySelector("details")).toBeNull();
     // A step that auto-fix recovered from doesn't keep the list open.
     rerender(view({ ...record, status: "ready", steps: [...record.steps, { id: "b", label: "Compiling", status: "error" }] }, false));
@@ -146,18 +147,23 @@ describe("TurnView", () => {
     expect(screen.getByText("2 steps done")).toBeTruthy();
   });
 
-  it("the error card keeps its expandable logs", () => {
-    const { container } = render(view({ ...record, status: "error", error: "It broke" }));
-    expect(screen.getByText("Writing App.tsx").closest("details")).toBeNull();
+  it("the problem card has one button and keeps the technical text behind one fold (D164)", () => {
+    const { container } = render(view({ ...record, status: "error", error: "TypeError: fetch failed" }));
+    expect(screen.getByText("Building the main screen").closest("details")).toBeNull();
     expect(container.querySelector("ol")).not.toBeNull();
-    expect(screen.getByText("Logs")).toBeTruthy();
-    expect(screen.getByRole("alert").textContent).toContain("wrote src/App.tsx");
+    const alert = screen.getByRole("alert");
+    expect(alert.querySelectorAll("button")).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "Fix it for me" })).toBeTruthy();
+    expect(screen.getByText(/We lost the connection/)).toBeTruthy();
+    expect(screen.getByText("Technical details (for support)")).toBeTruthy();
+    expect(alert.textContent).toContain("wrote src/App.tsx");
+    expect(alert.textContent).toContain("TypeError: fetch failed");
   });
 
   it("labels deploy-ready contracts with the project's network", () => {
     const ready = { ...record, status: "ready" as const, contracts: [{ name: "Tip", file: "contracts/Tip.sol", bytecodeBytes: 1024 }] };
     render(view(ready, false, 42220));
-    expect(screen.getByText(/Celo · 1\.0 kB/)).toBeTruthy();
+    expect(screen.getByText(/Celo · one signature/)).toBeTruthy();
   });
 });
 

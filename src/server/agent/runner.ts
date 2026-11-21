@@ -54,6 +54,7 @@ import {
   type TurnSetup,
 } from "./turn-progress";
 import { deliveryContext, milestoneAllows, scopeRefusal } from "./delivery";
+import { milestoneName } from "@/lib/plain-words";
 import { SponsorshipExhaustedError, sponsorshipCanCall } from "@/server/credits/build-sponsorship";
 import type { DeliveryPlan } from "@/server/db/schema";
 import { Workspace, type FileChange } from "./workspace";
@@ -248,10 +249,19 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
 
   /** While a fix attempt runs, the steps it takes are shown under it. */
   let stepParent: string | undefined;
+  /**
+   * Which plan step the work is on (D164), so the person sees the plan as a checklist. It only moves forward:
+   * a file whose name matches a later plan step moves it there, and the checks after the build move it to
+   * GoodBuild's own last step, "checking it works" (index = the plan's length).
+   */
+  let planCursor = 0;
+  /** What the builder said works now, and what doesn't yet, from suggest_next (D164). */
+  let builderSaid: { works?: string[]; later?: string } = {};
   const step = (input: Step) => {
     const i = record.steps.findIndex((x) => x.id === input.id);
     const parent = input.parent ?? (i >= 0 ? record.steps[i].parent : undefined) ?? (stepParent && stepParent !== input.id ? stepParent : undefined);
-    const s = parent ? { ...input, parent } : input;
+    const planned = input.plan ?? (i >= 0 ? record.steps[i].plan : undefined) ?? (record.plan?.steps.length && input.id !== "plan" && record.mode !== "plan" ? planCursor : undefined);
+    const s = { ...input, ...(parent ? { parent } : {}), ...(planned !== undefined ? { plan: planned } : {}) };
     if (i >= 0) record.steps[i] = s;
     else record.steps.push(s);
     out({ type: "step", step: s });
@@ -521,8 +531,10 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     };
 
     /** Record next-step chips from suggest_next. Fix passes (quiet) don't change them. */
-    const takeSuggestions = (items: string[] | undefined, quiet: boolean) => {
+    const takeSuggestions = (items: string[] | undefined, quiet: boolean, said?: { works?: string[]; later?: string }) => {
       if (!items?.length || quiet) return;
+      // The latest accepted reply speaks for the build, even when it leaves the list out (D164).
+      builderSaid = { works: said?.works, later: said?.later };
       record.suggestions = items;
       out({ type: "suggestions", items });
     };
@@ -632,7 +644,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
           if (opts.endOn === call.name && outcome.ok) ended = true;
           if (outcome.guides?.length) log(`guides: ${outcome.guides.join(", ")}`);
           if (outcome.access) log(`· ${outcome.access}`);
-          takeSuggestions(outcome.suggestions, quiet);
+          takeSuggestions(outcome.suggestions, quiet, outcome);
           // v2: the spec's plan card stays; the builder's own set_plan only loads its guides.
           if (outcome.plan && !(specWritten && call.name === "set_plan")) {
             record.plan = outcome.plan;
@@ -640,6 +652,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
             step({ id: "plan", label: "Plan", detail: outcome.plan.summary || `${outcome.plan.steps.length} steps`, status: "done" });
           }
           if (outcome.change) {
+            if (record.plan && planCursor < record.plan.steps.length) planCursor = Math.max(planCursor, planStepFor(record.plan.steps, outcome.change.path) ?? planCursor);
             if (v2) authors.set(outcome.change.path, tier);
             record.changes.push(outcome.change);
             out({ type: "file", change: outcome.change });
@@ -999,7 +1012,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
               log(`· repeated edit failure in ${path}; supplied current contents and requested a different strategy`);
             }
           } else if (outcome.change) failures.delete(path);
-          takeSuggestions(outcome.suggestions, false);
+          takeSuggestions(outcome.suggestions, false, outcome);
           convo.push({ role: "tool", tool_call_id: call.id, content: outcome.result });
         } else {
           convo.push({ role: "tool", tool_call_id: call.id, content: "Not run: no tool steps left in this pass." });
@@ -1077,6 +1090,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     // change this event while it waits to be saved. The checkpoint emit below still follows.
     emit({ type: "files", files: { ...ws.files } });
     // Checks and auto-fix (up to MAX_FIX_ATTEMPTS). Stops on the same errors twice, on two attempts in a row without progress, or at the fix budget.
+    if (record.plan?.steps.length) planCursor = record.plan.steps.length;
     let report = await checkNow(0);
     let previous = "";
     const initialErrors = report.errors.length;
@@ -1248,6 +1262,8 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     record.checks = { errors: report.errors.length, warnings: report.warnings.length };
     record.status = report.ok ? "ready" : "needs_fix";
     const endStatus = record.status;
+    /** The builder's own words, before GoodBuild fills in a default or a milestone's summary (D164). */
+    const ownReply = text.replace(/\s+/g, " ").trim();
 
     if (!text.trim()) {
       text = report.ok ? "Your working version is saved. You can continue with the next change." : "Your progress is saved for recovery. The checks found issues to fix.";
@@ -1263,9 +1279,24 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       const verified = [...new Set([...(delivery.verified ?? []), ...provedNow])];
       const remaining = delivery.milestones.flatMap((m, i) => i > index || !verified.includes(m.id) ? [`${m.title}${report.ok && i <= index && !verified.includes(m.id) ? " (needs verification)" : ""}`] : []);
       record.delivery = { title: delivery.milestones[index].title, remaining, demo: delivery.milestones[index].id !== "payments" };
-      text = report.ok ? `${delivery.milestones[index].title}: ${deliveryVerified ? "browser acceptance passed" : "implementation saved; live behaviour still needs verification"}.${record.delivery.demo ? " Live payments remain disabled." : " Deployment and wallet confirmation are still required for live payments."}${remaining.length ? ` Still to finish: ${remaining.join(", ")}.` : " The saved milestones are complete."}` : "Your progress is saved. This milestone still needs a fix before it replaces your working version.";
-      record.suggestions = report.ok && index + 1 < delivery.milestones.length ? delivery.milestones.slice(index + 1, index + 3).map((m) => m.title) : undefined;
+      // D164: plain words. The milestone's technical state stays in record.delivery and the log.
+      const milestone = delivery.milestones[index];
+      const later = delivery.milestones.slice(index + 1);
+      if (report.ok) {
+        record.outcome = milestoneOutcome({ id: milestone.id, checked: deliveryVerified, later: later.map((m) => m.id), works: builderSaid.works });
+        // The builder's reply (deploy details such as constructor arguments) stays, under the milestone's headline.
+        if (ownReply) record.outcome.detail = ownReply;
+        text = [record.outcome.headline, ownReply, record.outcome.later].filter(Boolean).join(" ");
+      } else text = "Your files are saved. This part still needs a fix before it replaces your working version.";
+      record.suggestions = report.ok && later.length ? later.slice(0, 2).map((m) => milestoneName(m.id, m.title)) : undefined;
       out({ type: "text_set", text });
+    }
+    // D164: a finished build with the builder's list of what works shows a headline and that list.
+    if (report.ok && !record.outcome && builderSaid.works?.length) {
+      const headline = firstSentence(text).slice(0, 200);
+      // The rest of the reply (deploy details such as constructor arguments) shows under the headline.
+      const detail = text.replace(/\s+/g, " ").trim().slice(headline.length).trim();
+      record.outcome = { headline, works: builderSaid.works, ...(detail ? { detail } : {}), ...(builderSaid.later ? { later: builderSaid.later } : {}) };
     }
     summary = firstLine(text) || summary;
     emit({ type: "snapshot", text, record: structuredClone(record) });
@@ -1985,6 +2016,50 @@ export function fixProgress(best: number, stalls: number, errorsNow: number): { 
 
 function onlySuggestions(calls: ToolCall[]): boolean {
   return calls.length > 0 && calls.every((c) => c.name === "suggest_next");
+}
+
+/** Words in a name: "GoalCard.tsx" → ["goal", "card"], "/my-goals" → ["my", "goals"]. Plurals lose their "s". */
+/**
+ * A milestone build's end in plain words (D164): a headline, what works (the builder's own list when it gave one)
+ * and what comes later. The next step is the first suggestion, shown as the "Next" button.
+ */
+export function milestoneOutcome(o: { id: string; checked: boolean; later: string[]; works?: string[] }): { headline: string; works: string[]; later?: string; detail?: string } {
+  const what = o.id === "interface" ? "Your app's screens are built" : o.id === "wallet" ? "Connecting a wallet works" : o.id === "multiplayer" ? "Playing with others is built" : o.id === "integrations" ? "Sign-in and saved data are built" : o.id === "payments" ? "Payments on Celo are built" : "This part is built";
+  const headline = `${what}. ${o.checked ? "Try it in the preview." : "GoodBuild will try it again in a browser on your next change."}`;
+  const names = o.later.map((id) => { const n = milestoneName(id); return n.charAt(0).toLowerCase() + n.slice(1); });
+  const payments = o.later.includes("payments");
+  const later = names.length
+    ? `${names.join(", ").replace(/^./, (c) => c.toUpperCase())} ${names.length === 1 ? "comes" : "come"} next.${payments ? " Payments are off until then." : ""}`
+    : o.id === "payments" ? "To take real payments, deploy your contract and sign from your wallet." : undefined;
+  return { headline, works: o.works ?? [], ...(later ? { later } : {}) };
+}
+
+function nameWords(text: string): string[] {
+  return text
+    .replace(/\.[a-z]+$/i, "")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((w) => w.length > 2 && !["use", "app", "index", "main", "page", "the", "and", "for", "src", "components", "pages", "hooks", "lib"].includes(w))
+    .map((w) => w.replace(/s$/, ""));
+}
+
+/**
+ * The plan step a file belongs to (D164), by its name: "GoalList.tsx" matches "Goals: add and list savings goals".
+ * Only the part before a step's colon (a page's route or a contract's name) or its first five words count, so
+ * a file isn't matched to a step that merely mentions it. Undefined when nothing matches.
+ */
+export function planStepFor(steps: string[], path: string): number | undefined {
+  const file = new Set(nameWords(path.split("/").pop() ?? path));
+  if (!file.size) return undefined;
+  const contract = /\.sol$/i.test(path);
+  const at = steps.findIndex((s) => {
+    const head = s.includes(":") ? s.slice(0, s.indexOf(":")) : s.split(/\s+/).slice(0, 5).join(" ");
+    // A spec's contract step ("SavingsGoals: …") doesn't take the front end's files.
+    if (s.includes(":") && !contract && /^[A-Z][a-z0-9]+[A-Z]\w*$/.test(head)) return false;
+    return nameWords(head).some((w) => file.has(w));
+  });
+  return at < 0 ? undefined : at;
 }
 
 function toolLabel(call: ToolCall): string | null {

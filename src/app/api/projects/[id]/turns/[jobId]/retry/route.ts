@@ -10,11 +10,11 @@ import { startTurn } from "@/server/jobs/jobs";
 export async function POST(request: Request, ctx: RouteContext<"/api/projects/[id]/turns/[jobId]/retry">) {
   try {
     const session = await requireSession();
-    const parsed = z.object({ useCredits: z.boolean().optional() }).safeParse(await request.json().catch(() => ({})));
+    const parsed = z.object({ useCredits: z.boolean().optional(), note: z.string().max(3000).optional() }).safeParse(await request.json().catch(() => ({})));
     if (!parsed.success) return NextResponse.json({ error: "invalid_body" }, { status: 400 });
     const { id, jobId } = await ctx.params;
     if (!/^[0-9a-f-]{36}$/i.test(jobId)) return NextResponse.json({ error: "not_found" }, { status: 404 });
-    const started = await startTurn(await getDb(), { projectId: id, userId: session.user.id, mode: "build", retryOfJobId: jobId, useCredits: parsed.data.useCredits }, process.env, { readIdentity: readGoodIdentityOnCelo });
+    const started = await startTurn(await getDb(), { projectId: id, userId: session.user.id, mode: "build", retryOfJobId: jobId, retryNote: parsed.data.note, useCredits: parsed.data.useCredits }, process.env, { readIdentity: readGoodIdentityOnCelo });
     if ("refused" in started) return NextResponse.json({ error: started.refused.reason, message: started.refused.message }, { status: 402 });
     kickWorker();
     return NextResponse.json({ jobId: started.job.id, messageId: started.job.userMessageId, status: started.job.status }, { status: 202 });

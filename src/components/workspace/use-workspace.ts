@@ -3,7 +3,7 @@
 import * as React from "react";
 
 import { applyTurnEvent, emptyTurn, type LiveTurn } from "@/lib/live-turn";
-import { AUTO_FIX_LEAD, previewFixPrompt, shouldAutoFix, type PreviewError } from "@/lib/preview-errors";
+import { AUTO_FIX_LEAD, isInfraError, previewFixPrompt, shouldAutoFix, type PreviewError } from "@/lib/preview-errors";
 import { backoffMs, createJobStreamParser } from "@/lib/job-stream";
 import { SKIP_PLAN_TEXT } from "@/lib/plan";
 import type { PlanAnswer, TurnMode, TurnRecord } from "@/lib/turn-types";
@@ -20,8 +20,14 @@ export interface UseWorkspace {
   send: (prompt: string, mode: TurnMode, opts?: { skipPlan?: boolean }) => void;
   /** Stop the running turn and cancel queued follow-ups. */
   stop: () => Promise<void>;
-  retry: (jobId: string, useCredits?: boolean) => void;
-  paidRetryJobId: string | null;
+  /**
+   * Continue a failed build from its saved files (D164). `note` tells the builder what else is wrong (the
+   * preview's crash). When GoodBuild's repair allowance doesn't cover it, it runs on credits, as the cost beside
+   * the prompt box said; there is no second question.
+   */
+  retry: (jobId: string, useCredits?: boolean, note?: string) => void;
+  /** The preview's latest crash since the last message, for the one problem card (D164). */
+  previewError: PreviewError | null;
   /** Save one answer to the plan's questions (D32). */
   answerPlan: (messageId: string, questionId: string, answer: PlanAnswer) => void;
   /** Leave the plan and build now, with whatever has been answered so far. */
@@ -114,7 +120,14 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
   const [live, setLive] = React.useState<LiveTurn | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [needsCredits, setNeedsCredits] = React.useState(false);
-  const [paidRetryJobId, setPaidRetryJobId] = React.useState<string | null>(null);
+  const [previewError, setPreviewErrorState] = React.useState<PreviewError | null>(null);
+  // The crash as it is now, for a retry to remember which one its note carried (D164).
+  const previewErrorRef = React.useRef<PreviewError | null>(null);
+  const setPreviewError = React.useCallback((next: PreviewError | null | ((current: PreviewError | null) => PreviewError | null)) => {
+    const value = typeof next === "function" ? next(previewErrorRef.current) : next;
+    previewErrorRef.current = value;
+    setPreviewErrorState(value);
+  }, []);
   const projectId = initial.project.id;
   const [autoFixVersion, setAutoFixVersion] = React.useState<number | null>(null);
   const [checkVersion, setCheckVersion] = React.useState<number | null>(null);
@@ -137,6 +150,8 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
     async (body: { mode: TurnMode; prompt?: string; userMessageId?: string; skipPlan?: boolean; assetIds?: string[] }) => {
       setError(null);
       setCheckFailed(null);
+      // A new message answers whatever the preview showed; a crash after it is shown again.
+      setPreviewError(null);
       if (body.prompt) {
         const prompt = body.prompt;
         const sent = new Set(body.assetIds ?? []);
@@ -168,24 +183,36 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
         await refresh().catch(() => undefined);
       }
     },
-    [projectId, refresh],
+    [projectId, refresh, setPreviewError],
   );
 
-  const retry = React.useCallback((jobId: string, useCredits = false) => {
+  const retry = React.useCallback((jobId: string, useCredits = false, note?: string) => {
+    // The crash this note describes: cleared once a build has it, unless a newer one came meanwhile.
+    const carried = note ? previewErrorRef.current : null;
     sending.current = sending.current.then(async () => {
       setError(null);
       try {
-        const res = await fetch(`/api/projects/${projectId}/turns/${jobId}/retry`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ useCredits }) });
+        const post = (paid: boolean) => fetch(`/api/projects/${projectId}/turns/${jobId}/retry`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ useCredits: paid, ...(note ? { note: note.slice(0, 3000) } : {}) }) });
+        let res = await post(useCredits);
+        let body = res.ok ? {} : await res.json().catch(() => ({})) as { message?: string; error?: string };
+        // The repair allowance doesn't cover it: run on credits, as the cost beside the prompt box said (D164, owner).
+        if (!res.ok && !useCredits && body.error === "funding_unavailable") {
+          res = await post(true);
+          body = res.ok ? {} : await res.json().catch(() => ({})) as { message?: string; error?: string };
+        }
         if (!res.ok) {
-          const body = await res.json().catch(() => ({})) as { message?: string; error?: string };
-          setError(body.message ?? "Couldn't resume this build. Reload and try again.");
-          if (body.error === "funding_unavailable") { setPaidRetryJobId(jobId); setNeedsCredits(false); }
-          else if (res.status === 402) setNeedsCredits(true);
-        } else { setNeedsCredits(false); setPaidRetryJobId(null); }
-      } catch { setError("Couldn't reach GoodBuild. Your saved progress is safe."); }
+          // A build running in another project isn't about credits: say so, and keep the preview's crash for the next try.
+          if (res.status === 402 && body.error !== "one_build_at_a_time") setNeedsCredits(true);
+          else setError(body.message ?? "Couldn't pick up this build. Reload and try again.");
+        } else {
+          setNeedsCredits(false);
+          // The builder has the crash now; a newer one reported meanwhile stays.
+          if (carried) setPreviewError((current) => (current === carried ? null : current));
+        }
+      } catch { setError("Couldn't reach GoodBuild. Your files are saved."); }
       await refresh().catch(() => undefined);
     });
-  }, [projectId, refresh]);
+  }, [projectId, refresh, setPreviewError]);
 
   // Sends go out one at a time, so the server queues prompts in the order they were sent
   // (measured: three quick sends raced and were queued out of order).
@@ -318,15 +345,18 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
 
   const revert = React.useCallback(
     async (version: number) => {
+      // The crash showing now belongs to the version being left (D164): gone once the revert works, unless a newer one came.
+      const left = previewErrorRef.current;
       const res = await fetch(`/api/projects/${projectId}/revert`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ version }),
       });
-      if (!res.ok) setError("Couldn't revert right now. Try again after the current build.");
+      if (!res.ok) setError("Couldn't go back right now. Try again after the current build.");
+      else if (left) setPreviewError((current) => (current === left ? null : current));
       await refresh();
     },
-    [projectId, refresh],
+    [projectId, refresh, setPreviewError],
   );
 
   const [uploading, setUploading] = React.useState(0);
@@ -382,11 +412,12 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
   /** The preview reported an error: fix it automatically once, if policy allows (P17). */
   const onPreviewError = React.useCallback(
     (error: PreviewError, version: number) => {
+      if (!isInfraError(error)) setPreviewError(error);
       if (!shouldAutoFix({ error, version, eligibleVersion: autoFixVersion, running: Boolean(attached.current) || state.jobs.length > 0 })) return;
       setAutoFixVersion(null);
       void enqueue({ mode: "build", prompt: previewFixPrompt(error, true) });
     },
-    [autoFixVersion, enqueue, state.jobs.length],
+    [autoFixVersion, enqueue, state.jobs.length, setPreviewError],
   );
 
   /** A screenshot of the version just built: ask the server's vision check, then show the result. */
@@ -433,7 +464,7 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
     running: (Boolean(live) && live?.phase === "running") || state.jobs.length > 0,
     send,
     retry,
-    paidRetryJobId,
+    previewError,
     stop,
     answerPlan,
     skipPlan,
