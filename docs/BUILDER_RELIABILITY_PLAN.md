@@ -1,6 +1,6 @@
 # Builder reliability and token plan (one PR)
 
-Date: 21 Nov 2026 · Proposed by: Claude · Asked for by: the owner, after the failed savings-goals run · Status: waiting for the owner's go.
+Date: 21 Nov 2026 · Proposed by: Claude · Asked for by: the owner, after the failed savings-goals run · Status: approved by the owner ("go, build the whole plan") and built on 21 Nov 2026 as D162. Measured: [evals/REVIEW_DEEPSEEK.md](evals/REVIEW_DEEPSEEK.md) (the review stays at high detail).
 
 ## Goal
 

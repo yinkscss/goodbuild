@@ -1964,3 +1964,34 @@ The owner approved implementing all five parts of the first-build fix and openin
 - **Not written by looking:** opening a FUTMinna page, or claiming the later deploy credits there, adds nobody. If the join request fails, the steps say so and offer Try again. The check that a builder has no entry in the other hackathon and the entry write run in one transaction under a per-builder lock. The in-app FUTMinna tab no longer joins main hackathon builders by itself; it shows the Join button.
 - **What members see:** `/home/hackathon` (the side menu and wallet menu both link there) sends them to `/home/hackathon/futminna`. The switch still offers the main hackathon; choosing it adds `?stay` and they stay there. Main hackathon builders see no change.
 - **Not changed:** credits (one grant per person, D160), each builder entering one hackathon, and the main hackathon's own pages.
+
+### D162. The builder fixes its own mistakes for people who don't code, and spends fewer tokens doing it (21 Nov 2026; amends D19, D68, D87, D152)
+- Decided by: the owner, in chat ("go, build the whole plan, merge when you're done if all the CI passes"), after the failed savings-goals run of 21 Nov 2026. Plan, research and build by Claude: [BUILDER_RELIABILITY_PLAN.md](BUILDER_RELIABILITY_PLAN.md). Ships with the D152 changes from the same run (commit 379e90b: flows never block, no v2 settings, Sonnet plans once, DeepSeek fixes its own code).
+- **Research.** GPT Engineer, the open-source predecessor of Lovable, starts each step as a short new conversation with only the files it needs, keeps the edits that apply, and logs tokens per step. Codex cuts long tool output as it arrives and restarts long conversations from a summary. Lovable's own code is not public and was not studied.
+- **Token report.** Each build logs and saves (`record.tokens`) its input, cached and output tokens by step (memory, spec, contracts, build, reply, fix, review, visual fix) and model. Replayed calls count too.
+- **Short conversations** (v2 builds):
+  - Each fix attempt gets the system prompt and one message: the request, the spec's summary, the problems, and the files they name with line numbers (at most 40,000 characters; longer files are named, to be read).
+  - The fix after the visual check gets its list and the page files this turn changed.
+  - The contracts phase gets the turn's context and its task, without the spec step's rounds, and the front end no longer re-reads the contract work.
+  - Built only from the files and the checks, so resumed builds still replay.
+- **Smaller context** (v2):
+  - Check, test, page and search results over 8,000 characters keep their first 5,000 and last 2,500.
+  - A whole `read_file` of a file over 16,000 characters returns its first lines and how to read the rest.
+  - After a second failed edit, a file over 8,000 characters is shown as its first 120 lines.
+  - Every 8 rounds of a pass, all but the last 4 rounds are trimmed like an earlier phase.
+  - Design-reference pictures go to the spec step and the first front-end call. After that, a note points to their text description in the asset list.
+- **Edits.** Of a batch of edits, the ones that match are applied and kept, and only the failed ones are asked for again. An edit that changes nothing, a failed edit and a refused one are no longer shown as steps; the log keeps them.
+- **The visual check is DeepSeek's, and on for every build the checker opens** (`TIER_FOR.review` is cheap; `VISUAL_REVIEW` is gone).
+  - It lists at most 3 problems, each starting "phone:", "computer:" or "both:"; any other is dropped.
+  - The prompt lists the false reports seen before as things not to report.
+  - Pictures go at `high` detail, measured live ([evals/REVIEW_DEEPSEEK.md](evals/REVIEW_DEEPSEEK.md)): at high detail, 3 of 3 good pages passed and 3 of 3 broken ones were caught. `low` saved about 450 tokens a look and invented a problem once in six runs.
+  - Anthropic's API has no detail setting.
+- **Type errors get one fix and never block** (mode "fix" on every server with the run check; `TYPE_CHECK` is gone). A type error goes to the fix loop once, on the model that wrote the file. Whatever is left after that attempt is a note.
+- **Another way before giving up.** When the same problems come back after a fix, one more attempt starts fresh. It is told the last attempt failed, shown what that attempt changed, and asked to find the real cause and fix it another way. Only then does the loop stop. The no-progress rule and the fix budget still apply.
+- **Plain words.** The failure card says "This build still needs a fix", and Try fix tries again another way. Fix steps say "N problems to fix" and "N problems left", and the details stay in the log. A tool that didn't work reads "didn't work the first time, so the builder tries another way". Empty code boxes are removed from replies.
+- **The wallet milestone's refusal.** An edit to GoodBuild's wallet layer (`src/lib/useWallet.ts`, `src/lib/chain.ts`) is told the layer already works and how to use it. It is no longer told to ask for the on-chain milestone.
+- **The planner never offers username and password sign-in.** An option naming a username, password, passcode or Google login becomes "Yes, with an email code" when the planner's answer is read; apps sign in with the wallet or an email code (D31). The planner's prompt is unchanged: its cost test has no room left.
+- **Not changed:**
+  - a milestone still replaces the working version only after the browser check has run and passed (PROGRESSIVE_DELIVERY.md). When the checker is down, that milestone waits;
+  - v1 turns (saved before v2) keep their old fix loop.
+- **UNVERIFIED:** the token targets (Sonnet under about 80K input tokens for a milestone build, DeepSeek fix calls under about 20K) and the pass rate on real builds. The token report in each build's log measures both after deploy.

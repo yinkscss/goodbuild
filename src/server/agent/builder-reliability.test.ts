@@ -6,6 +6,9 @@ describe("plain words for people who don't code (D162)", () => {
   it("removes empty code boxes and em dashes from replies", () => {
     expect(tidyReply("Done — it works.\n\n```\n\n```\n\nNext: add a chart.")).toBe("Done, it works.\n\nNext: add a chart.");
     expect(tidyReply("Here is the address:\n```\n0xabc\n```")).toBe("Here is the address:\n```\n0xabc\n```");
+    // Two blocks side by side stay two blocks.
+    const two = "```\na\n```\n```\nb\n```";
+    expect(tidyReply(two)).toBe(two);
   });
 
   it("explains a tool that didn't work without the technical error", () => {

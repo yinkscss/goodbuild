@@ -76,11 +76,8 @@ services:
       # The run check (D67): builds are opened in the checker's browser. If it is down, builds skip the check.
       RUN_CHECK_WS_ENDPOINT: ws://checker:3001/
       RUN_CHECK_CONCURRENCY: ${RUN_CHECK_CONCURRENCY:-2}
-      # The type check (D68): "warn" notes type errors in the build log, "enforce" sends them to auto-fix, "off" skips it.
-      TYPE_CHECK: ${TYPE_CHECK:-warn}
-      # The review (D87): after a build passes its checks, the strong model looks at screenshots of it and the
-      # build model fixes what it lists. Off until the evals have measured it: set VISUAL_REVIEW=1 in .env.production.
-      VISUAL_REVIEW: ${VISUAL_REVIEW:-off}
+      # With the checker on, every build also gets the type check (type errors fixed once, never blocking) and the
+      # review (DeepSeek looks at screenshots and fixes what it sees). Neither has a setting (D162).
     volumes:
       # deploy/install-recorder-key.sh writes /opt/goodbuild-recorder/recorder_key (uid 1000, mode 0400). A different
       # folder from the gas wallet's, so the worker never sees that key. Missing file: the registry stays off.

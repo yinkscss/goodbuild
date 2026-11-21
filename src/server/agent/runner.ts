@@ -71,9 +71,9 @@ export interface TurnDeps {
   checkApp?: typeof checkApp;
   /** Opens the built app in a headless browser (D67). Default: the real one where the server turns it on, otherwise none. */
   runCheck?: typeof runCheck;
-  /** TypeScript over the app (D68). Default: the real one in the mode the server sets (TYPE_CHECK), otherwise none. */
+  /** TypeScript over the app (D68). Default: the real one on servers with the run check, otherwise none. */
   typeCheck?: typeof typeCheck;
-  /** "warn" notes type errors, "enforce" sends them to auto-fix. Default: TYPE_CHECK. */
+  /** "fix" (the default, D162) gives type errors one fix attempt, then notes them; "warn" only notes them; "enforce" blocks on them. */
   typeCheckMode?: TypeCheckMode;
   /** The builder looks at screenshots of the finished page and fixes what it sees (D87). Default: on (D162). Needs the run check. */
   review?: boolean;
@@ -685,6 +685,12 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
      * same messages and its saved calls still line up.
      */
     const focused = async <T>(context: string | ChatMessage[], run: () => Promise<T>): Promise<T> => {
+      // A turn saved before D162 resumes in the conversation it began with, so its saved calls still line up.
+      if (!setup.focused) {
+        if (typeof context === "string") convo.push({ role: "user", content: context });
+        else convo.push(context[context.length - 1]);
+        return run();
+      }
       const main = convo;
       const mainTrim = trimBefore;
       convo = [convo[0], ...(typeof context === "string" ? [{ role: "user" as const, content: context }] : context)];
@@ -1567,7 +1573,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       recordAtStart: structuredClone(record),
       text,
       ...(appInfo ? { appInfo } : {}),
-      ...(v2 ? { harness: "v2" as const } : {}),
+      ...(v2 ? { harness: "v2" as const, focused: true as const } : {}),
     };
     await job.commit((tx) => job.saveSetup(tx, result));
     return result;
@@ -2024,8 +2030,27 @@ function firstIssue(issues: CheckIssue[]): string {
 
 /** A reply as people read it (D162): no em dashes, and no empty code boxes a model left behind. */
 export function tidyReply(text: string): string {
-  const noEmptyFences = text.replace(/```[\w-]*[ \t]*\n?\s*```/g, "").replace(/\n{3,}/g, "\n\n");
-  return plainDashes(noEmptyFences === text ? text : noEmptyFences.trim());
+  const lines = text.split("\n");
+  const kept: string[] = [];
+  let dropped = false;
+  for (let i = 0; i < lines.length; i++) {
+    if (/^\s*```[\w-]*\s*$/.test(lines[i])) {
+      // A fence that opens a block: find where it closes. Only a block with nothing but blank lines in it goes.
+      let j = i + 1;
+      while (j < lines.length && !/^\s*```\s*$/.test(lines[j])) j++;
+      if (j < lines.length && lines.slice(i + 1, j).every((l) => !l.trim())) {
+        dropped = true;
+        i = j;
+        continue;
+      }
+      kept.push(...lines.slice(i, Math.min(j + 1, lines.length)));
+      i = j;
+      continue;
+    }
+    kept.push(lines[i]);
+  }
+  const out = dropped ? kept.join("\n").replace(/\n{3,}/g, "\n\n").trim() : text;
+  return plainDashes(out);
 }
 
 /** Em dashes in a reply become commas (a spaced or unspaced dash between words). Replies only, never files. */

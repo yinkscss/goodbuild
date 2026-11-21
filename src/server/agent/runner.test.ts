@@ -610,7 +610,7 @@ describe("run check in a turn (D67)", { timeout: 120_000 }, () => {
       return { ran: true, issues: bad ? [crash] : [], note: bad ? "1 problem when the app ran" : "opened the app with no errors", ms: 1200 };
     };
     const { events, emit } = collect();
-    const record = await runTurn({ db, model: client, runCheck }, { projectId, userId, mode: "build", userMessageId: queuedId }, emit);
+    const record = await runTurn({ db, model: client, runCheck, review: false }, { projectId, userId, mode: "build", userMessageId: queuedId }, emit);
 
     expect(record.status).toBe("ready");
     expect(opened).toHaveLength(2);
@@ -627,7 +627,7 @@ describe("run check in a turn (D67)", { timeout: 120_000 }, () => {
   it("never fails a build because the check couldn't run", async () => {
     const { client } = scriptedModel([{ tools: [{ name: "create_file", args: { path: "src/App.tsx", content: "export default function App() { return <main>Ready</main>; }\n" } }] }, { text: "Built it." }]);
     const runCheck = async () => ({ ran: false, issues: [], note: "skipped: the browser wasn't available (connect ECONNREFUSED)", ms: 8000 });
-    const record = await runTurn({ db, model: client, runCheck }, { projectId, userId, mode: "build", userMessageId: queuedId }, () => {});
+    const record = await runTurn({ db, model: client, runCheck, review: false }, { projectId, userId, mode: "build", userMessageId: queuedId }, () => {});
     expect(record.status).toBe("ready");
     expect(record.steps.find((s) => s.id === "run")).toMatchObject({ status: "done", detail: "skipped" });
   });
@@ -644,7 +644,7 @@ describe("run check in a turn (D67)", { timeout: 120_000 }, () => {
       seen.push(files);
       return { ran: true, issues: [], note: "opened the app with no errors", ms: 900 };
     };
-    const record = await runTurn({ db, model: client, runCheck }, { projectId, userId, mode: "build", userMessageId: queuedId }, () => {});
+    const record = await runTurn({ db, model: client, runCheck, review: false }, { projectId, userId, mode: "build", userMessageId: queuedId }, () => {});
     expect(record.status).toBe("ready");
     // Once: not while the contract failed to compile.
     expect(seen).toHaveLength(1);

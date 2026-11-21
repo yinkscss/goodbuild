@@ -203,7 +203,6 @@ The questions:
 - A game: follow the game rules that come with their message.
 - Don't ask about colours, GoodBuild adds that question itself. For a game, don't ask about MiniPay either: GoodBuild adds that one too. Set recommended_palette to the one that suits the app: ${PALETTES.map((p) => `${p.id} (${p.mood.toLowerCase()})`).join("; ")}. Use "none" only if they already named their colours.
 - Never ask about the network, pricing or how the code is written.
-- Sign-in, when it matters: GoodBuild apps sign people in with their wallet, or with a code sent to their email. Offer only "With their wallet" or "With an email code". Never offer a username and password, Google, phone or any other kind of login: GoodBuild can't build those.
 - Never use em dashes.
 
 Example for "a savings circle for my friends":
