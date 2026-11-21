@@ -677,7 +677,7 @@ export function TurnView({
         <SuggestionChips items={record.suggestions} onPick={onSuggest} disabled={fixDisabled} />
       ) : null}
       {!live && record.draftSaved && !showError && <p className="mt-3 text-xs text-grey-600">Your files are saved.</p>}
-      {!live && (record.sponsoredMicro ?? 0) > 0 && <p className="mt-3 text-xs text-grey-600">GoodBuild covered {formatCredits(record.sponsoredMicro!)} of AI. No credits deducted for this build.</p>}
+      {/* D163 (owner): no talk of free builds or fixes; the cost line below shows what was charged. */}
       {!live && (record.refundedMicro ?? 0) > 0 && <p className="mt-3 text-xs text-grey-600">Nothing was built, so the {formatCredits(record.refundedMicro!)} of AI for this reply was refunded.</p>}
       {!live && record.delivery && !record.outcome && record.delivery.remaining.length > 0 && (
         <p className="mt-3 text-xs text-grey-600">Still to come: {[...new Set(record.delivery.remaining.map(plainMilestoneTitle))].join(", ")}</p>
