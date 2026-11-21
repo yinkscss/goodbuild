@@ -78,7 +78,7 @@ PR #170 already took their token techniques. This part covers their other tools,
   - With no failed build (only a preview crash), the same card and button send today's fix message.
   - The preview's own error notice is hidden while this card shows. The automatic fix of a preview error right after a build (`shouldAutoFix`) still runs first, so the card only appears when that didn't work.
   - A build paused for credits keeps its own words and its "Continue · ≈ cost" button. That's a different situation, and the person has to top up first.
-- **B2. No dead end on the second try.** When the free repair is used up, the card says so in one sentence and the same button shows the cost: "Fix it for me · ≈ 0.4 credits". Pressing it is the person's consent to pay, as "Continue using credits" is today. The separate "Continue using credits" button and the refusal sentence go.
+- **B2. No dead end on the second try, and no talk of free fixes.** The button is always just "Fix it for me". The estimated credit cost shows where costs already show, in the line beside the prompt box (`chat-panel.tsx:413–417`). Nothing on screen mentions a free repair or an allowance. When GoodBuild's repair allowance covers the fix, nothing is charged. When it doesn't, the fix runs on credits, as the cost line said. The refusal sentence and the separate "Continue using credits" button go. If the person can't afford it, the existing out-of-credits card shows, as for any build.
 - **B3. Plain words for unexpected errors.** Known causes (lost connection, the AI provider down, a timeout, saved progress that no longer fits) each get one sentence. Anything unknown becomes "Something went wrong on our side." The raw message stays in the log and the server logs.
 - **B4. Technical text behind one fold,** "Technical details (for support)". It replaces "Logs" and holds the preview error's file, line and message too.
 - **B5. What GoodBuild remembers about this app**, shown as a short list ("Brand colour #0f766e", "Tips at least 5 G$"), each with a remove button. These are the P17 memory decisions, invisible today. If removing needs more than a small route, it ships read-only and removal goes in OPEN_QUESTIONS.md.
@@ -93,7 +93,7 @@ PR #170 already took their token techniques. This part covers their other tools,
   - the no-file-extension rule;
   - one card with one button, carrying the preview error;
   - the retry `note`;
-  - the paid second try;
+  - the second try running on credits instead of being refused;
   - the error mapping;
   - undo.
 - `pnpm test:suite`, `pnpm lint`, `pnpm typecheck`.
@@ -110,4 +110,4 @@ Best-of-N, file selection, editable preprompts (reasons in Part 2).
 - **"Plan" keeps its name and gets a visible hint:** Claude's pick, not objected to.
 - **Undo is free, with a confirm:** Claude's pick, not objected to.
 - **Built on top of PR #170:** it is merged, so this branch starts from main.
-- **B2 changes money behaviour:** a second repair can be paid with credits from the same card, where today it's refused first. The person still sees the cost on the button before paying. Flagged for the owner.
+- **The second repair runs on credits from the same button; the cost shows only in the line beside the prompt box, and free repairs aren't mentioned:** the owner ("no need to show free fix, just show the credit cost in the text area").
