@@ -345,15 +345,18 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
 
   const revert = React.useCallback(
     async (version: number) => {
+      // The crash showing now belongs to the version being left (D163): gone once the revert works, unless a newer one came.
+      const left = previewErrorRef.current;
       const res = await fetch(`/api/projects/${projectId}/revert`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ version }),
       });
-      if (!res.ok) setError("Couldn't revert right now. Try again after the current build.");
+      if (!res.ok) setError("Couldn't go back right now. Try again after the current build.");
+      else if (left) setPreviewError((current) => (current === left ? null : current));
       await refresh();
     },
-    [projectId, refresh],
+    [projectId, refresh, setPreviewError],
   );
 
   const [uploading, setUploading] = React.useState(0);

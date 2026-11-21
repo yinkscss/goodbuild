@@ -75,3 +75,16 @@ it("keeps a newer crash that came while the retry was being sent, even with the 
   await waitFor(() => expect(fetcher.mock.calls.filter(([url]) => !String(url).endsWith("/retry")).length).toBeGreaterThan(0));
   expect(result.current.previewError?.path).toBe("/src/B.tsx");
 });
+
+it("drops the crash of the version that Undo leaves, and keeps it when going back fails (D163)", async () => {
+  let ok = false;
+  const fetcher = vi.fn(async (url: string) => (url.endsWith("/revert") ? (ok ? Response.json({ version: 3 }) : Response.json({ error: "busy" }, { status: 409 })) : Response.json(initial)));
+  vi.stubGlobal("fetch", fetcher);
+  const { result } = renderHook(() => useWorkspace(initial));
+  act(() => result.current.onPreviewError({ title: "TypeError", message: "x is undefined" }, 2));
+  await act(async () => result.current.revert(1));
+  expect(result.current.previewError?.message).toBe("x is undefined");
+  ok = true;
+  await act(async () => result.current.revert(1));
+  expect(result.current.previewError).toBeNull();
+});
