@@ -465,6 +465,9 @@ export function Composer({
 export function Remembered({ items, projectId, onChange }: { items: string[]; projectId: string; onChange: () => Promise<unknown> }) {
   const [busy, setBusy] = React.useState<string | null>(null);
   const [failed, setFailed] = React.useState<string | null>(null);
+  // Forgotten on the server: hidden here even if the refresh after it fails.
+  const [gone, setGone] = React.useState<string[]>([]);
+  const shown = items.filter((i) => !gone.includes(i));
   const forget = async (item: string) => {
     setBusy(item);
     setFailed(null);
@@ -475,7 +478,9 @@ export function Remembered({ items, projectId, onChange }: { items: string[]; pr
         setFailed(body.message ?? "That wasn't forgotten. Try again.");
         return;
       }
-      await onChange().catch(() => undefined);
+      setGone((g) => [...g, item]);
+      const fresh = await onChange().catch(() => null);
+      if (fresh === null) setFailed("Forgotten. The list couldn't refresh, so reload the page to see it up to date.");
     } catch {
       setFailed("Couldn't reach GoodBuild, so that wasn't forgotten. Try again.");
     } finally {
@@ -485,15 +490,15 @@ export function Remembered({ items, projectId, onChange }: { items: string[]; pr
   return (
     <details className="px-1 text-xs text-grey-600">
       <summary className="w-fit cursor-pointer rounded-full outline-none select-none focus-visible:shadow-focus">
-        What GoodBuild remembers about this app ({items.length})
+        What GoodBuild remembers about this app ({shown.length})
       </summary>
       {failed && (
-        <p className="mt-2 text-warning" role="alert">
+        <p className="mt-2 text-warning" role="status">
           {failed}
         </p>
       )}
       <ul className="mt-2 grid gap-1.5" aria-label="What GoodBuild remembers">
-        {items.map((item) => (
+        {shown.map((item) => (
           <li key={item} className="flex items-start justify-between gap-3 rounded-block bg-canvas px-3 py-2">
             <span className="min-w-0 text-ink">{item}</span>
             <button type="button" className="shrink-0 font-medium text-violet hover:underline disabled:opacity-55" disabled={busy !== null} onClick={() => void forget(item)}>
