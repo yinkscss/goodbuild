@@ -1,91 +1,113 @@
-# Build clarity plan: what confuses a non-technical person, and what to borrow from GPT Engineer and Codex
+# Build clarity plan: what a person sees while GoodBuild builds
 
-Date: 21 Nov 2026 · Written by: Claude · Asked for by: the owner ("be honest... what part can confuse a non-technical person") · Status: **proposed, not built**. Continues from PR #170 (D162), which made the builder fix its own mistakes; this plan is about what the person *sees* while it does.
+Date: 21 Nov 2026 · Written by: Claude · Asked for by: the owner ("be honest... what part can confuse a non-technical person"; "we are supposed to hold them like babies and guide them all step of the way") · Status: **approved by the owner ("build the plan in one PR"), not built yet.** It will be D163.
 
-Every finding below names the code that produces it, read on branch `claude/elegant-pasteur-j73em3` (PR #170 head, commit 06e75e0). Nothing here was tested with real users; "confusing" is Claude's judgement against the goal in BUILDER_RELIABILITY_PLAN.md: *someone who knows nothing about software never sees a technical error and never has to know what a setting is.*
+Mock the owner approved: [GoodBuild Build Clarity](https://claude.ai/artifact/Qp4xxF5J7o4oiEXPpkLHsC) (version 3). It plays the same build twice, side by side: today, and the proposal below.
 
-## Part 1. The honest audit
+PR #170 (D162, merged) made the builder fix its own mistakes. This plan is about what the person *sees* while it does. Every finding names the code that produces it, read on `main` at 00fb046. Nothing here was tested with real users; "confusing" is Claude's judgement against the goal in BUILDER_RELIABILITY_PLAN.md: *someone who knows nothing about software never sees a technical error and never has to know what a setting is.*
+
+## Part 1. What confuses people today
 
 Ranked by how likely a person is to be lost or worried by it.
 
-### High: they will not understand, and it looks like something broke
-
-1. **File names as progress.** During a build the step list says "Writing App.tsx", "Writing useWallet.ts", "Deleting Hero.tsx", "Renaming utils.ts", "Adding wagmi", "Adding the minipay kit", "Reading the visual-design guide" (`toolLabel`, `src/server/agent/runner.ts:1983`). A person doesn't know what `.tsx` is, and "Deleting" reads like losing work. Only `.sol` files and compile/test steps get plain words (`plainStepLabel`, `turn-view.tsx:19`). The builder already writes a plain plan with 2–6 steps (`set_plan`, `prompt.ts:14`), but in Build mode that plan is never shown; it's only rendered in Plan mode (`turn-view.tsx:384`).
-2. **Raw errors in the "This build stopped" card.** Any unexpected error shows `error.message` as is (`runner.ts:1311–1318`), so a person can read "fetch failed", "ECONNRESET", a database error or a provider message. Resume errors are half-plain ("the saved progress no longer matches this build's steps").
-3. **The milestone sentence.** At the end of a milestone build the reply says, for example, "Working first interface: implementation saved; live behaviour still needs verification. Live payments remain disabled. Still to finish: Wallet connection, Remaining integrations" (`runner.ts:1261`). "Implementation", "live behaviour", "verification", "browser acceptance passed" and "integrations" are developer words. Under it, a grey line says "Local/demo milestone · Remaining: …" (`turn-view.tsx:398`).
-4. **Milestone titles as suggestion buttons.** The next-step chips are the milestone titles (`runner.ts:1262`, `delivery.ts:3–11`): "Remaining integrations", "On-chain features and payments". A person can't tell what tapping them will build or cost.
-5. **The preview error card.** It shows the file and line and the raw message in a code font: "The preview hit an error in src/components/Board.tsx:42 · TypeError: Cannot read properties of undefined (reading 'map')" (`preview-error-notice.tsx:10–16`). The "Fix it" button is right, the words above it are not for this person.
-6. **"Logs" on the error card.** One click opens the raw build log, with ✓ ✗ ! marks, file paths and tool names (`turn-view.tsx:166–171`). It's folded away, which is right, but it's the most visible thing on a failed build after the button.
+### High: they won't understand it, and it looks like something broke
+1. **File names as progress.** The step list says "Writing App.tsx", "Writing useWallet.ts", "Deleting Hero.tsx", "Adding wagmi", "Reading the visual-design guide" (`toolLabel`, `src/server/agent/runner.ts:1983`). "Deleting" reads like lost work. Only contract files and compile and test steps get plain words (`plainStepLabel`, `turn-view.tsx:19`). The builder already writes a plain plan of 2 to 6 steps (`set_plan`, or the spec's plan in harness v2), but in Build mode it's never shown: it renders only in Plan mode (`turn-view.tsx:381`).
+2. **Two buttons for one problem, and they do different things.** When a build fails and the preview also crashed, the person sees two cards:
+   - **Try fix / Try again** on the failed build: a server retry of the same request. It starts from the saved draft and gives the builder the last attempt's errors (`retry/route.ts`, `jobs.ts:127`, `runner.ts:1554`).
+   - **Fix it** on the preview error: a brand new build message with the error text (`previewFixPrompt`, `preview-errors.ts:18`).
+   - Neither one knows about the other's problem, and the person has to guess which to press.
+3. **A dead end on the second try.** The first retry of a failed build is paid by GoodBuild (the repair allowance). A retry of that retry isn't, and is refused with "The included repair allowance is unavailable or used up. … You can request a smaller change using credits in the composer" (`jobs.ts:186–189`). A second button then appears: "Continue using credits (estimated …)" (`chat-panel.tsx:193`).
+4. **Raw errors in "This build stopped".** An unexpected error shows `error.message` as it is (`runner.ts:1311–1318`), so a person can read "fetch failed", "ECONNRESET" or a database error.
+5. **The milestone sentence.** "Working first interface: implementation saved; live behaviour still needs verification. Live payments remain disabled. Still to finish: …" (`runner.ts:1261`), with "Local/demo milestone · Remaining: …" under it (`turn-view.tsx:398`).
+6. **Milestone names as buttons.** The next-step chips are "Remaining integrations" and "On-chain features and payments" (`runner.ts:1262`, `delivery.ts:3–11`). A person can't tell what tapping one will build.
+7. **The preview error card** shows the file, the line and the raw message in a code font: "The preview hit an error in src/components/Board.tsx:42 · TypeError: Cannot read properties of undefined (reading 'map')" (`preview-error-notice.tsx`).
 
 ### Medium: they'll guess, and may guess wrong
+8. **"Auto-fix: failed · Failed after 2 attempts: 3 errors left"** (`runner.ts:1219–1221`). "Errors" sounds like *they* did something wrong.
+9. **Two checks with two names.** "Visual check: the preview looks right at 390px" and "Looked at the page on a phone and a computer" are different checks that look like the same thing to a person.
+10. **"Logs"** on the error card opens the raw build log (`turn-view.tsx:184`).
+11. **Plan / Build** is explained only in a hover title (`chat-panel.tsx:400`). Phones never show hover titles.
+12. **Undo is hidden.** A small "v4 · auto-saved" pill opens a menu whose confirm says "Revert to v3?" (`workspace.tsx:210–235`).
 
-7. **"Auto-fix: failed · Failed after 2 attempts: 3 errors left"** (`runner.ts:1219–1221`). "Errors" sounds like *they* did something wrong, and "failed" twice in one row is alarming next to a card that says the files are saved.
-8. **Two checks with two names.** "Visual check: the preview looks right at 390px" (`VisualCheckNote`) and "Looked at the page on a phone and a computer" (`ReviewNote`) are different checks that a person sees as the same thing. "390px" means nothing to them.
-9. **Plan / Build toggle beside the prompt** (`chat-panel.tsx:392–400`). The difference is only in a hover title ("Plan mode answers and drafts a plan without changing files"), which phones never show.
-10. **Cost line.** The hover title says "AI cost + 25%" (`chat-panel.tsx:417`). Fair and honest, but "+25%" without "that's GoodBuild's fee" reads like a hidden charge. Also hover-only.
-11. **Versions.** A small "v4 · auto-saved" pill opens a "Versions" menu whose confirm says "Revert to v3?" (`workspace.tsx:210–235`). It works, but it's hidden in a pill, and "revert" is a developer word. There's no "Undo this change" next to a build that went wrong, which is the moment someone needs it.
-12. **Code and Contract tabs** next to Preview (`preview-panel.tsx:26`). Harmless, but a person who opens them sees a wall of code and may think they're meant to edit it.
-
-### Low: web3 words that are hard to avoid, but can be softened
-
-13. **Deploy card and modal:** "1.2 kB", "Celo Sepolia", "faucet", "request CELO", "mainnet", "Upgrade" vs "Deploy again" (`turn-view.tsx:126`, `deploy-modal.tsx:178–186, 861`, `chat-panel.tsx:206`). The faucet guide is good; "kB" and "Upgrade" are not needed.
-14. **Long quiet waits.** The quiet note appears after 90s (`turn-view.tsx:371`), which is right, but in that time the only thing on screen is "Thinking 1:12". The plan steps (item 1) would fill that gap.
+### Low: web3 words that can be softened
+13. "1.2 kB" on the deploy card, "Upgrade" vs "Deploy again", "faucet" and "request CELO" (`turn-view.tsx:126`, `chat-panel.tsx:206`, `deploy-modal.tsx:178–186`).
+14. A long quiet wait shows only "Thinking 1:12" for up to 90 seconds before the calm note (`turn-view.tsx:371`).
 
 ### What already works well (keep it)
-The failure card's "Your files are saved. Tap Try fix…", the first-wait lines ("Lining up your first build", "you can close this tab"), the credits pause card, refunds said in plain words, the plan-first questions with chips, and PR #170's hiding of failed and no-change edits.
+"Your files are saved", the first-wait lines, the credits pause card, refunds said in plain words, the plan-first questions, and D162's hiding of failed and no-change edits.
 
-## Part 2. What GPT Engineer and Codex have, and whether it helps us
+## Part 2. What GPT Engineer and Codex have that helps
 
-PR #170 already took their context and token techniques (short focused conversations, cut long output, keep good edits, per-step token report). This part is the *other* tools, judged only on "does it help a person who doesn't code get a working app".
+PR #170 already took their token techniques. This part covers their other tools, judged only on one question: does it help a person who doesn't code get a working app? Sources are each project's docs and repo, plus third-party write-ups (marked).
 
-Sources: GPT Engineer's repo and docs, Codex's docs and changelog, plus third-party write-ups (marked). Lovable's own code isn't public, so it's not covered.
+| Tool | Have we got it? | Decision |
+|---|---|---|
+| **Codex `update_plan`**: a live checklist, one step in progress at a time | Half: `set_plan` and the spec write the steps, but Build mode doesn't show them | **Take (A1)** |
+| **Codex turn summary**: what changed and what was checked | Half: milestone text is jargon | **Take (A2)**, as "Works now / Not yet / Next" |
+| **Codex undo** | Only through the Versions menu | **Take (A3)** |
+| **Codex best-of-N** (`--attempts` 1–4; third-party sources disagree on how one is picked) | No | **Skip:** costs N times as much, and picking between code versions is a developer's job |
+| **Codex Ask vs Code** | Yes: Plan / Build | **Explain it on screen (A4)** |
+| **Codex `/review`, `view_image`** | Yes: the visual review (D87, D162) | Keep; one check line (A5) |
+| **Codex AGENTS.md**: lasting project notes | Yes, but hidden (P17 memory decisions) | **Show them (B4)** |
+| **GPT Engineer clarify** | Yes: plan-first questions | Keep |
+| **GPT Engineer self-heal** (10 tries, per a third-party mirror; UNVERIFIED for the current release) | Yes, and more | Keep |
+| **GPT Engineer file selection, preprompts** | No | **Skip:** they ask a non-coder to know their files or edit settings |
 
-| Tool | What it does there | Have we got it? | Take it? |
-|---|---|---|---|
-| **Codex `update_plan`** | A live checklist the model ticks off: each step pending, in progress or done, one at a time. | Half. `set_plan` writes 2–6 steps, but Build mode doesn't show them or tick them. | **Yes (A1).** Fixes audit items 1 and 14. |
-| **Codex turn summary** | Ends a task with what changed and what was checked, citing the evidence. | Half. The reply text is free-form; milestone text is jargon. | **Yes (A2)**, in plain words: what works now, what doesn't yet, what's next. |
-| **Codex undo / GPT Engineer's "keep or discard" in improve mode** | Revert the last turn in one step. | Versions menu only. | **Yes (A3):** an "Undo this change" button on the latest build, restoring the version before it. |
-| **Codex best-of-N (`--attempts`, 1–4)** | Runs the same task several times and lets you pick. (Third-party sources disagree on whether picking is manual.) | No. | **Not now.** It multiplies cost by N, and choosing between code versions is a developer's job. Our "try another way" retry (D162 C2) is the cheap version. Revisit for first-build *designs* only, shown as pictures. |
-| **Codex Ask vs Code modes** | Ask answers without changing files. | Yes: Plan / Build. | **Rename and explain (A4)** in visible words, not a hover title. |
-| **Codex `/review`** | A second pass that looks for bugs before you merge. | Yes: the visual review (D87, D162) and checks. | Keep. Merge the two check notes into one line (A5). |
-| **Codex `view_image`** | The model looks at a screenshot itself. | Yes (visual review, design references). | Keep. |
-| **Codex AGENTS.md** | Lasting project instructions the agent reads every time. | Yes: memory decisions list (P17) and the app spec. | **Small add (B1):** show the person the remembered decisions ("Brand colour #0f766e, tips at least 5 G$") so they can see and remove them. Today they're invisible. |
-| **GPT Engineer clarify mode** | Asks questions first; Enter means "make your own assumptions". | Yes: plan-first questions and "Skip, just build it". | Keep. |
-| **GPT Engineer self-heal** | Runs the code, feeds errors back, up to 10 tries (per a third-party mirror of its code; UNVERIFIED for the current release). | Yes, and more (run check, visual review, retry another way). | Keep. Our cap stays lower on cost grounds. |
-| **GPT Engineer file selection in improve mode** | The person ticks which files the AI may touch. | No. | **No.** It asks a non-coder to know their files. Our milestone scope does this for them. |
-| **GPT Engineer preprompts** | Editable instructions that set the AI's identity. | Server-side prompts. | **No.** A setting by another name. |
-| **GPT Engineer benchmarks / Codex evals** | Fixed task sets scored automatically. | Partly: `docs/evals`, eval suite. | Already planned (Q42); not part of this PR. |
+## Part 3. The work (one PR, D163)
 
-## Part 3. The work (one PR, after the owner says go)
+### A. While it builds, and when it's done
+- **A1. The plan as a live checklist, with one trail line.** As in the mock:
+  - The plan's steps become the checklist. GoodBuild adds its own last step, "Checking it works on a phone and a computer". One step spins at a time; finished steps get a tick; a "Step 2 of 5" counter sits on top.
+  - Under the current step, **one line** says what's happening in plain words ("Building the add-goal form"), with the file name faint at its end. When that part is done, the line fades out upward and the next one slides in. Nothing piles up.
+  - Before the plan exists, the same single line runs under "Planning your app".
+  - **How the server knows the step:** each step row records which plan step it belongs to (a new `plan` field on `Step`). A file whose name matches a later plan step moves the checklist there; the step's route or contract name before its colon counts ("GoalList.tsx" matches "Goals: add and list goals"). It only moves forward. The checks after the build move it to "Checking it works". There's no new tool and no extra model call. **UNVERIFIED:** how often names match on real builds. When nothing matches, the checklist stays on the step it's on until the checks.
+  - Spec plan steps lose their route or contract-name prefix on screen ("/goals: Add and list goals" shows as "Add and list goals").
+  - When the build is done, the checklist folds into "All 5 steps done", and every plain step row is inside it for anyone curious.
+  - Turns saved before this have no `plan` field on their steps, and keep today's step rows.
+- **A2. "Works now / Not yet / Next"** replaces the milestone sentence and the "Local/demo milestone" line. Milestones get plain names: "Your app's screens", "Connect a wallet", "Play with others", "Sign-in and saved data", "Payments on Celo". The next-step chips use those names.
+- **A3. "Undo this change"** on the latest build, with an in-page confirm ("Your app goes back to how it was before this message. The chat stays."). It costs nothing and uses the existing `ws.revert`. The Versions confirm says "Go back to v3?" instead of "Revert".
+- **A4. Plan / Build in words:** a visible one-line hint under the toggle ("Plan: talk it through, nothing changes" / "Build: changes your app"). The name "Plan" stays.
+- **A5. One check line:** "Checked on a phone and a computer: looks right", or "…: fixed 2 things". No pixel widths.
+- **A6. Plain words for every step**, mapped from file roles: screens and components become "Building the goal card"; the wallet layer becomes "Connecting the wallet"; styles become "Choosing colours and layout"; a package becomes "Adding a building block"; delete and rename become "Tidying up"; guide reads are hidden. A test checks that no step label shown to a person contains a file extension. Done on screen from the saved labels, so old turns read plainly too.
+- **A7. Fixes in plain words:** "Fixing a small thing it found" in the trail line; "Fixed 3 problems by itself" at the end, or "3 problems still need a fix". "Failed" and "errors" are no longer shown.
 
-### A. What a person sees during and after a build
-- **A1. Show the plan as a live checklist in Build mode.** The `set_plan` steps (already plain, already written) become the top of the step list, each with its own dot: waiting, working, done. File-level steps fold under the current plan step as small "details", in plain words (A6). The builder is told to say which plan step it's on when it starts writing for it (a `step` field on edits, or a light `update_plan`-style call that costs one short tool call). If the builder never calls `set_plan` (a small change), today's list stays.
-- **A2. A plain end-of-build summary.** Replace the milestone sentence (`runner.ts:1261`) and the "Local/demo milestone · Remaining" line with three short lines: *Works now*, *Not yet* and *Next*. Example: "Works now: the savings goals screen, adding and removing goals. Not yet: connecting a wallet; payments are switched off until then. Next: Connect a wallet." Milestones get plain titles: "Your app's screens", "Connect a wallet", "Play with others", "Sign-in and saved data", "Payments on Celo".
-- **A3. "Undo this change"** on the latest build's reply, restoring the version before it, with a confirm ("Your app goes back to how it was before this message"). Uses the existing `ws.revert` (`workspace.tsx:233`). The Versions confirm says "Go back to v3?" instead of "Revert".
-- **A4. Plan / Build in words.** Keep the toggle, add a visible one-line hint under it on phones and computers: "Plan: talk it through, nothing changes" / "Build: changes your app". Rename Plan to "Talk" only if the owner wants (open choice).
-- **A5. One check line.** Fold the visual check and the review into one quiet line: "Checked on a phone and a computer: looks right" or "Checked on a phone: fixed 2 things". No pixel widths.
-- **A6. Plain step words everywhere.** Extend `plainStepLabel` and `toolLabel` with a small map from file roles to words: page and component files → "Building the {Name} screen/part"; `useWallet`/`chain` → "Wallet connection"; styles → "Colours and layout"; adding a package → "Adding a building block"; reading a guide → hidden. Delete and rename become "Tidying up". Add a test that no step label shown to a person contains a file extension.
-- **A7. "Auto-fix" in plain words.** "Fixed 3 problems by itself" when it worked; when it didn't, one row: "3 problems still need a fix" (the card below already says what to do). Drop "failed" and "errors" from what's shown.
-
-### B. Errors a person can act on
-- **B1. Plain words for unexpected errors.** Map known causes (network, provider down, timeout, resume mismatch, database) to one sentence each plus "Try again". Anything unknown says "Something went wrong on our side. Your files are saved. Try again." The raw message stays in the log and in server logs.
-- **B2. The preview error card in plain words.** "Part of your app crashed when it opened ({screen name if known}). Tap Fix it." The file, line and message move under a "Details" fold, like Logs.
-- **B3. Rename "Logs" to "Technical details (for support)".** Same fold.
-- **B4. Show remembered decisions** in the project's chat header or settings, with a remove button each (Part 2, AGENTS.md row).
+### B. One problem card, one button
+- **B1. One card per turn, one button: "Fix it for me".** Whatever went wrong (the build stopped, it still needs a fix, the preview crashed, or all three), the latest turn shows one card:
+  - A plain headline ("Your app isn't finished yet"), one or two sentences saying what happened and that it wasn't their fault when it wasn't, and that their files are saved.
+  - The button always means "continue from my saved files and fix everything that's wrong". It's a retry of the failed build, and it carries the preview error, if there is one, into the builder's notes, so one press fixes both. The retry endpoint gets an optional `note` (up to 3,000 characters), added to the draft's diagnostics.
+  - With no failed build (only a preview crash), the same card and button send today's fix message.
+  - The preview's own error notice is hidden while this card shows. The automatic fix of a preview error right after a build (`shouldAutoFix`) still runs first, so the card only appears when that didn't work.
+  - A build paused for credits keeps its own words and its "Continue · ≈ cost" button. That's a different situation, and the person has to top up first.
+- **B2. No dead end on the second try.** When the free repair is used up, the card says so in one sentence and the same button shows the cost: "Fix it for me · ≈ 0.4 credits". Pressing it is the person's consent to pay, as "Continue using credits" is today. The separate "Continue using credits" button and the refusal sentence go.
+- **B3. Plain words for unexpected errors.** Known causes (lost connection, the AI provider down, a timeout, saved progress that no longer fits) each get one sentence. Anything unknown becomes "Something went wrong on our side." The raw message stays in the log and the server logs.
+- **B4. Technical text behind one fold,** "Technical details (for support)". It replaces "Logs" and holds the preview error's file, line and message too.
+- **B5. What GoodBuild remembers about this app**, shown as a short list ("Brand colour #0f766e", "Tips at least 5 G$"), each with a remove button. These are the P17 memory decisions, invisible today. If removing needs more than a small route, it ships read-only and removal goes in OPEN_QUESTIONS.md.
 
 ### C. Web3 words
-- **C1.** Drop "kB" from the deploy card; say "one signature" instead. "Upgrade" becomes "Update your live contract". Keep the faucet guide, but call it "Get free test money" and explain Sepolia once as "Celo's free test network".
+- **C1.** The deploy card drops "kB" and says "one signature". "Upgrade" becomes "Update your live contract". The faucet guide is renamed "Get free test money", and Sepolia is explained once as "Celo's free test network".
 
 ### D. Finish
-- Tests for every item, including the no-file-extension test (A6) and the error-mapping table (B1).
+- Tests for each item:
+  - the plan-step matching;
+  - the trail line;
+  - the no-file-extension rule;
+  - one card with one button, carrying the preview error;
+  - the retry `note`;
+  - the paid second try;
+  - the error mapping;
+  - undo.
 - `pnpm test:suite`, `pnpm lint`, `pnpm typecheck`.
-- A DECISIONS.md entry, HANDOFF.md update, DESIGN_SYSTEM.md followed for all UI (D12: light bento, existing tokens and components only).
+- D163 in DECISIONS.md, a HANDOFF.md entry, and this file marked built.
+- All UI follows DESIGN_SYSTEM.md (D12): existing tokens and components, and motion only on the trail line (200 ms in and out), off when the person prefers reduced motion.
 
-### Not taking (with reasons in Part 2)
-Best-of-N, file selection, editable preprompts.
+### Not taking
+Best-of-N, file selection, editable preprompts (reasons in Part 2).
 
-## Open choices for the owner
-1. Go ahead with all of A–C in one PR, or A1, A2, A6, B1 first (the four that matter most)?
-2. Rename Plan mode to "Talk"? (Claude's pick: keep "Plan", add the visible hint.)
-3. Should "Undo this change" (A3) cost nothing and skip the confirm on the very latest build? (Claude's pick: free, with a confirm.)
-4. Should this wait until PR #170 is merged? (Claude's pick: yes, build on top of it, because it touches the same step labels and failure card.)
+## Decisions taken
+- **One PR for all of it:** the owner.
+- **One problem card with one button:** the owner ("two buttons would confuse the users").
+- **File names stay, faint, at the end of the trail line:** the owner approved the mock with them.
+- **"Plan" keeps its name and gets a visible hint:** Claude's pick, not objected to.
+- **Undo is free, with a confirm:** Claude's pick, not objected to.
+- **Built on top of PR #170:** it is merged, so this branch starts from main.
+- **B2 changes money behaviour:** a second repair can be paid with credits from the same card, where today it's refused first. The person still sees the cost on the button before paying. Flagged for the owner.
