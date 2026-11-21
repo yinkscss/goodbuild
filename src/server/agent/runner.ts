@@ -753,6 +753,11 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       const flowsFailing = ((lastAcceptance as FlowResult[] | undefined) ?? []).filter((r) => r.status === "fail");
       if (flowsFailing.length) return `${found.length ? `The checks found problems:\n${formatIssues(found)}\n\n` : ""}These acceptance flows from the spec fail (they show what doesn't work yet; fix the app, then run_acceptance):\n${formatFlowResults(flowsFailing)}`;
       if (!found.length) return "All checks pass. Don't run them again unless you edit more files.";
+      // D163: inside a fix, or once type errors have had their one attempt, notes are information, not work. In the
+      // first live run a fix step chased a type note it couldn't fix for over eight minutes.
+      if (report.ok && (stage === "fix" || stage === "visual fix" || (typesMode === "fix" && typeFixesLeft === 0))) {
+        return `Nothing blocks the build: the checks that matter pass. These are notes for information only. Don't spend more steps on them; finish and reply:\n${formatIssues(found)}`;
+      }
       return `${report.ok ? "Nothing blocks the build, but these are worth fixing" : "The checks found problems"}. Fix them with edit_file (read a file before editing it), then run_checks again if you changed more than a line or two:\n${formatIssues(found)}`;
     };
     /** The checks on the files as they are, or the builder's own last check if nothing changed since. */
@@ -1125,7 +1130,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
         if (v2) {
           // A conversation of its own (D162): the problems and the files they name, not the whole build so far.
           const context = fixContext({ request: setup.request, summary: readSpec(ws.files)?.summary, issues, errors: report.errors, files: ws.files, ...(same && beforeAttempt ? { before: beforeAttempt } : {}) });
-          await focused(context, () => phase(fixWith, true));
+          await focused(context, () => phase(fixWith, true, { maxRounds: FIX_MAX_ROUNDS }));
         } else {
           convo.push({
             role: "user",
@@ -1617,6 +1622,8 @@ interface PhaseOptions {
 }
 
 const EDIT_TOOLS = ["create_file", "edit_file", "delete_file", "rename_file"];
+/** v2 (D163): rounds one fix attempt may take. A fix is a few edits and a check; more means it is going round in circles. */
+const FIX_MAX_ROUNDS = 12;
 /** v2's rolling trim inside one pass (D162): every this many rounds... */
 const TRIM_EVERY = 8;
 /** ...everything but the last this many rounds is trimmed. */

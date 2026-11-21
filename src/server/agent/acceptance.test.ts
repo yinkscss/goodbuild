@@ -176,3 +176,29 @@ export default function App() {
     expect(result.acceptance?.map((r) => [r.name, r.status])).toEqual([["Gone", "fail"], ["Never there", "pass"]]);
   });
 });
+
+describe("the wallet milestone is plug and play (D163)", { timeout: 120_000 }, () => {
+  it("shows the network and the G$ balance state from GoodBuild's own hooks, in a real browser with a stand-in wallet", async () => {
+    const app = `import { useWallet } from "./lib/useWallet";
+import { useGdBalance } from "./lib/goodbuild/gooddollar";
+import { ConnectButton } from "./components/ConnectButton";
+export default function App() {
+  const { account, onRightNetwork, wrongNetwork, networkName } = useWallet();
+  const gd = useGdBalance();
+  return (
+    <main>
+      <h1>Stash</h1>
+      <ConnectButton />
+      {account && onRightNetwork && <p>On {networkName}</p>}
+      {account && wrongNetwork && <p>Wrong network</p>}
+      {account && <p>{gd.available ? (gd.formatted ?? gd.error ?? "Reading G$") : "No G$ on this network yet"}</p>}
+    </main>
+  );
+}
+`;
+    const result = await runCheck({ ...starterFiles(), "src/App.tsx": app }, { chainId: 11142220, acceptance: { flows: [{ name: "Connect", needs: "wallet", steps: [{ connectWallet: true }, { expect: { text: "On Celo Sepolia" } }, { expect: { text: "No G$ on this network yet" } }] }] } });
+    expect(result.ran, result.note).toBe(true);
+    expect(result.issues).toEqual([]);
+    expect(result.acceptance).toEqual([{ name: "Connect", needs: "wallet", status: "pass" }]);
+  });
+});
