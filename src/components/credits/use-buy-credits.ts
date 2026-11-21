@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { createPublicClient, custom, encodeAbiParameters } from "viem";
 import { celo, celoSepolia } from "viem/chains";
 
@@ -86,6 +87,7 @@ export function useCreditsInfo(enabled: boolean) {
  */
 export function useBuyCredits(info: ChainInfo | null | undefined) {
   const auth = useAuth();
+  const router = useRouter();
   const [phase, setPhase] = React.useState<BuyPhase>({ name: "idle" });
   const wallet = auth.wallet?.address ?? auth.user?.wallet ?? null;
 
@@ -93,6 +95,7 @@ export function useBuyCredits(info: ChainInfo | null | undefined) {
     async (amountMicro: number) => {
       if (!info?.contract || !info.goodDollar || !wallet) return false;
       setPhase({ name: "signing" });
+      let sentHash: string | undefined;
       try {
         const res = await fetch("/api/credits/quote", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ chainId: info.chainId, amountMicro }) });
         const signed = (await res.json()) as { quote?: Record<string, string>; signature?: `0x${string}`; message?: string };
@@ -109,6 +112,7 @@ export function useBuyCredits(info: ChainInfo | null | undefined) {
         const data = encodeAbiParameters(QUOTE_TUPLE, [{ buyer: q.buyer as `0x${string}`, gdAmount: BigInt(q.gdAmount), credits: BigInt(q.credits), bonus: BigInt(q.bonus), ref: q.ref as `0x${string}`, deadline: BigInt(q.deadline) }, signed.signature]);
         const hash = await client.writeContract({ account: wallet as `0x${string}`, chain, address: info.goodDollar, abi: GD_ABI, functionName: "transferAndCall", args: [info.contract, BigInt(q.gdAmount), data] });
         // Saved before anything else, so a closed tab can't lose it (GB-01): the next page load sends it again.
+        sentHash = hash;
         savePending(info.chainId, hash);
         setPhase({ name: "crediting", hash });
         for (let i = 0; i < 40; i++) {
@@ -120,6 +124,7 @@ export function useBuyCredits(info: ChainInfo | null | undefined) {
           if (out.kind === "credited") {
             forgetPending(hash);
             setPhase({ name: "done", addedMicro: out.addedMicro, balanceMicro: out.balanceMicro });
+            router.refresh();
             return true;
           }
           if (out.kind === "not_credits") {
@@ -133,6 +138,10 @@ export function useBuyCredits(info: ChainInfo | null | undefined) {
         setPhase({ name: "paid", hash });
         return false;
       } catch (error) {
+        if (sentHash) {
+          setPhase({ name: "paid", hash: sentHash });
+          return false;
+        }
         const text = (error as Error).message ?? "";
         const noGd = NO_GD_PATTERN.test(text);
         const refused = /user rejected|denied|rejected the request/i.test(text);
@@ -141,7 +150,7 @@ export function useBuyCredits(info: ChainInfo | null | undefined) {
         return false;
       }
     },
-    [auth, info, wallet],
+    [auth, info, wallet, router],
   );
 
   // A payment whose tab closed before it was credited: send its saved hash again on the next page load.
@@ -150,11 +159,13 @@ export function useBuyCredits(info: ChainInfo | null | undefined) {
   React.useEffect(() => {
     if (!signedIn) return;
     let live = true;
-    void retryPending().then((added) => live && added > 0 && setRecoveredMicro((m) => m + added));
+    void retryPending().then((added) => {
+      if (live && added > 0) { setRecoveredMicro((m) => m + added); router.refresh(); }
+    });
     return () => {
       live = false;
     };
-  }, [signedIn]);
+  }, [signedIn, router]);
 
   return { phase, setPhase, buy, wallet, recoveredMicro };
 }

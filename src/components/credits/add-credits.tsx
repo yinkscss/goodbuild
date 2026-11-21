@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 
 import { useGoodIdVerify } from "@/components/auth/use-goodid-verify";
 import { BuyDialog } from "@/components/buy/buy-dialog";
@@ -20,6 +21,7 @@ const PRESET_CREDITS = [100, 500, 1000, 2500];
  * event. People verified with GoodDollar get 10% more credits. The screen never decides the balance.
  */
 export function AddCredits({ className }: { className?: string }) {
+  const router = useRouter();
   const [open, setOpen] = React.useState(false);
   const { info, pricing, reload } = useCreditsInfo(open);
   const { phase, setPhase, buy, wallet, recoveredMicro } = useBuyCredits(info);
@@ -37,8 +39,8 @@ export function AddCredits({ className }: { className?: string }) {
 
   // A saved payment from an earlier visit was just credited: show the new balance.
   React.useEffect(() => {
-    if (recoveredMicro > 0 && open) reload();
-  }, [recoveredMicro, open, reload]);
+    if ((recoveredMicro > 0 || phase.name === "done") && open) reload();
+  }, [recoveredMicro, phase.name, open, reload]);
 
   return (
     <>
@@ -101,7 +103,7 @@ export function AddCredits({ className }: { className?: string }) {
                   )}
                 </p>
               )}
-              {phase.name === "crediting" && <p role="status" className="text-sm text-grey-600">Payment sent. Adding your credit…</p>}
+
               {phase.name === "paid" && (
                 <div role="status" className="space-y-1 rounded-xl bg-tint px-3 py-2 text-sm text-grey-600">
                   <p>
@@ -125,14 +127,14 @@ export function AddCredits({ className }: { className?: string }) {
               )}
               {phase.name === "done" && (
                 <p role="status" className="text-sm text-success">
-                  Added {formatCredits(phase.addedMicro)}. Your balance is {formatCredits(phase.balanceMicro)}.
+                  {phase.addedMicro > 0 ? `Added ${formatCredits(phase.addedMicro)}.` : "Payment already credited."} Your balance is {formatCredits(phase.balanceMicro)}.
                 </p>
               )}
               <Button variant="primary" className="w-full" disabled={busy || !valid || !wallet || phase.name === "done" || phase.name === "paid"} onClick={() => void buy(amountMicro)}>
                 {phase.name === "signing" ? "Confirm in your wallet…" : phase.name === "crediting" ? "Confirming payment…" : "Pay with G$"}
               </Button>
               <p className="text-center text-xs text-grey-600">Price follows the live G$ market price, quoted for 10 minutes. Keep about 0.1 CELO in your wallet for the network fee.</p>
-              <MissingPayment key={phase.name === "paid" ? phase.hash : "form"} info={info} onCredited={reload} initialHash={phase.name === "paid" ? phase.hash : ""} />
+              <MissingPayment key={phase.name === "paid" ? phase.hash : "form"} info={info} onCredited={() => { reload(); router.refresh(); }} initialHash={phase.name === "paid" ? phase.hash : ""} />
             </div>
           )}
           <p className="mt-4 text-center text-sm text-grey-600">

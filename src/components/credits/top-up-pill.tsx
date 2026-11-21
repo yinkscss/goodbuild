@@ -32,7 +32,7 @@ export function TopUpPill({ onPaid }: { onPaid?: () => void }) {
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-block bg-tint px-4 py-3 text-sm" role="status">
       <p className="min-w-0 flex-1">
         {phase.name === "done" ? (
-          <b>Added {formatCredits(phase.addedMicro)}. You can keep building.</b>
+          <b>{phase.addedMicro > 0 ? `Added ${formatCredits(phase.addedMicro)}.` : "Payment already credited."} You can keep building.</b>
         ) : phase.name === "crediting" ? (
           <>
             <b>Payment sent.</b> <span className="text-grey-600">Your credits land once the network confirms it, usually about 30 seconds.</span>
