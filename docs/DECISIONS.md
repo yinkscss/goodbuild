@@ -2060,3 +2060,43 @@ The owner approved implementing all five parts of the first-build fix and openin
   - The faucet guide is "Get free test money", and Sepolia is "Celo's free test network".
 - **What GoodBuild remembers** (P17 memory decisions) shows as a folded list under the chat, each with "Forget" (`POST /api/projects/[id]/memory`, refused while a build runs).
 - **Not changed:** the server's step labels, logs and errors (tests and support read them), how builds are charged, and the sponsorship rules.
+
+### D165. DeepSeek plans and writes contracts from GoodBuild's audited templates; Sonnet only for a stubborn error (21 Nov 2026; amends D19, D152, D162)
+- Decided by: the owner, in chat: "Sonnet 5.5 is ... crazy expensive"; the first plan on DeepSeek thinking high, later ones lighter; "for like stubborn build errors, we can activate" Sonnet; "Haiku is bad"; "preload standard audited templates ERC20, ERC721, staking and vote, escrow, vesting, governance". Approved as one PR ("I approve"), with Claude's recommendations: keep one Sonnet attempt as the last resort, and the template list below. Build and live measurements by Claude.
+- **Models.**
+  - The spec step runs on DeepSeek. The app's first plan thinks `high`; a later one (a new milestone's contracts, a contract change) thinks `low`. DeepSeek has no "medium": the SDK reads it as high.
+  - The contracts phase runs on DeepSeek at `low`. Measured live, three specs each: thinking off made compile errors in all three; `low` wrote working child contracts in 14 to 44 seconds (one test file had a mistake the fix loop handles); `high` took about 75 seconds and 14K to 16K thinking tokens, and once wrote nothing because thinking filled the 16K output limit.
+  - Every fix runs on DeepSeek. Only when the same problems come back after a fix does the one fresh, try-another-way attempt (D162) go to Sonnet. The fix loop stops on a second repeat, so a build pays for one Sonnet call chain at most.
+  - The front end, the visual check and plan-first questions are unchanged (DeepSeek). Haiku is not used.
+  - `ModelRequest.effort` carries the level; it becomes `providerOptions.deepseek.reasoningEffort` and never reaches Anthropic.
+- **The spec step's rounds:** 5 instead of 3. DeepSeek read guides for 4 or 5 rounds in every live run, so 3 would have ended most of them without a spec. If there is still no spec, it is told "Call write_spec now" and gets 2 more rounds.
+- **Templates** (`src/server/agent/contract-templates.ts`), abstract contracts built from OpenZeppelin 5:
+  - GoodToken: fixed-supply ERC-20, burnable, permit.
+  - GoodNFT: ERC-721, free or paid in G$, with a max supply and a per-wallet limit.
+  - GoodStaking: rewards over time, the StakingRewards design, with the G$ one-step stake.
+  - GoodEscrow: deals with an optional arbiter and a deadline refund.
+  - GoodVesting: OpenZeppelin's VestingWallet with a cliff.
+  - GoodVotesToken and GoodGovernor: OpenZeppelin's Governor, counting in seconds.
+  - GoodPoll: one vote per wallet.
+  - GoodSavings: G$ goals, gifts allowed, only the owner withdraws after the unlock date.
+- **How they are used:**
+  - The planner names one per contract (`template` in the spec, or "none" for custom logic such as a game's rules or a pool). With no name, words in the contract's name and purpose pick one.
+  - A DAO always gets the voting token, never the plain one. A contract can't take a template's name.
+  - Before the contracts phase, the chosen templates are written to `contracts/goodbuild/`. The phase is told each one's constructor and functions, and an example child.
+  - The builder's contract inherits a template and only sets its values. The compiled child's ABI, inherited functions included, is exported to the front end as before.
+  - An upgradeable project gets no templates, because its contracts can't have constructors (D33).
+- **Safe zones: inherit, don't copy.**
+  - `contracts/goodbuild/` can't be written (`pathProblem`).
+  - A project contract or library named like an OpenZeppelin money or access base (ERC20, Ownable, ReentrancyGuard, SafeERC20, Governor, ...) or like a template is refused, with the import to use. Interfaces are allowed.
+- **Exploit tests:**
+  - On testnet, the vault and DAO rule (D76) reads only the app's own code. A child that only configures a template needs none; one that adds its own deposit or withdraw still does.
+  - GoodBuild's template tests include the attacks: strangers, gifts sent straight to the contract, double release. Another test checks that every function that pays out has `nonReentrant`.
+  - Before a mainnet deploy, the gate still reads the compiled code, inherited parts included (custodyOf), and asks for exploit tests as before.
+- **Contract tests' EVM** lifts the 24 KB cap for test contracts only. A test contract carries the code of everything it deploys, and a DAO's test (token plus Governor) went over it. Real contracts keep their 24 KB check.
+- **Tests:**
+  - Each template's child compiles under GoodBuild's checks, and its tests pass in a local EVM.
+  - All the templates compile with the older OpenZeppelin of the paris fallback.
+  - The spec picks templates (named, matched, none) and refuses a template's name. The copy check works.
+  - A full scripted build: the planner reads past its rounds, is asked to write, the savings template goes in, the template can't be edited, and the child's ABI is exported.
+  - The tier and effort of every call are checked, and Sonnet is used only for the repeat.
+- **UNVERIFIED:** a full live build on the site. The live runs above called DeepSeek directly with the real prompts, the spec tool and the templates, outside the worker.

@@ -40,7 +40,10 @@ process.stdin.on("end", () => {
 
 async function freshEvm() {
   // Cancun: solc targets it and OpenZeppelin 5 uses MCOPY.
-  return createEVM({ common: new Common({ chain: Mainnet, hardfork: Hardfork.Cancun }) });
+  // A test contract carries the creation code of every contract it deploys, so a DAO's test (a token and a
+  // Governor) passes the 24 KB cap though nothing in it is too big (D165). Test contracts are never deployed,
+  // and each real contract's own size is checked against the cap by GoodBuild's checks (checks.ts).
+  return createEVM({ common: new Common({ chain: Mainnet, hardfork: Hardfork.Cancun }), allowUnlimitedContractSize: true, allowUnlimitedInitCodeSize: true });
 }
 
 /** Every custom error in every compiled ABI, plus the test helpers', for readable reverts. */
