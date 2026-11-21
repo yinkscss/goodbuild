@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { afterAll, describe, expect, it } from "vitest";
 
-import { acceptanceIssues, acceptanceSummary, formatFlowResults, parseFlows } from "./acceptance";
+import { acceptanceSummary, formatFlowResults, parseFlows } from "./acceptance";
 import { CHECK_WALLET_SHORT } from "./game-check";
 import { closeRunCheckBrowser, runCheck } from "./run-check";
 import { SPEC_PATH, parseSpec, readSpec, specBlock } from "./spec";
@@ -133,12 +133,23 @@ describe("acceptance flows in a real browser (D152)", { timeout: 120_000 }, () =
     // Flows are reported, never turned into issues by the run check itself.
     expect(result.issues).toEqual([]);
     expect(acceptanceSummary(result.acceptance!)).toBe('2 of 3 flows pass (1 skipped: need a deployed contract or ran out of time); "Pay now" failed at step 2 (click button "Pay now") failed: ' + pay.reason!.split("failed: ")[1]);
-    expect(acceptanceIssues(result.acceptance!)).toEqual([expect.objectContaining({ source: "acceptance", message: expect.stringContaining('Acceptance flow "Pay now"') })]);
     expect(formatFlowResults(result.acceptance!)).toContain("What the page showed:");
   });
 
   it("connects the stand-in wallet through the app's own button", async () => {
     const result = await runCheck(files, { acceptance: { flows: [{ name: "Connect", needs: "wallet", steps: [{ connectWallet: true }, { expect: { text: CHECK_WALLET_SHORT } }] }] } });
+    expect(result.ran, result.note).toBe(true);
+    expect(result.acceptance).toEqual([{ name: "Connect", needs: "wallet", status: "pass" }]);
+  });
+
+  it("passes the wallet step when the page shows the full address, not just the short one", async () => {
+    const full = `import { useWallet } from "./lib/useWallet";
+export default function App() {
+  const { account, connect } = useWallet();
+  return <main><h1>Stash</h1>{account ? <p>Connected as {account}</p> : <button onClick={() => connect()}>Connect wallet</button>}</main>;
+}
+`;
+    const result = await runCheck({ ...files, "src/App.tsx": full }, { acceptance: { flows: [{ name: "Connect", needs: "wallet", steps: [{ connectWallet: true }] }] } });
     expect(result.ran, result.note).toBe(true);
     expect(result.acceptance).toEqual([{ name: "Connect", needs: "wallet", status: "pass" }]);
   });

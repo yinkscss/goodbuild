@@ -25,8 +25,8 @@ import { HISTORY_WINDOW, memoryBlock, updateMemory, type Memory, type MemoryMess
 import { MODEL_IDS, TIER_FOR, ModelUnavailableError, type ChatMessage, type ModelClient, type ModelEvent, type ModelTier, type ToolCall, type UserPart } from "./model";
 import { INTAKE_MAX_TOKENS, INTAKE_PROMPT, PLAN_ASK_TOOL_NAME, askedJustBefore, fallbackIntake, intakeTools, intakeContext, isGameRequest, latestIntake, parseIntake, parsePlanQuestions, planBrief } from "./plan-intake";
 import { BUILD_TOOLS, SPEC_TOOLS, V2_BUILD_TOOLS, contextWithPicks, planTools, systemPrompt } from "./prompt";
-import { CONTRACT_WORK, SPEC_MAX_ROUNDS, acceptanceMode, harnessLimits, usesHarnessV2 } from "./harness";
-import { acceptanceIssues, acceptanceSummary, formatFlowResults, type FlowResult } from "./acceptance";
+import { CONTRACT_WORK, SPEC_MAX_ROUNDS, V2_LIMITS, usesHarnessV2 } from "./harness";
+import { acceptanceSummary, formatFlowResults, type FlowResult } from "./acceptance";
 import { SPEC_PATH, readSpec, specRequest, type AppSpec } from "./spec";
 import { requestView } from "./request-view";
 import { checkpoint, claimTurn, loadFiles, recordUsage, releaseTurn } from "./store";
@@ -164,23 +164,18 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
   let chainId: number | undefined;
   /** v2 (D152): the run check also runs the spec's acceptance flows; set once the setup says v2. */
   let acceptanceOn = false;
-  /** v2: this turn's spec step wrote the spec, so its flows describe this turn's request. */
-  let specThisTurn = false;
-  /** The flows' results from the latest run check, for run_checks to show when they fail (ACCEPTANCE=warn). */
+  /** The flows' results from the latest run check, for run_checks to show when they fail. */
   let lastAcceptance: FlowResult[] | undefined;
   const open = openWith ? async (files: Record<string, string>) => {
     const flows = acceptanceOn ? readSpec(files)?.acceptance ?? [] : [];
     const result = await openWith(files, { assets: assetNames, chainId, ...(delivery && job.deliveryIndex !== undefined ? { delivery: { id: delivery.milestones[job.deliveryIndex].id, goal: delivery.goal, verifyWallet: delivery.verified?.includes("wallet") } } : {}), ...(flows.length ? { acceptance: { flows } } : {}) });
     runtimeRan = result.ran;
     lastAcceptance = result.acceptance;
-    const failing = result.acceptance ? acceptanceIssues(result.acceptance) : [];
-    // Flows are enforced on the turn whose spec wrote them. A later turn may change what they check (a renamed
-    // heading), so there they only warn: the builder sees them, and nothing sends it back to the old wording.
-    const enforcing = acceptanceMode() === "enforce" && specThisTurn;
-    if (result.acceptance) log(`acceptance: ${acceptanceSummary(result.acceptance)}${failing.length && !enforcing ? ` (${acceptanceMode() === "enforce" ? "the spec is from an earlier turn" : "warn"}: not blocking)` : ""}`);
-    const enforce = failing.length > 0 && enforcing;
-    deliveryVerified = result.deliveryVerified === true && !enforce;
-    return enforce ? { ...result, issues: [...result.issues, ...failing] } : result;
+    // Acceptance flows never block a build (owner, 21 Nov 2026): a flow the planner got wrong can't send the
+    // builder into fixes it can't make. The builder sees the failures in run_checks and run_acceptance.
+    if (result.acceptance) log(`acceptance: ${acceptanceSummary(result.acceptance)}${result.acceptance.some((r) => r.status === "fail") ? " (not blocking)" : ""}`);
+    deliveryVerified = result.deliveryVerified === true;
+    return result;
   } : undefined;
   const reviewOn = (deps.review ?? reviewEnabled()) && Boolean(openWith);
   const typesMode = deps.typeCheckMode ?? (deps.typeCheck ? "enforce" : typeCheckMode());
@@ -236,8 +231,12 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     if (job.signal?.aborted) throw new TurnStoppedError();
   };
 
-  const step = (s: Step) => {
-    const i = record.steps.findIndex((x) => x.id === s.id);
+  /** While a fix attempt runs, the steps it takes are shown under it. */
+  let stepParent: string | undefined;
+  const step = (input: Step) => {
+    const i = record.steps.findIndex((x) => x.id === input.id);
+    const parent = input.parent ?? (i >= 0 ? record.steps[i].parent : undefined) ?? (stepParent && stepParent !== input.id ? stepParent : undefined);
+    const s = parent ? { ...input, parent } : input;
     if (i >= 0) record.steps[i] = s;
     else record.steps.push(s);
     out({ type: "step", step: s });
@@ -296,7 +295,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     const intake = setup.intake === true;
     // Harness v2 (D152): spec, contracts and front end by different models, the builder checks its own work.
     const v2 = setup.harness === "v2" && input.mode === "build" && !intake;
-    const limits = v2 ? harnessLimits() : { maxCalls: MAX_CALLS, maxRounds: MAX_TOOL_ROUNDS_PER_PHASE, checkBudgetMs: 0 };
+    const limits = v2 ? V2_LIMITS : { maxCalls: MAX_CALLS, maxRounds: MAX_TOOL_ROUNDS_PER_PHASE, checkBudgetMs: 0 };
     acceptanceOn = v2;
     const convo: ChatMessage[] = [{ role: "system", content: intake ? INTAKE_PROMPT : systemPrompt(input.mode, setup.canAsk === true, v2) }, ...rehydrate(setup.prefix, images)];
     // The tools of the phase that is running (v2's spec call has its own).
@@ -593,7 +592,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
               log(`· repeated edit failure in ${path}; supplied current contents and requested a different strategy`);
             }
           } else if (outcome.change) failures.delete(path);
-          if (call.name === "write_spec" && outcome.ok) specWritten = specThisTurn = true;
+          if (call.name === "write_spec" && outcome.ok) specWritten = true;
           if (opts.endOn === call.name && outcome.ok) ended = true;
           if (outcome.guides?.length) log(`guides: ${outcome.guides.join(", ")}`);
           if (outcome.access) log(`· ${outcome.access}`);
@@ -690,8 +689,8 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       checked = { key: filesKey(ws.files), report };
       latestReport = report;
       const found = [...report.errors, ...(report.notes ?? [])];
-      // Flows that don't block (ACCEPTANCE=warn, or a spec from an earlier turn, D152): the builder still sees them.
-      const flowsFailing = !(acceptanceMode() === "enforce" && specThisTurn) ? ((lastAcceptance as FlowResult[] | undefined) ?? []).filter((r) => r.status === "fail") : [];
+      // Failing flows don't block (D152), but the builder sees them and can fix them.
+      const flowsFailing = ((lastAcceptance as FlowResult[] | undefined) ?? []).filter((r) => r.status === "fail");
       if (flowsFailing.length) return `${found.length ? `The checks found problems:\n${formatIssues(found)}\n\n` : ""}These acceptance flows from the spec fail (they show what doesn't work yet; fix the app, then run_acceptance):\n${formatFlowResults(flowsFailing)}`;
       if (!found.length) return "All checks pass. Don't run them again unless you edit more files.";
       return `${report.ok ? "Nothing blocks the build, but these are worth fixing" : "The checks found problems"}. Fix them with edit_file (read a file before editing it), then run_checks again if you changed more than a line or two:\n${formatIssues(found)}`;
@@ -844,7 +843,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     const specAndContracts = async (): Promise<PhaseOptions["gate"]> => {
       const hasContracts = hasContractsIn(ws.files);
       const contractsAllowed = !delivery || job.deliveryIndex === undefined || delivery.milestones[job.deliveryIndex]?.id === "payments";
-      const wantSpec = job.deliveryIndex !== undefined || (setup.firstBuild && ws.files[SPEC_PATH] === undefined) || (hasContracts && CONTRACT_WORK.test(setup.request));
+      const wantSpec = wantsSpec({ spec: readSpec(ws.files), milestone: job.deliveryIndex !== undefined, contractsAllowed, hasContracts, firstBuild: setup.firstBuild, request: setup.request });
       if (!wantSpec || atFreeCeiling()) return undefined;
       step({ id: "spec", label: "Planning the app", status: "running" });
       tools = SPEC_TOOLS;
@@ -1036,9 +1035,14 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
         content: `GoodBuild's checks failed. Fix these errors with edit_file. A [runtime] error is what happened when GoodBuild opened the built app in a browser, and a [types] error is TypeScript's: read the named file before changing it. If a contract test fails, decide whether the contract or the test is wrong: fix the contract when it misbehaves; change a test only when its expectation is mistaken, and never delete or weaken a check just to make it pass. Then stop with a very short note (the user sees the fix steps, not this note):\n${issues}`,
       });
       const fixWith = v2 ? fixTierByWriter(attempt, report.errors, authors) : fixTier(attempt, report.errors);
-      if (v2) log(`· fix attempt ${attempt} on the ${fixWith === "cheap" ? "fast" : "strong"} model${attempt === 1 ? " (the files' writer)" : ""}`);
-      await phase(fixWith, true);
-      report = await checkNow(attempt);
+      if (v2) log(`· fix attempt ${attempt} on the ${fixWith === "cheap" ? "fast" : "strong"} model (the files' writer)`);
+      stepParent = `fix:${attempt}`;
+      try {
+        await phase(fixWith, true);
+        report = await checkNow(attempt);
+      } finally {
+        stepParent = undefined;
+      }
       if (calls >= limits.maxCalls - 2 || budgetStopped) { stoppedEarly = true; stopNote = "saved at this milestone's work limit"; break; }
       step({
         id: `fix:${attempt}`,
@@ -1528,12 +1532,22 @@ ${JSON.stringify(spec, null, 2).slice(0, 12_000)}`;
 }
 
 /**
- * v2's first fix attempt (D152) goes back to whichever model wrote the failing files, which has their context:
- * the fast model for the front end, the strong one for contracts and tests. Files from earlier turns go by
- * path. A mixed set, or any later attempt, goes to the strong model.
+ * Whether a v2 turn runs the spec step (D152). The strong model plans once per app (owner, 21 Nov 2026): a later
+ * milestone reuses the spec and plans again only when it brings contracts the spec doesn't have yet. Outside
+ * milestones, a change to the contracts re-plans.
  */
-export function fixTierByWriter(attempt: number, errors: CheckIssue[], authors: Map<string, ModelTier>): ModelTier {
-  if (attempt > 1 || !errors.length) return TIER_FOR.fix;
+export function wantsSpec(o: { spec: AppSpec | null; milestone: boolean; contractsAllowed: boolean; hasContracts: boolean; firstBuild: boolean; request: string }): boolean {
+  const contractChange = o.hasContracts && CONTRACT_WORK.test(o.request);
+  if (!o.spec) return o.milestone || o.firstBuild || contractChange;
+  return o.milestone ? o.contractsAllowed && !o.spec.contracts.length : contractChange;
+}
+
+/**
+ * v2's fixes (D152) go back to whichever model wrote the failing files, on every attempt (owner, 21 Nov 2026):
+ * the fast model fixes the front end it wrote, the strong one the contracts and tests it wrote. Files from
+ * earlier turns go by path. Only a set that includes the strong model's files goes to it.
+ */
+export function fixTierByWriter(_attempt: number, errors: CheckIssue[], authors: Map<string, ModelTier>): ModelTier {
   const writers = errors.map((e) => authors.get(e.file) ?? (e.file.startsWith("contracts/") ? "strong" : "cheap"));
   return writers.every((t) => t === "cheap") ? "cheap" : "strong";
 }

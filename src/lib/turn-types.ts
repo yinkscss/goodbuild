@@ -18,6 +18,8 @@ export interface Step {
   label: string;
   detail?: string;
   status: "running" | "done" | "error";
+  /** The step this one is part of (a fix attempt's edits and checks): shown indented under it. */
+  parent?: string;
 }
 
 /** One answer choice on a plan question. For a palette question the id is the palette's id. */
