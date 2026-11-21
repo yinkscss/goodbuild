@@ -250,12 +250,12 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
   /** While a fix attempt runs, the steps it takes are shown under it. */
   let stepParent: string | undefined;
   /**
-   * Which plan step the work is on (D163), so the person sees the plan as a checklist. It only moves forward:
+   * Which plan step the work is on (D164), so the person sees the plan as a checklist. It only moves forward:
    * a file whose name matches a later plan step moves it there, and the checks after the build move it to
    * GoodBuild's own last step, "checking it works" (index = the plan's length).
    */
   let planCursor = 0;
-  /** What the builder said works now, and what doesn't yet, from suggest_next (D163). */
+  /** What the builder said works now, and what doesn't yet, from suggest_next (D164). */
   let builderSaid: { works?: string[]; later?: string } = {};
   const step = (input: Step) => {
     const i = record.steps.findIndex((x) => x.id === input.id);
@@ -533,7 +533,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     /** Record next-step chips from suggest_next. Fix passes (quiet) don't change them. */
     const takeSuggestions = (items: string[] | undefined, quiet: boolean, said?: { works?: string[]; later?: string }) => {
       if (!items?.length || quiet) return;
-      // The latest accepted reply speaks for the build, even when it leaves the list out (D163).
+      // The latest accepted reply speaks for the build, even when it leaves the list out (D164).
       builderSaid = { works: said?.works, later: said?.later };
       record.suggestions = items;
       out({ type: "suggestions", items });
@@ -766,6 +766,11 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       const flowsFailing = ((lastAcceptance as FlowResult[] | undefined) ?? []).filter((r) => r.status === "fail");
       if (flowsFailing.length) return `${found.length ? `The checks found problems:\n${formatIssues(found)}\n\n` : ""}These acceptance flows from the spec fail (they show what doesn't work yet; fix the app, then run_acceptance):\n${formatFlowResults(flowsFailing)}`;
       if (!found.length) return "All checks pass. Don't run them again unless you edit more files.";
+      // D163: inside a fix, or once type errors have had their one attempt, notes are information, not work. In the
+      // first live run a fix step chased a type note it couldn't fix for over eight minutes.
+      if (report.ok && (stage === "fix" || stage === "visual fix" || (typesMode === "fix" && typeFixesLeft === 0))) {
+        return `Nothing blocks the build: the checks that matter pass. These are notes for information only. Don't spend more steps on them; finish and reply:\n${formatIssues(found)}`;
+      }
       return `${report.ok ? "Nothing blocks the build, but these are worth fixing" : "The checks found problems"}. Fix them with edit_file (read a file before editing it), then run_checks again if you changed more than a line or two:\n${formatIssues(found)}`;
     };
     /** The checks on the files as they are, or the builder's own last check if nothing changed since. */
@@ -1139,7 +1144,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
         if (v2) {
           // A conversation of its own (D162): the problems and the files they name, not the whole build so far.
           const context = fixContext({ request: setup.request, summary: readSpec(ws.files)?.summary, issues, errors: report.errors, files: ws.files, ...(same && beforeAttempt ? { before: beforeAttempt } : {}) });
-          await focused(context, () => phase(fixWith, true));
+          await focused(context, () => phase(fixWith, true, { maxRounds: FIX_MAX_ROUNDS }));
         } else {
           convo.push({
             role: "user",
@@ -1257,7 +1262,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     record.checks = { errors: report.errors.length, warnings: report.warnings.length };
     record.status = report.ok ? "ready" : "needs_fix";
     const endStatus = record.status;
-    /** The builder's own words, before GoodBuild fills in a default or a milestone's summary (D163). */
+    /** The builder's own words, before GoodBuild fills in a default or a milestone's summary (D164). */
     const ownReply = text.replace(/\s+/g, " ").trim();
 
     if (!text.trim()) {
@@ -1274,7 +1279,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       const verified = [...new Set([...(delivery.verified ?? []), ...provedNow])];
       const remaining = delivery.milestones.flatMap((m, i) => i > index || !verified.includes(m.id) ? [`${m.title}${report.ok && i <= index && !verified.includes(m.id) ? " (needs verification)" : ""}`] : []);
       record.delivery = { title: delivery.milestones[index].title, remaining, demo: delivery.milestones[index].id !== "payments" };
-      // D163: plain words. The milestone's technical state stays in record.delivery and the log.
+      // D164: plain words. The milestone's technical state stays in record.delivery and the log.
       const milestone = delivery.milestones[index];
       const later = delivery.milestones.slice(index + 1);
       if (report.ok) {
@@ -1286,7 +1291,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       record.suggestions = report.ok && later.length ? later.slice(0, 2).map((m) => milestoneName(m.id, m.title)) : undefined;
       out({ type: "text_set", text });
     }
-    // D163: a finished build with the builder's list of what works shows a headline and that list.
+    // D164: a finished build with the builder's list of what works shows a headline and that list.
     if (report.ok && !record.outcome && builderSaid.works?.length) {
       const headline = firstSentence(text).slice(0, 200);
       // The rest of the reply (deploy details such as constructor arguments) shows under the headline.
@@ -1648,6 +1653,8 @@ interface PhaseOptions {
 }
 
 const EDIT_TOOLS = ["create_file", "edit_file", "delete_file", "rename_file"];
+/** v2 (D163): rounds one fix attempt may take. A fix is a few edits and a check; more means it is going round in circles. */
+const FIX_MAX_ROUNDS = 12;
 /** v2's rolling trim inside one pass (D162): every this many rounds... */
 const TRIM_EVERY = 8;
 /** ...everything but the last this many rounds is trimmed. */
@@ -2013,7 +2020,7 @@ function onlySuggestions(calls: ToolCall[]): boolean {
 
 /** Words in a name: "GoalCard.tsx" → ["goal", "card"], "/my-goals" → ["my", "goals"]. Plurals lose their "s". */
 /**
- * A milestone build's end in plain words (D163): a headline, what works (the builder's own list when it gave one)
+ * A milestone build's end in plain words (D164): a headline, what works (the builder's own list when it gave one)
  * and what comes later. The next step is the first suggestion, shown as the "Next" button.
  */
 export function milestoneOutcome(o: { id: string; checked: boolean; later: string[]; works?: string[] }): { headline: string; works: string[]; later?: string; detail?: string } {
@@ -2038,7 +2045,7 @@ function nameWords(text: string): string[] {
 }
 
 /**
- * The plan step a file belongs to (D163), by its name: "GoalList.tsx" matches "Goals: add and list savings goals".
+ * The plan step a file belongs to (D164), by its name: "GoalList.tsx" matches "Goals: add and list savings goals".
  * Only the part before a step's colon (a page's route or a contract's name) or its first five words count, so
  * a file isn't matched to a step that merely mentions it. Undefined when nothing matches.
  */

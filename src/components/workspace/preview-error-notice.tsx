@@ -13,7 +13,7 @@ function partName(path?: string): string | null {
 }
 
 /**
- * A preview crash, in plain words, with "Fix it for me", which sends it to the builder (AI_AGENT.md §7, D163).
+ * A preview crash, in plain words, with "Fix it for me", which sends it to the builder (AI_AGENT.md §7, D164).
  * The file, line and message are behind "Technical details". Shared by both previews.
  */
 export function PreviewErrorNotice({ error, onFix, fixDisabled, onDismiss }: { error: PreviewError; onFix: (prompt: string) => void; fixDisabled: boolean; onDismiss: () => void }) {

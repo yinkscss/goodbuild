@@ -28,7 +28,7 @@ import { FreeCreditsCard } from "@/components/credits/free-credits-card";
 import { VerifyCard } from "./verify-card";
 import { TemplateBanner } from "@/components/landing/template-slides";
 
-/** What "Fix it for me" (or Continue after a top-up) sends for the newest turn (D163). */
+/** What "Fix it for me" (or Continue after a top-up) sends for the newest turn (D164). */
 export type RetryRequest = { kind: "job"; jobId: string; useCredits: boolean; note?: string } | { kind: "prompt"; prompt: string };
 
 /**
@@ -97,18 +97,18 @@ export function ChatPanel({
   const [composerCue, setComposerCue] = React.useState(0);
   const draftOpen = Boolean(lastRecord?.mode === "plan" && lastRecord.plan && !lastRecord.intake && !running);
   // The prompt the newest turn answered, for "Try again" on a failed or interrupted build.
-  // D163: one button. It continues from the saved files and carries the preview's crash, if there is one.
+  // D164: one button. It continues from the saved files and carries the preview's crash, if there is one.
   const crash = ws.previewError ? previewFixPrompt(ws.previewError, false) : undefined;
   const runRetry = (r: RetryRequest) => (r.kind === "job" ? ws.retry(r.jobId, r.useCredits, r.note) : send(r.prompt, "build"));
   const retryRecord = (record?: TurnRecord | null) => runRetry(retryRequest(record, crash));
-  // "Undo this change" (D163): the newest finished build, when an earlier version exists to go back to.
+  // "Undo this change" (D164): the newest finished build, when an earlier version exists to go back to.
   const previousVersion = state.versions.map((v) => v.number).filter((n) => n < state.project.currentVersion).sort((a, b) => b - a)[0];
   const crashWords = ws.previewError ? [ws.previewError.title, ws.previewError.message].filter(Boolean).join(": ") : null;
   const continueAfterCredits = () => {
     ws.clearNeedsCredits();
     const last = [...state.messages].reverse().find((m) => m.role === "assistant");
     const record = last?.meta as TurnRecord | null;
-    // After a top-up the retry runs on credits and still carries the preview's crash (D163).
+    // After a top-up the retry runs on credits and still carries the preview's crash (D164).
     runRetry(retryRequest(record, crash, { afterTopUp: true }));
   };
   const continueCost = { needMicro: state.estimate.buildMicro, haveMicro: state.availableMicro };
@@ -430,7 +430,7 @@ export function Composer({
             </button>
           ))}
         </div>
-        {/* D163: what the toggle means, in words a phone shows too (hover titles don't show on phones). */}
+        {/* D164: what the toggle means, in words a phone shows too (hover titles don't show on phones). */}
         <span className="text-[11px] text-grey-600" aria-live="polite">{mode === "plan" ? "Talk it through. Nothing changes." : "Changes your app."}</span>
         </div>
         <div className="ml-auto flex items-center gap-2 sm:gap-3">
@@ -471,7 +471,7 @@ export function Composer({
 }
 
 /**
- * What GoodBuild remembers about this app (D163, like Codex's AGENTS.md): the decisions it keeps from earlier
+ * What GoodBuild remembers about this app (D164, like Codex's AGENTS.md): the decisions it keeps from earlier
  * messages ("Brand colour #0f766e"). Folded; each can be removed.
  */
 export function Remembered({ items, projectId, onChange }: { items: string[]; projectId: string; onChange: () => Promise<unknown> }) {

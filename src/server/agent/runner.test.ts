@@ -182,7 +182,7 @@ describe("runTurn", { timeout: 120_000 }, () => {
     expect(record.version).toBe(1);
     expect(record.contracts?.map((c) => c.name)).toEqual(["TipJar"]);
     expect(record.plan?.steps).toHaveLength(2);
-    // D163: each step knows its plan step. TipJar.sol matches "Write TipJar.sol"; the checks after the build are
+    // D164: each step knows its plan step. TipJar.sol matches "Write TipJar.sol"; the checks after the build are
     // GoodBuild's own last step (index 2, the plan's length).
     expect(record.steps.find((s) => s.label === "Writing TipJar.sol")?.plan).toBe(0);
     expect(record.steps.find((s) => s.id === "autofix")?.plan).toBe(2);
@@ -356,7 +356,7 @@ describe("runTurn", { timeout: 120_000 }, () => {
     expect(await listVersions(db, projectId)).toHaveLength(1);
   });
 
-  it("turns the builder's list of what works into the finished build's headline and list (D163)", async () => {
+  it("turns the builder's list of what works into the finished build's headline and list (D164)", async () => {
     const { client } = scriptedModel([
       { tools: [{ name: "create_file", args: { path: "src/App.tsx", content: APP } }] },
       {

@@ -17,7 +17,7 @@ import { PlanCard, PlanDraftCard, type PlanActions, type PlanDraftActions } from
 /** A step running this long gets a calm explanation (A2). */
 const SLOW_STEP_SECONDS = 20;
 
-/** Plain words for the steps a non-technical person sees (D163: from lib/plain-steps, file names kept apart). */
+/** Plain words for the steps a non-technical person sees (D164: from lib/plain-steps, file names kept apart). */
 export function plainStepLabel(label: string): string {
   return plainStep({ id: "", label })?.text ?? label;
 }
@@ -56,7 +56,7 @@ function StepRow({ step, live, substeps = [] }: { step: Step; live: boolean; sub
   const seconds = useElapsed(running);
   const current = running ? substeps.at(-1) : undefined;
   const plain = plainStep(step);
-  // D163: a file step shows its words and the file name faintly; its line counts aren't for people.
+  // D164: a file step shows its words and the file name faintly; its line counts aren't for people.
   const detail = current ? `Working on it: ${plainStepLabel(current.label)}` : plain?.file ? undefined : step.detail && !/error|\.tsx?|\.sol|:\d/i.test(step.detail) ? step.detail : undefined;
   return (
     <li className={cn("py-2", live && "animate-lift motion-reduce:animate-none")}>
@@ -112,7 +112,7 @@ export function StepRows({ steps, open = true, live = false }: { steps: Step[]; 
 }
 
 /**
- * One line that says what the builder is doing right now (D163). It slides in when a step starts and fades out
+ * One line that says what the builder is doing right now (D164). It slides in when a step starts and fades out
  * when that step is done, so something visibly moves without a growing list. The file name sits faintly at the end.
  */
 export function TrailLine({ step, className }: { step?: Step; className?: string }) {
@@ -128,13 +128,13 @@ export function TrailLine({ step, className }: { step?: Step; className?: string
   );
 }
 
-/** Steps that tell the plan-step checklist where the build is (D163). Older turns have none. */
+/** Steps that tell the plan-step checklist where the build is (D164). Older turns have none. */
 export function tracksPlan(record: Pick<TurnRecord, "mode" | "plan" | "steps">): boolean {
   return record.mode === "build" && Boolean(record.plan?.steps.length) && record.steps.some((s) => s.plan !== undefined);
 }
 
 /**
- * The builder's plan as a checklist (D163, after Codex's update_plan): its steps, then GoodBuild's own
+ * The builder's plan as a checklist (D164, after Codex's update_plan): its steps, then GoodBuild's own
  * "checking it works". One step works at a time, with the trail line under it. Once the turn ends it folds away.
  */
 export function PlanProgress({ record, live, open = false }: { record: TurnRecord; live: boolean; open?: boolean }) {
@@ -217,7 +217,7 @@ export interface ContinueCost {
 }
 
 /**
- * The one problem card (D163; DESIGN_SYSTEM §4 error card). Whatever went wrong (the build stopped, it still
+ * The one problem card (D164; DESIGN_SYSTEM §4 error card). Whatever went wrong (the build stopped, it still
  * needs a fix, the preview crashed), there is one card and one button, "Fix it for me", which continues from the
  * saved files and fixes all of it. The technical text is behind one fold, for support.
  */
@@ -232,7 +232,7 @@ export function TurnError({
   onFix: () => void;
   disabled: boolean;
   continueCost?: ContinueCost;
-  /** The preview's crash, when there is one: the button fixes it too (D163). */
+  /** The preview's crash, when there is one: the button fixes it too (D164). */
   previewError?: string | null;
 }) {
   // Paused for credits (D138): its files are a saved draft, and Continue picks up from them.
@@ -279,7 +279,7 @@ export function TurnError({
   );
 }
 
-/** "Undo this change" with its confirm in the page (D163): the app goes back to the version before this message. */
+/** "Undo this change" with its confirm in the page (D164): the app goes back to the version before this message. */
 export function UndoButton({ onUndo, disabled }: { onUndo: () => void; disabled: boolean }) {
   const [asking, setAsking] = React.useState(false);
   if (!asking) {
@@ -433,7 +433,7 @@ export function ReviewNote({ record, onFix, disabled }: { record: TurnRecord; on
 }
 
 /**
- * A finished build, as in the owner's mock (D163): "Ready to try", one headline, a short list of what works
+ * A finished build, as in the owner's mock (D164): "Ready to try", one headline, a short list of what works
  * (ticks) and what comes later (an empty circle), one "Next" button, and one quiet footer line with the check,
  * the steps (folded), the cost and Undo.
  */
@@ -597,9 +597,9 @@ export function TurnView({
   chainId: number;
   live: boolean;
   onFix: () => void;
-  /** Latest finished build only: put the app back to how it was before this message (D163). */
+  /** Latest finished build only: put the app back to how it was before this message (D164). */
   onUndo?: () => void;
-  /** The preview's crash, shown and fixed through this turn's problem card (D163). Latest turn only. */
+  /** The preview's crash, shown and fixed through this turn's problem card (D164). Latest turn only. */
   previewError?: string | null;
   fixDisabled: boolean;
   /** What Continue on a build paused for credits would cost, and what the person has (D138). Latest turn only. */
@@ -623,7 +623,7 @@ export function TurnView({
   const thinking = live && !text;
   const activity = `${record.steps.length}:${record.steps.at(-1)?.status ?? ""}:${record.log.length}`;
   const thinkingFor = useElapsed(thinking, activity);
-  // D163: the plan as a checklist once the builder has one; before that, one trail line under "Thinking".
+  // D164: the plan as a checklist once the builder has one; before that, one trail line under "Thinking".
   const checklist = tracksPlan(record);
   const latest = [...record.steps].reverse().find((s) => plainStep(s));
   const outcome = !live && record.status === "ready" && (record.outcome?.works.length || record.outcome?.later) ? record.outcome : undefined;
@@ -670,7 +670,7 @@ export function TurnView({
       {checklist ? (
         <PlanProgress record={record} live={live} />
       ) : (
-        // Turns saved before D163, and small changes without a plan: plain step rows, folded while it runs.
+        // Turns saved before D164, and small changes without a plan: plain step rows, folded while it runs.
         !live && <StepRows steps={record.steps} open={record.status === "needs_fix" || record.status === "error" || record.status === "stopped"} />
       )}
       {record.intake && <PlanCard intake={record.intake} actions={plan} />}
@@ -683,14 +683,14 @@ export function TurnView({
           Stopped. This build&apos;s edits were discarded; your files are as they were.
         </p>
       )}
-      {/* One button per turn (D163): with a problem card showing, the check notes have no button of their own. */}
+      {/* One button per turn (D164): with a problem card showing, the check notes have no button of their own. */}
       {!live && record.review && <ReviewNote record={record} onFix={showError ? undefined : onSuggest} disabled={fixDisabled} />}
       {!live && !record.review && <VisualCheckNote record={record} checking={checking} failed={checkFailed} onFix={showError ? undefined : onSuggest} disabled={fixDisabled} />}
       {!live && onSuggest && record.status !== "error" && record.suggestions?.length ? (
         <SuggestionChips items={record.suggestions} onPick={onSuggest} disabled={fixDisabled} />
       ) : null}
       {!live && record.draftSaved && !showError && <p className="mt-3 text-xs text-grey-600">Your files are saved.</p>}
-      {/* D163 (owner): no talk of free builds or fixes; the cost line below shows what was charged. */}
+      {/* D164 (owner): no talk of free builds or fixes; the cost line below shows what was charged. */}
       {!live && (record.refundedMicro ?? 0) > 0 && <p className="mt-3 text-xs text-grey-600">Nothing was built, so the {formatCredits(record.refundedMicro!)} of AI for this reply was refunded.</p>}
       {!live && record.delivery && !record.outcome && record.delivery.remaining.length > 0 && (
         <p className="mt-3 text-xs text-grey-600">Still to come: {[...new Set(record.delivery.remaining.map(plainMilestoneTitle))].join(", ")}</p>

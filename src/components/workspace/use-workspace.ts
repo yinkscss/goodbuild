@@ -21,12 +21,12 @@ export interface UseWorkspace {
   /** Stop the running turn and cancel queued follow-ups. */
   stop: () => Promise<void>;
   /**
-   * Continue a failed build from its saved files (D163). `note` tells the builder what else is wrong (the
+   * Continue a failed build from its saved files (D164). `note` tells the builder what else is wrong (the
    * preview's crash). When GoodBuild's repair allowance doesn't cover it, it runs on credits, as the cost beside
    * the prompt box said; there is no second question.
    */
   retry: (jobId: string, useCredits?: boolean, note?: string) => void;
-  /** The preview's latest crash since the last message, for the one problem card (D163). */
+  /** The preview's latest crash since the last message, for the one problem card (D164). */
   previewError: PreviewError | null;
   /** Save one answer to the plan's questions (D32). */
   answerPlan: (messageId: string, questionId: string, answer: PlanAnswer) => void;
@@ -121,7 +121,7 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
   const [error, setError] = React.useState<string | null>(null);
   const [needsCredits, setNeedsCredits] = React.useState(false);
   const [previewError, setPreviewErrorState] = React.useState<PreviewError | null>(null);
-  // The crash as it is now, for a retry to remember which one its note carried (D163).
+  // The crash as it is now, for a retry to remember which one its note carried (D164).
   const previewErrorRef = React.useRef<PreviewError | null>(null);
   const setPreviewError = React.useCallback((next: PreviewError | null | ((current: PreviewError | null) => PreviewError | null)) => {
     const value = typeof next === "function" ? next(previewErrorRef.current) : next;
@@ -195,7 +195,7 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
         const post = (paid: boolean) => fetch(`/api/projects/${projectId}/turns/${jobId}/retry`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ useCredits: paid, ...(note ? { note: note.slice(0, 3000) } : {}) }) });
         let res = await post(useCredits);
         let body = res.ok ? {} : await res.json().catch(() => ({})) as { message?: string; error?: string };
-        // The repair allowance doesn't cover it: run on credits, as the cost beside the prompt box said (D163, owner).
+        // The repair allowance doesn't cover it: run on credits, as the cost beside the prompt box said (D164, owner).
         if (!res.ok && !useCredits && body.error === "funding_unavailable") {
           res = await post(true);
           body = res.ok ? {} : await res.json().catch(() => ({})) as { message?: string; error?: string };
@@ -345,7 +345,7 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
 
   const revert = React.useCallback(
     async (version: number) => {
-      // The crash showing now belongs to the version being left (D163): gone once the revert works, unless a newer one came.
+      // The crash showing now belongs to the version being left (D164): gone once the revert works, unless a newer one came.
       const left = previewErrorRef.current;
       const res = await fetch(`/api/projects/${projectId}/revert`, {
         method: "POST",

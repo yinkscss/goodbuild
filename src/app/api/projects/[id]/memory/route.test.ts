@@ -38,7 +38,7 @@ beforeEach(async () => {
   await db.update(projects).set({ memory: { summary: "s", decisions: ["Brand colour #0f766e", "Tips at least 5 G$", "No dark mode"], upTo: 9 } }).where(eq(projects.id, projectId));
 });
 
-describe("forgetting what GoodBuild remembers (D163)", () => {
+describe("forgetting what GoodBuild remembers (D164)", () => {
   it("removes one decision from the stored memory and keeps the rest", async () => {
     const res = await forget("Tips at least 5 G$");
     expect(res.status).toBe(200);

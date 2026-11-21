@@ -57,7 +57,7 @@ export interface WorkspaceState {
   /** Paid credit plus free AI left, in micro-USD (null when the ledger is unreadable). Shown in the header chip. */
   availableMicro: number | null;
   jobs: Array<{ id: string; status: "queued" | "running"; userMessageId: string; assistantMessageId: string | null; mode: string }>;
-  /** What GoodBuild remembers about this app (D163): the memory's decisions, which the person can remove. */
+  /** What GoodBuild remembers about this app (D164): the memory's decisions, which the person can remove. */
   remembered?: string[];
 }
 

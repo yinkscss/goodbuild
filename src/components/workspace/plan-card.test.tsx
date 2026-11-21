@@ -136,7 +136,7 @@ describe("TurnView", () => {
     expect(record.log).toHaveLength(2); // the record itself is untouched
   });
 
-  it("shows one plain trail line while running, and folded step rows afterwards (D163)", () => {
+  it("shows one plain trail line while running, and folded step rows afterwards (D164)", () => {
     const { rerender, container } = render(view({ ...record }, true));
     expect(screen.getByText("Building the main screen")).toBeTruthy();
     expect(container.querySelector("ol")).toBeNull();
@@ -147,7 +147,7 @@ describe("TurnView", () => {
     expect(screen.getByText("2 steps done")).toBeTruthy();
   });
 
-  it("the problem card has one button and keeps the technical text behind one fold (D163)", () => {
+  it("the problem card has one button and keeps the technical text behind one fold (D164)", () => {
     const { container } = render(view({ ...record, status: "error", error: "TypeError: fetch failed" }));
     expect(screen.getByText("Building the main screen").closest("details")).toBeNull();
     expect(container.querySelector("ol")).not.toBeNull();

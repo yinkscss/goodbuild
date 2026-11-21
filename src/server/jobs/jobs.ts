@@ -50,7 +50,7 @@ type QueueArgs = {
   userMessageId?: string;
   intake?: boolean;
   retryOfJobId?: string;
-  /** With a retry (D163): what else is wrong, such as the preview's error, added to the saved draft's notes for the builder. */
+  /** With a retry (D164): what else is wrong, such as the preview's error, added to the saved draft's notes for the builder. */
   retryNote?: string;
   continueDelivery?: boolean;
   useCredits?: boolean;

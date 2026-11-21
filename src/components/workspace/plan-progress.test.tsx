@@ -12,7 +12,7 @@ const view = (r: TurnRecord, live: boolean, extra: Partial<Parameters<typeof Tur
   <TurnView text="" record={r} chainId={11142220} live={live} onFix={() => undefined} fixDisabled={false} {...extra} />
 );
 
-describe("the plan as a checklist (D163)", () => {
+describe("the plan as a checklist (D164)", () => {
   const running = [
     { id: "a", label: "Writing App.tsx", status: "done", plan: 0 },
     { id: "b", label: "Writing GoalForm.tsx", status: "running", plan: 1 },
@@ -54,7 +54,7 @@ describe("the plan as a checklist (D163)", () => {
     expect(screen.getAllByRole("button", { name: /Fix it for me/ })).toHaveLength(1);
   });
 
-  it("keeps plain step rows for turns saved before D163", () => {
+  it("keeps plain step rows for turns saved before D164", () => {
     render(view(record([{ id: "a", label: "Writing App.tsx", status: "done" }], { plan: undefined }), false));
     expect(screen.getByText("1 step done")).toBeInTheDocument();
   });
@@ -89,7 +89,7 @@ describe("the plan as a checklist (D163)", () => {
   });
 });
 
-describe("undo this change (D163)", () => {
+describe("undo this change (D164)", () => {
   it("asks in the page, then goes back", async () => {
     const onUndo = vi.fn();
     render(view(record([], { version: 4 }), false, { onUndo }));
@@ -103,7 +103,7 @@ describe("undo this change (D163)", () => {
   });
 });
 
-describe("one problem card (D163)", () => {
+describe("one problem card (D164)", () => {
   it("says the preview crash is fixed by the same button, and keeps the crash in the technical details", () => {
     render(<TurnError record={record([], { status: "error", error: "fetch failed" })} onFix={vi.fn()} disabled={false} previewError="TypeError: Cannot read properties of undefined (reading 'map')" />);
     const card = screen.getByRole("alert");

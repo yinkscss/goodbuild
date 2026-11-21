@@ -1,9 +1,9 @@
 import type { Step } from "./turn-types";
 
 /**
- * Plain words for build steps (D163). The server's step labels name files and tools ("Writing GoalCard.tsx");
+ * Plain words for build steps (D164). The server's step labels name files and tools ("Writing GoalCard.tsx");
  * a person reads what is being made ("Building the goal card"), with the file name kept apart so the screen can
- * show it faintly. Done here, not on the server, so turns saved before D163 read the same way.
+ * show it faintly. Done here, not on the server, so turns saved before D164 read the same way.
  */
 export interface PlainStep {
   text: string;

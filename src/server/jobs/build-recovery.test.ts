@@ -57,7 +57,7 @@ describe("first delivery and recovery", () => {
     expect(await getBalanceMicro(db, userId)).toBe(0);
     expect((await db.select().from(usageEvents)).every((u) => u.funding === "platform")).toBe(true);
     expect(record.delivery?.remaining).toEqual(["Wallet connection", "Multiplayer", "On-chain features and payments"]);
-    // D163: the end in plain words, and next steps a person understands.
+    // D164: the end in plain words, and next steps a person understands.
     expect(record.outcome?.headline).toMatch(/^Your app's screens are built\./);
     // The builder's own reply stays under the milestone's headline (deploy details, for a payments milestone).
     expect(record.outcome?.detail).toBe("Ready");
@@ -88,7 +88,7 @@ describe("first delivery and recovery", () => {
     const [retryMessage] = await db.select().from(messages).where(eq(messages.id, a.job.userMessageId));
     expect(retryMessage.meta?.action).toBe("retry");
     expect((await db.select().from(buildDrafts).where(eq(buildDrafts.jobId, a.job.id)))[0].files["src/App.tsx"]).toBe(APP);
-    // D163: the one button carries the preview's crash into the retry's notes for the builder.
+    // D164: the one button carries the preview's crash into the retry's notes for the builder.
     expect((await db.select().from(buildDrafts).where(eq(buildDrafts.jobId, a.job.id)))[0].diagnostics).toContain("TypeError: x is undefined");
     const resumed = await run(scriptedModel([{ text: "Recovered" }]).client);
     expect(resumed.status).toBe("ready");

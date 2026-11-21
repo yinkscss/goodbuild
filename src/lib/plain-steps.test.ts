@@ -6,7 +6,7 @@ import { milestoneName, plainError, plainMilestoneTitle } from "./plain-words";
 
 const step = (label: string, detail?: string) => plainStep({ id: "x", label, detail });
 
-describe("plain step words (D163)", () => {
+describe("plain step words (D164)", () => {
   it("says what is being made, and keeps the file apart", () => {
     expect(step("Writing GoalCard.tsx")).toEqual({ text: "Building the goal card", file: "GoalCard.tsx" });
     expect(step("Writing App.tsx")?.text).toBe("Building the main screen");
@@ -52,7 +52,7 @@ describe("plain step words (D163)", () => {
   });
 });
 
-describe("plain words (D163)", () => {
+describe("plain words (D164)", () => {
   it("never shows a raw error", () => {
     expect(plainError("TypeError: fetch failed (cause: ECONNRESET)")).toMatch(/^We lost the connection/);
     expect(plainError("The AI provider has no valid API key. Set ANTHROPIC_API_KEY in .env.local")).toMatch(/^The AI that writes your app/);

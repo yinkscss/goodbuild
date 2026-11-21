@@ -1,6 +1,6 @@
 /**
- * Plain words for a person who doesn't code (D163). Shared by the server (what it saves) and the workspace (what
- * it shows, including turns saved before D163). The technical text stays in the build log and the server logs.
+ * Plain words for a person who doesn't code (D164). Shared by the server (what it saves) and the workspace (what
+ * it shows, including turns saved before D164). The technical text stays in the build log and the server logs.
  */
 
 /** A milestone's name as a person reads it. Each next-step name also matches its milestone when sent as a request. */
@@ -21,7 +21,7 @@ export function milestoneName(id: string, fallback = "The next part"): string {
   }
 }
 
-/** Saved milestone titles (DeliveryPlan) to their plain names, for records saved before D163. */
+/** Saved milestone titles (DeliveryPlan) to their plain names, for records saved before D164. */
 const TITLE_IDS: Record<string, string> = {
   "Working first interface": "interface",
   "Wallet connection": "wallet",

@@ -16,6 +16,7 @@ import { changesSince, fixContext } from "./focused";
 import { fixTierByWriter, repeatedEditNote, runTurn, wantsSpec } from "./runner";
 import { SPEC_PATH, parseSpec, readSpec } from "./spec";
 import { loadFiles } from "./store";
+import { typeCheck as realTypeCheck } from "./type-check";
 import { Workspace } from "./workspace";
 import type { RunCheckResult } from "./run-check";
 
@@ -541,5 +542,61 @@ describe("focused fix context (D162)", () => {
     const text = fixContext({ request: "x", issues: "-", errors: ["src/A.tsx", "src/B.tsx", "src/C.tsx"].map((file) => ({ file, source: "types" as const, message: "m" })), files });
     expect(text.length).toBeLessThan(45_000);
     expect(text).toMatch(/Also named, not shown \(too long to include\): src\/C\.tsx/);
+  });
+});
+
+describe("a wallet build with the real type check (D163)", { timeout: 180_000 }, () => {
+  let db: Db;
+  let userId: string;
+  let projectId: string;
+  let queuedId: string;
+  const spec = { ...SPEC, contracts: [] };
+
+  beforeEach(async () => {
+    db = await createTestDb();
+    const user = await signInUser(db, { wallet: ADMIN, walletKind: "external", attestation: { ageOk: true, notUsPerson: true } });
+    userId = user.id;
+    const p = await createProjectFromPrompt(db, userId, { prompt: "A G$ savings app where people connect their wallet", network: "celo-sepolia" });
+    projectId = p.id;
+    const [m] = await db.select().from(messages).where(eq(messages.projectId, projectId));
+    queuedId = m.id;
+    setV1HarnessForTests(false);
+  });
+  afterEach(() => setV1HarnessForTests(true));
+
+  it("builds wallet code from the kit and from the wallet directly without a single fix attempt", async () => {
+    const hook = 'import { useEffect, useState } from "react";\nimport { walletProvider } from "./chain";\nexport function useChainId() {\n  const [id, setId] = useState<number | null>(null);\n  useEffect(() => { void walletProvider()?.request({ method: "eth_chainId" }).then((h) => setId(parseInt(h as string, 16))); }, []);\n  return id;\n}\n';
+    const app = 'import { useWallet } from "./lib/useWallet";\nimport { useGdBalance } from "./lib/goodbuild/gooddollar";\nimport { ConnectButton } from "./components/ConnectButton";\nimport { useChainId } from "./lib/useChainId";\nexport default function App() {\n  const { account, onRightNetwork, networkName } = useWallet();\n  const gd = useGdBalance();\n  const id = useChainId();\n  return <main><h1>Stash</h1><ConnectButton />{account && onRightNetwork ? <p>On {networkName} ({id})</p> : null}<p>{gd.formatted ?? "-"}</p></main>;\n}\n';
+    const { client, requests } = scriptedModel([
+      { tools: [{ name: "write_spec", args: spec }] },
+      { tools: [{ name: "create_file", args: { path: "src/lib/useChainId.ts", content: hook } }, { name: "create_file", args: { path: "src/App.tsx", content: app } }] },
+      { text: "Built the wallet card." },
+    ]);
+    const record = await runTurn({ db, model: client, typeCheck: realTypeCheck }, { projectId, userId, mode: "build", userMessageId: queuedId }, () => {});
+    expect(record.status).toBe("ready");
+    expect(requests).toHaveLength(3);
+    expect(record.steps.some((s) => s.id.startsWith("fix:"))).toBe(false);
+    expect(record.log.some((l) => /type check: types are consistent/.test(l))).toBe(true);
+  });
+
+  it("tells the builder during a fix that leftover notes are information, not more work", async () => {
+    const typeCheck = async (files: Record<string, string>) => ({
+      ran: true,
+      issues: files["src/App.tsx"]?.includes("count={") ? [{ file: "src/App.tsx", line: 1, source: "types" as const, message: "Property 'count' does not exist." }] : [],
+      note: "checked",
+      ms: 1,
+    });
+    const typed = 'function Badge() { return <span>1</span>; }\nexport default function App() { return <main><Badge count={2} /></main>; }\n';
+    const { client, requests } = scriptedModel([
+      { tools: [{ name: "write_spec", args: spec }] },
+      { tools: [{ name: "create_file", args: { path: "src/App.tsx", content: typed } }] },
+      { text: "Built." },
+      { tools: [{ name: "run_checks", args: {} }] },
+      { text: "Left the note." },
+    ]);
+    const record = await runTurn({ db, model: client, typeCheck }, { projectId, userId, mode: "build", userMessageId: queuedId }, () => {});
+    expect(record.status).toBe("ready");
+    const result = requests[4].messages.filter((m) => m.role === "tool").map((m) => String(m.content)).join("\n");
+    expect(result).toContain("These are notes for information only. Don't spend more steps on them");
   });
 });

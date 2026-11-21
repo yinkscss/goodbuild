@@ -8,7 +8,7 @@ import { retryRequest } from "./chat-panel";
 const record = (over: Partial<TurnRecord> = {}): TurnRecord => ({ kind: "turn", mode: "build", steps: [], log: [], changes: [], chargedMicro: 0, status: "needs_fix", jobId: "job-1", ...over });
 const crash = "The preview shows this error in src/A.tsx:3. Fix it:\nTypeError\nx is undefined";
 
-describe("what Fix it for me sends (D163)", () => {
+describe("what Fix it for me sends (D164)", () => {
   it("continues the failed build with the preview's crash", () => {
     expect(retryRequest(record(), crash)).toEqual({ kind: "job", jobId: "job-1", useCredits: false, note: crash });
   });

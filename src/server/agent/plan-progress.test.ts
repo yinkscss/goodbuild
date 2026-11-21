@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { withoutDecision } from "./memory";
 import { milestoneOutcome, planStepFor } from "./runner";
 
-describe("where the build is on its plan (D163)", () => {
+describe("where the build is on its plan (D164)", () => {
   const spec = ["SavingsGoals: holds each saver's G$", "Home: shows every goal", "/goals/new: add a goal"];
   it("matches a file to the plan step its name belongs to", () => {
     expect(planStepFor(spec, "contracts/SavingsGoals.sol")).toBe(0);
@@ -19,7 +19,7 @@ describe("where the build is on its plan (D163)", () => {
   });
 });
 
-describe("a milestone's end in plain words (D163)", () => {
+describe("a milestone's end in plain words (D164)", () => {
   it("gives a headline, the builder's list of what works, and what comes later", () => {
     expect(milestoneOutcome({ id: "interface", checked: true, later: ["wallet", "payments"], works: ["Add and remove goals"] })).toEqual({
       headline: "Your app's screens are built. Try it in the preview.",
@@ -31,7 +31,7 @@ describe("a milestone's end in plain words (D163)", () => {
   });
 });
 
-describe("the builder's list of what works (D163)", () => {
+describe("the builder's list of what works (D164)", () => {
   it("strips list markers but keeps numbers that belong to the words", async () => {
     const { Workspace } = await import("./workspace");
     const out = new Workspace({}).execute("suggest_next", JSON.stringify({ suggestions: ["Next"], works: ["2. See every tip", "3D maze gameplay", "24-hour history"] }), "build");
@@ -39,7 +39,7 @@ describe("the builder's list of what works (D163)", () => {
   });
 });
 
-describe("forgetting what GoodBuild remembers (D163)", () => {
+describe("forgetting what GoodBuild remembers (D164)", () => {
   it("removes one decision and keeps the rest", () => {
     expect(withoutDecision({ summary: "s", decisions: ["Brand colour #0f766e", "Tips at least 5 G$"], upTo: 9 }, "Tips at least 5 G$")).toEqual({ summary: "s", decisions: ["Brand colour #0f766e"], upTo: 9 });
     expect(withoutDecision(null, "x")).toBeNull();

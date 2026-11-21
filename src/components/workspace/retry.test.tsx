@@ -8,7 +8,7 @@ const initial = {
   files: {}, messages: [], versions: [], estimate: { buildMicro: 10000, planMicro: 1000 }, assets: [], outdatedContracts: [], upgradableContracts: [], offerVerification: false, freePolicy: "verified", availableMicro: 0, jobs: [],
 } satisfies WorkspaceState;
 afterEach(() => vi.unstubAllGlobals());
-it("retries the job without adding a synthetic user message, and runs on credits when the repair allowance doesn't cover it (D163)", async () => {
+it("retries the job without adding a synthetic user message, and runs on credits when the repair allowance doesn't cover it (D164)", async () => {
   const fetcher = vi.fn(async (url: string, init?: RequestInit) => {
     if (url.endsWith("/retry")) {
       const paid = JSON.parse(String(init?.body)).useCredits === true;
@@ -46,7 +46,7 @@ it("shows the out-of-credits card when even the credits can't cover the fix", as
   expect(result.current.error).toBeNull();
 });
 
-it("keeps the preview's crash for the next try when a retry is turned away, and says why (D163)", async () => {
+it("keeps the preview's crash for the next try when a retry is turned away, and says why (D164)", async () => {
   let answer: () => Response = () => Response.json({ error: "one_build_at_a_time", message: "Another of your builds is running." }, { status: 402 });
   const fetcher = vi.fn(async (url: string) => (url.endsWith("/retry") ? answer() : Response.json(initial)));
   vi.stubGlobal("fetch", fetcher);
@@ -62,7 +62,7 @@ it("keeps the preview's crash for the next try when a retry is turned away, and 
   await waitFor(() => expect(result.current.previewError).toBeNull());
 });
 
-it("keeps a newer crash that came while the retry was being sent, even with the same message (D163)", async () => {
+it("keeps a newer crash that came while the retry was being sent, even with the same message (D164)", async () => {
   let accept: (r: Response) => void = () => undefined;
   const fetcher = vi.fn((url: string) => (url.endsWith("/retry") ? new Promise<Response>((r) => { accept = r; }) : Promise.resolve(Response.json(initial))));
   vi.stubGlobal("fetch", fetcher);
@@ -76,7 +76,7 @@ it("keeps a newer crash that came while the retry was being sent, even with the 
   expect(result.current.previewError?.path).toBe("/src/B.tsx");
 });
 
-it("drops the crash of the version that Undo leaves, and keeps it when going back fails (D163)", async () => {
+it("drops the crash of the version that Undo leaves, and keeps it when going back fails (D164)", async () => {
   let ok = false;
   const fetcher = vi.fn(async (url: string) => (url.endsWith("/revert") ? (ok ? Response.json({ version: 3 }) : Response.json({ error: "busy" }, { status: 409 })) : Response.json(initial)));
   vi.stubGlobal("fetch", fetcher);

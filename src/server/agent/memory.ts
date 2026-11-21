@@ -122,7 +122,7 @@ export function memoryBlock(memory: Memory | null): string {
   return `Earlier in this conversation (older messages, summarised):\n${memory.summary}${decisions}`;
 }
 
-/** The memory without one remembered decision, when the person removes it (D163). Null when there is no memory. */
+/** The memory without one remembered decision, when the person removes it (D164). Null when there is no memory. */
 export function withoutDecision(memory: Memory | null, decision: string): Memory | null {
   if (!memory) return null;
   return { ...memory, decisions: memory.decisions.filter((d) => d !== decision) };

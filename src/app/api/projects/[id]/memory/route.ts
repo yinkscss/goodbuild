@@ -8,7 +8,7 @@ import { projects } from "@/server/db/schema";
 import { getOwnedProject } from "@/server/projects";
 
 /**
- * Forget one thing GoodBuild remembers about this app (D163). One guarded statement: it removes the decision from
+ * Forget one thing GoodBuild remembers about this app (D164). One guarded statement: it removes the decision from
  * the memory as stored now (so two tabs forgetting different things both stick), and only while no build runs (a
  * build may rewrite the memory when it ends).
  */

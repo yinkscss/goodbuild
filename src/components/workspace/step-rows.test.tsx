@@ -17,7 +17,7 @@ describe("StepRows", () => {
       />,
     );
     const group = screen.getByRole("list", { name: "Fixing a small thing it found: steps" });
-    // D163: plain words, with the file name kept faintly beside them.
+    // D164: plain words, with the file name kept faintly beside them.
     expect(within(group).getByText("Building the wallet card")).toBeInTheDocument();
     expect(within(group).getByText("WalletCard.tsx")).toBeInTheDocument();
     expect(within(group).getByText("Checking the app")).toBeInTheDocument();

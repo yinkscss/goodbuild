@@ -47,7 +47,7 @@ export function Workspace({ initial }: { initial: WorkspaceState }) {
   // Live files during a turn (once it reports them), otherwise the saved files.
   const files = live?.files ?? state.files;
   const assetUrls = useAssetDataUrls(state.project.id, state.assets);
-  // The newest reply: when it shows the chat's problem card, the preview shows no card of its own (D163).
+  // The newest reply: when it shows the chat's problem card, the preview shows no card of its own (D164).
   const lastTurn = [...state.messages].reverse().find((m) => m.role === "assistant")?.meta as TurnRecord | null | undefined;
   const latestRecord = [...state.messages].reverse().map((m) => m.meta as TurnRecord | null).find((r) => r?.kind === "turn" && r.contracts?.length);
 

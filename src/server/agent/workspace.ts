@@ -20,7 +20,7 @@ export interface ToolOutcome {
   plan?: { summary: string; steps: string[] };
   /** Next-step suggestions from suggest_next. */
   suggestions?: string[];
-  /** From suggest_next (D163): what the person can do in the app now, and what doesn't work yet. */
+  /** From suggest_next (D164): what the person can do in the app now, and what doesn't work yet. */
   works?: string[];
   later?: string;
   /** Guides returned to the model by this call (for the build log). */
@@ -118,7 +118,7 @@ export class Workspace {
           .filter(Boolean)
           .slice(0, 2);
         if (!items.length) return { ok: false, result: "Error: give one or two suggestions." };
-        // D163: what works now, as a short list the person reads under the reply's first sentence.
+        // D164: what works now, as a short list the person reads under the reply's first sentence.
         const line = (x: unknown, max: number) => String(x ?? "").replace(/\s+/g, " ").trim().replace(/^(?:[-*•]\s+|\d+[.)]\s+)/, "").trim().slice(0, max);
         const works = (Array.isArray(args.works) ? args.works : []).map((x) => line(x, 120)).filter(Boolean).slice(0, 3);
         const later = line(args.later, 160);

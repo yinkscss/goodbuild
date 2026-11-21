@@ -20,7 +20,7 @@ export interface Step {
   status: "running" | "done" | "error";
   /** The step this one is part of (a fix attempt's edits and checks): shown indented under it. */
   parent?: string;
-  /** The plan step this work is for (D163): an index into the turn's plan, or the plan's length for "checking it works". */
+  /** The plan step this work is for (D164): an index into the turn's plan, or the plan's length for "checking it works". */
   plan?: number;
 }
 
@@ -134,7 +134,7 @@ export interface TurnRecord {
   draftSaved?: boolean;
   delivery?: { title: string; remaining: string[]; demo: boolean };
   /**
-   * A finished build's end in plain words (D163): a one-sentence headline, what the person can do now (the
+   * A finished build's end in plain words (D164): a one-sentence headline, what the person can do now (the
    * builder's short list from suggest_next), and what comes later. A milestone build fills in what it knows.
    */
   outcome?: { headline?: string; works: string[]; later?: string; /** The rest of the reply after the headline. */ detail?: string };

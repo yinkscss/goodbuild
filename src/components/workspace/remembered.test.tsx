@@ -6,7 +6,7 @@ import { Remembered } from "./chat-panel";
 
 afterEach(() => vi.unstubAllGlobals());
 
-describe("what GoodBuild remembers (D163)", () => {
+describe("what GoodBuild remembers (D164)", () => {
   const open = async () => userEvent.click(screen.getByText(/What GoodBuild remembers about this app/));
 
   it("keeps an item and says so when the server didn't forget it", async () => {

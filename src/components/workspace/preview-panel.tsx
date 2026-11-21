@@ -160,7 +160,7 @@ export function PreviewPanel({
   contracts: Array<{ name: string; file: string; bytecodeBytes: number }>;
   onFix: (prompt: string) => void;
   fixDisabled: boolean;
-  /** The chat's problem card is showing and carries the preview's crash (D163): no second card here. */
+  /** The chat's problem card is showing and carries the preview's crash (D164): no second card here. */
   hideErrorNotice?: boolean;
 }) {
   const [tab, setTab] = React.useState<Tab>("preview");

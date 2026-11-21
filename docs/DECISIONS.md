@@ -1999,7 +1999,29 @@ The owner approved implementing all five parts of the first-build fix and openin
 - **Not changed:** v1 turns (saved before v2) keep their old fix loop.
 - **UNVERIFIED:** the token targets (Sonnet under about 80K input tokens for a milestone build, DeepSeek fix calls under about 20K) and the pass rate on real builds. The token report in each build's log measures both after deploy.
 
-### D163. What a person sees while GoodBuild builds: the plan as a checklist, one problem card with one button, plain words (21 Nov 2026; amends D87, D138, D153, D162)
+### D163. The wallet milestone is plug and play, and the type check stops misreading wallet code (21 Nov 2026; amends D36, D68, D162)
+- Decided by: the owner, in chat ("go"), after the second live run of the savings-goals app. Diagnosis and build by Claude.
+- **What went wrong in that run.** The wallet connected, but the build sat in "Fixing a problem (try 1 of 5)" for over eight minutes, and the page said "Balance unavailable: Address … is invalid". Four causes:
+  1. The wallet milestone asks for "connection and network states", but `useWallet()` had no network state. The builder wrote its own hook that called the wallet directly.
+  2. The type check flagged that valid code. viem's `request` types collapse to `{ method: unknown; params: unknown }` without strictNullChecks, which the check leaves off on purpose. Reproduced: GoodBuild's own starter has 7 such errors with the check's settings and none with strictNullChecks on.
+  3. D162 sends type errors to one fix attempt, so the false alarm started a fix. Inside it, `run_checks` still said "worth fixing", so the builder chased a note it couldn't fix.
+  4. GoodBuild gave the front end no G$ address. The builder typed it from memory: the first 22 characters were right, the rest invented, and it was one character short.
+- **Changes:**
+  - `useWallet()` also gives `chainId`, `networkName`, `onRightNetwork`, `wrongNetwork` and `switchNetwork()`. The wallet layer tracks `chainChanged`, and `ConnectButton` shows "Switch to <network>" when the wallet is elsewhere. Untouched copies of `useWallet.ts` and `ConnectButton.tsx` move to the new ones; edited copies stay the builder's.
+  - A new, always-current platform file, `src/lib/goodbuild/gooddollar.ts`, gives `gdAddress` and `useGdBalance()` (`{balance, formatted, loading, error, available}`; it updates by itself after a transaction, a wallet switch and on the page's timer). The address comes from `src/config/gooddollar.ts`: the real G$ on Celo, GoodBuild's test G$ on Celo Sepolia, null where there is none.
+  - The type check drops only viem's two loose-mode misreads: a `request` reported as missing `params`, and a `...Parameters` type reported as missing `account`. Everything else is reported as before.
+  - Inside a fix, or once type errors have had their one attempt, `run_checks` reports leftover notes as "for information only, don't spend more steps on them". A v2 fix attempt takes at most 12 rounds.
+  - The wallet milestone's acceptance names the pieces to plug in: ConnectButton, `useWallet()` and `useGdBalance()`, with no wallet, network or token code of the builder's own. The prompt and the wallet-layer refusal list the new fields.
+  - The build refuses an address typed into the app's front end (a quoted `0x` with 38 to 42 hex digits), and says what to use instead. The zero and dead addresses, GoodBuild's own files and `contracts/` are left alone.
+- **Tests:**
+  - The type check on real builder-style wallet code, a direct `provider.request` hook and the kit's hooks, passes with no type errors; the same test fails without the filter, with the run's exact error.
+  - A real-browser run with a stand-in wallet shows "On Celo Sepolia" and the G$ state from the kit.
+  - A v2 build that writes wallet code runs the real type check and makes no fix attempt.
+  - Leftover notes during a fix are reported as information, the address check works, every network gets the right G$ address, and untouched copies are upgraded.
+- **Not changed:** strictNullChecks stays off for apps; turning it on would report loose code that runs fine, such as `useState(null)` followed by a value.
+- **UNVERIFIED:** the next real wallet milestone on the live site.
+
+### D164. What a person sees while GoodBuild builds: the plan as a checklist, one problem card with one button, plain words (21 Nov 2026; amends D87, D138, D153, D162, D163)
 - Decided by: the owner, in chat, after Claude's audit of the build screen and a mock ([GoodBuild Build Clarity](https://claude.ai/artifact/Qp4xxF5J7o4oiEXPpkLHsC)): "build the plan in one PR"; "two buttons would confuse the users, we are supposed to hold them like babies and guide them all step of the way"; "no need to show free fix, just show the credit cost in the text area". Plan and build by Claude: [BUILD_CLARITY_PLAN.md](BUILD_CLARITY_PLAN.md).
 - **Research.** From Codex: the live plan checklist (`update_plan`), the end-of-task summary, undo, and lasting project notes (AGENTS.md). From GPT Engineer: nothing new; its clarify step and self-heal are already here. Not taken: Codex's best-of-N (N times the cost, and picking code is a developer's job), and GPT Engineer's file picker and editable prompts (settings by another name).
 - **The plan as a checklist.** In Build mode, the builder's plan (`set_plan`, or the spec's plan in v2) shows as a checklist, with GoodBuild's own last step, "Checking it works on a phone and a computer". One step works at a time, and a "Step 2 of 5" counter sits on top.

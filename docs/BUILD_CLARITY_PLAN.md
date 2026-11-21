@@ -1,6 +1,6 @@
 # Build clarity plan: what a person sees while GoodBuild builds
 
-Date: 21 Nov 2026 · Written by: Claude · Asked for by: the owner ("be honest... what part can confuse a non-technical person"; "we are supposed to hold them like babies and guide them all step of the way") · Status: **approved by the owner ("build the plan in one PR") and built on 21 Nov 2026 as D163** (see DECISIONS.md for what shipped).
+Date: 21 Nov 2026 · Written by: Claude · Asked for by: the owner ("be honest... what part can confuse a non-technical person"; "we are supposed to hold them like babies and guide them all step of the way") · Status: **approved by the owner ("build the plan in one PR") and built on 21 Nov 2026 as D164** (see DECISIONS.md for what shipped).
 
 Mock the owner approved: [GoodBuild Build Clarity](https://claude.ai/artifact/Qp4xxF5J7o4oiEXPpkLHsC) (version 3). It plays the same build twice, side by side: today, and the proposal below.
 
@@ -53,7 +53,7 @@ PR #170 already took their token techniques. This part covers their other tools,
 | **GPT Engineer self-heal** (10 tries, per a third-party mirror; UNVERIFIED for the current release) | Yes, and more | Keep |
 | **GPT Engineer file selection, preprompts** | No | **Skip:** they ask a non-coder to know their files or edit settings |
 
-## Part 3. The work (one PR, D163)
+## Part 3. The work (one PR, D164)
 
 ### A. While it builds, and when it's done
 - **A1. The plan as a live checklist, with one trail line.** As in the mock:
@@ -97,7 +97,7 @@ PR #170 already took their token techniques. This part covers their other tools,
   - the error mapping;
   - undo.
 - `pnpm test:suite`, `pnpm lint`, `pnpm typecheck`.
-- D163 in DECISIONS.md, a HANDOFF.md entry, and this file marked built.
+- D164 in DECISIONS.md, a HANDOFF.md entry, and this file marked built.
 - All UI follows DESIGN_SYSTEM.md (D12): existing tokens and components, and motion only on the trail line (200 ms in and out), off when the person prefers reduced motion.
 
 ### Not taking
