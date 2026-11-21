@@ -29,6 +29,7 @@ import { CONTRACT_WORK, SPEC_MAX_ROUNDS, V2_LIMITS, usesHarnessV2 } from "./harn
 import { acceptanceSummary, formatFlowResults, type FlowResult } from "./acceptance";
 import { SPEC_PATH, readSpec, specRequest, type AppSpec } from "./spec";
 import { requestView } from "./request-view";
+import { addTokens, formatTokenReport } from "./token-report";
 import { checkpoint, claimTurn, loadFiles, recordUsage, releaseTurn } from "./store";
 import { decideFunding } from "@/server/credits/cap";
 import { CREDITS_PAUSED_MESSAGE, OutOfCreditsError, ensureHold, fitCall, headroomMicro, worstCaseCallMicro } from "@/server/credits/holds";
@@ -313,6 +314,8 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     // call it was writing (usually a big create_file) was lost.
     let cutOff = false;
     let cutAtLimit = false;
+    /** The step the next model calls serve, for the token report (D162). */
+    let stage = intake ? "plan questions" : input.mode === "plan" ? "plan" : "build";
 
     /** Replay is over: tell the client the turn's state so far, then stream live again. */
     const goLive = () => {
@@ -384,6 +387,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       const addUsage = (u: LoggedUsage) => {
         if (funding === "platform") record.sponsoredMicro = (record.sponsoredMicro ?? 0) + u.chargedMicro;
         else record.chargedMicro += u.chargedMicro;
+        addTokens((record.tokens ??= []), stage, u);
         out({ type: "usage", chargedMicro: funding === "platform" ? 0 : u.chargedMicro, totalChargedMicro: record.chargedMicro, model: u.model, inputTokens: u.inputTokens, outputTokens: u.outputTokens, cachedInputTokens: u.cachedInputTokens });
       };
 
@@ -540,7 +544,10 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
           }
           // Plan mode can't edit; a refused edit attempt isn't worth showing as a failed step.
           const label = input.mode === "plan" ? null : toolLabel(call);
-          if (label) step({ id: stepId, label, status: "running" });
+          // An edit is shown once it has changed a file (D162): a failed edit the builder retries, a refused one
+          // and one that changed nothing are part of the work, not steps the person needs to read.
+          const shownWhenChanged = EDIT_TOOLS.includes(call.name);
+          if (label && !shownWhenChanged) step({ id: stepId, label, status: "running" });
           if (call.name === "run_checks") {
             convo.push({ role: "tool", tool_call_id: call.id, content: await checkForTheBuilder() });
             continue;
@@ -582,7 +589,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
           const kitPaths = call.name === "add_kit" ? Object.keys(kitById(String(args.name ?? "").trim())?.files ?? {}) : [];
           const gated = opts.gate && (EDIT_TOOLS.includes(call.name) || call.name === "add_kit") ? [args.path, args.from, args.to, ...kitPaths].map((p) => (typeof p === "string" ? opts.gate!(p) : null)).find(Boolean) : null;
           if (!gated && !allowed) scopeRefused++;
-          const outcome = gated ? { ok: false, result: `Error: ${gated}` } : allowed ? ws.execute(call.name, call.arguments, input.mode) : { ok: false, result: scopeRefusal(delivery!, job.deliveryIndex!) };
+          const outcome = gated ? { ok: false, result: `Error: ${gated}` } : allowed ? ws.execute(call.name, call.arguments, input.mode) : { ok: false, result: scopeRefusal(delivery!, job.deliveryIndex!, args) };
           const path = String(args.path ?? call.name);
           if (!outcome.ok && ["edit_file", "create_file"].includes(call.name)) {
             const count = (failures.get(path) ?? 0) + 1;
@@ -609,12 +616,13 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
             out({ type: "file", change: outcome.change });
             log(`→ ${outcome.change.op === "delete" ? "deleted" : "wrote"} ${outcome.change.path}`);
           }
-          if (label) {
+          if (!outcome.ok) log(`· ${call.name}${args.path ? ` ${String(args.path)}` : ""} didn't apply: ${outcome.result.replace(/^Error:\s*/, "").split("\n")[0].slice(0, 200)}`);
+          if (label && (!shownWhenChanged || outcome.change)) {
             step({
               id: stepId,
               label,
               status: outcome.ok ? "done" : "error",
-              detail: outcome.ok ? changeDetail(outcome.change) : outcome.result.replace(/^Error:\s*/, "").slice(0, 140),
+              detail: outcome.ok ? changeDetail(outcome.change) : plainToolFailure(outcome.result),
             });
           }
           convo.push({ role: "tool", tool_call_id: call.id, content: outcome.result });
@@ -848,7 +856,9 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       step({ id: "spec", label: "Planning the app", status: "running" });
       tools = SPEC_TOOLS;
       convo.push({ role: "user", content: specRequest(hasContracts, contractsAllowed) });
+      stage = "spec";
       await phase(TIER_FOR.spec, true, { endOn: "write_spec", maxRounds: SPEC_MAX_ROUNDS });
+      stage = "build";
       tools = V2_BUILD_TOOLS;
       const spec = specWritten ? readSpec(ws.files) : null;
       if (!spec) {
@@ -864,7 +874,9 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
         step({ id: "contracts", label: "Writing the contracts", status: "running" });
         log("phase: contracts (strong model)");
         convo.push({ role: "user", content: contractsPhaseMessage(spec) });
+        stage = "contracts";
         await phase(TIER_FOR.contracts, true, { gate: (p) => (p.startsWith("contracts/") ? null : CONTRACTS_ONLY) });
+        stage = "build";
         contractsWritten = true;
         // Compiled now, so the front end imports the real ABI instead of guessing it.
         let detail = "no contract files were written";
@@ -907,14 +919,16 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       // summary and follow-ups instead of an empty message. Tools stay declared (some
       // providers require it once the history has tool calls) but any calls are not run.
       convo.push({ role: "user", content: "Stop editing: you've used all your tool steps for this pass. Reply to the user now, as instructed (suggest_next is the only tool you may still call)." });
+      stage = "reply";
       const extra = await callModel(input.mode === "plan" ? TIER_FOR.plan : TIER_FOR.build, false, true);
+      stage = "build";
       for (const call of extra) {
         if (call.name === "suggest_next") {
           let args: Record<string, unknown> = {};
           try { const parsed = JSON.parse(call.arguments); if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) args = parsed; } catch { /* Workspace reports malformed arguments. */ }
           const allowed = !delivery || job.deliveryIndex === undefined || milestoneAllows(delivery, job.deliveryIndex, call.name, args);
           if (!allowed) scopeRefused++;
-          const outcome = allowed ? ws.execute(call.name, call.arguments, input.mode) : { ok: false, result: scopeRefusal(delivery!, job.deliveryIndex!) };
+          const outcome = allowed ? ws.execute(call.name, call.arguments, input.mode) : { ok: false, result: scopeRefusal(delivery!, job.deliveryIndex!, args) };
           const path = String(args.path ?? call.name);
           if (!outcome.ok && ["edit_file", "create_file"].includes(call.name)) {
             const count = (failures.get(path) ?? 0) + 1;
@@ -967,7 +981,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     }
 
     // The user's house style: no em dashes in what they read (the prompt asks too; models slip).
-    const styled = plainDashes(text);
+    const styled = tidyReply(text);
     if (styled !== text) {
       text = styled;
       out({ type: "text_set", text });
@@ -981,6 +995,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     if (input.mode === "plan" || (!firstBuild && !ws.changed() && !unfinished)) {
       goLive();
       stopIfRequested();
+      for (const line of formatTokenReport(record.tokens ?? [])) log(line);
       record.status = "answered";
       await job.commit(async (tx) => {
         await scopeRefund(tx);
@@ -1038,6 +1053,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       if (v2) log(`· fix attempt ${attempt} on the ${fixWith === "cheap" ? "fast" : "strong"} model (the files' writer)`);
       stepParent = `fix:${attempt}`;
       try {
+        stage = "fix";
         await phase(fixWith, true);
         report = await checkNow(attempt);
       } finally {
@@ -1073,6 +1089,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
         step({ id: "review", label: "Looking at the page", detail: "skipped", status: "done" });
       } else {
         const direction = record.plan?.summary;
+        stage = "review";
         await callModel(TIER_FOR.review, true, false, { messages: [{ role: "user", content: [{ type: "text", text: reviewPrompt({ request: setup.request, direction, pictures }) }, ...shots] }], maxTokens: REVIEW_MAX_TOKENS });
         const verdict = parseReview(sideReply);
         if (!verdict) {
@@ -1091,6 +1108,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
           // What the browser check said about these files, restored with them if the fixes are rolled back.
           const verifiedBefore = { runtimeRan, deliveryVerified, lastAcceptance };
           convo.push({ role: "user", content: reviewFixMessage(verdict.issues) });
+          stage = "visual fix";
           await phase(TIER_FOR.build, true, { gate: uiGate });
           keepTheme();
           const untouched = filesKey(ws.files) === beforeKey;
@@ -1125,6 +1143,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       report = { ...report, ok: false, errors: [...report.errors, { file: "src/App.tsx", source: "runtime", message: !runtimeRan || !deliveryVerified ? "The milestone's browser acceptance has not passed; progress is saved for recovery." : "The first interface is still the starter app." }] };
     }
     await writeContractModules(report);
+    for (const line of formatTokenReport(record.tokens ?? [])) log(line);
     record.checks = { errors: report.errors.length, warnings: report.warnings.length };
     record.status = report.ok ? "ready" : "needs_fix";
     const endStatus = record.status;
@@ -1412,6 +1431,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
         });
         if (funding === "platform") record.sponsoredMicro = (record.sponsoredMicro ?? 0) + cost.chargedMicro;
         else record.chargedMicro += cost.chargedMicro;
+        addTokens((record.tokens ??= []), "memory", ev);
       }
       if (advanced) await tx.update(projects).set({ memory }).where(eq(projects.id, input.projectId));
     });
@@ -1882,6 +1902,13 @@ function toolLabel(call: ToolCall): string | null {
   }
 }
 
+/** What a person reads when a tool didn't work (D162): plain words; the build log keeps the details. */
+export function plainToolFailure(result: string): string {
+  if (/^Refused by the server/.test(result)) return "not part of this step, so it was skipped";
+  if (/isn't on the allowed list/i.test(result)) return "that package isn't available, so the builder uses another way";
+  return "didn't work the first time, so the builder tries another way";
+}
+
 function changeDetail(change?: FileChange): string | undefined {
   if (!change) return undefined;
   if (change.op === "delete") return "removed";
@@ -1904,6 +1931,12 @@ function firstIssue(issues: CheckIssue[]): string {
   const where = `${e.file.split("/").pop()}${e.line ? `:${e.line}` : ""}`;
   const text = e.message.length > 90 ? `${e.message.slice(0, 89)}…` : e.message;
   return `${where} ${text}`;
+}
+
+/** A reply as people read it (D162): no em dashes, and no empty code boxes a model left behind. */
+export function tidyReply(text: string): string {
+  const noEmptyFences = text.replace(/```[\w-]*[ \t]*\n?\s*```/g, "").replace(/\n{3,}/g, "\n\n");
+  return plainDashes(noEmptyFences === text ? text : noEmptyFences.trim());
 }
 
 /** Em dashes in a reply become commas (a spaced or unspaced dash between words). Replies only, never files. */

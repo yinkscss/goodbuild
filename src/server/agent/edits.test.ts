@@ -80,3 +80,24 @@ describe("applyEdits not-found hint", () => {
     }
   });
 });
+
+describe("applyEdits keeps the edits that apply (D162)", () => {
+  it("applies the matching edits and lists only the failed ones", () => {
+    const r = applyEdits("one\ntwo\nthree\n", [
+      { search: "one", replace: "1" },
+      { search: "missing line here", replace: "x" },
+      { search: "three", replace: "3" },
+    ]);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.content).toBe("1\ntwo\n3\n");
+    expect(r.failed).toHaveLength(1);
+    expect(r.failed?.[0]).toMatch(/^Edit 2: "search" text was not found/);
+  });
+
+  it("is an error when no edit applies", () => {
+    const r = applyEdits("one\n", [{ search: "nope", replace: "x" }, { search: "", replace: "y" }]);
+    expect(r.ok).toBe(false);
+    expect(!r.ok && r.error).toMatch(/Edit 1: .*not found[\s\S]*Edit 2: "search" is empty/);
+  });
+});

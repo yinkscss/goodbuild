@@ -11,39 +11,49 @@ export interface SearchReplace {
   replace: string;
 }
 
-export type EditResult = { ok: true; content: string; fuzzy: boolean } | { ok: false; error: string };
+/**
+ * `failed` lists the edits that didn't apply when others did (D162, after GPT Engineer's salvage of good
+ * hunks): the ones that matched are kept, and the model is asked only for the failed ones, instead of
+ * redoing the whole batch. When none apply, the result is an error.
+ */
+export type EditResult = { ok: true; content: string; fuzzy: boolean; failed?: string[] } | { ok: false; error: string };
 
 export function applyEdits(original: string, edits: SearchReplace[]): EditResult {
   if (!edits.length) return { ok: false, error: "No edits given." };
   let content = original;
   let fuzzy = false;
+  const failed: string[] = [];
   for (const [i, edit] of edits.entries()) {
     const label = edits.length > 1 ? `Edit ${i + 1}: ` : "";
-    if (!edit.search) return { ok: false, error: `${label}"search" is empty. Use create_file to write a whole file.` };
+    if (!edit.search) {
+      failed.push(`${label}"search" is empty. Use create_file to write a whole file.`);
+      continue;
+    }
     const exact = countOccurrences(content, edit.search);
     if (exact === 1) {
       content = content.replace(edit.search, () => edit.replace);
       continue;
     }
     if (exact > 1) {
-      return { ok: false, error: `${label}"search" matches ${exact} places. Include more surrounding lines so it's unique.` };
+      failed.push(`${label}"search" matches ${exact} places. Include more surrounding lines so it's unique.`);
+      continue;
     }
     const range = fuzzyFind(content, edit.search);
     if (range === "ambiguous") {
-      return { ok: false, error: `${label}"search" matches several places when whitespace is ignored. Add more context.` };
+      failed.push(`${label}"search" matches several places when whitespace is ignored. Add more context.`);
+      continue;
     }
     if (!range) {
-      return {
-        ok: false,
-        error: `${label}"search" text was not found. Read the file again (read_file) and copy the lines exactly.${nearestHint(content, edit.search)}`,
-      };
+      failed.push(`${label}"search" text was not found. Read the file again (read_file) and copy the lines exactly.${nearestHint(content, edit.search)}`);
+      continue;
     }
     const lines = content.split("\n");
     const replacement = reindent(edit.replace, lines[range.start], edit.search);
     content = [...lines.slice(0, range.start), ...replacement.split("\n"), ...lines.slice(range.end)].join("\n");
     fuzzy = true;
   }
-  return { ok: true, content, fuzzy };
+  if (failed.length === edits.length) return { ok: false, error: failed.join("\n") };
+  return failed.length ? { ok: true, content, fuzzy, failed } : { ok: true, content, fuzzy };
 }
 
 /**

@@ -161,10 +161,10 @@ export function TurnError({ record, onFix, disabled, continueCost }: { record: T
           <span className="mt-1.5 size-2 shrink-0 rounded-full bg-danger" aria-hidden />
           <div>
             <p className="text-sm font-medium">
-              {paused ? "Paused: your credits ran low" : needsFix ? `Auto-fix ${autofix ? autofix.charAt(0).toLowerCase() + autofix.slice(1) : "couldn't fix every error"}` : "This build stopped"}
+              {paused ? "Paused: your credits ran low" : needsFix ? "This build still needs a fix" : "This build stopped"}
             </p>
             <p className="text-sm text-grey-600">
-              {needsFix ? "Your files are saved. Ask for a fix, or describe the change differently." : record.error ?? "Something went wrong."}
+              {needsFix ? `${autofix ? `${autofix}. ` : ""}Your files are saved. Tap Try fix and GoodBuild tries again a different way, or say what you want in your own words.` : record.error ?? "Something went wrong."}
             </p>
             {paused && continueCost && continueCost.needMicro > 0 && (
               <p className={cn("mt-1 text-xs", continueCost.haveMicro !== null && continueCost.haveMicro < continueCost.needMicro ? "text-warning" : "text-grey-600")}>

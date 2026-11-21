@@ -189,9 +189,13 @@ export class Workspace {
         }
         this.files[path] = r.content;
         this.touched.add(path);
+        // Some edits applied and some didn't (D162): keep the good ones, ask again only for the rest.
+        const partly = r.failed?.length
+          ? ` ${edits.length - r.failed.length} of ${edits.length} edits applied and are kept. These didn't apply; read_file ${path} and send only these again:\n${r.failed.join("\n")}`
+          : "";
         return {
           ok: true,
-          result: `Edited ${path}${r.fuzzy ? " (matched ignoring whitespace)" : ""}.`,
+          result: `Edited ${path}${r.fuzzy ? " (matched ignoring whitespace)" : ""}.${partly}`,
           change: { path, op: "edit", ...diffStat(prev, r.content), diff: unifiedDiff(path, prev, r.content) },
         };
       }
