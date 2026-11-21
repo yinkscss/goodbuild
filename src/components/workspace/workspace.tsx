@@ -47,6 +47,8 @@ export function Workspace({ initial }: { initial: WorkspaceState }) {
   // Live files during a turn (once it reports them), otherwise the saved files.
   const files = live?.files ?? state.files;
   const assetUrls = useAssetDataUrls(state.project.id, state.assets);
+  // The newest reply: when it shows the chat's problem card, the preview shows no card of its own (D163).
+  const lastTurn = [...state.messages].reverse().find((m) => m.role === "assistant")?.meta as TurnRecord | null | undefined;
   const latestRecord = [...state.messages].reverse().map((m) => m.meta as TurnRecord | null).find((r) => r?.kind === "turn" && r.contracts?.length);
 
   const previewVersion = live?.record.version ?? state.project.currentVersion;
@@ -159,6 +161,7 @@ export function Workspace({ initial }: { initial: WorkspaceState }) {
             onCaptureFailed={ws.onCaptureFailed}
             onCaptureSkipped={ws.onCaptureSkipped}
             fixDisabled={running}
+            hideErrorNotice={!running && (lastTurn?.status === "needs_fix" || lastTurn?.status === "error")}
           />
         </div>
       </div>
@@ -230,7 +233,7 @@ function VersionMenu({ ws }: { ws: ReturnType<typeof useWorkspace> }) {
             key={v.number}
             disabled={running || v.number === current}
             onSelect={() => {
-              if (window.confirm(`Revert to v${v.number}? Your files go back to that version. The chat and any deployed contracts stay as they are.`)) {
+              if (window.confirm(`Go back to v${v.number}? Your app goes back to how it was then. The chat and any live contracts stay as they are.`)) {
                 void ws.revert(v.number);
               }
             }}

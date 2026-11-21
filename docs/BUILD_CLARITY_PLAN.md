@@ -1,6 +1,6 @@
 # Build clarity plan: what a person sees while GoodBuild builds
 
-Date: 21 Nov 2026 · Written by: Claude · Asked for by: the owner ("be honest... what part can confuse a non-technical person"; "we are supposed to hold them like babies and guide them all step of the way") · Status: **approved by the owner ("build the plan in one PR"), not built yet.** It will be D163.
+Date: 21 Nov 2026 · Written by: Claude · Asked for by: the owner ("be honest... what part can confuse a non-technical person"; "we are supposed to hold them like babies and guide them all step of the way") · Status: **approved by the owner ("build the plan in one PR") and built on 21 Nov 2026 as D163** (see DECISIONS.md for what shipped).
 
 Mock the owner approved: [GoodBuild Build Clarity](https://claude.ai/artifact/Qp4xxF5J7o4oiEXPpkLHsC) (version 3). It plays the same build twice, side by side: today, and the proposal below.
 

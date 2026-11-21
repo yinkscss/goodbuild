@@ -50,6 +50,8 @@ type QueueArgs = {
   userMessageId?: string;
   intake?: boolean;
   retryOfJobId?: string;
+  /** With a retry (D163): what else is wrong, such as the preview's error, added to the saved draft's notes for the builder. */
+  retryNote?: string;
   continueDelivery?: boolean;
   useCredits?: boolean;
   baseVersion?: number;
@@ -193,13 +195,14 @@ export async function startTurn(db: Db, args: QueueArgs, env: Record<string, str
     if (sponsored && key) await tx.insert(buildSponsorships).values({ jobId: job.id, allowanceKey: key, limitMicro: limit });
     if (source) {
       const [draft] = await tx.select().from(buildDrafts).where(eq(buildDrafts.jobId, source.id));
-      if (draft) await tx.insert(buildDrafts).values({ ...draft, jobId: job.id, updatedAt: new Date() });
+      const note = args.retryNote?.trim().slice(0, 3000);
+      if (draft) await tx.insert(buildDrafts).values({ ...draft, jobId: job.id, updatedAt: new Date(), ...(note ? { diagnostics: [draft.diagnostics, note].filter(Boolean).join("\n") } : {}) });
       else if (source.mode === "build" && source.setup?.baseFiles) {
         // Legacy failures predate durable drafts, but their committed tool responses can recover edits.
         const workspace = new Workspace(source.setup.baseFiles as Record<string, string>);
         const calls = await tx.select().from(turnJobCalls).where(eq(turnJobCalls.jobId, source.id)).orderBy(asc(turnJobCalls.idx));
         for (const row of calls) for (const call of (row.data as unknown as LoggedCall).toolCalls) workspace.execute(call.name, call.arguments, "build");
-        await tx.insert(buildDrafts).values({ jobId: job.id, projectId: project.id, baseVersion: project.currentVersion, files: workspace.files, diagnostics: source.error ?? "" });
+        await tx.insert(buildDrafts).values({ jobId: job.id, projectId: project.id, baseVersion: project.currentVersion, files: workspace.files, diagnostics: [source.error ?? "", note ?? ""].filter(Boolean).join("\n") });
       }
     }
     return { job };

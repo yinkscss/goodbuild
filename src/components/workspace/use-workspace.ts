@@ -3,7 +3,7 @@
 import * as React from "react";
 
 import { applyTurnEvent, emptyTurn, type LiveTurn } from "@/lib/live-turn";
-import { AUTO_FIX_LEAD, previewFixPrompt, shouldAutoFix, type PreviewError } from "@/lib/preview-errors";
+import { AUTO_FIX_LEAD, isInfraError, previewFixPrompt, shouldAutoFix, type PreviewError } from "@/lib/preview-errors";
 import { backoffMs, createJobStreamParser } from "@/lib/job-stream";
 import { SKIP_PLAN_TEXT } from "@/lib/plan";
 import type { PlanAnswer, TurnMode, TurnRecord } from "@/lib/turn-types";
@@ -20,8 +20,14 @@ export interface UseWorkspace {
   send: (prompt: string, mode: TurnMode, opts?: { skipPlan?: boolean }) => void;
   /** Stop the running turn and cancel queued follow-ups. */
   stop: () => Promise<void>;
-  retry: (jobId: string, useCredits?: boolean) => void;
-  paidRetryJobId: string | null;
+  /**
+   * Continue a failed build from its saved files (D163). `note` tells the builder what else is wrong (the
+   * preview's crash). When GoodBuild's repair allowance doesn't cover it, it runs on credits, as the cost beside
+   * the prompt box said; there is no second question.
+   */
+  retry: (jobId: string, useCredits?: boolean, note?: string) => void;
+  /** The preview's latest crash since the last message, for the one problem card (D163). */
+  previewError: PreviewError | null;
   /** Save one answer to the plan's questions (D32). */
   answerPlan: (messageId: string, questionId: string, answer: PlanAnswer) => void;
   /** Leave the plan and build now, with whatever has been answered so far. */
@@ -114,7 +120,7 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
   const [live, setLive] = React.useState<LiveTurn | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [needsCredits, setNeedsCredits] = React.useState(false);
-  const [paidRetryJobId, setPaidRetryJobId] = React.useState<string | null>(null);
+  const [previewError, setPreviewError] = React.useState<PreviewError | null>(null);
   const projectId = initial.project.id;
   const [autoFixVersion, setAutoFixVersion] = React.useState<number | null>(null);
   const [checkVersion, setCheckVersion] = React.useState<number | null>(null);
@@ -137,6 +143,8 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
     async (body: { mode: TurnMode; prompt?: string; userMessageId?: string; skipPlan?: boolean; assetIds?: string[] }) => {
       setError(null);
       setCheckFailed(null);
+      // A new message answers whatever the preview showed; a crash after it is shown again.
+      setPreviewError(null);
       if (body.prompt) {
         const prompt = body.prompt;
         const sent = new Set(body.assetIds ?? []);
@@ -171,18 +179,24 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
     [projectId, refresh],
   );
 
-  const retry = React.useCallback((jobId: string, useCredits = false) => {
+  const retry = React.useCallback((jobId: string, useCredits = false, note?: string) => {
     sending.current = sending.current.then(async () => {
       setError(null);
+      setPreviewError(null);
       try {
-        const res = await fetch(`/api/projects/${projectId}/turns/${jobId}/retry`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ useCredits }) });
+        const post = (paid: boolean) => fetch(`/api/projects/${projectId}/turns/${jobId}/retry`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ useCredits: paid, ...(note ? { note: note.slice(0, 3000) } : {}) }) });
+        let res = await post(useCredits);
+        let body = res.ok ? {} : await res.json().catch(() => ({})) as { message?: string; error?: string };
+        // The repair allowance doesn't cover it: run on credits, as the cost beside the prompt box said (D163, owner).
+        if (!res.ok && !useCredits && body.error === "funding_unavailable") {
+          res = await post(true);
+          body = res.ok ? {} : await res.json().catch(() => ({})) as { message?: string; error?: string };
+        }
         if (!res.ok) {
-          const body = await res.json().catch(() => ({})) as { message?: string; error?: string };
-          setError(body.message ?? "Couldn't resume this build. Reload and try again.");
-          if (body.error === "funding_unavailable") { setPaidRetryJobId(jobId); setNeedsCredits(false); }
-          else if (res.status === 402) setNeedsCredits(true);
-        } else { setNeedsCredits(false); setPaidRetryJobId(null); }
-      } catch { setError("Couldn't reach GoodBuild. Your saved progress is safe."); }
+          if (res.status === 402) setNeedsCredits(true);
+          else setError(body.message ?? "Couldn't pick up this build. Reload and try again.");
+        } else setNeedsCredits(false);
+      } catch { setError("Couldn't reach GoodBuild. Your files are saved."); }
       await refresh().catch(() => undefined);
     });
   }, [projectId, refresh]);
@@ -382,6 +396,7 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
   /** The preview reported an error: fix it automatically once, if policy allows (P17). */
   const onPreviewError = React.useCallback(
     (error: PreviewError, version: number) => {
+      if (!isInfraError(error)) setPreviewError(error);
       if (!shouldAutoFix({ error, version, eligibleVersion: autoFixVersion, running: Boolean(attached.current) || state.jobs.length > 0 })) return;
       setAutoFixVersion(null);
       void enqueue({ mode: "build", prompt: previewFixPrompt(error, true) });
@@ -433,7 +448,7 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
     running: (Boolean(live) && live?.phase === "running") || state.jobs.length > 0,
     send,
     retry,
-    paidRetryJobId,
+    previewError,
     stop,
     answerPlan,
     skipPlan,

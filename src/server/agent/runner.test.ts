@@ -182,6 +182,11 @@ describe("runTurn", { timeout: 120_000 }, () => {
     expect(record.version).toBe(1);
     expect(record.contracts?.map((c) => c.name)).toEqual(["TipJar"]);
     expect(record.plan?.steps).toHaveLength(2);
+    // D163: each step knows its plan step. TipJar.sol matches "Write TipJar.sol"; the checks after the build are
+    // GoodBuild's own last step (index 2, the plan's length).
+    expect(record.steps.find((s) => s.label === "Writing TipJar.sol")?.plan).toBe(0);
+    expect(record.steps.find((s) => s.id === "autofix")?.plan).toBe(2);
+    expect(record.steps.find((s) => s.id === "plan")?.plan).toBeUndefined();
     // D19: the build runs on the cheap model; fix attempts go to the strong one.
     expect(requests.map((r) => r.tier)).toEqual(["cheap", "cheap", "strong", "strong"]);
     expect(record.steps.find((s) => s.id === "fix:1")).toMatchObject({ status: "done" });

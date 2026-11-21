@@ -138,6 +138,7 @@ export function PreviewPanel({
   contracts,
   onFix,
   fixDisabled,
+  hideErrorNotice = false,
   onRuntimeError,
   checkVersion,
   onCaptured,
@@ -159,6 +160,8 @@ export function PreviewPanel({
   contracts: Array<{ name: string; file: string; bytecodeBytes: number }>;
   onFix: (prompt: string) => void;
   fixDisabled: boolean;
+  /** The chat's problem card is showing and carries the preview's crash (D163): no second card here. */
+  hideErrorNotice?: boolean;
 }) {
   const [tab, setTab] = React.useState<Tab>("preview");
   const [device, setDevice] = React.useState<"desktop" | "mobile">("desktop");
@@ -272,9 +275,9 @@ export function PreviewPanel({
           {tab === "contract" && <ContractView files={files} solFiles={solFiles} contracts={contracts} />}
         </div>
         {engine === "own" ? (
-          ownError && <PreviewErrorNotice error={ownError} onFix={onFix} fixDisabled={fixDisabled} onDismiss={() => setOwnError(null)} />
+          ownError && !hideErrorNotice && <PreviewErrorNotice error={ownError} onFix={onFix} fixDisabled={fixDisabled} onDismiss={() => setOwnError(null)} />
         ) : (
-          <ErrorWatcher onFix={onFix} fixDisabled={fixDisabled} onRuntimeError={onRuntimeError} onInfraError={sandpackFailed} />
+          <ErrorWatcher hideNotice={hideErrorNotice} onFix={onFix} fixDisabled={fixDisabled} onRuntimeError={onRuntimeError} onInfraError={sandpackFailed} />
         )}
         {engine === "sandpack" && onCaptured && <VisualCheckRunner version={version} checkVersion={checkVersion ?? null} visible={tab === "preview"} container={frameRef} onCaptured={onCaptured} onFailed={onCaptureFailed} />}
       </SandpackProvider>
@@ -478,11 +481,13 @@ function VisualCheckRunner({
 function ErrorWatcher({
   onFix,
   fixDisabled,
+  hideNotice = false,
   onRuntimeError,
   onInfraError,
 }: {
   onFix: (prompt: string) => void;
   fixDisabled: boolean;
+  hideNotice?: boolean;
   /** Called once per error shown; the workspace decides whether to auto-fix. */
   onRuntimeError?: (error: PreviewError) => void;
   /** The bundler or a CDN failed, not the app: the workspace switches to its own build. */
@@ -513,7 +518,7 @@ function ErrorWatcher({
     });
   }, [listen]);
 
-  if (!error) return null;
+  if (!error || hideNotice) return null;
   return <PreviewErrorNotice error={error} onFix={onFix} fixDisabled={fixDisabled} onDismiss={() => setError(null)} />;
 }
 

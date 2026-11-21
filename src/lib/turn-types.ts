@@ -20,6 +20,8 @@ export interface Step {
   status: "running" | "done" | "error";
   /** The step this one is part of (a fix attempt's edits and checks): shown indented under it. */
   parent?: string;
+  /** The plan step this work is for (D163): an index into the turn's plan, or the plan's length for "checking it works". */
+  plan?: number;
 }
 
 /** One answer choice on a plan question. For a palette question the id is the palette's id. */
@@ -131,6 +133,8 @@ export interface TurnRecord {
   jobId?: string;
   draftSaved?: boolean;
   delivery?: { title: string; remaining: string[]; demo: boolean };
+  /** A milestone build's end, in plain words (D163): what works now, what doesn't yet, and the next step. */
+  outcome?: { works: string; notYet?: string; next?: string };
   status: "ready" | "needs_fix" | "answered" | "error" | "stopped";
   checks?: { errors: number; warnings: number };
   contracts?: Array<{ name: string; file: string; bytecodeBytes: number }>;

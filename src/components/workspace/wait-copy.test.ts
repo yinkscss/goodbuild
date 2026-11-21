@@ -17,8 +17,9 @@ describe("wait copy", () => {
   it("puts technical step names in plain words and leaves others alone", () => {
     expect(plainStepLabel("Writing SavingsCircle.sol")).toBe("Writing your contract");
     expect(plainStepLabel("Compiling with solc 0.8.28")).toBe("Building your contract");
-    expect(plainStepLabel("Fixing errors (attempt 2 of 3)")).toBe("Fixing a problem (try 2 of 3)");
-    expect(plainStepLabel("Writing App.tsx")).toBe("Writing App.tsx");
+    expect(plainStepLabel("Fixing errors (attempt 2 of 3)")).toBe("Fixing a small thing it found");
+    expect(plainStepLabel("Writing App.tsx")).toBe("Building the main screen");
+    expect(plainStepLabel("Checking the app")).toBe("Checking the app");
   });
 
   it("formats the clock", () => {

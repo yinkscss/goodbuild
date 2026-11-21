@@ -2,6 +2,15 @@
 
 Written 4 Nov 2026 at the end of the first build session (claude.ai), for whoever continues in Claude Code. Read CLAUDE.md and docs/BUILD_PROMPT_STAGE1.md first; this file only covers where things stand.
 
+## What a person sees while it builds (21 Nov 2026, D163, branch `claude/wizardly-mendel-yayvkq`)
+Plan: [BUILD_CLARITY_PLAN.md](BUILD_CLARITY_PLAN.md). Mock: [GoodBuild Build Clarity](https://claude.ai/artifact/Qp4xxF5J7o4oiEXPpkLHsC).
+- **Checklist:** in Build mode, the plan shows as a checklist with GoodBuild's own last step, and one trail line under the working step that fades when that part is done (`PlanProgress`, `TrailLine` in `turn-view.tsx`; `Step.plan`, `planStepFor` in `runner.ts`).
+- **Plain words:** steps (`src/lib/plain-steps.ts`), errors and milestone names (`src/lib/plain-words.ts`). Milestones end with "Works now / Not yet / Next" (`record.outcome`).
+- **One problem card, one button, "Fix it for me":** it retries from the saved files with the preview's crash as a `note`. A retry the repair allowance doesn't cover runs on credits straight away; the cost shows only beside the prompt box.
+- **Undo this change** on the newest build. **What GoodBuild remembers** is listed under the chat, each item with Forget.
+- **No migration.** Turns saved before have no `Step.plan`, and keep plain step rows.
+- **To check after deploy:** on a few real builds, does the checklist move through the steps, or stay on step 1 until the checks? Name matching is UNVERIFIED.
+
 ## The builder fixes its own mistakes and spends fewer tokens (21 Nov 2026, D162, branch `claude/elegant-pasteur-j73em3`)
 After the failed savings-goals run. Plan: [BUILDER_RELIABILITY_PLAN.md](BUILDER_RELIABILITY_PLAN.md).
 - **Tokens:** every build's log ends with a token report by step and model, also saved on the turn.

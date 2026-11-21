@@ -306,3 +306,19 @@ code {
 @media (prefers-reduced-motion: reduce) {
   .gb-burst { display: none; }
 }
+
+/* The build's trail line (D163): what it's doing now slides in, and fades up and out when that part is done. */
+@keyframes gb-trail-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes gb-trail-out {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translateY(-6px); }
+}
+.gb-trail-in { animation: gb-trail-in 200ms cubic-bezier(.2,.8,.2,1) both; }
+.gb-trail-out { animation: gb-trail-out 200ms cubic-bezier(.2,.8,.2,1) 300ms both; }
+@media (prefers-reduced-motion: reduce) {
+  .gb-trail-in { animation: none; }
+  .gb-trail-out { animation: none; opacity: 0; }
+}

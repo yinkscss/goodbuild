@@ -57,6 +57,8 @@ export interface WorkspaceState {
   /** Paid credit plus free AI left, in micro-USD (null when the ledger is unreadable). Shown in the header chip. */
   availableMicro: number | null;
   jobs: Array<{ id: string; status: "queued" | "running"; userMessageId: string; assistantMessageId: string | null; mode: string }>;
+  /** What GoodBuild remembers about this app (D163): the memory's decisions, which the person can remove. */
+  remembered?: string[];
 }
 
 /** Everything the workspace needs to render, for the page and for reloads after a turn. */
@@ -102,6 +104,7 @@ export async function workspaceState(db: Db, projectId: string, ownerId: string)
     upgradableContracts: contracts.upgradable,
     offerVerification: await shouldOfferVerification(db, ownerId),
     freePolicy: freePolicy(process.env),
+    remembered: ((project.memory as { decisions?: string[] } | null)?.decisions ?? []).slice(0, 15),
     availableMicro: await availableMicro(db, ownerId, (await getCredits(ownerId, db)).balanceMicro),
     estimate: {
       buildMicro: estimateTurnMicro({ mode: "build", contextChars, firstBuild }, firstBuild ? MODEL_IDS[TIER_FOR.build] : undefined),
