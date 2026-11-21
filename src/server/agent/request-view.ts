@@ -17,9 +17,16 @@ const TAIL_CHARS = 1_500;
  * Pure and deterministic: the conversation itself is never changed, so a resumed turn's saved calls still
  * line up, and the trimmed prefix stays byte-identical for a whole phase, so the prompt cache keeps hitting.
  */
-export function requestView(convo: ChatMessage[], boundary: number): ChatMessage[] {
-  if (boundary <= 0) return convo;
+export function requestView(convo: ChatMessage[], boundary: number, options: { dropImages?: boolean } = {}): ChatMessage[] {
+  if (boundary <= 0 && !options.dropImages) return convo;
   return convo.map((m, i) => {
+    // Design references (D162): sent to the spec step and the first front-end call, then their text
+    // description in the Uploaded assets list stands in, instead of re-sending each picture on every call.
+    if (options.dropImages && m.role === "user" && Array.isArray(m.content) && m.content.some((p) => p.type === "image")) {
+      const count = m.content.filter((p) => p.type === "image").length;
+      const text = m.content.filter((p) => p.type === "text");
+      return { ...m, content: [...text, { type: "text" as const, text: `[${count === 1 ? "A design reference picture was" : `${count} design reference pictures were`} shown earlier in this build. Its description is in the Uploaded assets list: keep following it.]` }] };
+    }
     if (i >= boundary) return m;
     if (m.role === "assistant" && m.tool_calls?.length) {
       let changed = false;
@@ -56,4 +63,16 @@ function trimArgs(name: string, raw: string): string {
     return JSON.stringify({ path: args.path, edits: [{ search: `[${args.edits.length} earlier edit${args.edits.length === 1 ? "" : "s"}]`, replace: `[applied earlier in this turn; read_file ${path} for its current text]` }] });
   }
   return raw;
+}
+
+/** A check's or a search's result longer than this keeps its start and end when it arrives (D162, after Codex). */
+const ARRIVE_MAX_CHARS = 8_000;
+const ARRIVE_HEAD = 5_000;
+const ARRIVE_TAIL = 2_500;
+
+/** Long check output as it is recorded: the start (the first problems) and the end (the summary). */
+export function capResult(text: string): string {
+  if (text.length <= ARRIVE_MAX_CHARS) return text;
+  const cut = text.length - ARRIVE_HEAD - ARRIVE_TAIL;
+  return `${text.slice(0, ARRIVE_HEAD)}\n[... ${cut} characters cut: fix the problems above first, then check again ...]\n${text.slice(-ARRIVE_TAIL)}`;
 }

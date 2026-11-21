@@ -11,8 +11,9 @@ import { checkContracts, pathProblem } from "./checks";
 import { scriptedModel } from "./fake-model";
 import { V2_LIMITS, setV1HarnessForTests, usesHarnessV2 } from "./harness";
 import { toSdkMessages, type ChatMessage } from "./model";
-import { requestView } from "./request-view";
-import { fixTierByWriter, runTurn, wantsSpec } from "./runner";
+import { capResult, requestView } from "./request-view";
+import { changesSince, fixContext } from "./focused";
+import { fixTierByWriter, repeatedEditNote, runTurn, wantsSpec } from "./runner";
 import { SPEC_PATH, parseSpec, readSpec } from "./spec";
 import { loadFiles } from "./store";
 import { Workspace } from "./workspace";
@@ -241,7 +242,13 @@ describe("runTurn with harness v2", { timeout: 120_000 }, () => {
     expect(toolResults(2).filter((c) => c.includes("This is the contracts phase")).length).toBe(2);
     expect(toolResults(5)).toContain("Error: write_spec isn't available in this step.");
     // The spec step's tools don't include the checks, and they are refused before they run.
-    expect(toolResults(1)).toContain("Error: run_checks isn't available in this step.");
+    expect(toolResults(4)).toContain("Error: run_checks isn't available in this step.");
+    // The contracts phase has a conversation of its own (D162): the request's context and its task, not the spec step's rounds.
+    expect(toolResults(1)).toEqual([]);
+    expect(requests[1].messages.map((m) => m.role)).toEqual(["system", "user", "user"]);
+    expect(String(requests[1].messages.at(-1)?.content)).toMatch(/^CONTRACTS\./);
+    // The front end doesn't re-read the contract work: it continues the build's own conversation.
+    expect(requests[4].messages.some((m) => m.role === "assistant" && m.tool_calls?.some((c) => c.function.name === "run_tests"))).toBe(false);
     // run_tests compiled the contract; the front end was told the ABI is ready; open_app showed the page.
     expect(toolResults(3).some((c) => c.includes("Compiled TipJar with no errors"))).toBe(true);
     expect(String(requests[4].messages.at(-1)?.content)).toContain('import { <Name>Abi, <Name>Address } from "./contracts" for TipJar');
@@ -376,5 +383,163 @@ describe("acceptance flows in a v2 build (D152 PR 2)", { timeout: 120_000 }, () 
     const record = await runTurn({ db, model: client, runCheck: flowCheck }, { projectId, userId, mode: "build", userMessageId: queuedId }, () => {});
     expect(record.status).toBe("ready");
     expect(seen).toEqual([]);
+  });
+});
+
+describe("fixes in a v2 build (D162)", { timeout: 120_000 }, () => {
+  let db: Db;
+  let userId: string;
+  let projectId: string;
+  let queuedId: string;
+  const spec = { ...SPEC, contracts: [] };
+  const broken = 'import { Missing } from "./Missing";\nexport default function App() { return <main><Missing /></main>; }\n';
+  const fixed = "export default function App() { return <main><h1>Tips</h1></main>; }\n";
+
+  beforeEach(async () => {
+    db = await createTestDb();
+    const user = await signInUser(db, { wallet: ADMIN, walletKind: "external", attestation: { ageOk: true, notUsPerson: true } });
+    userId = user.id;
+    const p = await createProjectFromPrompt(db, userId, { prompt: "A tip jar for our football club", network: "celo-sepolia" });
+    projectId = p.id;
+    const [m] = await db.select().from(messages).where(eq(messages.projectId, projectId));
+    queuedId = m.id;
+    setV1HarnessForTests(false);
+  });
+  afterEach(() => setV1HarnessForTests(true));
+
+  it("fixes in a conversation of its own: the problems and the files they name, numbered", async () => {
+    const { client, requests } = scriptedModel([
+      { tools: [{ name: "write_spec", args: spec }] },
+      { tools: [{ name: "create_file", args: { path: "src/App.tsx", content: broken } }] },
+      { text: "Built the page." },
+      { tools: [{ name: "create_file", args: { path: "src/App.tsx", content: fixed } }] },
+      { text: "Fixed the import." },
+    ]);
+    const record = await runTurn({ db, model: client }, { projectId, userId, mode: "build", userMessageId: queuedId }, () => {});
+    expect(record.status).toBe("ready");
+    const fix = requests[3];
+    expect(fix.messages.map((m) => m.role)).toEqual(["system", "user"]);
+    expect(fix.messages[0].content).toBe(requests[1].messages[0].content);
+    const context = String(fix.messages[1].content);
+    expect(context).toMatch(/^FIX\. GoodBuild built this app/);
+    expect(context).toContain("The person asked for:");
+    expect(context).toContain(`The plan for the app: ${spec.summary}`);
+    expect(context).toContain('=== src/App.tsx ===');
+    expect(context).toContain('1| import { Missing } from "./Missing";');
+    // The token report (D162): every call counted under its step.
+    expect(record.tokens?.map((r) => r.step)).toEqual(expect.arrayContaining(["spec", "build", "fix"]));
+    expect(record.log.some((l) => l.startsWith("tokens by step: "))).toBe(true);
+  });
+
+  it("tries another way, fresh, when the same problem comes back, and stops after that", async () => {
+    const stillBroken = broken.replace("<main>", "<main className=\"p-4\">");
+    const { client, requests } = scriptedModel([
+      { tools: [{ name: "write_spec", args: spec }] },
+      { tools: [{ name: "create_file", args: { path: "src/App.tsx", content: broken } }] },
+      { text: "Built the page." },
+      { tools: [{ name: "create_file", args: { path: "src/App.tsx", content: stillBroken } }] },
+      { text: "Tried a fix." },
+      { tools: [{ name: "create_file", args: { path: "src/App.tsx", content: fixed } }] },
+      { text: "Fixed it another way." },
+    ]);
+    const record = await runTurn({ db, model: client }, { projectId, userId, mode: "build", userMessageId: queuedId }, () => {});
+    expect(record.status).toBe("ready");
+    expect(record.log).toContain("! the same errors came back after a fix; trying once more, another way");
+    const retry = String(requests[5].messages[1].content);
+    expect(requests[5].messages.map((m) => m.role)).toEqual(["system", "user"]);
+    expect(retry).toContain("Your last attempt didn't fix these problems");
+    expect(retry).toContain('+export default function App() { return <main className="p-4">');
+    expect(record.steps.find((s) => s.id === "fix:2")).toMatchObject({ status: "done", detail: "all checks pass" });
+  });
+
+  it("gives type errors one fix, then finishes the build with them noted", async () => {
+    const typeCheck = async (files: Record<string, string>) => ({
+      ran: true,
+      issues: files["src/App.tsx"]?.includes("count={") ? [{ file: "src/App.tsx", line: 1, source: "types" as const, message: "Property 'count' does not exist on type 'IntrinsicAttributes'." }] : [],
+      note: "checked",
+      ms: 1,
+    });
+    const typed = 'function Badge() { return <span>1</span>; }\nexport default function App() { return <main><Badge count={2} /></main>; }\n';
+    const { client, requests } = scriptedModel([
+      { tools: [{ name: "write_spec", args: spec }] },
+      { tools: [{ name: "create_file", args: { path: "src/App.tsx", content: typed } }] },
+      { text: "Built the page." },
+      { tools: [{ name: "create_file", args: { path: "src/App.tsx", content: typed.replace("<main>", "<main className=\"p-2\">") } }] },
+      { text: "Tried." },
+    ]);
+    const record = await runTurn({ db, model: client, typeCheck }, { projectId, userId, mode: "build", userMessageId: queuedId }, () => {});
+    expect(record.status).toBe("ready");
+    // One fix attempt had the type error; it was not fixed, and the build still finished.
+    expect(requests).toHaveLength(5);
+    expect(String(requests[3].messages[1].content)).toContain("Property 'count' does not exist");
+    expect(record.steps.some((s) => s.id === "fix:2")).toBe(false);
+    expect(record.checks).toEqual({ errors: 0, warnings: 0 });
+  });
+});
+
+describe("what v2 sends (D162)", () => {
+  it("sends design pictures until told to drop them, then a note", () => {
+    const convo: ChatMessage[] = [
+      { role: "system", content: "s" },
+      { role: "user", content: [{ type: "text", text: "context" }, { type: "image", data: "AAAA", mediaType: "image/png" }] },
+    ];
+    expect(requestView(convo, 1)).toEqual(convo);
+    const dropped = requestView(convo, 1, { dropImages: true });
+    const parts = dropped[1].content as Array<{ type: string; text?: string }>;
+    expect(parts.map((p) => p.type)).toEqual(["text", "text"]);
+    expect(parts[1].text).toMatch(/design reference picture was shown earlier/);
+  });
+
+  it("cuts long check output as it arrives and keeps its ends", () => {
+    const long = `first problem\n${"x".repeat(20_000)}\nsummary at the end`;
+    const out = capResult(long);
+    expect(out.length).toBeLessThan(8_200);
+    expect(out.startsWith("first problem")).toBe(true);
+    expect(out.endsWith("summary at the end")).toBe(true);
+    expect(capResult("short")).toBe("short");
+  });
+
+  it("reads a very long file a part at a time", () => {
+    const big = Array.from({ length: 2_000 }, (_, i) => `const line${i} = ${i};`).join("\n");
+    const ws = new Workspace({ "src/Big.ts": big, "src/App.tsx": APP }, { v2: true });
+    const whole = ws.execute("read_file", JSON.stringify({ path: "src/Big.ts" }), "build");
+    expect(whole.result.length).toBeLessThan(17_000);
+    expect(whole.result).toContain("2000 lines in all");
+    const part = ws.execute("read_file", JSON.stringify({ path: "src/Big.ts", start_line: 1990, end_line: 2000 }), "build");
+    expect(part.result).toContain("const line1999 = 1999;");
+  });
+
+  it("shows a long file's first lines, not all of it, after a repeated failed edit", () => {
+    const big = Array.from({ length: 900 }, (_, i) => `const line${i} = ${i};`).join("\n");
+    const note = repeatedEditNote(big, true);
+    expect(note).toContain("The file has 900 lines");
+    expect(note.length).toBeLessThan(5_000);
+    expect(repeatedEditNote("short file", true)).toContain("Current file:\nshort file");
+  });
+});
+
+describe("focused fix context (D162)", () => {
+  it("names what the last attempt changed when it starts again another way", () => {
+    const files = { "src/App.tsx": "new line\n", "src/Other.tsx": "x\n" };
+    const text = fixContext({
+      request: "A tip jar",
+      issues: "- src/App.tsx: [imports] ./Missing doesn't exist",
+      errors: [{ file: "src/App.tsx", source: "imports", message: "./Missing doesn't exist" }],
+      files,
+      before: { "src/App.tsx": "old line\n", "src/Other.tsx": "x\n" },
+    });
+    expect(text).toContain("Your last attempt didn't fix these problems");
+    expect(text).toContain("-old line");
+    expect(text).toContain("+new line");
+    expect(text).toContain("src/Other.tsx");
+    expect(changesSince({ a: "1" }, { a: "1" })).toBe("Nothing: it changed no files.");
+  });
+
+  it("names a file too long for its budget instead of sending it", () => {
+    const huge = "y\n".repeat(30_000);
+    const files = { "src/A.tsx": huge, "src/B.tsx": huge, "src/C.tsx": huge };
+    const text = fixContext({ request: "x", issues: "-", errors: ["src/A.tsx", "src/B.tsx", "src/C.tsx"].map((file) => ({ file, source: "types" as const, message: "m" })), files });
+    expect(text.length).toBeLessThan(45_000);
+    expect(text).toMatch(/Also named, not shown \(too long to include\): src\/C\.tsx/);
   });
 });

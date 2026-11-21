@@ -6,23 +6,20 @@ import type { FileChange } from "@/lib/turn-types";
  * phone and computer width, the strong model reads both and lists what a person would call broken
  * or unfinished, and the build model fixes that list in one pass.
  *
- * Why the strong model reviews and the cheap one fixes: reading two pictures costs about a cent on
- * the strong model, and the cheap model's own reviews were measured raising problems that weren't
- * there (HARNESS.md, "Weak spot"), which is harmless while a person decides and expensive once the
- * list goes straight to a fix. Writing is where the cheap model is cheap.
+ * DeepSeek looks and fixes (D162, owner, 21 Nov 2026), with thinking off and the pictures at high detail.
+ * It used to be Sonnet because DeepSeek's own reviews raised problems that weren't there (HARNESS.md,
+ * "Weak spot"). The guards for that: at most three problems, each naming the screen and the place, the
+ * false reports seen before listed as things not to report, one fix pass, and that pass undone if it
+ * breaks a check.
  *
  * It replaces the check in the person's browser (P17) for the builds it runs on: that one needed
  * the tab open and the in-browser preview, and never changed anything.
  */
 
-/** Off unless the server says so, like the run check: it spends money on every build it looks at. */
-export function reviewEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
-  return env.VISUAL_REVIEW === "1" || env.VISUAL_REVIEW === "on";
-}
-
-export const MAX_REVIEW_ISSUES = 5;
-/** Enough for five short problems as JSON. */
-export const REVIEW_MAX_TOKENS = 700;
+/** At most three (D162): the worst problems are what a cheap reviewer gets right; a long list is where it guesses. */
+export const MAX_REVIEW_ISSUES = 3;
+/** Enough for three short problems as JSON. */
+export const REVIEW_MAX_TOKENS = 600;
 /** A later turn is looked at only when it changed at least this many lines of what people see. */
 export const REVIEW_MIN_CHANGED_LINES = 60;
 
@@ -49,7 +46,7 @@ On the start screen, expect the game area drawn (not an empty or one-colour box)
     : `These are two screenshots of a web app GoodBuild just built: the first is 375px wide (a phone), the second 1280px wide (a computer). Each shows the page from the top, about 1,500px down. The person asked for: "${args.request.slice(0, 600)}".${direction}
 `;
   return `${what}
-Look at them the way a careful designer looks at a build before it ships, and list what a person would call broken or unfinished. Only things you can SEE, and only things one edit could fix:
+Look at them the way a careful designer looks at a build before it ships, and list what a person would call broken or unfinished. Only things you can clearly SEE in these pictures, and only things one edit could fix. When you are not sure, it is not a problem: reply {"ok": true}.
 - broken layout: elements that overlap, are cut off, spill off the side of the phone, or leave a large empty gap that is clearly a mistake;
 - text that is hard to read: low contrast against its background, text over a busy area, text smaller than about 12px on the phone;
 - the phone: anything that only works on the wide screen (a row that doesn't stack, a table that doesn't fit, buttons too small to tap);
@@ -61,11 +58,16 @@ These screenshots were taken with no network, no wallet and no blockchain, so do
 - web fonts are replaced by the system font;
 - numbers from a contract show as loading shapes, dashes or zeros, and there may be notices such as "Deploy the contract to go live", "No network" or a failed-to-load message;
 - a "Connect wallet" button, and sample values that are labelled as examples;
-- anything further down the page than these screenshots reach.
+- anything further down the page than these screenshots reach;
+- patterns, gradients, shapes or icons standing in for photos: they are a design choice, not missing images;
+- wording that differs from the person's request, or an instruction in the request (such as a colour they named) that you think wasn't followed, unless the result is plainly unreadable;
+- a part of the request that belongs on another page or screen than the one shown.
 Don't report taste (you would have picked another colour or font) and don't ask for new features.
 
-Reply with JSON only, no code fence: {"ok": true} when nothing needs fixing, or {"ok": false, "issues": ["which screen (phone, computer or both), where on the page, what is wrong, and what to change", ...]} with at most ${MAX_REVIEW_ISSUES} issues, the worst first.`;
+Reply with JSON only, no code fence: {"ok": true} when nothing needs fixing, or {"ok": false, "issues": ["which screen (phone, computer or both), where on the page, what is wrong, and what to change", ...]} with at most ${MAX_REVIEW_ISSUES} issues, the worst first. Each issue must start with "phone:", "computer:" or "both:".`;
 }
+
+const NAMES_SCREEN = /\b(phone|computer|both|mobile|desktop|start screen|game|play)\b/i;
 
 /** The reviewer's reply as a verdict, or null when it can't be used (then nothing is changed). */
 export function parseReview(text: string): { ok: boolean; issues: string[] } | null {
@@ -79,6 +81,8 @@ export function parseReview(text: string): { ok: boolean; issues: string[] } | n
       ? j.issues
           .map((s) => String(s ?? "").replace(/\s*—\s*/g, ", ").replace(/\s+/g, " ").trim().slice(0, 320))
           .filter(Boolean)
+          // An issue that doesn't say which screen it is on is a guess (D162): it is dropped.
+          .filter((i) => NAMES_SCREEN.test(i))
           .slice(0, MAX_REVIEW_ISSUES)
       : [];
     // "Not ok" with nothing named can't be acted on, and "ok" with a list is a list.

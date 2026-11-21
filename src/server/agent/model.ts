@@ -12,16 +12,20 @@ export type ModelTier = "strong" | "cheap";
  * Which tier each kind of work uses (D19). DeepSeek writes the first pass; Claude fixes what
  * the checks reject. Moving follow-up edits to Claude later is one line: build for edits.
  */
-export const TIER_FOR = { plan: "cheap", build: "cheap", fix: "strong", testFix: "cheap", review: "strong", spec: "strong", contracts: "strong" } as const satisfies Record<string, ModelTier>;
+export const TIER_FOR = { plan: "cheap", build: "cheap", fix: "strong", testFix: "cheap", review: "cheap", spec: "strong", contracts: "strong" } as const satisfies Record<string, ModelTier>;
 /** `testFix`: first auto-fix attempt when every failing check is a contract test (D19 amendment). Later attempts use `fix`. */
-/** `review`: reading the screenshots of a finished build (D87). What it finds is fixed on `build`. */
+/** `review`: reading the screenshots of a finished build (D87), on DeepSeek since D162 (owner, 21 Nov 2026). What it finds is fixed on `build`. */
 /** `spec` and `contracts` (D152, harness v2 only): the app's plan and acceptance flows, then its contracts and their tests. */
 
 export const MODEL_IDS: Record<ModelTier, string> = { strong: "claude-sonnet-5-5", cheap: "deepseek-flash" };
 const KEY_NAME: Record<ModelTier, string> = { strong: "ANTHROPIC_API_KEY", cheap: "DEEPSEEK_API_KEY" };
 
-/** A user message part: text, or a base64 image (design references, read by the vision tier). */
-export type UserPart = { type: "text"; text: string } | { type: "image"; data: string; mediaType: "image/png" | "image/jpeg" | "image/webp" };
+/**
+ * A user message part: text, or a base64 image (design references, read by the vision tier). `detail` is
+ * DeepSeek's per-picture setting (D162, its vision guide): "low" for "is the page blank or broken", "high"
+ * where text size and colour matter. Anthropic has no such setting and ignores it.
+ */
+export type UserPart = { type: "text"; text: string } | { type: "image"; data: string; mediaType: "image/png" | "image/jpeg" | "image/webp"; detail?: "low" | "high" };
 
 /** OpenAI-style chat messages, the shape the runner builds. Converted to AI SDK messages inside the client. */
 export type ChatMessage =
@@ -229,7 +233,11 @@ export function toSdkMessages(input: ChatMessage[], options: { cacheTail?: boole
       const content =
         typeof m.content === "string"
           ? m.content
-          : m.content.map((p) => (p.type === "text" ? { type: "text" as const, text: p.text } : { type: "file" as const, data: p.data, mediaType: p.mediaType }));
+          : m.content.map((p) =>
+              p.type === "text"
+                ? { type: "text" as const, text: p.text }
+                : { type: "file" as const, data: p.data, mediaType: p.mediaType, ...(p.detail ? { providerOptions: { deepseek: { imageDetail: p.detail } } } : {}) },
+            );
       messages.push({ role: "user", content, ...(m.cache ? { providerOptions: CACHE } : {}) });
     } else if (m.role === "assistant") {
       const parts: Extract<ModelMessage, { role: "assistant" }>["content"] = [];

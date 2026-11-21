@@ -12,7 +12,7 @@ import { createProjectFromPrompt } from "@/server/projects";
 
 import { scriptedModel, type ScriptedReply } from "./fake-model";
 import type { ModelClient, UserPart } from "./model";
-import { MAX_REVIEW_ISSUES, parseReview, reviewEnabled, reviewFixMessage, reviewPrompt, worthReviewing } from "./review";
+import { MAX_REVIEW_ISSUES, parseReview, reviewFixMessage, reviewPrompt, worthReviewing } from "./review";
 import type { RunCheckOptions, RunCheckResult } from "./run-check";
 import { runTurn } from "./runner";
 import { loadFiles } from "./store";
@@ -21,13 +21,6 @@ import { LeaseLostError, type TurnJobContext } from "./turn-progress";
 const change = (path: string, added: number, removed = 0): FileChange => ({ path, op: "edit", added, removed, diff: "" });
 
 describe("the review's rules", () => {
-  it("is off unless the server turns it on", () => {
-    expect(reviewEnabled({} as NodeJS.ProcessEnv)).toBe(false);
-    expect(reviewEnabled({ VISUAL_REVIEW: "off" } as unknown as NodeJS.ProcessEnv)).toBe(false);
-    expect(reviewEnabled({ VISUAL_REVIEW: "1" } as unknown as NodeJS.ProcessEnv)).toBe(true);
-    expect(reviewEnabled({ VISUAL_REVIEW: "on" } as unknown as NodeJS.ProcessEnv)).toBe(true);
-  });
-
   it("looks at every first build, and at a later turn only when it changed enough of what people see", () => {
     expect(worthReviewing(true, [])).toBe(true);
     expect(worthReviewing(false, [change("src/App.tsx", 3, 2)])).toBe(false);
@@ -45,7 +38,7 @@ describe("the review's rules", () => {
     expect(parseReview('{"ok": false, "issues": []}')).toBeNull();
     expect(parseReview("It looks fine to me.")).toBeNull();
     expect(parseReview("")).toBeNull();
-    const many = JSON.stringify({ ok: false, issues: Array.from({ length: 9 }, (_, i) => `issue ${i}`) });
+    const many = JSON.stringify({ ok: false, issues: Array.from({ length: 9 }, (_, i) => `phone: issue ${i}`) });
     expect(parseReview(many)?.issues).toHaveLength(MAX_REVIEW_ISSUES);
   });
 
@@ -118,7 +111,7 @@ const build = (model: ModelClient, deps: { runCheck?: ReturnType<typeof fakeRunC
   runTurn({ db, model, review: true, ...deps }, { projectId, userId, mode: "build", userMessageId: queuedId }, () => {});
 
 describe("the review in a build (D87)", { timeout: 120_000 }, () => {
-  it("shows the strong model the page on a phone and a computer, and leaves a page that looks right alone", async () => {
+  it("shows DeepSeek the page on a phone and a computer, and leaves a page that looks right alone", async () => {
     const check = fakeRunCheck();
     const { client, requests } = scriptedModel([...BUILD, { text: '{"ok": true}' }]);
     const record = await build(client, { runCheck: check.run });
@@ -127,12 +120,14 @@ describe("the review in a build (D87)", { timeout: 120_000 }, () => {
     expect(record.review).toEqual({ ok: true, issues: [], fixed: false });
     expect(requests).toHaveLength(4);
     const ask = requests[3];
-    expect(ask.tier).toBe("strong");
+    expect(ask.tier).toBe("cheap");
     // A question of its own: one message, no tools, and nothing of the build's conversation.
     expect(ask.messages).toHaveLength(1);
     expect(ask.tools).toBeUndefined();
     const parts = ask.messages[0].content as UserPart[];
     expect(parts.map((p) => p.type)).toEqual(["text", "image", "image"]);
+    // DeepSeek reads the pictures at high detail (D162).
+    expect(parts.slice(1).every((p) => (p as { detail?: string }).detail === "high")).toBe(true);
     expect((parts[0] as { text: string }).text).toContain("A tip jar for our football club");
     expect((parts[0] as { text: string }).text).toContain("A warm tip page for club members");
     // Cropped to the top, so the model reads them at full size.
@@ -152,7 +147,7 @@ describe("the review in a build (D87)", { timeout: 120_000 }, () => {
 
     expect(record.status).toBe("ready");
     expect(record.review).toEqual({ ok: false, issues: [ISSUE], fixed: true });
-    expect(requests.map((r) => r.tier)).toEqual(["cheap", "cheap", "cheap", "strong", "cheap", "cheap"]);
+    expect(requests.map((r) => r.tier)).toEqual(["cheap", "cheap", "cheap", "cheap", "cheap", "cheap"]);
     expect(String(requests[4].messages.at(-1)?.content)).toContain(`- [visual] ${ISSUE}`);
     // The reviewer's JSON never enters the build's conversation or the person's reply.
     expect(JSON.stringify(requests[4].messages)).not.toContain('"ok"');

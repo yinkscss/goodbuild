@@ -16,7 +16,7 @@ import { createHash } from "node:crypto";
 
 import { detectKits, kitById, kitGuideName, kitsOf, withKit, withKitHelpers } from "./kits";
 import { SHOP_WORDS } from "./kits/game-shop";
-import { parseReview, reviewEnabled, reviewFixMessage, reviewPrompt, REVIEW_MAX_TOKENS, worthReviewing } from "./review";
+import { parseReview, reviewFixMessage, reviewPrompt, REVIEW_MAX_TOKENS, worthReviewing } from "./review";
 import { runCheck, runCheckEnabled } from "./run-check";
 import { typeCheck, typeCheckMode, type TypeCheckMode } from "./type-check";
 import { dbAssetStore, type AssetStore } from "./asset-store";
@@ -28,7 +28,9 @@ import { BUILD_TOOLS, SPEC_TOOLS, V2_BUILD_TOOLS, contextWithPicks, planTools, s
 import { CONTRACT_WORK, SPEC_MAX_ROUNDS, V2_LIMITS, usesHarnessV2 } from "./harness";
 import { acceptanceSummary, formatFlowResults, type FlowResult } from "./acceptance";
 import { SPEC_PATH, readSpec, specRequest, type AppSpec } from "./spec";
-import { requestView } from "./request-view";
+import { capResult, requestView } from "./request-view";
+import { readRange } from "./codebase";
+import { fixContext, reviewFixContext } from "./focused";
 import { addTokens, formatTokenReport } from "./token-report";
 import { checkpoint, claimTurn, loadFiles, recordUsage, releaseTurn } from "./store";
 import { decideFunding } from "@/server/credits/cap";
@@ -73,7 +75,7 @@ export interface TurnDeps {
   typeCheck?: typeof typeCheck;
   /** "warn" notes type errors, "enforce" sends them to auto-fix. Default: TYPE_CHECK. */
   typeCheckMode?: TypeCheckMode;
-  /** The builder looks at screenshots of the finished page and fixes what it sees (D87). Default: VISUAL_REVIEW. Needs the run check. */
+  /** The builder looks at screenshots of the finished page and fixes what it sees (D87). Default: on (D162). Needs the run check. */
   review?: boolean;
   /** Uploaded assets (default: the DB store). */
   assets?: AssetStore;
@@ -178,9 +180,20 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     deliveryVerified = result.deliveryVerified === true;
     return result;
   } : undefined;
-  const reviewOn = (deps.review ?? reviewEnabled()) && Boolean(openWith);
-  const typesMode = deps.typeCheckMode ?? (deps.typeCheck ? "enforce" : typeCheckMode());
-  const types = typesMode === "off" ? undefined : { run: deps.typeCheck ?? typeCheck, enforce: typesMode === "enforce" };
+  // The review runs wherever the run check does (D162): on DeepSeek it is cheap, and there is no setting.
+  const reviewOn = (deps.review ?? true) && Boolean(openWith);
+  const typesMode = deps.typeCheckMode ?? (deps.typeCheck ? "fix" : typeCheckMode());
+  /** "fix" (D162): type errors block until one fix attempt has had them, then they are notes and never block. */
+  let typeFixesLeft = 1;
+  const types = typesMode === "off" ? undefined : { run: deps.typeCheck ?? typeCheck, get enforce() { return typesMode === "enforce" || (typesMode === "fix" && typeFixesLeft > 0); } };
+  /** A report with its type errors moved to notes once their one fix attempt has run (D162). */
+  const settleTypes = (r: CheckReport): CheckReport => {
+    if (typesMode !== "fix" || typeFixesLeft > 0) return r;
+    const typed = r.errors.filter((e) => e.source === "types");
+    if (!typed.length) return r;
+    const errors = r.errors.filter((e) => e.source !== "types");
+    return { ...r, ok: errors.length === 0, errors, notes: [...(r.notes ?? []), ...typed] };
+  };
 
   if (!job.lockHeld && !(await claimTurn(db, input.projectId, input.userId))) throw new TurnBusyError();
   // Every usage row of the turn takes the job's funding (D48).
@@ -298,7 +311,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     const v2 = setup.harness === "v2" && input.mode === "build" && !intake;
     const limits = v2 ? V2_LIMITS : { maxCalls: MAX_CALLS, maxRounds: MAX_TOOL_ROUNDS_PER_PHASE, checkBudgetMs: 0 };
     acceptanceOn = v2;
-    const convo: ChatMessage[] = [{ role: "system", content: intake ? INTAKE_PROMPT : systemPrompt(input.mode, setup.canAsk === true, v2) }, ...rehydrate(setup.prefix, images)];
+    let convo: ChatMessage[] = [{ role: "system", content: intake ? INTAKE_PROMPT : systemPrompt(input.mode, setup.canAsk === true, v2) }, ...rehydrate(setup.prefix, images)];
     // The tools of the phase that is running (v2's spec call has its own).
     let tools = intake ? intakeTools(setup.request) : input.mode === "plan" ? planTools(setup.canAsk === true) : v2 ? V2_BUILD_TOOLS : BUILD_TOOLS;
     /** v2: where the running phase began. Older file bodies and long results are trimmed from what is sent (requestView). */
@@ -314,6 +327,11 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     // call it was writing (usually a big create_file) was lost.
     let cutOff = false;
     let cutAtLimit = false;
+    /** v2: a check's long output keeps its start and end as it is recorded (D162). */
+    const capped = (text: string) => (v2 ? capResult(text) : text);
+    /** v2: calls of the front-end phase so far. Design-reference pictures go to the spec step and the first of them (D162). */
+    let frontEndCalls = 0;
+    const picturesWanted = () => stage === "spec" || (stage === "build" && frontEndCalls === 0);
     /** The step the next model calls serve, for the token report (D162). */
     let stage = intake ? "plan questions" : input.mode === "plan" ? "plan" : "build";
 
@@ -408,7 +426,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
         // for, so a resumed build replays it however it was fitted.
         const asked = side
           ? { tier, messages: side.messages, maxTokens: side.maxTokens }
-          : { tier, messages: v2 ? requestView(convo, trimBefore) : convo, tools, maxTokens: intake ? INTAKE_MAX_TOKENS : MAX_TOKENS, ...(intake ? { noThinking: true } : {}), ...(v2 && tier === "strong" ? { cacheTail: true } : {}) };
+          : { tier, messages: v2 ? requestView(convo, trimBefore, { dropImages: !picturesWanted() }) : convo, tools, maxTokens: intake ? INTAKE_MAX_TOKENS : MAX_TOKENS, ...(intake ? { noThinking: true } : {}), ...(v2 && tier === "strong" ? { cacheTail: true } : {}) };
         const ask = side ? asked : await fitToCredit(asked);
         for (let attempt = 0; ; attempt++) {
           try {
@@ -513,8 +531,15 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     const phase = async (tier: ModelTier, quiet = false, opts: PhaseOptions = {}) => {
       // v2: everything before this phase is sent trimmed, and stays byte-stable while the phase runs.
       if (v2) trimBefore = convo.length;
+      /** Where each round of this pass began, for the rolling trim below. */
+      const roundStarts: number[] = [];
       for (let round = 0; round < (opts.maxRounds ?? limits.maxRounds); round++) {
         stopIfRequested();
+        roundStarts.push(convo.length);
+        // v2 (D162): a long pass trims its own older rounds too. Every TRIM_EVERY rounds, file text written more
+        // than KEEP_ROUNDS rounds ago becomes a note (the files hold it) and long results keep their ends. The
+        // trim point only moves in steps, so the prefix stays the same between steps and the cache keeps hitting.
+        if (v2 && round > 0 && round % TRIM_EVERY === 0) trimBefore = Math.max(trimBefore, roundStarts[round - KEEP_ROUNDS]);
         // Out of free spend: end the pass the way running out of rounds does, so the reply and the save still happen.
         if (atFreeCeiling() || calls >= limits.maxCalls - 2) {
           budgetStopped = true;
@@ -523,6 +548,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
         }
         const beforeRound = filesKey(ws.files);
         const toolCalls = await callModel(tier, quiet);
+        if (stage === "build") frontEndCalls++;
         if (cutOff) {
           // Not finished: the model was mid-write. Run whatever calls did complete, then
           // ask it to continue in smaller pieces (below), instead of ending the pass.
@@ -549,20 +575,20 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
           const shownWhenChanged = EDIT_TOOLS.includes(call.name);
           if (label && !shownWhenChanged) step({ id: stepId, label, status: "running" });
           if (call.name === "run_checks") {
-            convo.push({ role: "tool", tool_call_id: call.id, content: await checkForTheBuilder() });
+            convo.push({ role: "tool", tool_call_id: call.id, content: capped(await checkForTheBuilder()) });
             continue;
           }
           // v2's own checks (D152): the builder runs the tests and opens the app itself.
           if (v2 && call.name === "run_tests") {
-            convo.push({ role: "tool", tool_call_id: call.id, content: await testsForTheBuilder(stringArg(call, "filter")) });
+            convo.push({ role: "tool", tool_call_id: call.id, content: capped(await testsForTheBuilder(stringArg(call, "filter"))) });
             continue;
           }
           if (v2 && call.name === "open_app") {
-            convo.push({ role: "tool", tool_call_id: call.id, content: await openForTheBuilder(stringArg(call, "route")) });
+            convo.push({ role: "tool", tool_call_id: call.id, content: capped(await openForTheBuilder(stringArg(call, "route"))) });
             continue;
           }
           if (v2 && call.name === "run_acceptance") {
-            convo.push({ role: "tool", tool_call_id: call.id, content: await acceptanceForTheBuilder(stringArg(call, "flow")) });
+            convo.push({ role: "tool", tool_call_id: call.id, content: capped(await acceptanceForTheBuilder(stringArg(call, "flow"))) });
             continue;
           }
           // Plan mode's own questions (D103): shown as cards, and the turn ends so the answers can start the plan.
@@ -595,7 +621,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
             const count = (failures.get(path) ?? 0) + 1;
             failures.set(path, count);
             if (count >= 2 && ws.files[path] !== undefined) {
-              outcome.result += `\nRepeated edit failure. Current file:\n${ws.files[path]}\nRead these exact contents. Switch to a different search block or replace this file once with create_file. Do not repeat the failed edit.`;
+              outcome.result += repeatedEditNote(ws.files[path], v2);
               log(`· repeated edit failure in ${path}; supplied current contents and requested a different strategy`);
             }
           } else if (outcome.change) failures.delete(path);
@@ -625,7 +651,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
               detail: outcome.ok ? changeDetail(outcome.change) : plainToolFailure(outcome.result),
             });
           }
-          convo.push({ role: "tool", tool_call_id: call.id, content: outcome.result });
+          convo.push({ role: "tool", tool_call_id: call.id, content: call.name === "search_code" ? capped(outcome.result) : outcome.result });
         }
         await persistDraft();
         const roundKey = JSON.stringify(toolCalls.map((c) => [c.name, c.arguments]));
@@ -651,6 +677,23 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       }
       log("! stopped: too many tool rounds in one pass");
       return false;
+    };
+
+    /**
+     * v2 (D162): run one job in a conversation of its own (a fix attempt, the fix after the visual check), then go
+     * back to the build's conversation. Built only from the files and the checks, so a resumed build builds the
+     * same messages and its saved calls still line up.
+     */
+    const focused = async <T>(context: string | ChatMessage[], run: () => Promise<T>): Promise<T> => {
+      const main = convo;
+      const mainTrim = trimBefore;
+      convo = [convo[0], ...(typeof context === "string" ? [{ role: "user" as const, content: context }] : context)];
+      try {
+        return await run();
+      } finally {
+        convo = main;
+        trimBefore = mainTrim;
+      }
     };
 
     // The person's colours stay, whatever the model wrote to the page (D32). The MiniPay kit's MINI_APP
@@ -707,9 +750,9 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     const checkNow = async (attempt: number | string): Promise<CheckReport> => {
       if (checked && checked.key === filesKey(ws.files)) {
         log("· checks: nothing changed since the builder's last check, using that result");
-        return checked.report;
+        return settleTypes(checked.report);
       }
-      latestReport = await runChecks(ws.files, compile, lint, step, log, attempt, contractOptions, runContractTests, stopIfRequested, open, types);
+      latestReport = settleTypes(await runChecks(ws.files, compile, lint, step, log, attempt, contractOptions, runContractTests, stopIfRequested, open, types));
       return latestReport;
     };
 
@@ -875,7 +918,11 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
         log("phase: contracts (strong model)");
         convo.push({ role: "user", content: contractsPhaseMessage(spec) });
         stage = "contracts";
-        await phase(TIER_FOR.contracts, true, { gate: (p) => (p.startsWith("contracts/") ? null : CONTRACTS_ONLY) });
+        // Its own conversation (D162): the request and project context, and the contracts to write. The spec
+        // step's rounds and the pictures stay out, and the front end then doesn't re-read the contract work.
+        await focused([...convo.slice(1, 1 + setup.prefix.length), { role: "user", content: contractsPhaseMessage(spec) }], () =>
+          phase(TIER_FOR.contracts, true, { gate: (p) => (p.startsWith("contracts/") ? null : CONTRACTS_ONLY) }),
+        );
         stage = "build";
         contractsWritten = true;
         // Compiled now, so the front end imports the real ABI instead of guessing it.
@@ -934,7 +981,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
             const count = (failures.get(path) ?? 0) + 1;
             failures.set(path, count);
             if (count >= 2 && ws.files[path] !== undefined) {
-              outcome.result += `\nRepeated edit failure. Current file:\n${ws.files[path]}\nRead these exact contents. Switch to a different search block or replace this file once with create_file. Do not repeat the failed edit.`;
+              outcome.result += repeatedEditNote(ws.files[path], v2);
               log(`· repeated edit failure in ${path}; supplied current contents and requested a different strategy`);
             }
           } else if (outcome.change) failures.delete(path);
@@ -1024,11 +1071,16 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     let stopNote = "";
     const fixStartMicro = record.chargedMicro;
     let progress = { best: report.errors.length, stalls: 0 };
+    /** v2 (D162): when the same problems come back, one more attempt starts fresh and tries another way. */
+    let triedAnotherWay = false;
+    let beforeAttempt: Record<string, string> | undefined;
     for (let attempt = 1; !report.ok && attempt <= MAX_FIX_ATTEMPTS; attempt++) {
       const issues = formatIssues(report.errors);
-      if (issues === previous) {
-        log("! the same errors came back after a fix, stopping");
+      const same = issues === previous;
+      if (same && (!v2 || triedAnotherWay)) {
+        log(v2 ? "! the same errors came back after trying another way, stopping" : "! the same errors came back after a fix, stopping");
         stoppedEarly = true;
+        if (v2) stopNote = "the same problem came back after two different tries";
         break;
       }
       if (record.chargedMicro - fixStartMicro >= FIX_BUDGET_MICRO) {
@@ -1042,28 +1094,46 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
         stopNote = "this build reached the most one build may spend on free AI";
         break;
       }
+      if (same) {
+        triedAnotherWay = true;
+        log("! the same errors came back after a fix; trying once more, another way");
+      }
       previous = issues;
       attemptsUsed = attempt;
-      step({ id: `fix:${attempt}`, label: `Fixing errors (attempt ${attempt} of ${MAX_FIX_ATTEMPTS})`, detail: `${plural(report.errors.length, "error")} to fix: ${firstIssue(report.errors)}`, status: "running" });
-      convo.push({
-        role: "user",
-        content: `GoodBuild's checks failed. Fix these errors with edit_file. A [runtime] error is what happened when GoodBuild opened the built app in a browser, and a [types] error is TypeScript's: read the named file before changing it. If a contract test fails, decide whether the contract or the test is wrong: fix the contract when it misbehaves; change a test only when its expectation is mistaken, and never delete or weaken a check just to make it pass. Then stop with a very short note (the user sees the fix steps, not this note):\n${issues}`,
-      });
+      step({ id: `fix:${attempt}`, label: `Fixing errors (attempt ${attempt} of ${MAX_FIX_ATTEMPTS})`, detail: v2 ? `${plural(report.errors.length, "problem")} to fix${same ? ", trying another way" : ""}` : `${plural(report.errors.length, "error")} to fix: ${firstIssue(report.errors)}`, status: "running" });
+      if (v2) for (const e of report.errors.slice(0, 3)) log(`· to fix: ${firstIssue([e])}`);
+      // Type errors get this one attempt (D162); whatever is left of them afterwards is noted, not blocking.
+      if (typesMode === "fix" && report.errors.some((e) => e.source === "types")) {
+        typeFixesLeft = 0;
+        checked = undefined;
+      }
       const fixWith = v2 ? fixTierByWriter(attempt, report.errors, authors) : fixTier(attempt, report.errors);
-      if (v2) log(`· fix attempt ${attempt} on the ${fixWith === "cheap" ? "fast" : "strong"} model (the files' writer)`);
+      if (v2) log(`· fix attempt ${attempt} on the ${fixWith === "cheap" ? "fast" : "strong"} model (the files' writer)${same ? ", started fresh" : ""}`);
       stepParent = `fix:${attempt}`;
+      const startFiles = { ...ws.files };
       try {
         stage = "fix";
-        await phase(fixWith, true);
+        if (v2) {
+          // A conversation of its own (D162): the problems and the files they name, not the whole build so far.
+          const context = fixContext({ request: setup.request, summary: readSpec(ws.files)?.summary, issues, errors: report.errors, files: ws.files, ...(same && beforeAttempt ? { before: beforeAttempt } : {}) });
+          await focused(context, () => phase(fixWith, true));
+        } else {
+          convo.push({
+            role: "user",
+            content: `GoodBuild's checks failed. Fix these errors with edit_file. A [runtime] error is what happened when GoodBuild opened the built app in a browser, and a [types] error is TypeScript's: read the named file before changing it. If a contract test fails, decide whether the contract or the test is wrong: fix the contract when it misbehaves; change a test only when its expectation is mistaken, and never delete or weaken a check just to make it pass. Then stop with a very short note (the user sees the fix steps, not this note):\n${issues}`,
+          });
+          await phase(fixWith, true);
+        }
         report = await checkNow(attempt);
       } finally {
         stepParent = undefined;
       }
+      beforeAttempt = startFiles;
       if (calls >= limits.maxCalls - 2 || budgetStopped) { stoppedEarly = true; stopNote = "saved at this milestone's work limit"; break; }
       step({
         id: `fix:${attempt}`,
         label: `Fixing errors (attempt ${attempt} of ${MAX_FIX_ATTEMPTS})`,
-        detail: report.ok ? "all checks pass" : `${plural(report.errors.length, "error")} left: ${firstIssue(report.errors)}`,
+        detail: report.ok ? "all checks pass" : v2 ? `${plural(report.errors.length, "problem")} left` : `${plural(report.errors.length, "error")} left: ${firstIssue(report.errors)}`,
         status: report.ok ? "done" : "error",
       });
       progress = fixProgress(progress.best, progress.stalls, report.errors.length);
@@ -1107,9 +1177,12 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
           const beforeKey = filesKey(before);
           // What the browser check said about these files, restored with them if the fixes are rolled back.
           const verifiedBefore = { runtimeRan, deliveryVerified, lastAcceptance };
-          convo.push({ role: "user", content: reviewFixMessage(verdict.issues) });
           stage = "visual fix";
-          await phase(TIER_FOR.build, true, { gate: uiGate });
+          if (v2) await focused(reviewFixContext({ request: setup.request, message: reviewFixMessage(verdict.issues), files: ws.files, changed: ws.netChanges().map((c) => c.path) }), () => phase(TIER_FOR.build, true, { gate: uiGate }));
+          else {
+            convo.push({ role: "user", content: reviewFixMessage(verdict.issues) });
+            await phase(TIER_FOR.build, true, { gate: uiGate });
+          }
           keepTheme();
           const untouched = filesKey(ws.files) === beforeKey;
           const after = untouched ? report : await checkNow("review");
@@ -1516,6 +1589,10 @@ interface PhaseOptions {
 }
 
 const EDIT_TOOLS = ["create_file", "edit_file", "delete_file", "rename_file"];
+/** v2's rolling trim inside one pass (D162): every this many rounds... */
+const TRIM_EVERY = 8;
+/** ...everything but the last this many rounds is trimmed. */
+const KEEP_ROUNDS = 4;
 const CHECK_BUDGET_USED = "The check time for this turn is used up. Finish the work and reply; GoodBuild checks everything again when you're done.";
 const CONTRACTS_ONLY = "This is the contracts phase: write only files under contracts/ (the contracts, contracts/test/ and contracts/deploy.json). The front end is written next.";
 const FRONT_END_NO_CONTRACTS = "The contracts were written and tested in the contracts phase, so contracts/ can't change now. If a contract needs a change, say what in your reply.";
@@ -1750,7 +1827,8 @@ async function screenshots(open: typeof runCheck, files: Record<string, string>,
   const result = await open(withContractModules(files, report.contracts), { ...options, screenshots: true });
   if (!result.ran || result.issues.length || !result.screenshots?.length) return { parts: [] };
   const parts: UserPart[] = [];
-  for (const shot of result.screenshots) parts.push({ type: "image", ...(await reviewImage(shot.png, shot.width)) });
+  // High detail (D162): the reviewer judges text size and contrast.
+  for (const shot of result.screenshots) parts.push({ type: "image", ...(await reviewImage(shot.png, shot.width)), detail: "high" });
   const game = result.screenshots.some((s) => s.shows);
   const pictures = game
     ? result.screenshots.map((s) => (s.shows === "start" ? "the game's start screen on a phone (375px), before Play" : s.shows === "playing" ? "the same game on a phone about two seconds after Play, while it runs" : `the page ${s.width}px wide (a computer), later on`))
@@ -1900,6 +1978,17 @@ function toolLabel(call: ToolCall): string | null {
     default:
       return null; // set_plan, reads and listings aren't shown as steps
   }
+}
+
+/**
+ * After a second failed edit of one file: its current text, so the next edit copies real lines. v2 (D162) sends a
+ * long file's first lines numbered, not all of it: the note is re-sent with every later call of the pass.
+ */
+export function repeatedEditNote(file: string, v2: boolean): string {
+  const advice = "Switch to a different search block or replace this file once with create_file. Do not repeat the failed edit.";
+  if (!v2 || file.length <= 8_000) return `\nRepeated edit failure. Current file:\n${file}\nRead these exact contents. ${advice}`;
+  const lines = file.split("\n");
+  return `\nRepeated edit failure. The file has ${lines.length} lines; its first 120 are below. Read the part you are changing with read_file start_line and end_line and copy it exactly. ${advice}\n${readRange(file, 1, 120)}`;
 }
 
 /** What a person reads when a tool didn't work (D162): plain words; the build log keeps the details. */

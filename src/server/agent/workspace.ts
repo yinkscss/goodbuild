@@ -35,6 +35,9 @@ function num(v: unknown): number | undefined {
  * The agent's working copy of a project's files for one turn. Tool calls mutate it in
  * memory; the runner persists it once the turn ends, as one checkpoint.
  */
+/** v2: a whole read_file of a file longer than this returns its first lines (D162). */
+const READ_MAX_CHARS = 16_000;
+
 export class Workspace {
   readonly files: Record<string, string>;
   private readonly before: Record<string, string>;
@@ -142,7 +145,16 @@ export class Workspace {
         const start = num(args.start_line);
         const end = num(args.end_line);
         const ranged = start !== undefined || end !== undefined;
-        return { ok: true, result: readRange(this.files[path], start, end), access: `read_file ${path}${ranged ? `:${start ?? 1}-${end ?? ""}` : ""}` };
+        const text = this.files[path];
+        // v2 (D162, after Codex's tool-output limit): a whole read of a very long file comes back as its first
+        // lines, numbered, with how to read the rest. Every later call re-sends what a read returned.
+        if (this.v2 && !ranged && text.length > READ_MAX_CHARS) {
+          const lines = text.split("\n");
+          let upTo = 0;
+          for (let used = 0; upTo < lines.length && used + lines[upTo].length + 8 <= READ_MAX_CHARS; upTo++) used += lines[upTo].length + 8;
+          return { ok: true, result: `${readRange(text, 1, Math.max(1, upTo))}\n(${lines.length} lines in all. Read the rest with start_line and end_line, a part at a time.)`, access: `read_file ${path} (first ${upTo} lines)` };
+        }
+        return { ok: true, result: readRange(text, start, end), access: `read_file ${path}${ranged ? `:${start ?? 1}-${end ?? ""}` : ""}` };
       }
       case "search_code": {
         const query = String(args.query ?? "");
