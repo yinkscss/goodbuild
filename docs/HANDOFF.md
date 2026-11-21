@@ -2,6 +2,13 @@
 
 Written 4 Nov 2026 at the end of the first build session (claude.ai), for whoever continues in Claude Code. Read CLAUDE.md and docs/BUILD_PROMPT_STAGE1.md first; this file only covers where things stand.
 
+## DeepSeek plans and builds contracts from audited templates (21 Nov 2026, D165, branch `claude/elegant-pasteur-j73em3`)
+- **Models:** the spec step and the contracts phase run on DeepSeek. The first plan thinks `high`, later plans and contracts `low`. All fixes run on DeepSeek; Sonnet gets only the one retry after the same problems came back (`fixTierV2`). No Haiku.
+- **Templates:** `src/server/agent/contract-templates.ts` holds 9 abstract OpenZeppelin-based contracts (token, NFT, staking, escrow, vesting, votes token, governor, poll, savings). The spec names one per contract. They are written to `contracts/goodbuild/` (read-only for the builder) and the builder's contract inherits one.
+- **Checks:** a contract that redeclares an OpenZeppelin or template base is refused. On testnet, exploit tests are asked only for the app's own money code; the mainnet gate is unchanged.
+- **Spec step:** 5 rounds plus a "write it now" nudge with 2 more.
+- No migration, no setting. **To check after deploy:** a savings and a DAO build; watch for `contracts: templates ...` and the `tokens by step:` line in the worker log.
+
 ## What a person sees while it builds (21 Nov 2026, D164, branch `claude/wizardly-mendel-yayvkq`)
 Plan: [BUILD_CLARITY_PLAN.md](BUILD_CLARITY_PLAN.md). Mock: [GoodBuild Build Clarity](https://claude.ai/artifact/Qp4xxF5J7o4oiEXPpkLHsC).
 - **Checklist:** in Build mode, the plan shows as a checklist with GoodBuild's own last step, and one trail line under the working step that fades when that part is done (`PlanProgress`, `TrailLine` in `turn-view.tsx`; `Step.plan`, `planStepFor` in `runner.ts`).

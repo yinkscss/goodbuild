@@ -1,3 +1,4 @@
+import { TEMPLATE_CONTRACTS, TEMPLATE_REFUSAL, isTemplatePath } from "./contract-templates";
 import { SPEC_PATH } from "./spec";
 import { TEMPLATE_IMAGE_MODULE } from "@/config/page-templates";
 import "server-only";
@@ -96,6 +97,7 @@ export function pathProblem(p: string, kits: Kit[] = []): string | null {
   }
   if (p.startsWith("src/assets/")) return "src/assets/ is written by GoodBuild from the user's uploads. Import { assets } from it, or use the /assets/<name> path.";
   if (p === SPEC_PATH) return `${SPEC_PATH} is the app's spec, written by GoodBuild's planner. Follow it; if it is wrong, say so in your reply instead of changing it.`;
+  if (isTemplatePath(p)) return TEMPLATE_REFUSAL;
   if (/^contracts\/[A-Za-z0-9_]+\.sol$/.test(p) || p === MANIFEST_PATH) return null;
   if (/^contracts\/test\/[A-Za-z0-9_]+\.t\.sol$/.test(p)) return null;
   if (/^src\/[A-Za-z0-9_\-/.]+\.(tsx?|css|json)$/.test(p)) return null;
@@ -490,6 +492,7 @@ export async function checkContracts(files: Record<string, string>, options: Con
     if (options.upgradeable) errors.push(...upgradeableIssues(file, src.ast, files[file]));
     projectAsts.push({ file, ast: src.ast, content: files[file] });
   }
+  errors.push(...copiedBaseIssues(projectAsts));
   if (options.gdToken && projectAsts.length) errors.push(...gdTokenIssues(projectAsts, { allowNative: options.allowNative }));
   // GB-02: where the code takes in other people's money, by what it does rather than what it's called.
   // Only reported here: the mainnet gate (exploit-gate.ts) turns it into required exploit tests, so
@@ -540,6 +543,33 @@ export async function checkContracts(files: Record<string, string>, options: Con
   // Only worth running on code that compiled and follows the rules: the agent fixes those first.
   if (options.upgradeChecks && !errors.length && contracts.length) errors.push(...(await options.upgradeChecks(files)));
   return { ok: errors.length === 0, errors, warnings, contracts, tests, abis, compilerVersion: result.version, custody };
+}
+
+/**
+ * Safe zones (D165): inherit audited code, don't copy it. A project contract or library named like an
+ * OpenZeppelin base or a GoodBuild template is a copy (or a lookalike) of code that holds money, so it is
+ * refused with the import to use instead. Interfaces are left alone: a small local IERC20 is harmless.
+ */
+const AUDITED_BASES = new Map<string, string>([
+  ...["ERC20", "ERC20Burnable", "ERC20Permit", "ERC20Votes", "ERC20Capped", "ERC20Pausable", "ERC721", "ERC721Enumerable", "ERC721URIStorage", "ERC1155", "ERC4626", "Ownable", "Ownable2Step", "AccessControl", "ReentrancyGuard", "Pausable", "SafeERC20", "Governor", "VestingWallet", "ECDSA", "MerkleProof"].map(
+    (n) => [n, `import it from @openzeppelin/contracts instead (OpenZeppelin's audited ${n})`] as const,
+  ),
+  ...TEMPLATE_CONTRACTS.map((n) => [n, `inherit it from ./goodbuild/${n}.sol, GoodBuild's audited template, instead of writing your own`] as const),
+]);
+
+export function copiedBaseIssues(asts: Array<{ file: string; ast: Json; content?: string }>): CheckIssue[] {
+  const issues: CheckIssue[] = [];
+  for (const { file, ast, content } of asts) {
+    if (isTemplatePath(file)) continue;
+    for (const node of (ast.nodes as Json[] | undefined) ?? []) {
+      if (node.nodeType !== "ContractDefinition" || node.contractKind === "interface") continue;
+      const advice = AUDITED_BASES.get(String(node.name));
+      if (!advice) continue;
+      const at = Number(String(node.src ?? "").split(":")[0]);
+      issues.push({ file, line: Number.isFinite(at) ? lineAt(content, at) : undefined, message: `Don't declare your own ${String(node.name)}: ${advice}.`, source: "guardrail" });
+    }
+  }
+  return issues;
 }
 
 /** GB-04: one rule for "is this a test", shared with the deploy compile (src/lib/deploy/test-file.ts). */

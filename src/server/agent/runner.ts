@@ -22,12 +22,13 @@ import { typeCheck, typeCheckMode, type TypeCheckMode } from "./type-check";
 import { dbAssetStore, type AssetStore } from "./asset-store";
 import { ASSETS_MODULE, assetManifest, assetsModule, reviewImage, visionImage } from "./assets";
 import { HISTORY_WINDOW, memoryBlock, updateMemory, type Memory, type MemoryMessage } from "./memory";
-import { MODEL_IDS, TIER_FOR, ModelUnavailableError, type ChatMessage, type ModelClient, type ModelEvent, type ModelTier, type ToolCall, type UserPart } from "./model";
+import { MODEL_IDS, TIER_FOR, ModelUnavailableError, type ChatMessage, type Effort, type ModelClient, type ModelEvent, type ModelTier, type ToolCall, type UserPart } from "./model";
 import { INTAKE_MAX_TOKENS, INTAKE_PROMPT, PLAN_ASK_TOOL_NAME, askedJustBefore, fallbackIntake, intakeTools, intakeContext, isGameRequest, latestIntake, parseIntake, parsePlanQuestions, planBrief } from "./plan-intake";
 import { BUILD_TOOLS, SPEC_TOOLS, V2_BUILD_TOOLS, contextWithPicks, planTools, systemPrompt } from "./prompt";
-import { CONTRACT_WORK, SPEC_MAX_ROUNDS, V2_LIMITS, usesHarnessV2 } from "./harness";
+import { CONTRACT_WORK, SPEC_LAST_ROUNDS, SPEC_MAX_ROUNDS, V2_LIMITS, usesHarnessV2 } from "./harness";
 import { acceptanceSummary, formatFlowResults, type FlowResult } from "./acceptance";
 import { SPEC_PATH, readSpec, specRequest, type AppSpec } from "./spec";
+import { TEMPLATE_REFUSAL, isTemplatePath, templateFiles, templatesBrief, templatesFor, type ContractTemplate } from "./contract-templates";
 import { capResult, requestView } from "./request-view";
 import { readRange } from "./codebase";
 import { fixContext, reviewFixContext } from "./focused";
@@ -329,8 +330,6 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     let tools = intake ? intakeTools(setup.request) : input.mode === "plan" ? planTools(setup.canAsk === true) : v2 ? V2_BUILD_TOOLS : BUILD_TOOLS;
     /** v2: where the running phase began. Older file bodies and long results are trimmed from what is sent (requestView). */
     let trimBefore = 0;
-    /** v2: which tier wrote each file this turn, so its first fix goes back to the writer. */
-    const authors = new Map<string, ModelTier>();
     let specWritten = false;
 
     let calls = 0;
@@ -347,6 +346,8 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     const picturesWanted = () => stage === "spec" || (stage === "build" && frontEndCalls === 0);
     /** The step the next model calls serve, for the token report (D162). */
     let stage = intake ? "plan questions" : input.mode === "plan" ? "plan" : "build";
+    /** How hard DeepSeek thinks in the running phase (D165): the first plan high, later plans and contracts low. */
+    let effort: Effort | undefined;
 
     /** Replay is over: tell the client the turn's state so far, then stream live again. */
     const goLive = () => {
@@ -439,7 +440,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
         // for, so a resumed build replays it however it was fitted.
         const asked = side
           ? { tier, messages: side.messages, maxTokens: side.maxTokens }
-          : { tier, messages: v2 ? requestView(convo, trimBefore, { dropImages: !picturesWanted() }) : convo, tools, maxTokens: intake ? INTAKE_MAX_TOKENS : MAX_TOKENS, ...(intake ? { noThinking: true } : {}), ...(v2 && tier === "strong" ? { cacheTail: true } : {}) };
+          : { tier, messages: v2 ? requestView(convo, trimBefore, { dropImages: !picturesWanted() }) : convo, tools, maxTokens: intake ? INTAKE_MAX_TOKENS : MAX_TOKENS, ...(intake ? { noThinking: true } : {}), ...(v2 && tier === "strong" ? { cacheTail: true } : {}), ...(effort && tier === "cheap" && !intake ? { effort } : {}) };
         const ask = side ? asked : await fitToCredit(asked);
         for (let attempt = 0; ; attempt++) {
           try {
@@ -653,7 +654,6 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
           }
           if (outcome.change) {
             if (record.plan && planCursor < record.plan.steps.length) planCursor = Math.max(planCursor, planStepFor(record.plan.steps, outcome.change.path) ?? planCursor);
-            if (v2) authors.set(outcome.change.path, tier);
             record.changes.push(outcome.change);
             out({ type: "file", change: outcome.change });
             log(`→ ${outcome.change.op === "delete" ? "deleted" : "wrote"} ${outcome.change.path}`);
@@ -913,8 +913,8 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     };
 
     /**
-     * v2 (D152): the spec call on the strong model writes the plan and acceptance flows; when the spec has
-     * contracts and the delivery scope allows them, the strong model writes and tests them, and they are
+     * v2 (D152, D165): the spec call writes the plan and acceptance flows; when the spec has contracts and the
+     * delivery scope allows them, the contracts phase writes and tests them from GoodBuild's templates, and they are
      * compiled before the front end is written. Returns the front end's write rule: no contracts/ once they
      * have been written in their own phase.
      */
@@ -927,7 +927,15 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       tools = SPEC_TOOLS;
       convo.push({ role: "user", content: specRequest(hasContracts, contractsAllowed) });
       stage = "spec";
+      // D165: the app's first plan thinks hard; a later one (a new milestone's contracts, a contract change) lightly.
+      effort = readSpec(ws.files) ? "low" : "high";
       await phase(TIER_FOR.spec, true, { endOn: "write_spec", maxRounds: SPEC_MAX_ROUNDS });
+      if (!specWritten && !atFreeCeiling()) {
+        log("! spec: still reading after the spec step's rounds; asked to write it now");
+        convo.push({ role: "user", content: "You have read enough. Call write_spec now with what you know; don't read any more files." });
+        await phase(TIER_FOR.spec, true, { endOn: "write_spec", maxRounds: SPEC_LAST_ROUNDS });
+      }
+      effort = undefined;
       stage = "build";
       tools = V2_BUILD_TOOLS;
       const spec = specWritten ? readSpec(ws.files) : null;
@@ -942,14 +950,23 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       let contractsWritten = false;
       if (spec.contracts.length && contractsAllowed && !atFreeCeiling()) {
         step({ id: "contracts", label: "Writing the contracts", status: "running" });
-        log("phase: contracts (strong model)");
-        convo.push({ role: "user", content: contractsPhaseMessage(spec) });
+        log("phase: contracts (fast model, from GoodBuild's templates)");
+        // D165: GoodBuild's audited templates go in first, so DeepSeek configures them instead of writing money code.
+        // An upgradeable project's contracts can't have constructors, so it keeps writing its own (D33).
+        const templates = contractOptions?.upgradeable ? [] : templatesFor(spec);
+        convo.push({ role: "user", content: contractsPhaseMessage(spec, templates) });
         stage = "contracts";
         // Its own conversation (D162): the request and project context, and the contracts to write. The spec
         // step's rounds and the pictures stay out, and the front end then doesn't re-read the contract work.
-        await focused([...convo.slice(1, 1 + setup.prefix.length), { role: "user", content: contractsPhaseMessage(spec) }], () =>
-          phase(TIER_FOR.contracts, true, { gate: (p) => (p.startsWith("contracts/") ? null : CONTRACTS_ONLY) }),
+        for (const t of templates) for (const [path, body] of Object.entries(templateFiles(t))) ws.files[path] = body;
+        if (templates.length) log(`contracts: templates ${templates.map((t) => t.id).join(", ")}`);
+        // Measured live (D165): with the templates, "low" wrote working contracts in 14 to 44 s; "high" thought for
+        // up to 16K tokens and once wrote nothing; thinking off made compile errors in all three tries.
+        effort = "low";
+        await focused([...convo.slice(1, 1 + setup.prefix.length), { role: "user", content: contractsPhaseMessage(spec, templates) }], () =>
+          phase(TIER_FOR.contracts, true, { gate: (p) => (p.startsWith("contracts/") ? (isTemplatePath(p) ? TEMPLATE_REFUSAL : null) : CONTRACTS_ONLY) }),
         );
+        effort = undefined;
         stage = "build";
         contractsWritten = true;
         // Compiled now, so the front end imports the real ABI instead of guessing it.
@@ -983,7 +1000,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
         out({ type: "questions", intake: record.intake });
       }
     }
-    // v2 (D152): the spec call, then the contracts on the strong model, before the front end is written.
+    // v2 (D152, D165): the spec call, then the contracts, before the front end is written. All on DeepSeek.
     let uiGate: PhaseOptions["gate"];
     if (v2) uiGate = await specAndContracts();
     const finished = intake || (await phase(input.mode === "plan" ? TIER_FOR.plan : TIER_FOR.build, false, { gate: uiGate }));
@@ -1135,8 +1152,8 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
         typeFixesLeft = 0;
         checked = undefined;
       }
-      const fixWith = v2 ? fixTierByWriter(attempt, report.errors, authors) : fixTier(attempt, report.errors);
-      if (v2) log(`· fix attempt ${attempt} on the ${fixWith === "cheap" ? "fast" : "strong"} model (the files' writer)${same ? ", started fresh" : ""}`);
+      const fixWith = v2 ? fixTierV2(same) : fixTier(attempt, report.errors);
+      if (v2) log(`· fix attempt ${attempt} on the ${fixWith === "cheap" ? "fast" : "strong"} model${same ? " (the same problems came back), started fresh" : ""}`);
       stepParent = `fix:${attempt}`;
       const startFiles = { ...ws.files };
       try {
@@ -1676,9 +1693,11 @@ function stringArg(call: ToolCall, name: string): string {
   }
 }
 
-function contractsPhaseMessage(spec: AppSpec): string {
+function contractsPhaseMessage(spec: AppSpec, templates: ContractTemplate[]): string {
+  const brief = templatesBrief(templates);
   return `CONTRACTS. Write the contracts in the spec, and nothing else yet: contracts/<Name>.sol for each; contracts/test/<Name>.t.sol for each one that holds, moves, sells or swaps value (read_guide "contract-tests"), with a test for every invariant; and contracts/deploy.json. Then run_tests, and fix until every test passes. Fix the contract when it misbehaves; change a test only when its expectation is wrong. When they pass, stop with a one-line note: another model writes the front end next, from the spec and the compiled ABI.
 
+${brief ? `\n${brief}\n` : ""}
 Contracts in the spec:
 ${JSON.stringify(spec.contracts, null, 2)}`;
 }
@@ -1695,7 +1714,7 @@ ${JSON.stringify(spec, null, 2).slice(0, 12_000)}`;
 }
 
 /**
- * Whether a v2 turn runs the spec step (D152). The strong model plans once per app (owner, 21 Nov 2026): a later
+ * Whether a v2 turn runs the spec step (D152). The planner plans once per app (owner, 21 Nov 2026): a later
  * milestone reuses the spec and plans again only when it brings contracts the spec doesn't have yet. Outside
  * milestones, a change to the contracts re-plans.
  */
@@ -1706,13 +1725,13 @@ export function wantsSpec(o: { spec: AppSpec | null; milestone: boolean; contrac
 }
 
 /**
- * v2's fixes (D152) go back to whichever model wrote the failing files, on every attempt (owner, 21 Nov 2026):
- * the fast model fixes the front end it wrote, the strong one the contracts and tests it wrote. Files from
- * earlier turns go by path. Only a set that includes the strong model's files goes to it.
+ * v2's fixes since D165 (owner, 21 Nov 2026: "Sonnet is crazy expensive", "for stubborn build errors, we can
+ * activate" it): DeepSeek fixes everything first. Only when the same problems came back after its fix does the
+ * one fresh, different-way attempt go to Sonnet. That attempt happens at most once a build (the fix loop stops
+ * on a second repeat), so a build pays for one Sonnet fix at most.
  */
-export function fixTierByWriter(_attempt: number, errors: CheckIssue[], authors: Map<string, ModelTier>): ModelTier {
-  const writers = errors.map((e) => authors.get(e.file) ?? (e.file.startsWith("contracts/") ? "strong" : "cheap"));
-  return writers.every((t) => t === "cheap") ? "cheap" : "strong";
+export function fixTierV2(sameProblemsAgain: boolean): ModelTier {
+  return sameProblemsAgain ? TIER_FOR.stubborn : TIER_FOR.build;
 }
 
 /**

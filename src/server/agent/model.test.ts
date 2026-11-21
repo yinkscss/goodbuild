@@ -130,6 +130,18 @@ describe("aiSdkClient", () => {
     expect(u.callId).toBeTruthy();
   });
 
+  it("sends DeepSeek the thinking level asked for, and none to Anthropic (D165)", async () => {
+    const cheap = mockModel({ modelId: "deepseek-flash" });
+    const strong = mockModel();
+    await collect(aiSdkClient({ strong, cheap }), request({ tier: "cheap", effort: "high" }));
+    await collect(aiSdkClient({ strong, cheap }), request({ tier: "cheap", effort: "low", noThinking: true }));
+    await collect(aiSdkClient({ strong, cheap }), request({ tier: "strong", effort: "high" }));
+    expect(cheap.doStreamCalls[0].providerOptions).toEqual({ deepseek: { reasoningEffort: "high" } });
+    // Thinking off wins over a level.
+    expect(cheap.doStreamCalls[1].providerOptions).toEqual({ deepseek: { thinking: { type: "disabled" } } });
+    expect(strong.doStreamCalls[0].providerOptions).toBeUndefined();
+  });
+
   it("sends the system prompt with an Anthropic cache marker", async () => {
     const strong = mockModel();
     await collect(aiSdkClient({ strong, cheap: strong }), request({ messages: [{ role: "system", content: "You build dApps." }, { role: "user", content: "hi" }] }));
