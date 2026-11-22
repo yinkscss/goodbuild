@@ -6,7 +6,7 @@ export interface PostSection {
   steps?: string[];
 }
 
-export type PostCluster = "minipay" | "celo" | "compare" | "free" | "ideas" | "vibe";
+export type PostCluster = "minipay" | "celo" | "compare" | "free" | "ideas" | "vibe" | "news";
 
 export interface Post {
   slug: string;
@@ -24,6 +24,8 @@ export interface Post {
   faq?: Array<{ q: string; a: string }>;
   /** Slugs of other posts to link at the end. */
   related: string[];
+  /** Banner shown on the post and its card, from /public. Optional; most posts have none. */
+  image?: { src: string; alt: string };
   /** Roundups name GoodBuild in their list and say when they were written. */
   roundup?: boolean;
 }
@@ -35,4 +37,5 @@ export const CLUSTERS: Record<PostCluster, { label: string; blurb: string }> = {
   free: { label: "Free and no-code", blurb: "Building an app with AI when you can't code or don't want to pay." },
   ideas: { label: "App ideas with G$", blurb: "Things you can build and run with G$, one post per idea." },
   vibe: { label: "Vibe coding", blurb: "Building software by describing it, and doing it well." },
+  news: { label: "News", blurb: "Announcements from GoodBuild, including hackathons and partners." },
 };

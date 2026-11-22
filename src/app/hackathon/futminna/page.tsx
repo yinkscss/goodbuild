@@ -40,7 +40,7 @@ const STEPS = [
   },
   {
     title: "Build with GoodBuild",
-    body: "Describe your dApp or game in chat. GoodBuild writes the smart contract and the app, and you deploy it to Celo from your own wallet.",
+    body: "Describe your dApp or game in chat. GoodBuild writes the smart contract and the app, and you deploy it to Celo mainnet from your own wallet.",
   },
   {
     title: "Make G$ matter",
@@ -54,6 +54,8 @@ const RULES = [
   "Open to FUTMinna students aged 18+. Not open to US persons.",
   "Entrants must be verified GoodDollar users.",
   "Your app or game must be built with GoodBuild and have a meaningful G$ integration.",
+  "Your project must be live on Celo mainnet.",
+  "Judges look for something creative that solves a real problem, and it must be published.",
   "Each builder enters one hackathon: FUTMinna or the main GoodBuild hackathon, not both.",
   `Verified people approve projects. The top ${FUTMINNA.shortlist} by approvals make the shortlist.`,
   `${FUTMINNA.judges} pick the ${NAIRA} scholarship winner from the shortlist after voting closes on 10 Dec.`,

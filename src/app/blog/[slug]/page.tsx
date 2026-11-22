@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
@@ -24,8 +25,8 @@ export async function generateMetadata({ params }: PageProps<"/blog/[slug]">): P
     description: post.description,
     keywords: keywordsFor(post),
     alternates: { canonical: url, types: { "application/rss+xml": `${SITE_URL}/blog/feed.xml` } },
-    openGraph: { type: "article", url, title: post.title, description: post.description, publishedTime: post.date, siteName: "GoodBuild" },
-    twitter: { card: "summary", title: post.title, description: post.description },
+    openGraph: { type: "article", url, title: post.title, description: post.description, publishedTime: post.date, siteName: "GoodBuild", ...(post.image ? { images: [{ url: post.image.src, width: 1200, height: 630, alt: post.image.alt }] } : {}) },
+    twitter: { card: post.image ? "summary_large_image" : "summary", title: post.title, description: post.description, ...(post.image ? { images: [post.image.src] } : {}) },
   };
 }
 
@@ -41,6 +42,7 @@ export default async function BlogPostPage({ params }: PageProps<"/blog/[slug]">
       headline: post.title,
       description: post.description,
       datePublished: post.date,
+      ...(post.image ? { image: `${SITE_URL}${post.image.src}` } : {}),
       dateModified: post.date,
       mainEntityOfPage: url,
       keywords: keywordsFor(post).join(", "),
@@ -91,6 +93,9 @@ export default async function BlogPostPage({ params }: PageProps<"/blog/[slug]">
             <p className="mt-5 text-xs text-grey-400">
               <time dateTime={post.date}>{new Date(post.date).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}</time> · {readMinutes(post)} min read
             </p>
+            {post.image && (
+              <Image src={post.image.src} alt={post.image.alt} width={1200} height={630} priority sizes="(min-width: 1360px) 1200px, 100vw" className="mt-8 h-auto w-full rounded-block" />
+            )}
           </header>
           <div className="mt-4 rounded-card bg-surface p-8 shadow-card md:p-12">
             <div className="max-w-2xl space-y-4 text-base text-ink/80 [&_h2]:pt-4 [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:text-ink [&_ol]:list-decimal [&_ol]:space-y-2 [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:space-y-2 [&_ul]:pl-5">
