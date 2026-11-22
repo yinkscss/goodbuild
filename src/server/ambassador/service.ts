@@ -11,6 +11,7 @@ import { users } from "@/server/db/schema";
 import { flowstateVoters } from "@/server/db/hackathon-schema";
 import type { Db } from "@/server/db/client";
 import { publicClientFor } from "@/server/deploy/service";
+import { adminWallets } from "@/server/settings/mainnet-access";
 
 export class AmbassadorError extends Error {}
 const launch = () => {
@@ -82,8 +83,10 @@ export async function confirmPayout(db: Db, actorId: string, id: string, hash: H
     if (!p) throw new AmbassadorError("Payout request not found.");
     if (p.status === "paid" && p.txHash === hash.toLowerCase()) return;
     if (p.status !== "processing") throw new AmbassadorError("Mark this request Processing before recording payment.");
-    const senders = (process.env.AMBASSADOR_PAYOUT_WALLETS ?? "").split(",").map(x => x.trim().toLowerCase()).filter(x => isAddress(x));
-    if (!senders.length) throw new AmbassadorError("Configure AMBASSADOR_PAYOUT_WALLETS before confirming payments.");
+    // The admin wallets are the payout wallets: the admin pays by hand from one of them. AMBASSADOR_PAYOUT_WALLETS is only an optional override.
+    const override = (process.env.AMBASSADOR_PAYOUT_WALLETS ?? "").split(",").map(x => x.trim().toLowerCase()).filter(x => isAddress(x));
+    const senders = override.length ? override : [...adminWallets()];
+    if (!senders.length) throw new AmbassadorError("No admin wallet is set, so payments can't be confirmed.");
     const client = publicClientFor(42220);
     const receipt = await client.getTransactionReceipt({ hash });
     const head = await client.getBlockNumber();
