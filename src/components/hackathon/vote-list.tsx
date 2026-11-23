@@ -283,7 +283,12 @@ function StepsDialog({
             <button type="button" className={BTN} disabled={!status.signedIn || verify.busy} onClick={() => void verify.verify()}>
               {verify.busy ? "Checking…" : "Verify"}
             </button>
-            {verify.note && <p role="alert" className="mt-2 text-xs text-danger">{verify.note}</p>}
+            {verify.note && (
+              <p role="alert" className="mt-2 text-xs text-danger">
+                {verify.note}
+                {verify.showLinkGuide && " If you verified with another wallet, link it first, then try again."}
+              </p>
+            )}
           </Step>
           <Step n={3} done={status.voted} title="Support us">
             {status.signedIn && status.verified ? <FlowstateVote label="Support" onConfirmed={() => void refresh()} /> : <p className="text-xs text-grey-600">Finish the steps above first.</p>}
