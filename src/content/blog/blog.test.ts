@@ -10,7 +10,7 @@ function texts(p: Post): string[] {
 }
 
 describe("blog posts", () => {
-  it("has exactly 51 posts", () => expect(POSTS).toHaveLength(51));
+  it("has exactly 52 posts", () => expect(POSTS).toHaveLength(52));
 
   it("has unique slugs and unique target queries", () => {
     expect(new Set(POSTS.map((p) => p.slug)).size).toBe(POSTS.length);

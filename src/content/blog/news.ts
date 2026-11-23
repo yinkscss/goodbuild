@@ -53,4 +53,60 @@ export const newsPosts: Post[] = [
     ],
     related: ["what-is-g-dollar-gooddollar-apps", "how-to-build-a-dapp-on-celo", "ai-app-builder-for-students", "build-a-dapp-without-coding"],
   },
+  {
+    slug: "kadpoly-hackathon-scholarship",
+    query: "kaduna polytechnic hackathon scholarship",
+    cluster: "news",
+    title: "Kaduna Polytechnic Hackathon: Top 3 Win Full Tuition",
+    description: "GoodBuild and GoodCash open the Kaduna Polytechnic hackathon on 23 November. The top three students win full tuition for the session. Entries close 31 December.",
+    date: "2026-11-23",
+    intro: "GoodBuild and GoodCash open their Kaduna Polytechnic (Kadpoly) hackathon today, Monday 23 November 2026. The top three students win a scholarship that pays their full tuition fee for the session, and the next two join a waitlist of five in case a winner cannot be confirmed.",
+    image: { src: "/blog/kadpoly-hackathon-scholarship.png", alt: "Kaduna Polytechnic Hackathon: build something good, three students win full tuition, top five waitlisted, by GoodBuild and GoodCash" },
+    sections: [
+      {
+        heading: "What you can win",
+        paragraphs: [
+          "Three students win a scholarship that pays their full tuition for the session. The five best projects make the leaderboard. Places four and five are waitlisted, so if a winner cannot show they are a current student, the next project takes the place.",
+        ],
+      },
+      {
+        heading: "How to enter",
+        paragraphs: ["You do not need to know how to code. You describe an app or game and GoodBuild builds it. Follow these steps:"],
+        steps: [
+          "**Register** on the [hackathon page](/hackathon/kadpoly) and sign in with your email.",
+          "**Do the free face check.** GoodDollar confirms you are one real person. It costs nothing.",
+          "**Support GoodBuildIt** with the in-app FlowState vote, which unlocks your free build credits.",
+          "**Build your idea on GoodBuild.** New to this? Read [how to build a dApp without coding](/blog/build-a-dapp-without-coding).",
+          "**Put it live on Celo mainnet** and submit your project with its live link. See [how to build a dApp on Celo](/blog/how-to-build-a-dapp-on-celo).",
+        ],
+      },
+      {
+        heading: "What the judges look for",
+        bullets: [
+          "**Built using GoodBuild.** The project starts on GoodBuild.",
+          "**One meaningful G$ integration.** G$ is part of what the app does. See [what G$ is](/blog/what-is-g-dollar-gooddollar-apps).",
+          "**Live and usable.** Anyone can open it and try it.",
+          "**Creative.** It solves a real problem for students or your community.",
+        ],
+      },
+      {
+        heading: "How voting works",
+        paragraphs: [
+          "Voting follows the same rules as the [FUTMinna hackathon](/blog/futminna-hackathon-scholarship). Friends, family and classmates approve projects, and the projects with the most approvals climb the leaderboard. Each voter does GoodDollar's free face check first, so it is one person, one voice. Each verified person has three approvals to give, and you cannot approve your own project.",
+        ],
+      },
+      {
+        heading: "Who can enter",
+        paragraphs: [
+          "Entry is for current Kaduna Polytechnic students aged 18 and over. It is not open to US persons. Winners must prove they are enrolled before any scholarship is confirmed. Submissions and voting close on 31 December 2026. [Register now](/hackathon/kadpoly).",
+        ],
+      },
+    ],
+    faq: [
+      { q: "How many students win the scholarship?", a: "Three. The top three students win their full tuition fee for the session. The top five are listed, and places four and five are waitlisted." },
+      { q: "Do I need to code?", a: "No. You describe what you want and GoodBuild builds it with AI, then you deploy it from your own wallet." },
+      { q: "When does it start?", a: "Today, Monday 23 November 2026. Submissions and voting close on 31 December 2026." },
+    ],
+    related: ["futminna-hackathon-scholarship", "what-is-g-dollar-gooddollar-apps", "how-to-build-a-dapp-on-celo", "ai-app-builder-for-students"],
+  },
 ];
