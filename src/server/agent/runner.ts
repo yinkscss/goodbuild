@@ -22,7 +22,7 @@ import { typeCheck, typeCheckMode, type TypeCheckMode } from "./type-check";
 import { dbAssetStore, type AssetStore } from "./asset-store";
 import { ASSETS_MODULE, assetManifest, assetsModule, reviewImage, visionImage } from "./assets";
 import { HISTORY_WINDOW, memoryBlock, updateMemory, type Memory, type MemoryMessage } from "./memory";
-import { MODEL_IDS, TIER_FOR, ModelUnavailableError, type ChatMessage, type Effort, type ModelClient, type ModelEvent, type ModelTier, type ToolCall, type UserPart } from "./model";
+import { MODEL_IDS, TIER_FOR, ModelUnavailableError, ProviderFundsError, type ChatMessage, type Effort, type ModelClient, type ModelEvent, type ModelTier, type ToolCall, type UserPart } from "./model";
 import { INTAKE_MAX_TOKENS, INTAKE_PROMPT, PLAN_ASK_TOOL_NAME, askedJustBefore, fallbackIntake, intakeTools, intakeContext, isGameRequest, latestIntake, parseIntake, parsePlanQuestions, planBrief } from "./plan-intake";
 import { BUILD_TOOLS, SPEC_TOOLS, V2_BUILD_TOOLS, contextWithPicks, planTools, systemPrompt } from "./prompt";
 import { CONTRACT_WORK, SPEC_LAST_ROUNDS, SPEC_MAX_ROUNDS, V2_LIMITS, usesHarnessV2 } from "./harness";
@@ -35,6 +35,7 @@ import { fixContext, reviewFixContext } from "./focused";
 import { addTokens, formatTokenReport } from "./token-report";
 import { checkpoint, claimTurn, loadFiles, recordUsage, releaseTurn } from "./store";
 import { decideFunding } from "@/server/credits/cap";
+import { alertProviderFunds } from "./provider-alert";
 import { CREDITS_PAUSED_MESSAGE, OutOfCreditsError, ensureHold, fitCall, headroomMicro, worstCaseCallMicro } from "@/server/credits/holds";
 import { fillMiniApp, type MiniAppInfo } from "./kits/mini-app";
 import { formatCredits } from "@/lib/credits-math";
@@ -56,7 +57,7 @@ import {
 } from "./turn-progress";
 import { deliveryContext, milestoneAllows, scopeRefusal } from "./delivery";
 import { milestoneName } from "@/lib/plain-words";
-import { SponsorshipExhaustedError, sponsorshipCanCall } from "@/server/credits/build-sponsorship";
+import { SponsorshipExhaustedError, releaseUnusedSponsorship, sponsorshipCanCall } from "@/server/credits/build-sponsorship";
 import type { DeliveryPlan } from "@/server/db/schema";
 import { Workspace, type FileChange } from "./workspace";
 import { requestGithubSync } from "@/server/github/sync";
@@ -460,7 +461,8 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
             break;
           } catch (error) {
             stopIfRequested();
-            if (attempt >= 1 || !(error instanceof ModelUnavailableError)) throw error;
+            // An empty provider account fails every attempt the same way: no point retrying.
+            if (attempt >= 1 || !(error instanceof ModelUnavailableError) || error instanceof ProviderFundsError) throw error;
             log("! the AI provider failed mid-response; retrying once");
             replyText = "";
             deltas.length = 0;
@@ -1370,6 +1372,12 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
           : error instanceof Error
             ? error.message
             : "The build failed unexpectedly.";
+    if (error instanceof ProviderFundsError) {
+      alertProviderFunds(message);
+      // Our empty account, not their build: an allowance that paid for nothing goes back.
+      const jobId = job.jobId;
+      if (funding === "platform" && jobId && !record.sponsoredMicro) await job.commit((tx) => releaseUnusedSponsorship(tx, jobId)).catch(rethrowLease);
+    }
     await persistDraft(message).catch(rethrowLease);
     record.jobId = job.jobId;
     record.draftSaved = draftPersisted;

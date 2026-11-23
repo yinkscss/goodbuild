@@ -94,6 +94,22 @@ export class ModelUnavailableError extends Error {
   }
 }
 
+/**
+ * GoodBuild's own account with the AI provider is out of money (HTTP 402, "Insufficient Balance"). Every build
+ * fails the same way until the owner tops it up, so retrying is pointless and the owner is told (23 Nov 2026).
+ */
+export class ProviderFundsError extends ModelUnavailableError {
+  constructor(message: string) {
+    super(message);
+    this.name = "ProviderFundsError";
+  }
+}
+
+/** True for an error message saved from a ProviderFundsError, or a raw provider balance refusal. */
+export function isProviderFundsMessage(message: string): boolean {
+  return /AI provider account is out of funds|Insufficient Balance/i.test(message);
+}
+
 function defaultModels(): Record<ModelTier, LanguageModel> {
   // Created lazily so a missing key surfaces as a mapped error on the first call, not at import.
   return {
@@ -146,7 +162,7 @@ export function aiSdkClient(models?: Record<ModelTier, LanguageModel>, idleMs = 
         });
       } catch (error) {
         clearTimeout(idleTimer);
-        throw new ModelUnavailableError(describe(error, tier));
+        throw unavailable(error, tier);
       }
 
       let finishReason: string | null = null;
@@ -185,7 +201,7 @@ export function aiSdkClient(models?: Record<ModelTier, LanguageModel>, idleMs = 
         if (idle.signal.aborted && !req.signal?.aborted) throw idle.signal.reason;
       } catch (error) {
         if (idle.signal.aborted && !req.signal?.aborted) throw new ModelUnavailableError(`The AI provider sent nothing for ${Math.round(idleMs / 1000)} seconds.`);
-        throw new ModelUnavailableError(describe(error, tier));
+        throw unavailable(error, tier);
       } finally {
         clearTimeout(idleTimer);
       }
@@ -292,8 +308,18 @@ function parseArgs(raw: string): unknown {
   }
 }
 
+function unavailable(error: unknown, tier: ModelTier): ModelUnavailableError {
+  if (error instanceof ModelUnavailableError) return error;
+  const message = describe(error, tier);
+  return isProviderFundsMessage(message) ? new ProviderFundsError(message) : new ModelUnavailableError(message);
+}
+
 function describe(error: unknown, tier: ModelTier): string {
   if (error instanceof ModelUnavailableError) return error.message;
+  const provider = tier === "strong" ? "Anthropic" : "DeepSeek";
+  if ((APICallError.isInstance(error) && error.statusCode === 402) || /Insufficient Balance/i.test((error as { message?: string })?.message ?? "")) {
+    return `The AI provider account is out of funds (${provider}, 402): ${(error as { message?: string }).message ?? "payment required"}`;
+  }
   const key = KEY_NAME[tier];
   const keyHelp = `The AI provider has no valid API key. Set ${key} in .env.local, then restart \`pnpm dev\`.`;
   if (LoadAPIKeyError.isInstance(error)) return keyHelp;

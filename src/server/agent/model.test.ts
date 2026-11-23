@@ -3,7 +3,7 @@ import { LoadAPIKeyError, APICallError } from "ai";
 import { MockLanguageModelV4, simulateReadableStream } from "ai/test";
 import { describe, expect, it } from "vitest";
 
-import { aiSdkClient, ModelUnavailableError, toSdkMessages, withFallback, type ChatMessage, type ModelClient, type ModelEvent, type ModelRequest } from "./model";
+import { aiSdkClient, ModelUnavailableError, ProviderFundsError, toSdkMessages, withFallback, type ChatMessage, type ModelClient, type ModelEvent, type ModelRequest } from "./model";
 
 type Chunk = Record<string, unknown>;
 
@@ -165,6 +165,13 @@ describe("aiSdkClient", () => {
     const strong = mockModel({ error: new APICallError({ message: "boom", url: "https://x", requestBodyValues: {}, statusCode: 503, isRetryable: false }) });
     const err = await collect(aiSdkClient({ strong, cheap: strong })).catch((e) => e);
     expect(err.message).toMatch(/unreachable/);
+  });
+
+  it("names an empty provider account (402) as our funding problem, not an outage (23 Nov 2026)", async () => {
+    const cheap = mockModel({ error: new APICallError({ message: "Insufficient Balance", url: "https://api.deepseek.com", requestBodyValues: {}, statusCode: 402, isRetryable: false }) });
+    const err = await collect(aiSdkClient({ strong: cheap, cheap }), request({ tier: "cheap" })).catch((e) => e);
+    expect(err).toBeInstanceOf(ProviderFundsError);
+    expect(err.message).toMatch(/out of funds \(DeepSeek, 402\): Insufficient Balance/);
   });
 });
 

@@ -10,7 +10,7 @@ import { scriptedModel } from "@/server/agent/fake-model";
 import { LeaseLostError } from "@/server/agent/turn-progress";
 import { runCheck, closeRunCheckBrowser } from "@/server/agent/run-check";
 import { turnJobs, turnJobCalls } from "@/server/db/schema";
-import { ModelUnavailableError, type ModelClient } from "@/server/agent/model";
+import { ModelUnavailableError, ProviderFundsError, type ModelClient } from "@/server/agent/model";
 import { runTurn } from "@/server/agent/runner";
 import { loadFiles } from "@/server/agent/store";
 import { OutOfCreditsError } from "@/server/credits/holds";
@@ -18,6 +18,7 @@ import { getBalanceMicro, postLedgerEntry } from "@/server/credits/ledger";
 import { recordUsage } from "@/server/agent/store";
 import { sponsorshipCanCall } from "@/server/credits/build-sponsorship";
 import { claimJob, jobContext, startTurn } from "./jobs";
+import { continueOnCredits } from "./worker";
 
 const GOAL = "Make a Tic-tac-toe game, people connect their wallet, stake G$ and play amongst themselves. Make it fun and interactive";
 const APP = TIC_TAC_TOE;
@@ -165,9 +166,37 @@ describe("first delivery and recovery", () => {
     expect("job" in retry && retry.job.funding).toBe("platform");
     await run(broken);
     if (!("job" in retry)) throw new Error("No retry");
+    // The second repair isn't sponsored again: it runs on the person's own credits, unasked (owner, 23 Nov 2026).
     const next = await startTurn(db, { projectId, userId, mode: "build", retryOfJobId: retry.job.id }, ENV, identity);
-    expect(next).toHaveProperty("refused");
+    expect("job" in next && next.job.funding).not.toBe("platform");
     expect(await db.select().from(buildSponsorships)).toHaveLength(2);
+  });
+
+  it("carries on with credits, unasked, when the free allowance runs out partway (owner, 23 Nov 2026)", async () => {
+    const tiny = { ...ENV, FIRST_DELIVERY_MICRO: "1" };
+    const started = await startTurn(db, { userId, projectId, mode: "build", prompt: GOAL }, tiny, identity);
+    if (!("job" in started)) throw new Error("Refused");
+    expect(started.job.funding).toBe("platform");
+    const record = await run(scriptedModel([writeApp, { text: "Ready" }]).client);
+    expect(record.status).toBe("error");
+    expect(await continueOnCredits(db, started.job, record, tiny)).toBe(true);
+    const next = (await db.select().from(turnJobs).where(eq(turnJobs.retryOfJobId, started.job.id)))[0];
+    expect(next.status).toBe("queued");
+    expect(next.funding).not.toBe("platform");
+    // Only an allowance stop continues: other failures keep their card.
+    expect(await continueOnCredits(db, started.job, { status: "error", error: "boom" }, tiny)).toBe(false);
+  });
+
+  it("gives the free allowance back when our AI account was empty (23 Nov 2026)", async () => {
+    const source = await start();
+    expect(source.funding).toBe("platform");
+    const empty: ModelClient = { async *stream() { throw new ProviderFundsError("The AI provider account is out of funds (DeepSeek, 402): Insufficient Balance"); } };
+    const record = await run(empty);
+    expect(record.status).toBe("error");
+    expect(await db.select().from(buildSponsorships)).toHaveLength(0);
+    // The retry is sponsored again instead of charging credits.
+    const retry = await startTurn(db, { projectId, userId, mode: "build", retryOfJobId: source.id }, ENV, identity);
+    expect("job" in retry && retry.job.funding).toBe("platform");
   });
 
   it("keeps failed planning retries on their normal funding path", async () => {

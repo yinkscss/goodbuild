@@ -13,7 +13,8 @@ import { LeaseLostError } from "@/server/agent/turn-progress";
 import type { TurnEvent, TurnMode } from "@/lib/turn-types";
 import { nameProject } from "@/server/agent/project-name";
 import { checkAiAllowance } from "@/server/credits/cap";
-import { MAX_ATTEMPTS, RENEW_MS, appendEvents, checkHolds, claimJob, failJob, jobContext, renewLease, sweep } from "./jobs";
+import { SPONSORSHIP_EXHAUSTED_MESSAGE } from "@/server/credits/build-sponsorship";
+import { MAX_ATTEMPTS, RENEW_MS, appendEvents, checkHolds, claimJob, failJob, jobContext, renewLease, startTurn, sweep } from "./jobs";
 
 /** Jobs one worker runs at once (different projects; one per project is enforced by the DB). */
 const CONCURRENCY = 3;
@@ -214,11 +215,12 @@ export class TurnWorker {
       const ctx = await jobContext(db, job, this.id, controller.signal);
       // A stop requested before the first renewal.
       if (job.stopRequested) controller.abort();
-      await runTurn(
+      const record = await runTurn(
         { db, model: this.opts.model(), ...this.opts.deps, job: ctx },
         { projectId: job.projectId, userId: job.userId, mode: job.mode as TurnMode, userMessageId: job.userMessageId },
         (e) => sink.push(e),
       );
+      if (!lost) await continueOnCredits(db, job, record);
     } catch (e) {
       if (!(e instanceof LeaseLostError) && !lost) {
         console.warn(`[worker] job ${job.id} failed: ${(e as Error).message}`);
@@ -231,6 +233,24 @@ export class TurnWorker {
       if (!lost) sink.push({ type: "end" });
       await sink.flush();
     }
+  }
+}
+
+/**
+ * A sponsored build whose free allowance ran out partway carries on, unasked, on the person's credits (owner,
+ * 23 Nov 2026: "don't ask, don't pause, just keep working"). A job keeps one funding source for life (the
+ * database refuses a change), so the rest runs as a credit-funded continuation from the saved draft. It is
+ * queued before this job's stream ends, so the workspace attaches to it straight away. With no credits,
+ * startTurn refuses and the card stays as it was. Returns whether a continuation was queued.
+ */
+export async function continueOnCredits(db: Db, job: Pick<TurnJob, "id" | "projectId" | "userId" | "funding">, record: { status: string; error?: string }, env: Record<string, string | undefined> = process.env): Promise<boolean> {
+  if (job.funding !== "platform" || record.status !== "error" || record.error !== SPONSORSHIP_EXHAUSTED_MESSAGE) return false;
+  try {
+    const started = await startTurn(db, { projectId: job.projectId, userId: job.userId, mode: "build", retryOfJobId: job.id, useCredits: true }, env);
+    return "job" in started;
+  } catch (e) {
+    console.warn(`[worker] job ${job.id} couldn't continue on credits: ${(e as Error).message}`);
+    return false;
   }
 }
 
