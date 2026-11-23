@@ -11,6 +11,7 @@ export const CLUSTER_KEYWORDS: Record<PostCluster, string[]> = {
   free: ["free AI app builder", "no-code", "build an app with AI", "AI website builder"],
   ideas: ["G$", "GoodDollar", "Celo dApp ideas", "crypto app ideas"],
   vibe: ["vibe coding", "AI app builder", "prompt to app", "AI coding"],
+  news: ["GoodBuild news", "hackathon", "GoodDollar", "G$", "Celo"],
 };
 
 export function keywordsFor(post: Post): string[] {

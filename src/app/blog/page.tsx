@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 
 import { SiteFooter } from "@/components/landing/site-footer";
@@ -56,6 +57,7 @@ export default function BlogIndexPage() {
               {POSTS.filter((p) => p.cluster === c).map((p) => (
                 <li key={p.slug}>
                   <Link href={`/blog/${p.slug}`} className="flex h-full flex-col justify-between gap-3 rounded-block bg-surface-tint p-5 transition-colors duration-200 ease-gb hover:text-violet">
+                    {p.image && <Image src={p.image.src} alt={p.image.alt} width={1200} height={630} sizes="(min-width: 1024px) 400px, 100vw" className="h-auto w-full rounded-[12px]" />}
                     <span className="text-sm font-semibold">{p.title}</span>
                     <span className="text-xs text-grey-600">{p.description}</span>
                   </Link>

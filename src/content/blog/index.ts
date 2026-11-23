@@ -3,10 +3,11 @@ import { comparePosts } from "./compare";
 import { freePosts } from "./free";
 import { ideasPosts } from "./ideas";
 import { minipayPosts } from "./minipay";
+import { newsPosts } from "./news";
 import { vibePosts } from "./vibe";
 import type { Post } from "./types";
 
-export const POSTS: Post[] = [...minipayPosts, ...celoPosts, ...comparePosts, ...freePosts, ...ideasPosts, ...vibePosts];
+export const POSTS: Post[] = [...minipayPosts, ...celoPosts, ...comparePosts, ...freePosts, ...ideasPosts, ...vibePosts, ...newsPosts];
 
 export function getPost(slug: string): Post | undefined {
   return POSTS.find((p) => p.slug === slug);
