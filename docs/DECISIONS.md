@@ -2100,3 +2100,18 @@ The owner approved implementing all five parts of the first-build fix and openin
   - A full scripted build: the planner reads past its rounds, is asked to write, the savings template goes in, the template can't be edited, and the child's ABI is exported.
   - The tier and effort of every call are checked, and Sonnet is used only for the repeat.
 - **UNVERIFIED:** a full live build on the site. The live runs above called DeepSeek directly with the real prompts, the spec tool and the templates, outside the worker.
+
+### D166. An empty AI provider account is named, alerted and not retried; repairs past the free allowance run on credits unasked (23 Nov 2026; amends D138, D164)
+- Decided by: the owner, in chat: "If the free allowance has finished, automatically charge them from their credit. You don't have to ask them, you don't have to pause, just keep working." The rest is Claude's fix for the failure found on the server.
+- **What happened (verified on the production database, 23 Nov 2026):** from 12:05 UTC every build failed with DeepSeek's "Insufficient Balance" (HTTP 402). That was 42 jobs across 5 projects and 4 people, with no successful build after it. DeepSeek's balance endpoint read −0.01 USD, `is_available: false`. The card said "The AI that writes your app isn't answering right now", so each person tapped "Fix it for me" again and again. One project (an errand app, "Errand") failed 12 times.
+- **Changes:**
+  - A 402 or "Insufficient Balance" becomes `ProviderFundsError` with the provider named. The runner doesn't retry it, because every attempt fails the same way.
+  - The owner gets a Telegram alert (`TELEGRAM_SUPPORT_CHAT_ID`), at most once every 30 minutes per worker.
+  - The card says "GoodBuild's AI service is paused on our side. We've been alerted and are fixing it." It no longer reads as a passing outage.
+  - `plainError` no longer counts every message containing "model" as an AI outage. Our own bugs read "on our side".
+  - A repair the free allowance doesn't cover (used up, or a retry of a retry) is no longer refused with `funding_unavailable`. It runs on the person's credits through `decideStart`, with no question and no pause. With no credits, `decideStart` still refuses and the workspace offers a top-up.
+  - When a sponsored build's free allowance runs out partway, the worker queues the rest at once as a continuation on the person's credits, from the saved draft (`continueOnCredits`). A job keeps one funding source for life (trigger `funding_refuse_change`), so this is a new job rather than a switch. The workspace attaches to it as soon as the old job ends.
+  - A sponsored build that fails because our AI account is empty, having spent nothing, gives its allowance back (`releaseUnusedSponsorship`). The person keeps their free build or repair.
+  - The card for an empty AI account doesn't say "Tap the button", since tapping can't help until the account is topped up.
+- **Found on the server:** on 23 Nov this outage used up 3 allowances with 0 spent (one first build and two monthly repairs, across two people). Holds on the 26 credit-funded failures were all returned, and nobody was charged.
+- **Open (owner):** whether a DeepSeek funding failure should fall back to Sonnet, which costs more (see D165), so builds keep working while the account is empty.

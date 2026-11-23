@@ -11,7 +11,7 @@ import type { Step, TurnRecord } from "@/lib/turn-types";
 import { formatClock, useElapsed, WaitNote, WaveDots } from "@/components/ui/wait";
 import { cn } from "@/lib/utils";
 import { CHECKING_STEP, plainStep, planStepText } from "@/lib/plain-steps";
-import { plainError, plainMilestoneTitle } from "@/lib/plain-words";
+import { isAiAccountEmpty, plainError, plainMilestoneTitle } from "@/lib/plain-words";
 import { PlanCard, PlanDraftCard, type PlanActions, type PlanDraftActions } from "./plan-card";
 
 /** A step running this long gets a calm explanation (A2). */
@@ -254,7 +254,9 @@ export function TurnError({
                 ? record.error ?? "What it made so far is saved."
                 : needsFix
                   ? `${leftWords ? `${leftWords}. ` : ""}Your files are saved. Tap the button and GoodBuild picks up from here and fixes what's left.${crash}`
-                  : `${plainError(record.error)} Tap the button and GoodBuild picks up from your saved files.${crash}`}
+                  : isAiAccountEmpty(record.error)
+                    ? plainError(record.error)
+                    : `${plainError(record.error)} Tap the button and GoodBuild picks up from your saved files.${crash}`}
             </p>
             {paused && continueCost && continueCost.needMicro > 0 && (
               <p className={cn("mt-1 text-xs", continueCost.haveMicro !== null && continueCost.haveMicro < continueCost.needMicro ? "text-warning" : "text-grey-600")}>

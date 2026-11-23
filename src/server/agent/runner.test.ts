@@ -558,6 +558,25 @@ describe("runTurn", { timeout: 120_000 }, () => {
     expect(assistant.content).toBe("Built it.");
   });
 
+  it("doesn't retry an empty provider account, and tells the owner once (23 Nov 2026)", async () => {
+    const { ProviderFundsError } = await import("./model");
+    const { resetProviderAlertForTests } = await import("./provider-alert");
+    resetProviderAlertForTests();
+    let calls = 0;
+    const client = {
+      async *stream() {
+        calls++;
+        throw new ProviderFundsError("The AI provider account is out of funds (DeepSeek, 402): Insufficient Balance");
+      },
+    };
+    const { emit } = collect();
+    const record = await runTurn({ db, model: client }, { projectId, userId, mode: "build", userMessageId: queuedId }, emit);
+    expect(record.status).toBe("error");
+    expect(record.error).toMatch(/out of funds/);
+    expect(calls).toBe(1);
+    expect(record.log).not.toContain("! the AI provider failed mid-response; retrying once");
+  });
+
   it("ends cleanly when the model is unreachable, and releases the lock", async () => {
     const { ModelUnavailableError } = await import("./model");
     const client = {
