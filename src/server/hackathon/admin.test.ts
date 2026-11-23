@@ -9,8 +9,9 @@ import { getBalanceMicro, postLedgerEntry } from "@/server/credits/ledger";
 import { MIGRATIONS, testBackends, type TestDatabase } from "@/server/credits/test-backends";
 import type { Db } from "@/server/db/client";
 import { users } from "@/server/db/schema";
+import { hackathonParticipants } from "@/server/db/hackathon-schema";
 import { expireUnusedCredits, hackathonReport, sweepHackathonExpiry } from "./admin";
-import { CLAIMS_CLOSE, START_CREDITS, claimHackathon } from "./claim";
+import { CLAIMS_CLOSE, START_CREDITS, claimCloseFor, claimHackathon } from "./claim";
 
 // In the past: ledger rows get the database clock, which must fall after these registrations.
 const NOW = new Date("2026-11-01T12:00:00Z");
@@ -80,5 +81,32 @@ describe.each(testBackends())("hackathon admin on $name", (backend) => {
     expect(r.refused).toEqual([expect.objectContaining({ wallet: other.wallet, root: fresh.root.toLowerCase(), code: "claimed_elsewhere" })]);
     expect(r.perDay).toEqual([{ day: "2026-11-01", count: r.registered }]);
     expect(r.closed).toBe(false);
+  });
+
+  it("keeps a Kadpoly member's credits, and their claim, open until Kadpoly closes (D166)", async () => {
+    const KADPOLY_CLOSE = new Date("2026-12-31T23:00:00Z");
+    const member = await registered();
+    await db.insert(hackathonParticipants).values({ hackathon: "kadpoly-2026", userId: member.id, email: "k@example.com" });
+    const mainOnly = await registered();
+    expect(await claimCloseFor(db, member.id)).toEqual(KADPOLY_CLOSE);
+    expect(await claimCloseFor(db, mainOnly.id)).toEqual(CLAIMS_CLOSE);
+
+    // 11 Dec: main closed, Kadpoly still open. The member waits; the main-only builder is expired.
+    const midway = await expireUnusedCredits(db, AFTER);
+    expect(midway.waiting).toBeGreaterThanOrEqual(1);
+    expect(await getBalanceMicro(db, member.id)).toBe(START_CREDITS * C);
+    expect(await getBalanceMicro(db, mainOnly.id)).toBe(0);
+
+    // A new Kadpoly member can still claim after 10 Dec; a main-only newcomer can't.
+    const [late] = await db.insert(users).values({ wallet: hex() }).returning({ id: users.id, wallet: users.wallet });
+    await db.insert(hackathonParticipants).values({ hackathon: "kadpoly-2026", userId: late.id, email: "late@example.com" });
+    await expect(claimHackathon(db, late, { readRoot: async () => hex() as Address, now: AFTER, env: {} })).resolves.toMatchObject({ registered: true });
+    const [stranger] = await db.insert(users).values({ wallet: hex() }).returning({ id: users.id, wallet: users.wallet });
+    await expect(claimHackathon(db, stranger, { readRoot: async () => hex() as Address, now: AFTER, env: {} })).rejects.toMatchObject({ code: "closed" });
+    await expect(claimHackathon(db, late, { readRoot: async () => hex() as Address, now: KADPOLY_CLOSE, env: {} })).rejects.toMatchObject({ code: "closed" });
+
+    // After Kadpoly closes, the member's unspent grant goes too.
+    await expireUnusedCredits(db, new Date(KADPOLY_CLOSE.getTime() + 60_000));
+    expect(await getBalanceMicro(db, member.id)).toBe(0);
   });
 });

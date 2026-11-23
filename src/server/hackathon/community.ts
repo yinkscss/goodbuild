@@ -13,8 +13,7 @@ import {
 import { users } from "@/server/db/schema";
 import { allocateHackathonRewards } from "@/lib/hackathon-rewards";
 import { MAX_APPROVALS_PER_PERSON, type VoteStatus } from "@/lib/hackathon-vote";
-import { CLAIMS_CLOSE } from "./claim";
-import { EVENTS, eventId, type HackathonEvent } from "@/lib/hackathon-events";
+import { closeOf, EVENTS, eventId, type HackathonEvent } from "@/lib/hackathon-events";
 
 const link = z.union([
   z.literal(""),
@@ -122,7 +121,7 @@ export async function saveEntry(
   input: z.input<typeof entryInput>,
   event: HackathonEvent = "main",
 ) {
-  if (new Date() >= CLAIMS_CLOSE)
+  if (new Date() >= closeOf(event))
     throw new CommunityError("Submissions are closed.", 410);
   const data = entryInput.parse(input);
   const participant =
@@ -162,7 +161,7 @@ export async function saveEntry(
       .limit(1);
     if (elsewhere)
       throw new CommunityError(
-        "Your project is already entered in the other hackathon. Each builder enters one hackathon.",
+        "Your project is already entered in another hackathon. Each builder enters one hackathon.",
         409,
       );
     const [row] = await tx
@@ -226,7 +225,7 @@ export async function approveEntry(
   now = new Date(),
   event: HackathonEvent = "main",
 ) {
-  if (now >= CLAIMS_CLOSE)
+  if (now >= closeOf(event))
     throw new CommunityError("Approvals are closed.", 410);
   const root = await readRoot(user.wallet as Address);
   if (!root)

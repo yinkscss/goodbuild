@@ -35,8 +35,8 @@ export function RegisterSteps() {
 }
 function Registration() {
   const auth = useAuth();
-  // On the FUTMinna pages (D160) the same steps run: the main signup unlocks the shared credit claim,
-  // and the person is also added to the FUTMinna signup list.
+  // On a campus page (D160, D166) the same steps run: the main signup unlocks the shared credit claim,
+  // and the person is also added to that campus's signup list.
   const { event, config } = useHackathonEvent();
   const { openConnect } = useSendGate();
   const user = auth.user;
@@ -349,7 +349,8 @@ function Registration() {
                 disabled={
                   !flowDone || !verified || claim.busy || claim.status === null
                 }
-                onClick={() => void claim.run()}
+                // On a campus page, join first: a campus member can claim until their campus closes (D166).
+                onClick={() => void join().then(() => claim.run())}
               >
                 {claim.busy
                   ? "Adding credits…"
@@ -367,7 +368,7 @@ function Registration() {
       )}
       {joinFailed && (
         <p className={styles.error} role="alert">
-          You’re registered, but we couldn’t add you to the FUTMinna hackathon.{" "}
+          You’re registered, but we couldn’t add you to the {config.label} hackathon.{" "}
           <button type="button" className="font-semibold underline" onClick={() => void join()}>
             Try again
           </button>

@@ -8,7 +8,7 @@ import { allocateHackathonRewards } from "@/lib/hackathon-rewards";
 import { MAX_APPROVALS_PER_PERSON, type VoteStatus } from "@/lib/hackathon-vote";
 import { FlowstateVote } from "./flowstate-vote";
 import { ProjectVoteLink } from "./project-vote-link";
-import { eventApi, type HackathonEvent } from "@/lib/hackathon-events";
+import { eventApi, eventConfig, type HackathonEvent } from "@/lib/hackathon-events";
 import { useHackathonEvent } from "./use-event";
 
 type Entry = { id: string; alias: string; title: string; pitch: string; liveUrl: string; sourceUrl: string; approvals: number };
@@ -151,7 +151,7 @@ export function VoteList() {
             : `Each verified person gets ${status.max} approvals`}
         </p>
         <p className="mt-1 text-grey-600">
-          Add one approval at a time. You can put all {status.max} on one project or spread them around. Voting closes at the end of 10 Dec.
+          Add one approval at a time. You can put all {status.max} on one project or spread them around. Voting closes at the end of {eventConfig(event).closesLabel}.
         </p>
       </div>
       {error && <p role="alert" className="mt-3 text-sm text-danger">{error}</p>}

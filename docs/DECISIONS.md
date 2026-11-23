@@ -2100,3 +2100,23 @@ The owner approved implementing all five parts of the first-build fix and openin
   - A full scripted build: the planner reads past its rounds, is asked to write, the savings template goes in, the template can't be edited, and the child's ABI is exported.
   - The tier and effort of every call are checked, and Sonnet is used only for the repeat.
 - **UNVERIFIED:** a full live build on the site. The live runs above called DeepSeek directly with the real prompts, the spec tool and the templates, outside the worker.
+
+### D166. A Kadpoly (Kaduna Polytechnic) hackathon: FUTMinna's setup, three full-tuition winners, closes 31 Dec (23 Nov 2026; extends D160, D161)
+- Decided by: the owner ("create a Kadpoly version of the FUTMinna hackathon, same rules, same settings, same setup"). In chat, the owner chose the terms another session passed on: the top 3 win full tuition for the session, places 4 and 5 are waitlisted, it starts 23 Nov and closes at the end of 31 Dec. Kadpoly only, no second polytechnic. Built by Claude.
+- **Events are now a list.** `src/lib/hackathon-events.ts` has `main`, `futminna` and `kadpoly` (`kadpoly-2026`). Each event has its own `closesAt`/`closesLabel`. Each campus event has a `campus` block (school, prize wording, `winners`, `judged`), and every campus page is built from that block. `parseEvent` and `eventFromPath` accept any listed event. No migration: the same tables, rows under the new id.
+- **Shared pages.** The FUTMinna public page became `CampusHackathonPage` (`src/components/hackathon/campus-page.tsx`), and the in-app tabs became `campus-app-pages.tsx`. `/hackathon/futminna` and `/hackathon/kadpoly`, and the four tabs under `/home/hackathon/<event>`, are a few lines each. FUTMinna's copy is unchanged except for the one-hackathon rule, which now names three hackathons.
+- **Prize.** FUTMinna is judged (the top 5 are the shortlist and judges pick one winner). Kadpoly is not judged in that sense: when voting closes, the top 3 by approvals win and places 4 and 5 are waitlisted. If a winner can't show they're a Kadpoly student, the next on the waitlist takes their place. The public rules keep FUTMinna's "Judges look for something creative…" line, matching the blog post's "What the judges look for". The leaderboard badges places 1–3 "Top 3" and 4–5 "Waitlist", and a waitlisted builder sees how many approvals they need to reach the top 3.
+- **Close dates.** Entries, approvals and rank snapshots stop at each event's own close. FUTMinna and the main hackathon still close at the end of 10 Dec; Kadpoly closes at the end of 31 Dec.
+- **Credits (one grant, shared budget, unchanged).** A person's claim and grant now last until the latest close among the hackathons they signed up for (`claimCloseFor`):
+  - A Kadpoly member can claim credits after 10 Dec, until 31 Dec.
+  - The expiry sweep leaves a Kadpoly member's unspent grant alone until Kadpoly closes, and removes it after that.
+  - Everyone else stops at 10 Dec, as before.
+  - On a campus page, the first credit claim joins that campus before claiming, so a member is recorded before the claim checks the date.
+  - Referral payouts and the admin claims report still follow the main close.
+- **Membership (D161), for more than one campus.** `/home/hackathon` opens on the campus hackathon the person belongs to. Someone in two campuses opens on the first in the list (FUTMinna). The switch lists all three hackathons. Each builder still enters one hackathon only.
+- **Admin:** one CSV export button per campus.
+- **For the owner:**
+  - Kadpoly draws on the same 10,000-credit budget as the other two hackathons (`HACKATHON_BUDGET_CREDITS` overrides it).
+  - Anyone who joins Kadpoly can claim main-hackathon credits until 31 Dec, which is the point of the later close.
+  - The waitlist replacement rule is Claude's reading of "waitlisted".
+- **UNVERIFIED** with real sign-ins: the in-app tabs, joining and claiming were checked only by tests (PGlite and components). The public pages were checked in a browser, on desktop and at phone width.

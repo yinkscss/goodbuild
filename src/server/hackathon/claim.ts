@@ -7,7 +7,8 @@ import { MICRO_PER_CREDIT } from "@/lib/credits-math";
 import { postLedgerEntry } from "@/server/credits/ledger";
 import type { Db } from "@/server/db/client";
 import { deployments } from "@/server/db/deploy-schema";
-import { hackathonRefusals, hackathonRegistrations, type HackathonRegistration } from "@/server/db/hackathon-schema";
+import { closeOf, eventOfId } from "@/lib/hackathon-events";
+import { hackathonParticipants, hackathonRefusals, hackathonRegistrations, type HackathonRegistration } from "@/server/db/hackathon-schema";
 import { users } from "@/server/db/schema";
 import { CLAIMS_CLOSE, HACKATHON_ID } from "./ids";
 import { recordReferral, referralHeld, settleReferral } from "./referrals";
@@ -60,6 +61,24 @@ export interface ClaimDeps {
   env?: Record<string, string | undefined>;
 }
 
+/**
+ * When this person's hackathon credits stop: the latest close among the hackathons they signed up for,
+ * and never before the main one (D166). A Kadpoly member can claim, and keeps their grant, until
+ * Kadpoly closes; everyone else stops at the main close.
+ */
+export async function claimCloseFor(db: Db, userId: string): Promise<Date> {
+  const rows = await db
+    .select({ hackathon: hackathonParticipants.hackathon })
+    .from(hackathonParticipants)
+    .where(eq(hackathonParticipants.userId, userId));
+  let latest = CLAIMS_CLOSE;
+  for (const { hackathon } of rows) {
+    const event = eventOfId(hackathon);
+    if (event && closeOf(event) > latest) latest = closeOf(event);
+  }
+  return latest;
+}
+
 const toCredits = (micro: number) => Math.round(micro / MICRO_PER_CREDIT);
 
 /** The total cap in credits: HACKATHON_BUDGET_CREDITS when it's a whole number, else the default. */
@@ -95,7 +114,8 @@ export async function claimHackathon(db: Db, user: { id: string; wallet: string 
   const env = deps.env ?? process.env;
   const now = deps.now ?? new Date();
   if (env.HACKATHON_CLAIMS === "off") throw new HackathonError("off", "Hackathon credits are paused right now. Try again later.");
-  if (now >= CLAIMS_CLOSE) throw new HackathonError("closed", "Submissions have closed, so hackathon credits can no longer be claimed.");
+  if (now >= CLAIMS_CLOSE && now >= (await claimCloseFor(db, user.id)))
+    throw new HackathonError("closed", "Submissions have closed, so hackathon credits can no longer be claimed.");
 
   // The chain decides, never a stored flag or GoodDollar's redirect. Read outside the transaction.
   const rootAddress = await deps.readRoot(user.wallet as Address);

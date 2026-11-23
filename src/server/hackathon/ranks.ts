@@ -4,8 +4,7 @@ import type { Db } from "@/server/db/client";
 import { hackathonEntries, hackathonRankSnapshots } from "@/server/db/hackathon-schema";
 import { allocateHackathonRewards } from "@/lib/hackathon-rewards";
 import { risingStars, type RisingStar } from "@/lib/hackathon-weeks";
-import { CLAIMS_CLOSE } from "./claim";
-import { EVENTS, eventId, type HackathonEvent } from "@/lib/hackathon-events";
+import { closeOf, EVENTS, eventId, type HackathonEvent } from "@/lib/hackathon-events";
 import { listEntries } from "./community";
 
 /** The West Africa Time date (UTC+1, no daylight saving) as YYYY-MM-DD. */
@@ -20,7 +19,7 @@ export function watDay(now: Date): string {
  */
 export async function snapshotRanks(db: Db, now = new Date(), event: HackathonEvent = "main"): Promise<{ day: string; written: number }> {
   const day = watDay(now);
-  if (day > watDay(CLAIMS_CLOSE)) return { day, written: 0 };
+  if (day > watDay(closeOf(event))) return { day, written: 0 };
   const ranked = allocateHackathonRewards(await listEntries(db, event)).filter(
     (e): e is typeof e & { rank: number } => e.rank !== null,
   );

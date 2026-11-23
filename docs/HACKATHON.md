@@ -96,3 +96,10 @@ You and a friend each get 10 credits when they register through your link and de
 
 ## 10. FUTMinna hackathon (20 Nov 2026, D160)
 A second hackathon for FUTMinna students, ₦150,000 scholarship, closing 10 Dec. Public page `/hackathon/futminna`, in-app tabs at `/home/hackathon/futminna`. Its entries, approvals (3 per person, separate from the main hackathon's), leaderboard (top 5 = shortlist, judges pick) and signup list live under the id `futminna-2026` in the same tables. Registration and credits are the main hackathon's: one grant per GoodDollar identity, one shared budget (default now 10,000 credits). Each builder enters one hackathon. Event list and copy: `src/lib/hackathon-events.ts`. Admin CSV: `/api/hackathon/export?event=futminna`. People who register from a FUTMinna page (or join with the button on its in-app tab) are FUTMinna members, and `/home/hackathon` opens on FUTMinna for them (D161).
+
+## 11. Kadpoly hackathon (23 Nov 2026, D166)
+For Kaduna Polytechnic students. Same setup as FUTMinna: same tables under the id `kadpoly-2026`, the main hackathon's registration and credits, 3 approvals per person counted separately, and each builder enters one hackathon only. Public page `/hackathon/kadpoly`, in-app tabs at `/home/hackathon/kadpoly`. Differences from FUTMinna:
+- Prize: the top 3 by approvals win full tuition for the session, and places 4 and 5 are waitlisted.
+- Close: entries and approvals close at the end of 31 Dec, not 10 Dec. Kadpoly members can claim credits, and keep them, until then.
+
+Both campus pages are built from `src/components/hackathon/campus-page.tsx`, using each event's `campus` block in `src/lib/hackathon-events.ts`. Admin CSV: `/api/hackathon/export?event=kadpoly`.
