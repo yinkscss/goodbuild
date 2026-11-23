@@ -130,7 +130,12 @@ export interface GoodIdVerify {
  * contract; GoodDollar's redirect result is only a hint. Shared by the workspace's VerifyCard and
  * the hackathon page. `returnTo` is where GoodDollar sends the person back (default: this page).
  */
-export function useGoodIdVerify(onVerified: () => unknown, returnTo?: () => string): GoodIdVerify {
+export function useGoodIdVerify(
+  onVerified: () => unknown,
+  returnTo?: () => string,
+  /** For surfaces that keep their own verified state (e.g. hackathon votes read the live Celo root): if it says no, the "already verified" shortcut is skipped and the face check starts. */
+  confirm?: () => Promise<boolean>,
+): GoodIdVerify {
   const auth = useAuth();
   const [busy, setBusy] = React.useState(false);
   const [note, setNote] = React.useState<string | null>(null);
@@ -187,7 +192,8 @@ export function useGoodIdVerify(onVerified: () => unknown, returnTo?: () => stri
       // Already verified with GoodDollar? No signature or face scan needed.
       const verified = await checkOnChain();
       if (!current()) return;
-      if (verified) {
+      if (verified && (!confirm || (await confirm()))) {
+        if (!current()) return;
         pending("clear");
         setBusy(false);
         window.dispatchEvent(new CustomEvent("goodbuild:goodid-verified", { detail: wallet }));
