@@ -3,14 +3,14 @@ import { describe, expect, it } from "vitest";
 import { POSTS, getPost } from "./index";
 import type { Post } from "./types";
 
-const ROUTES = new Set(["/", "/docs", "/blog", "/terms", "/privacy", "/hackathon", "/hackathon/futminna"]);
+const ROUTES = new Set(["/", "/docs", "/blog", "/terms", "/privacy", "/hackathon", "/hackathon/futminna", "/hackathon/kadpoly"]);
 
 function texts(p: Post): string[] {
   return [p.title, p.description, p.intro, ...p.sections.flatMap((s) => [s.heading, ...(s.paragraphs ?? []), ...(s.bullets ?? []), ...(s.steps ?? [])]), ...(p.faq ?? []).flatMap((f) => [f.q, f.a])];
 }
 
 describe("blog posts", () => {
-  it("has exactly 51 posts", () => expect(POSTS).toHaveLength(51));
+  it("has exactly 52 posts", () => expect(POSTS).toHaveLength(52));
 
   it("has unique slugs and unique target queries", () => {
     expect(new Set(POSTS.map((p) => p.slug)).size).toBe(POSTS.length);
