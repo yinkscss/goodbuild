@@ -46,7 +46,7 @@ it("reserves all available earnings once, releases rejected requests, and guards
 it("verifies exact G$ receipt evidence with finality and makes confirmation idempotent", async () => {
  const db = database.db; const a = await person();
  const sender = "0x1111111111111111111111111111111111111111" as const;
- process.env.AMBASSADOR_PAYOUT_WALLETS = sender;
+ process.env.ADMIN_WALLETS = sender; // the admin wallet is the payout wallet; no separate setting
  const [p] = await db.insert(ambassadorPayouts).values({userId:a.id,wallet:a.wallet,amountG:25000,status:"processing",createdAt:new Date("2026-02-01")}).returning();
  const hash = ("0x"+"a".repeat(64)) as `0x${string}`;
  const log = { address:GOODDOLLAR_MAINNET,logIndex:1,data:encodeAbiParameters([{type:"uint256"}],[BigInt(25000)*BigInt(10)**BigInt(18)]),topics:encodeEventTopics({abi:erc20Abi,eventName:"Transfer",args:{from:sender,to:a.wallet as `0x${string}`}}) };
@@ -62,5 +62,5 @@ it("verifies exact G$ receipt evidence with finality and makes confirmation idem
  await confirmPayout(db,a.id,p.id,hash); await confirmPayout(db,a.id,p.id,hash);
  const [paid] = await db.select().from(ambassadorPayouts).where(eq(ambassadorPayouts.id,p.id));
  expect(paid.status).toBe("paid"); expect(paid.txHash).toBe(hash);
- delete process.env.AMBASSADOR_PAYOUT_WALLETS;
+ delete process.env.ADMIN_WALLETS;
 });

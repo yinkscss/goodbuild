@@ -12,10 +12,14 @@ export type ModelTier = "strong" | "cheap";
  * Which tier each kind of work uses (D19). DeepSeek writes the first pass; Claude fixes what
  * the checks reject. Moving follow-up edits to Claude later is one line: build for edits.
  */
-export const TIER_FOR = { plan: "cheap", build: "cheap", fix: "strong", testFix: "cheap", review: "cheap", spec: "strong", contracts: "strong" } as const satisfies Record<string, ModelTier>;
+export const TIER_FOR = { plan: "cheap", build: "cheap", fix: "strong", testFix: "cheap", review: "cheap", spec: "cheap", contracts: "cheap", stubborn: "strong" } as const satisfies Record<string, ModelTier>;
 /** `testFix`: first auto-fix attempt when every failing check is a contract test (D19 amendment). Later attempts use `fix`. */
 /** `review`: reading the screenshots of a finished build (D87), on DeepSeek since D162 (owner, 21 Nov 2026). What it finds is fixed on `build`. */
-/** `spec` and `contracts` (D152, harness v2 only): the app's plan and acceptance flows, then its contracts and their tests. */
+/** `spec` and `contracts` (D152, harness v2 only): the app's plan and acceptance flows, then its contracts and their tests. On DeepSeek since D165 (owner, 21 Nov 2026: "Sonnet is crazy expensive"): the first plan thinks hard, later ones lightly, and contracts are built from GoodBuild's audited templates. */
+/** `stubborn` (D165): the one attempt on Sonnet, when the same problems came back after DeepSeek's fix. */
+
+/** How hard DeepSeek thinks (D165). DeepSeek's own levels are low, high and max ("medium" is read as high). */
+export type Effort = "low" | "high" | "max";
 
 export const MODEL_IDS: Record<ModelTier, string> = { strong: "claude-sonnet-5-5", cheap: "deepseek-flash" };
 const KEY_NAME: Record<ModelTier, string> = { strong: "ANTHROPIC_API_KEY", cheap: "DEEPSEEK_API_KEY" };
@@ -74,6 +78,8 @@ export interface ModelRequest {
    * marked already, so a long fix pass otherwise re-sends everything after them at the full price.
    */
   cacheTail?: boolean;
+  /** DeepSeek's thinking strength for this call (D165). Ignored by Anthropic and when noThinking is set. */
+  effort?: Effort;
 }
 
 /** Streaming chat with tool calls. Implemented over the Vercel AI SDK, or scripted in tests. */
@@ -136,7 +142,7 @@ export function aiSdkClient(models?: Record<ModelTier, LanguageModel>, idleMs = 
           maxOutputTokens: req.maxTokens,
           maxRetries: req.noRetries ? 0 : 1,
           abortSignal: signal,
-          ...(req.noThinking ? { providerOptions: { deepseek: { thinking: { type: "disabled" } } } } : {}),
+          ...(req.noThinking ? { providerOptions: { deepseek: { thinking: { type: "disabled" } } } } : req.effort && tier === "cheap" ? { providerOptions: { deepseek: { reasoningEffort: req.effort } } } : {}),
         });
       } catch (error) {
         clearTimeout(idleTimer);

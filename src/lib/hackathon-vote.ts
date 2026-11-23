@@ -10,4 +10,6 @@ export interface VoteStatus {
   verified: boolean;
   /** A confirmed on-chain FlowState vote for GoodBuild. */
   voted: boolean;
+  /** Celo couldn't be read, so `verified: false` means "unknown", not "not verified". */
+  checkFailed?: boolean;
 }

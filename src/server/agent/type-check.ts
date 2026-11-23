@@ -43,6 +43,20 @@ const MAX_ISSUES = 12;
 const TIMEOUT_MS = 45_000;
 const MAX_HEAP_MB = 1536;
 
+/**
+ * viem's types misread without strictNullChecks (D163, found on 21 Nov 2026): with the check's loose settings,
+ * viem's EIP-1193 `request` type collapses to `{ method: unknown; params: unknown }`, so a valid
+ * `provider.request({ method: "eth_chainId" })` is reported as missing `params`, and a wallet client's
+ * `signMessage({ message })` as missing `account`. Measured: GoodBuild's own starter has 7 such errors with the
+ * loose settings and none with strictNullChecks on. Turning strictNullChecks on for every app would report loose
+ * code that runs fine (`useState(null)` then a value), so these two shapes alone are dropped.
+ */
+const VIEM_LOOSE_MISREADS = [/\{ method: unknown; params: unknown; \}/, /Property 'account' is missing in type '[^']*' but required in type '\w+Parameters</];
+
+export function isViemLooseMisread(message: string): boolean {
+  return VIEM_LOOSE_MISREADS.some((r) => r.test(message));
+}
+
 /** Files GoodBuild writes and the builder can't change: an error there isn't the builder's to fix. */
 function platformOwned(file: string): boolean {
   return (
@@ -109,7 +123,7 @@ export async function typeCheck(files: Record<string, string>, options: { timeou
       child.stdin?.end(JSON.stringify({ files: sources, ...dirs }));
     });
     if (raw.fatal || !raw.diagnostics) return done({ ran: false, issues: [], note: `skipped: the type check didn't finish (${(raw.fatal ?? "no result").split("\n")[0].slice(0, 160)})` });
-    const own = raw.diagnostics.filter((d) => !platformOwned(d.file));
+    const own = raw.diagnostics.filter((d) => !platformOwned(d.file) && !isViemLooseMisread(d.message));
     const issues: CheckIssue[] = own.slice(0, MAX_ISSUES).map((d) => ({ file: d.file, line: d.line, message: d.message, source: "types" }));
     const more = own.length > MAX_ISSUES ? ` (showing ${MAX_ISSUES})` : "";
     return done({ ran: true, issues, note: own.length ? `${own.length} type error${own.length === 1 ? "" : "s"}${more}` : "types are consistent" });

@@ -16,8 +16,10 @@ describe("StepRows", () => {
         ]}
       />,
     );
-    const group = screen.getByRole("list", { name: "Fixing a problem (try 1 of 5): steps" });
-    expect(within(group).getByText("Writing WalletCard.tsx")).toBeInTheDocument();
+    const group = screen.getByRole("list", { name: "Fixing a small thing it found: steps" });
+    // D164: plain words, with the file name kept faintly beside them.
+    expect(within(group).getByText("Building the wallet card")).toBeInTheDocument();
+    expect(within(group).getByText("WalletCard.tsx")).toBeInTheDocument();
     expect(within(group).getByText("Checking the app")).toBeInTheDocument();
     expect(screen.getByText("Working on it: Checking the app")).toBeInTheDocument();
     // The parent's own "to fix" note gives way to what it is doing now.
@@ -34,6 +36,6 @@ describe("StepRows", () => {
       />,
     );
     expect(screen.getByText("all checks pass")).toBeInTheDocument();
-    expect(screen.getByText("Writing App.tsx")).toBeInTheDocument();
+    expect(screen.getByText("Building the main screen")).toBeInTheDocument();
   });
 });

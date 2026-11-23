@@ -8,7 +8,8 @@ import { isDeployableSource } from "@/lib/deploy/test-file";
 import type { AssetInfo, AssetKind } from "@/server/agent/assets";
 import { DRAFT_PLAN_TEXT, nextQuestion, PLAN_OTHER_MAX, planBuildPrompt, START_BUILDING_TEXT } from "@/lib/plan";
 import { OutOfCredits } from "./out-of-credits";
-import { CONTINUE_PROMPT, FIX_PROMPT } from "@/lib/preview-errors";
+import { CONTINUE_PROMPT, FIX_PROMPT, previewFixPrompt } from "@/lib/preview-errors";
+import { milestoneName } from "@/lib/plain-words";
 import { isSubmitShortcut } from "@/lib/prompt";
 import { isNearBottom } from "@/lib/scroll";
 import type { TurnMode, TurnRecord } from "@/lib/turn-types";
@@ -26,6 +27,20 @@ import type { UseWorkspace } from "./use-workspace";
 import { FreeCreditsCard } from "@/components/credits/free-credits-card";
 import { VerifyCard } from "./verify-card";
 import { TemplateBanner } from "@/components/landing/template-slides";
+
+/** What "Fix it for me" (or Continue after a top-up) sends for the newest turn (D164). */
+export type RetryRequest = { kind: "job"; jobId: string; useCredits: boolean; note?: string } | { kind: "prompt"; prompt: string };
+
+/**
+ * One button, one request: continue the failed build from its saved files, carrying the preview's crash, or, with
+ * no job to continue, a fix message that names the crash. A build paused for credits continues as it was, without
+ * the crash note; after a top-up the retry runs on credits.
+ */
+export function retryRequest(record: TurnRecord | null | undefined, crash: string | undefined, opts: { afterTopUp?: boolean } = {}): RetryRequest {
+  const paused = record?.paused === "credits";
+  if (record?.jobId) return { kind: "job", jobId: record.jobId, useCredits: paused || Boolean(opts.afterTopUp), ...(paused || !crash ? {} : { note: crash }) };
+  return { kind: "prompt", prompt: paused ? CONTINUE_PROMPT : [FIX_PROMPT, crash].filter(Boolean).join("\n\n") };
+}
 
 /** Left pane of the workspace (mockup c): the conversation and the composer. */
 export function ChatPanel({
@@ -82,16 +97,19 @@ export function ChatPanel({
   const [composerCue, setComposerCue] = React.useState(0);
   const draftOpen = Boolean(lastRecord?.mode === "plan" && lastRecord.plan && !lastRecord.intake && !running);
   // The prompt the newest turn answered, for "Try again" on a failed or interrupted build.
-  const retryRecord = (record?: TurnRecord | null) => {
-    if (record?.jobId) ws.retry(record.jobId, record.paused === "credits");
-    else send(record?.paused === "credits" ? CONTINUE_PROMPT : FIX_PROMPT, "build");
-  };
+  // D164: one button. It continues from the saved files and carries the preview's crash, if there is one.
+  const crash = ws.previewError ? previewFixPrompt(ws.previewError, false) : undefined;
+  const runRetry = (r: RetryRequest) => (r.kind === "job" ? ws.retry(r.jobId, r.useCredits, r.note) : send(r.prompt, "build"));
+  const retryRecord = (record?: TurnRecord | null) => runRetry(retryRequest(record, crash));
+  // "Undo this change" (D164): the newest finished build, when an earlier version exists to go back to.
+  const previousVersion = state.versions.map((v) => v.number).filter((n) => n < state.project.currentVersion).sort((a, b) => b - a)[0];
+  const crashWords = ws.previewError ? [ws.previewError.title, ws.previewError.message].filter(Boolean).join(": ") : null;
   const continueAfterCredits = () => {
     ws.clearNeedsCredits();
     const last = [...state.messages].reverse().find((m) => m.role === "assistant");
     const record = last?.meta as TurnRecord | null;
-    if (record?.jobId) ws.retry(record.jobId, true);
-    else retryRecord(record);
+    // After a top-up the retry runs on credits and still carries the preview's crash (D164).
+    runRetry(retryRequest(record, crash, { afterTopUp: true }));
   };
   const continueCost = { needMicro: state.estimate.buildMicro, haveMicro: state.availableMicro };
   return (
@@ -148,6 +166,12 @@ export function ChatPanel({
               live={false}
               onFix={() => retryRecord(record)}
               continueCost={m.id === lastAssistantId ? continueCost : undefined}
+              previewError={m.id === lastAssistantId ? crashWords : undefined}
+              onUndo={
+                m.id === lastAssistantId && !running && record.status === "ready" && record.version === state.project.currentVersion && previousVersion
+                  ? () => void ws.revert(previousVersion)
+                  : undefined
+              }
               fixDisabled={running}
               onSuggest={!live && canSuggest && m.id === lastAssistantId ? suggest : undefined}
               checking={m.id === lastAssistantId && ws.checking}
@@ -176,6 +200,7 @@ export function ChatPanel({
             live={live.phase === "running"}
             onFix={() => retryRecord(live?.record)}
             continueCost={continueCost}
+            previewError={crashWords}
             fixDisabled={live.phase === "running"}
             onSuggest={live.phase === "done" && state.jobs.length <= 1 ? suggest : undefined}
             onSkipPlan={live.phase === "running" && !live.record.intake && planning ? ws.skipPlan : undefined}
@@ -190,22 +215,20 @@ export function ChatPanel({
             {ws.error}
           </p>
         )}
-        {!running && ws.paidRetryJobId && (
-          <button type="button" className="rounded-full bg-violet px-4 py-2 text-sm text-white" onClick={() => ws.retry(ws.paidRetryJobId!, true)}>Continue using credits (estimated {formatCredits(state.estimate.buildMicro)})</button>
-        )}
         {!running && state.delivery && state.delivery.completed > 0 && state.delivery.completed < state.delivery.milestones.length && (
-          <p className="px-4 text-xs text-grey-600">Next: {state.delivery.milestones[state.delivery.completed].title}. Continuing starts a separate build, estimated at {formatCredits(state.estimate.buildMicro)}, using your credits.</p>
+          <p className="px-4 text-xs text-grey-600">Next: {milestoneName(state.delivery.milestones[state.delivery.completed].id, state.delivery.milestones[state.delivery.completed].title)}. It&apos;s a separate build, about {formatCredits(state.estimate.buildMicro)}.</p>
         )}
         <OutOfCredits open={ws.needsCredits} freeCredits={state.freePolicy === "verified"} onContinue={continueAfterCredits} onRefresh={ws.refresh} />
         {state.outdatedContracts.length > 0 && !running && (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-block bg-warning/10 p-4 text-sm" role="status">
             <p className="min-w-0 flex-1">
               <span className="font-semibold">{state.outdatedContracts.join(", ")} {state.outdatedContracts.length > 1 ? "don't" : "doesn't"} have your latest contract changes yet.</span>{" "}
-              <span className="text-grey-600">{sameAddress ? "Upgrade from your wallet to apply them. The address, funds and data stay the same." : "Your app keeps using the live version until you deploy again."}</span>
+              <span className="text-grey-600">{sameAddress ? "Update it from your wallet to apply them. The address, funds and data stay the same." : "Your app keeps using the live version until you deploy again."}</span>
             </p>
-            <DeployButton label={sameAddress ? "Upgrade" : "Deploy again"} size="sm" />
+            <DeployButton label={sameAddress ? "Update your live contract" : "Deploy again"} size="sm" />
           </div>
         )}
+        {!running && state.remembered && state.remembered.length > 0 && <Remembered items={state.remembered} projectId={state.project.id} onChange={ws.refresh} />}
         <OldFundsCard projectId={state.project.id} chainId={state.project.chainId} refreshKey={state.project.currentVersion} busy={running} onAsk={suggest} />
         {state.freePolicy === "verified" ? !running && <FreeCreditsCard compact onChange={ws.refresh} /> : state.offerVerification && !running && <VerifyCard onVerified={ws.refresh} />}
         {/* A MiniPay app (D88): deploy, publish, then the steps to open it in MiniPay. */}
@@ -407,6 +430,8 @@ export function Composer({
             </button>
           ))}
         </div>
+        {/* D164: what the toggle means, in words a phone shows too (hover titles don't show on phones). */}
+        <span className="text-[11px] text-grey-600" aria-live="polite">{mode === "plan" ? "Talk it through. Nothing changes." : "Changes your app."}</span>
         </div>
         <div className="ml-auto flex items-center gap-2 sm:gap-3">
           {short ? (
@@ -442,6 +467,59 @@ export function Composer({
         </div>
       </div>
     </form>
+  );
+}
+
+/**
+ * What GoodBuild remembers about this app (D164, like Codex's AGENTS.md): the decisions it keeps from earlier
+ * messages ("Brand colour #0f766e"). Folded; each can be removed.
+ */
+export function Remembered({ items, projectId, onChange }: { items: string[]; projectId: string; onChange: () => Promise<unknown> }) {
+  const [busy, setBusy] = React.useState<string | null>(null);
+  const [failed, setFailed] = React.useState<string | null>(null);
+  // Forgotten on the server: hidden here even if the refresh after it fails.
+  const [gone, setGone] = React.useState<string[]>([]);
+  const shown = items.filter((i) => !gone.includes(i));
+  const forget = async (item: string) => {
+    setBusy(item);
+    setFailed(null);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/memory`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ remove: item }) });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { message?: string };
+        setFailed(body.message ?? "That wasn't forgotten. Try again.");
+        return;
+      }
+      setGone((g) => [...g, item]);
+      const fresh = await onChange().catch(() => null);
+      if (fresh === null) setFailed("Forgotten. The list couldn't refresh, so reload the page to see it up to date.");
+    } catch {
+      setFailed("Couldn't reach GoodBuild, so that wasn't forgotten. Try again.");
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <details className="px-1 text-xs text-grey-600">
+      <summary className="w-fit cursor-pointer rounded-full outline-none select-none focus-visible:shadow-focus">
+        What GoodBuild remembers about this app ({shown.length})
+      </summary>
+      {failed && (
+        <p className="mt-2 text-warning" role="status">
+          {failed}
+        </p>
+      )}
+      <ul className="mt-2 grid gap-1.5" aria-label="What GoodBuild remembers">
+        {shown.map((item) => (
+          <li key={item} className="flex items-start justify-between gap-3 rounded-block bg-canvas px-3 py-2">
+            <span className="min-w-0 text-ink">{item}</span>
+            <button type="button" className="shrink-0 font-medium text-violet hover:underline disabled:opacity-55" disabled={busy !== null} onClick={() => void forget(item)}>
+              {busy === item ? "Forgetting…" : "Forget"}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }
 

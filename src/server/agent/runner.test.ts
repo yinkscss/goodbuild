@@ -182,6 +182,11 @@ describe("runTurn", { timeout: 120_000 }, () => {
     expect(record.version).toBe(1);
     expect(record.contracts?.map((c) => c.name)).toEqual(["TipJar"]);
     expect(record.plan?.steps).toHaveLength(2);
+    // D164: each step knows its plan step. TipJar.sol matches "Write TipJar.sol"; the checks after the build are
+    // GoodBuild's own last step (index 2, the plan's length).
+    expect(record.steps.find((s) => s.label === "Writing TipJar.sol")?.plan).toBe(0);
+    expect(record.steps.find((s) => s.id === "autofix")?.plan).toBe(2);
+    expect(record.steps.find((s) => s.id === "plan")?.plan).toBeUndefined();
     // D19: the build runs on the cheap model; fix attempts go to the strong one.
     expect(requests.map((r) => r.tier)).toEqual(["cheap", "cheap", "strong", "strong"]);
     expect(record.steps.find((s) => s.id === "fix:1")).toMatchObject({ status: "done" });
@@ -349,6 +354,20 @@ describe("runTurn", { timeout: 120_000 }, () => {
     expect(record.version).toBeUndefined();
     expect(record.steps.some((s) => s.id === "compile" || s.id === "app")).toBe(false);
     expect(await listVersions(db, projectId)).toHaveLength(1);
+  });
+
+  it("turns the builder's list of what works into the finished build's headline and list (D164)", async () => {
+    const { client } = scriptedModel([
+      { tools: [{ name: "create_file", args: { path: "src/App.tsx", content: APP } }] },
+      {
+        text: "Your tip page works. Supporters can send a tip and see the list.",
+        tools: [{ name: "suggest_next", args: { suggestions: ["Add a leaderboard"], works: ["- Send a tip", "See every tip", "", "Share the page", "a fourth"], later: "Real tips need a wallet first." } }],
+      },
+    ]);
+    const record = await runTurn({ db, model: client }, { projectId, userId, mode: "build", userMessageId: queuedId }, () => {});
+    expect(record.status).toBe("ready");
+    // The rest of the reply (deploy details, say) stays under the headline.
+    expect(record.outcome).toEqual({ headline: "Your tip page works.", detail: "Supporters can send a tip and see the list.", works: ["Send a tip", "See every tip", "Share the page"], later: "Real tips need a wallet first." });
   });
 
   it("keeps the reply that comes with suggest_next, saves the chips and ends the pass", async () => {
