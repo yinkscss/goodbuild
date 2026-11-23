@@ -3,7 +3,7 @@ import { and, asc, desc, eq, lt } from "drizzle-orm";
 import type { Db } from "@/server/db/client";
 import { hackathonEntries, hackathonRankSnapshots } from "@/server/db/hackathon-schema";
 import { allocateHackathonRewards } from "@/lib/hackathon-rewards";
-import { risingStars, type RisingStar } from "@/lib/hackathon-weeks";
+import { risingStars, weeksUntil, type RisingStar } from "@/lib/hackathon-weeks";
 import { closeOf, EVENTS, eventId, type HackathonEvent } from "@/lib/hackathon-events";
 import { listEntries } from "./community";
 
@@ -61,7 +61,7 @@ export async function weeklyStars(db: Db, event: HackathonEvent = "main"): Promi
     .from(hackathonEntries)
     .where(eq(hackathonEntries.hackathon, eventId(event)))
     .orderBy(asc(hackathonEntries.createdAt), asc(hackathonEntries.id));
-  return risingStars(snapshots, order.map((o) => o.id));
+  return risingStars(snapshots, order.map((o) => o.id), weeksUntil(closeOf(event)));
 }
 
 /**

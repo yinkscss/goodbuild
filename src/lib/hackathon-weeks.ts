@@ -11,6 +11,24 @@ export const WEEKS = [
   { n: 3, label: "3 to 10 Dec", boundary: "2026-12-11" },
 ] as const;
 
+/** Kadpoly runs to 31 Dec (D166), so it gets three more weeks after the main three. */
+export const LATE_WEEKS = [
+  { n: 4, label: "11 to 17 Dec", boundary: "2026-12-18" },
+  { n: 5, label: "18 to 24 Dec", boundary: "2026-12-25" },
+  { n: 6, label: "25 to 31 Dec", boundary: "2027-01-01" },
+] as const;
+
+export type Week = { n: number; label: string; boundary: string };
+
+/**
+ * The Rising Star weeks of a hackathon that closes at `close`: every week whose end snapshot is taken
+ * by the day after the close (WAT). Main and FUTMinna get weeks 1 to 3, Kadpoly 1 to 6.
+ */
+export function weeksUntil(close: Date): Week[] {
+  const lastDay = new Date(close.getTime() + 3_600_000).toISOString().slice(0, 10);
+  return [...WEEKS, ...LATE_WEEKS].filter((w) => w.boundary <= lastDay);
+}
+
 export interface Snapshot {
   day: string;
   entryId: string;
@@ -29,7 +47,7 @@ export interface RisingStar {
  * approvals has no winner. A week whose end snapshot, or the previous week's, is missing is skipped
  * rather than guessed.
  */
-export function risingStars(snapshots: Snapshot[], order: string[]): RisingStar[] {
+export function risingStars(snapshots: Snapshot[], order: string[], weeks: readonly Week[] = WEEKS): RisingStar[] {
   const byDay = new Map<string, Map<string, number>>();
   for (const s of snapshots) {
     const day = byDay.get(s.day) ?? new Map<string, number>();
@@ -41,7 +59,7 @@ export function risingStars(snapshots: Snapshot[], order: string[]): RisingStar[
   const rank = new Map(order.map((id, i) => [id, i]));
   const result: RisingStar[] = [];
   let previous: Map<string, number> | null = new Map(); // before the first week everything is 0
-  for (const week of WEEKS) {
+  for (const week of weeks) {
     const endDay = firstOnOrAfter(week.boundary);
     const end = endDay ? byDay.get(endDay) : undefined;
     if (!end || !previous) {

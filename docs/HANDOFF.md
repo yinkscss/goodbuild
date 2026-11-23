@@ -52,7 +52,8 @@ A third hackathon, for Kaduna Polytechnic: `/hackathon/kadpoly` and in-app `/hom
 - **Prize:** the top 3 by approvals win full tuition for the session, and places 4 and 5 are waitlisted.
 - **Close:** 31 Dec. Each event now has its own close date, and Kadpoly members keep and can claim their credits until then.
 - **No migration.**
-- **Needs the owner:** Kadpoly shares the 10,000-credit budget.
+- **Budget:** the shared default is now 15,000 credits. **Needs the owner:** if `.env.production` sets `HACKATHON_BUDGET_CREDITS`, change it to 15000 (it overrides the default).
+- **Rising Star:** Kadpoly gets weeks 4–6, running to 31 Dec.
 - **UNVERIFIED** with real sign-ins.
 
 ## FUTMinna hackathon (20 Nov 2026, D160, branch `claude/futminna-hackathon`)

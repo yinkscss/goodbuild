@@ -23,10 +23,10 @@ export { HACKATHON_ID };
 export const START_CREDITS = 20;
 export const DEPLOY_CREDITS = 30;
 /**
- * Default cap on everything granted: 200 builders x 50 credits, raised from 5,000 for the FUTMinna
- * hackathon, which shares this budget (D160). HACKATHON_BUDGET_CREDITS overrides.
+ * Default cap on everything granted: 300 builders x 50 credits. Raised from 5,000 to 10,000 for
+ * FUTMinna (D160) and to 15,000 for Kadpoly (D166), which share this budget. HACKATHON_BUDGET_CREDITS overrides.
  */
-export const DEFAULT_BUDGET_CREDITS = 10_000;
+export const DEFAULT_BUDGET_CREDITS = 15_000;
 export { CLAIMS_CLOSE };
 /** Celo mainnet and Celo Sepolia. */
 export const DEPLOY_CHAINS = [42220, 11142220];

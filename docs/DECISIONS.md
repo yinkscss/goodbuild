@@ -2114,13 +2114,13 @@ The owner approved implementing all five parts of the first-build fix and openin
   - On a campus page, the first credit claim joins that campus before claiming, so a member is recorded before the claim checks the date.
   - Referral payouts and the admin claims report still follow the main close.
   - An expired grant is final: joining Kadpoly after being expired on 10 Dec doesn't reopen the claim.
-- **Rising Star (D135)** keeps its three weeks to 10 Dec, so Kadpoly has no Rising Star weeks after that.
+- **Rising Star (D135)** runs to each hackathon's close (owner, 23 Nov). Main and FUTMinna keep weeks 1–3 to 10 Dec, and Kadpoly adds weeks 4–6 (11–17, 18–24 and 25–31 Dec), read from its snapshots (`weeksUntil`).
+- **Budget:** the owner raised the shared default to 15,000 credits (`DEFAULT_BUDGET_CREDITS`, 300 builders × 50) for Kadpoly. `HACKATHON_BUDGET_CREDITS` still overrides it.
+- **Judges:** the owner confirmed that the top 3 by votes win. Judges only check the entry rules.
 - **Membership (D161), for more than one campus.** `/home/hackathon` opens on the campus hackathon the person belongs to. Someone in two campuses opens on the first in the list (FUTMinna). The switch lists all three hackathons. Each builder still enters one hackathon only.
 - **Admin:** one CSV export button per campus.
 - **For the owner:**
-  - Kadpoly draws on the same 10,000-credit budget as the other two hackathons (`HACKATHON_BUDGET_CREDITS` overrides it).
   - Anyone who joins Kadpoly can claim main-hackathon credits until 31 Dec, which is the point of the later close.
   - The waitlist replacement rule matches the owner's terms as the blog post states them.
-  - Whether "judges look for…" lets judges overrule the top 3 by approvals. The blog post and its social graphic mention judges too.
   - The admin report shows "closed" from 10 Dec while Kadpoly members can still claim. The expiry sweep's new `waiting` count is not shown on the admin page.
 - **UNVERIFIED** with real sign-ins: the in-app tabs, joining and claiming were checked only by tests (PGlite and components). The public pages were checked in a browser, on desktop and at phone width.

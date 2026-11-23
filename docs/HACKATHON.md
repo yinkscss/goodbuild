@@ -102,4 +102,4 @@ For Kaduna Polytechnic students. Same setup as FUTMinna: same tables under the i
 - Prize: the top 3 by approvals win full tuition for the session, and places 4 and 5 are waitlisted.
 - Close: entries and approvals close at the end of 31 Dec, not 10 Dec. Kadpoly members can claim credits, and keep them, until then.
 
-Both campus pages are built from `src/components/hackathon/campus-page.tsx`, using each event's `campus` block in `src/lib/hackathon-events.ts`. Admin CSV: `/api/hackathon/export?event=kadpoly`.
+Both campus pages are built from `src/components/hackathon/campus-page.tsx`, using each event's `campus` block in `src/lib/hackathon-events.ts`. Admin CSV: `/api/hackathon/export?event=kadpoly`. Rising Star runs six weeks for Kadpoly (to 31 Dec). The shared credit budget default is 15,000. The top 3 by votes win; judges only check the entry rules.
