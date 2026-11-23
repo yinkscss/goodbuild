@@ -60,13 +60,16 @@ export function VoteList() {
       setError("The projects couldn’t load. Reload to try again.");
     }
   }, [event]);
-  const loadStatus = React.useCallback(async () => {
+  const loadStatus = React.useCallback(async (): Promise<VoteStatus> => {
+    let next = EMPTY;
     try {
       const res = await fetch(eventApi("/api/hackathon/votes", event), { cache: "no-store" });
-      setStatus(res.ok ? ((await res.json()) as VoteStatus) : EMPTY);
+      if (res.ok) next = (await res.json()) as VoteStatus;
     } catch {
-      setStatus(EMPTY);
+      // keep EMPTY
     }
+    setStatus(next);
+    return next;
   }, [event]);
 
   React.useEffect(() => {
@@ -239,7 +242,7 @@ function StepsDialog({
   entry: Entry | null;
   status: VoteStatus;
   busy: boolean;
-  refresh: () => Promise<void> | void;
+  refresh: () => Promise<VoteStatus | void> | void;
   onApprove: () => void;
   onClose: () => void;
   openConnect: () => void;
@@ -247,6 +250,7 @@ function StepsDialog({
   const verify = useGoodIdVerify(
     () => void refresh(),
     () => `${window.location.origin}${window.location.pathname}#vote`,
+    async () => Boolean((await refresh())?.verified),
   );
   const allDone = status.signedIn && status.verified && status.voted;
   const entryApprovals = entry
