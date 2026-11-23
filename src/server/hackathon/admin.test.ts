@@ -105,6 +105,11 @@ describe.each(testBackends())("hackathon admin on $name", (backend) => {
     await expect(claimHackathon(db, stranger, { readRoot: async () => hex() as Address, now: AFTER, env: {} })).rejects.toMatchObject({ code: "closed" });
     await expect(claimHackathon(db, late, { readRoot: async () => hex() as Address, now: KADPOLY_CLOSE, env: {} })).rejects.toMatchObject({ code: "closed" });
 
+    // Joining Kadpoly after being expired on 11 Dec doesn't reopen the grant.
+    await db.insert(hackathonParticipants).values({ hackathon: "kadpoly-2026", userId: mainOnly.id, email: "m@example.com" });
+    await expect(claimHackathon(db, mainOnly, { readRoot: async () => mainOnly.root, now: AFTER, env: {} })).rejects.toMatchObject({ code: "closed" });
+    expect(await getBalanceMicro(db, mainOnly.id)).toBe(0);
+
     // After Kadpoly closes, the member's unspent grant goes too.
     await expireUnusedCredits(db, new Date(KADPOLY_CLOSE.getTime() + 60_000));
     expect(await getBalanceMicro(db, member.id)).toBe(0);

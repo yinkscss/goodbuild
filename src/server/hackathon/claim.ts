@@ -152,6 +152,8 @@ function grantInLock(db: Db, user: { id: string; wallet: string }, root: string,
     if (row && row.userId !== user.id) {
       throw new HackathonError("claimed_elsewhere", "This GoodDollar identity already registered from another GoodBuild account. Sign in with that account to build.");
     }
+    // An expired grant is final: joining a hackathon that closes later (D166) doesn't reopen it.
+    if (row?.expiredAt) throw new HackathonError("closed", "Submissions have closed, so hackathon credits can no longer be claimed.");
 
     const [spent] = await tx
       .select({ micro: sql<string>`coalesce(sum(${hackathonRegistrations.startMicro} + ${hackathonRegistrations.deployMicro}), 0)` })
