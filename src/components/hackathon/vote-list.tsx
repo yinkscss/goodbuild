@@ -60,13 +60,16 @@ export function VoteList() {
       setError("The projects couldn’t load. Reload to try again.");
     }
   }, [event]);
-  const loadStatus = React.useCallback(async () => {
+  const loadStatus = React.useCallback(async (): Promise<VoteStatus> => {
+    let next = EMPTY;
     try {
       const res = await fetch(eventApi("/api/hackathon/votes", event), { cache: "no-store" });
-      setStatus(res.ok ? ((await res.json()) as VoteStatus) : EMPTY);
+      if (res.ok) next = (await res.json()) as VoteStatus;
     } catch {
-      setStatus(EMPTY);
+      // keep EMPTY
     }
+    setStatus(next);
+    return next;
   }, [event]);
 
   React.useEffect(() => {
@@ -239,7 +242,7 @@ function StepsDialog({
   entry: Entry | null;
   status: VoteStatus;
   busy: boolean;
-  refresh: () => Promise<void> | void;
+  refresh: () => Promise<VoteStatus | void> | void;
   onApprove: () => void;
   onClose: () => void;
   openConnect: () => void;
@@ -247,6 +250,11 @@ function StepsDialog({
   const verify = useGoodIdVerify(
     () => void refresh(),
     () => `${window.location.origin}${window.location.pathname}#vote`,
+    async () => {
+      const next = await refresh();
+      if (next?.checkFailed) throw new Error("We couldn’t reach Celo to check your verification. Press Verify to try again.");
+      return Boolean(next?.verified);
+    },
   );
   const allDone = status.signedIn && status.verified && status.voted;
   const entryApprovals = entry
@@ -275,7 +283,12 @@ function StepsDialog({
             <button type="button" className={BTN} disabled={!status.signedIn || verify.busy} onClick={() => void verify.verify()}>
               {verify.busy ? "Checking…" : "Verify"}
             </button>
-            {verify.note && <p role="alert" className="mt-2 text-xs text-danger">{verify.note}</p>}
+            {verify.note && (
+              <p role="alert" className="mt-2 text-xs text-danger">
+                {verify.note}
+                {verify.showLinkGuide && " If you verified with another wallet, link it first, then try again."}
+              </p>
+            )}
           </Step>
           <Step n={3} done={status.voted} title="Support us">
             {status.signedIn && status.verified ? <FlowstateVote label="Support" onConfirmed={() => void refresh()} /> : <p className="text-xs text-grey-600">Finish the steps above first.</p>}
