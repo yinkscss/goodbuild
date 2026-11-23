@@ -339,9 +339,21 @@ export async function voteStatus(
     voted: false,
   };
   if (!user) return empty;
-  const root = await readRoot(user.wallet as Address).catch(() => null);
+  // One retry: a single dropped Celo read mustn't show a verified person as unverified.
+  let root: Address | null = null;
+  let checkFailed = false;
+  try {
+    root = await readRoot(user.wallet as Address);
+  } catch {
+    try {
+      root = await readRoot(user.wallet as Address);
+    } catch (error) {
+      console.error("vote status: goodid read failed", error);
+      checkFailed = true;
+    }
+  }
   const voted = await hasVoted(db, user.id);
-  if (!root) return { ...empty, voted };
+  if (!root) return { ...empty, voted, ...(checkFailed ? { checkFailed } : {}) };
   const entryIds = await approvedEntryIds(db, root.toLowerCase(), event);
   return { ...empty, verified: true, voted, entryIds, used: entryIds.length };
 }

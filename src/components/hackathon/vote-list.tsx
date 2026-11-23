@@ -250,7 +250,11 @@ function StepsDialog({
   const verify = useGoodIdVerify(
     () => void refresh(),
     () => `${window.location.origin}${window.location.pathname}#vote`,
-    async () => Boolean((await refresh())?.verified),
+    async () => {
+      const next = await refresh();
+      if (next?.checkFailed) throw new Error("We couldn’t reach Celo to check your verification. Press Verify to try again.");
+      return Boolean(next?.verified);
+    },
   );
   const allDone = status.signedIn && status.verified && status.voted;
   const entryApprovals = entry
