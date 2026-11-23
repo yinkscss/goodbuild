@@ -1,5 +1,5 @@
 import "server-only";
-import { and, eq, isNull, sql, desc, lt } from "drizzle-orm";
+import { and, eq, isNull, isNotNull, gte, sql, desc, lt } from "drizzle-orm";
 import { decodeEventLog, erc20Abi, isAddress, type Hex } from "viem";
 import { GOODDOLLAR_MAINNET } from "@/config/gooddollar";
 import { ambassadorEarnings as earnings, ambassadorPayouts as payouts, ambassadorAudit as audit } from "@/server/db/ambassador-schema";
@@ -118,7 +118,7 @@ export async function repairAmbassadorEarnings(db: Db, userId: string, page = 0)
   const candidates = await db.select({ userId: referrals.refereeUserId, wallet: users.wallet, hash: flowstateVoters.txHash })
     .from(referrals).innerJoin(users, eq(users.id, referrals.refereeUserId))
     .innerJoin(flowstateVoters, eq(flowstateVoters.userId, users.id))
-    .where(and(eq(referrals.referrerUserId, userId), sql`${referrals.createdAt} >= ${start}`, sql`${flowstateVoters.votedAt} is not null`))
+    .where(and(eq(referrals.referrerUserId, userId), gte(referrals.createdAt, start), isNotNull(flowstateVoters.votedAt)))
     .orderBy(desc(referrals.createdAt)).limit(25).offset(page * 25);
   for (const c of candidates) {
     const [existing] = await db.select({ id: earnings.id }).from(earnings).where(eq(earnings.root, sql`(select lower(goodid_root) from users where id = ${c.userId})`));
