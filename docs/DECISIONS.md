@@ -2139,3 +2139,9 @@ The owner approved implementing all five parts of the first-build fix and openin
   - The waitlist replacement rule matches the owner's terms as the blog post states them.
   - The admin report shows "closed" from 10 Dec while Kadpoly members can still claim. The expiry sweep's new `waiting` count is not shown on the admin page.
 - **UNVERIFIED** with real sign-ins: the in-app tabs, joining and claiming were checked only by tests (PGlite and components). The public pages were checked in a browser, on desktop and at phone width.
+
+### D168. Anything free or given needs the FlowState vote; "votes" on projects are approvals (24 Nov 2026; confirms D125, D155)
+- **Decided by:** the owner, 24 Nov 2026.
+- **Words:** a project "vote" is an approval of a hackathon entry (D155's three-approvals rule). Voting for GoodBuild on FlowState is a separate step we call the FlowState vote.
+- **Rule:** signing up and getting anything at all (welcome credits, an invite bonus, a project approval) goes through the full steps: sign in, verify with GoodDollar, and the one-tap FlowState vote for GoodBuild (D158). The invite page `/r/CODE` runs all three. The project approval dialog already does (email, GoodDollar, FlowState).
+- **Tried and dropped:** a separate `/vote` page and an invite page without the vote (this branch's first version). It wasn't what was meant, so neither shipped.
