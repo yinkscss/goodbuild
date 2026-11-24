@@ -7,7 +7,7 @@ export const HACKATHON = {
   name: "GoodBuild Hackathon",
   poolGd: 1_000_000,
   /** DRAFT dates (West Africa Time). */
-  window: "18 Nov to 10 Dec 2026",
+  window: "18 Nov to 31 Dec 2026",
 } as const;
 
 export interface Prize {
@@ -97,17 +97,17 @@ export const TIMELINE: Array<{
     now: true,
   },
   {
-    when: "5 Dec",
+    when: "24 Dec",
     title: "Submit by now for a fair vote",
     body: "Late projects have less time to collect approvals.",
   },
   {
-    when: "10 Dec",
+    when: "31 Dec",
     title: "Submissions and voting close",
     body: "Deployed on Celo with a live link. Ranking is fixed at midnight.",
   },
   {
-    when: "12 Dec",
+    when: "Early Jan",
     title: "Winners announced",
     body: "Rewards follow the published terms.",
   },
@@ -173,7 +173,7 @@ export const FAQ: Array<{ q: string; a: string }> = [
   },
   {
     q: "How do rewards work?",
-    a: "The total pool is 1,000,000 G$ and is never exceeded. 700,000 G$ goes to the top 20 published projects by verified approvals: 175,000 G$ for 1st, 105,000 for 2nd, 70,000 for 3rd, 42,000 each for 4th and 5th, 21,000 each for 6th to 10th and 16,100 each for 11th to 20th. The other 300,000 G$ is shared by approvals: each pays up to 5,000 G$, less if there are many approvals, and applies to every published project. Fewer than 20 eligible entries leave unused rank prizes unpaid. Ties go to the earlier submission. Earnings are estimates until voting closes on 10 Dec; they are not your build-credit balance.",
+    a: "The total pool is 1,000,000 G$ and is never exceeded. 700,000 G$ goes to the top 20 published projects by verified approvals: 175,000 G$ for 1st, 105,000 for 2nd, 70,000 for 3rd, 42,000 each for 4th and 5th, 21,000 each for 6th to 10th and 16,100 each for 11th to 20th. The other 300,000 G$ is shared by approvals: each pays up to 5,000 G$, less if there are many approvals, and applies to every published project. Fewer than 20 eligible entries leave unused rank prizes unpaid. Ties go to the earlier submission. Earnings are estimates until voting closes on 31 Dec; they are not your build-credit balance.",
   },
   {
     q: "Do I have to vote on FlowState to get credits?",

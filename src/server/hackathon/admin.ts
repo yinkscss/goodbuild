@@ -7,7 +7,7 @@ import { IdempotencyConflictError, InsufficientBalanceError, getBalanceMicro, po
 import type { Db } from "@/server/db/client";
 import { hackathonRefusals, hackathonReferrals, hackathonRegistrations } from "@/server/db/hackathon-schema";
 import { ledgerEntries, users } from "@/server/db/schema";
-import { CLAIMS_CLOSE, HACKATHON_ID, budgetCredits, claimCloseFor } from "./claim";
+import { CLAIMS_CLOSE, HACKATHON_ID, budgetCredits } from "./claim";
 import { referralBudgetCredits } from "./referrals";
 
 /** A wallet that signed up this soon before claiming is flagged on the admin page. */
@@ -21,8 +21,6 @@ export interface ExpireResult {
   removedCredits: number;
   /** Rows left for the next sweep because the balance moved while they were being expired. */
   skipped: number;
-  /** Campus members left alone because their hackathon is still open (D167). */
-  waiting: number;
 }
 
 /**
@@ -37,15 +35,9 @@ export async function expireUnusedCredits(db: Db, now = new Date()): Promise<Exp
     .select()
     .from(hackathonRegistrations)
     .where(and(eq(hackathonRegistrations.hackathon, HACKATHON_ID), isNull(hackathonRegistrations.expiredAt)));
-  const result: ExpireResult = { checked: rows.length, expired: 0, removedCredits: 0, skipped: 0, waiting: 0 };
+  const result: ExpireResult = { checked: rows.length, expired: 0, removedCredits: 0, skipped: 0 };
 
   for (const row of rows) {
-    // A campus member whose hackathon is still open keeps their grant (D167). The row stays unexpired,
-    // so a later sweep after that close picks it up.
-    if (now < (await claimCloseFor(db, row.userId))) {
-      result.waiting += 1;
-      continue;
-    }
     const granted = row.startMicro + row.deployMicro;
     const [usage] = await db
       .select({ micro: sql<string>`coalesce(sum(-${ledgerEntries.amountMicro}), 0)` })

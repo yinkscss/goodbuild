@@ -8,26 +8,25 @@ import { allocateHackathonRewards } from "@/lib/hackathon-rewards";
 import { MAX_APPROVALS_PER_PERSON, type VoteStatus } from "@/lib/hackathon-vote";
 import { FlowstateVote } from "./flowstate-vote";
 import { ProjectVoteLink } from "./project-vote-link";
-import { eventApi, eventConfig, type HackathonEvent } from "@/lib/hackathon-events";
-import { useHackathonEvent } from "./use-event";
+import { HACKATHON } from "@/lib/hackathon-events";
 
 type Entry = { id: string; alias: string; title: string; pitch: string; liveUrl: string; sourceUrl: string; approvals: number };
 
 /** Each hackathon remembers its own picked project across the GoodDollar trip (D160). */
-const pendingKey = (event: HackathonEvent) => (event === "main" ? "gb:hk-vote:pending" : `gb:hk-vote:pending:${event}`);
+const PENDING_KEY = "gb:hk-vote:pending";
 const EMPTY: VoteStatus = { max: MAX_APPROVALS_PER_PERSON, used: 0, entryIds: [], signedIn: false, verified: false, voted: false };
 
-function readPending(event: HackathonEvent): string | null {
+function readPending(): string | null {
   try {
-    return sessionStorage.getItem(pendingKey(event));
+    return sessionStorage.getItem(PENDING_KEY);
   } catch {
     return null;
   }
 }
-function writePending(event: HackathonEvent, id: string | null) {
+function writePending(id: string | null) {
   try {
-    if (id) sessionStorage.setItem(pendingKey(event), id);
-    else sessionStorage.removeItem(pendingKey(event));
+    if (id) sessionStorage.setItem(PENDING_KEY, id);
+    else sessionStorage.removeItem(PENDING_KEY);
   } catch {
     // Storage blocked: the pop-up just doesn't reopen after the GoodDollar trip.
   }
@@ -41,7 +40,6 @@ function writePending(event: HackathonEvent, id: string | null) {
  */
 export function VoteList() {
   const { user, ready } = useAuth();
-  const { event } = useHackathonEvent();
   const { openConnect } = useSendGate();
   const [entries, setEntries] = React.useState<Entry[] | null>(null);
   const [status, setStatus] = React.useState<VoteStatus>(EMPTY);
@@ -54,24 +52,24 @@ export function VoteList() {
 
   const loadEntries = React.useCallback(async () => {
     try {
-      const res = await fetch(eventApi("/api/hackathon/projects", event), { cache: "no-store" });
+      const res = await fetch("/api/hackathon/projects", { cache: "no-store" });
       if (!res.ok) throw new Error();
       setEntries((await res.json()) as Entry[]);
     } catch {
       setError("The projects couldn’t load. Reload to try again.");
     }
-  }, [event]);
+  }, []);
   const loadStatus = React.useCallback(async (): Promise<VoteStatus> => {
     let next = EMPTY;
     try {
-      const res = await fetch(eventApi("/api/hackathon/votes", event), { cache: "no-store" });
+      const res = await fetch("/api/hackathon/votes", { cache: "no-store" });
       if (res.ok) next = (await res.json()) as VoteStatus;
     } catch {
       // keep EMPTY
     }
     setStatus(next);
     return next;
-  }, [event]);
+  }, []);
 
   React.useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- loads data after mount
@@ -82,9 +80,9 @@ export function VoteList() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- loads data after mount
     void loadStatus();
     // Back from GoodDollar: bring the pop-up back on the project they picked.
-    const pending = readPending(event);
+    const pending = readPending();
     if (pending && user) setPicked(pending);
-  }, [ready, user, loadStatus, event]);
+  }, [ready, user, loadStatus]);
 
   React.useEffect(() => {
     if (!entries || shareLinkHandled.current) return;
@@ -94,7 +92,7 @@ export function VoteList() {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- a shared URL selects its project on arrival
       setSharedId(requested);
     }
-  }, [entries, event]);
+  }, [entries]);
 
   // Published projects first by rank, then ideas that have no live app yet (they can't be approved).
   const ladder = entries ? allocateHackathonRewards(entries).map((entry) => ({ entry })) : [];
@@ -107,7 +105,7 @@ export function VoteList() {
     setError("");
     setNotice("");
     try {
-      const res = await fetch(eventApi("/api/hackathon/projects", event), {
+      const res = await fetch("/api/hackathon/projects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ entryId: id }),
@@ -123,7 +121,7 @@ export function VoteList() {
       setError((e as Error).message);
     } finally {
       setBusyId(null);
-      writePending(event, null);
+      writePending(null);
       if (!keepDialogOpen) setPicked(null);
     }
   }
@@ -135,7 +133,7 @@ export function VoteList() {
       void approve(id);
       return;
     }
-    writePending(event, id);
+    writePending(id);
     setPicked(id);
   }
 
@@ -154,7 +152,7 @@ export function VoteList() {
         openConnect={openConnect}
         error={error}
         notice={notice}
-        allHref={eventConfig(event).votePage}
+        allHref={HACKATHON.votePage}
       />
     );
   }
@@ -168,7 +166,7 @@ export function VoteList() {
             : `Each verified person gets ${status.max} approvals`}
         </p>
         <p className="mt-1 text-grey-600">
-          Add one approval at a time. You can put all {status.max} on one project or spread them around. Voting closes at the end of {eventConfig(event).closesLabel}.
+          Add one approval at a time. You can put all {status.max} on one project or spread them around. Voting closes at the end of {HACKATHON.closesLabel}.
         </p>
       </div>
       {error && <p role="alert" className="mt-3 text-sm text-danger">{error}</p>}
@@ -238,7 +236,7 @@ export function VoteList() {
         refresh={loadStatus}
         onApprove={() => pickedEntry && void approve(pickedEntry.id)}
         onClose={() => {
-          writePending(event, null);
+          writePending(null);
           setPicked(null);
         }}
         openConnect={openConnect}

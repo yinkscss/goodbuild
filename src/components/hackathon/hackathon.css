@@ -1199,9 +1199,3 @@
 /* Hackathon blocks shown inside the app (the /home/hackathon dashboard): the app's canvas, not the poster's. */
 .hk-page.hk-embed { background: transparent; }
 
-/* FUTMinna (D160): its headlines hold one-word lines ("GOODDOLLAR", "SCHOLARSHIP.") that can't wrap,
-   so on phones they scale with the screen instead of being cut off. */
-@media (max-width: 600px) {
-  .hk-posterTitle.hk-fit { font-size: 7.6vw; }
-  .hk-shead h2.hk-fit { font-size: 7.6vw; }
-}

@@ -103,3 +103,7 @@ For Kaduna Polytechnic students. Same setup as FUTMinna: same tables under the i
 - Close: entries and approvals close at the end of 31 Dec, not 10 Dec. Kadpoly members can claim credits, and keep them, until then.
 
 Both campus pages are built from `src/components/hackathon/campus-page.tsx`, using each event's `campus` block in `src/lib/hackathon-events.ts`. Admin CSV: `/api/hackathon/export?event=kadpoly`. Rising Star runs six weeks for Kadpoly (to 31 Dec). The shared credit budget default is 15,000. The top 3 by votes win; judges only check the entry rules.
+
+## 12. One hackathon (24 Nov 2026, D170)
+FUTMinna (§10) and Kadpoly (§11) were merged into the main hackathon. There is one leaderboard, the 1,000,000 G$ pool, and the close at the end of 31 Dec. Their pages redirect to `/hackathon`, `/hackathon/projects?vote=ID` or `/home/hackathon/…`, and their data now sits under `million-2027` (migration 0035). §10 and §11 describe how things were before 24 Nov.
+

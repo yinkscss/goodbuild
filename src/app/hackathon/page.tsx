@@ -14,7 +14,6 @@ import { PosterTiles } from "@/components/hackathon/poster-tiles";
 import { RegisterSteps } from "@/components/hackathon/register-steps";
 import { SITE_URL } from "@/config/site-url";
 import { cn } from "@/lib/utils";
-import { HACKATHON_EVENTS } from "@/lib/hackathon-events";
 
 export const metadata: Metadata = {
   title: { absolute: "GoodBuild Hackathon · 1,000,000 G$ prize pool" },
@@ -72,15 +71,6 @@ export default function HackathonPage() {
               </span>
             ))}
           </div>
-        </div>
-
-        <div className={styles.strip}>
-          <span>FUTMinna student? There’s a separate hackathon for you, with its own leaderboard and a ₦150,000 scholarship.</span>
-          <Link href={HACKATHON_EVENTS.futminna.page}>FUTMinna hackathon →</Link>
-        </div>
-        <div className={styles.strip}>
-          <span>Kadpoly student? The top 3 in the Kadpoly hackathon win full tuition for the session.</span>
-          <Link href={HACKATHON_EVENTS.kadpoly.page}>Kadpoly hackathon →</Link>
         </div>
 
         <section id="prizes" className={styles.section}>
@@ -161,7 +151,7 @@ export default function HackathonPage() {
         <section id="timeline" className={styles.section}>
           <div className={styles.shead}>
             <h2 className={styles.disp}>Timeline</h2>
-            <p>All times West Africa Time. Winners are announced on 12 Dec (proposed).</p>
+            <p>All times West Africa Time. Winners are announced in early January (proposed).</p>
           </div>
           <div className={cn(styles.card, styles.pad32)}>
             <ol className={cn(styles.tl, "list-none p-0 m-0")}>

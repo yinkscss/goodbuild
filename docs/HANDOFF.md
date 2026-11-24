@@ -2,6 +2,17 @@
 
 Written 4 Nov 2026 at the end of the first build session (claude.ai), for whoever continues in Claude Code. Read CLAUDE.md and docs/BUILD_PROMPT_STAGE1.md first; this file only covers where things stand.
 
+## One hackathon to 31 Dec (24 Nov 2026, D170, branch `claude/unified-hackathon-consolidation-06b240`)
+- FUTMinna and Kadpoly are merged into the main hackathon. There is one leaderboard, the prize is the 1,000,000 G$ pool, and everything closes at the end of 31 Dec. The campus pages redirect to the main ones, and the switch is gone.
+- **Migration 0035** moves campus signups, projects, approvals and rank history to `million-2027`.
+- **Before deploying:**
+  - Download the FUTMinna and Kadpoly CSVs from the **live** `/hackathon/admin` now. This branch removes those buttons, and after the merge the split is gone.
+  - Run this on the production database. Empty means it's safe; any row would make the migration stop the deploy:
+    `SELECT user_id, array_agg(hackathon) FROM hackathon_entries WHERE hackathon IN ('million-2027','futminna-2026','kadpoly-2026') GROUP BY user_id HAVING count(*) > 1;`
+- **Claim window:** everyone can now claim credits and referral payouts until 31 Dec (main and FUTMinna stopped at 10 Dec before). They draw on the same 15,000-credit budget and referral pot, so decide whether to raise `HACKATHON_BUDGET_CREDITS`.
+- **Needs the owner:** confirm the DRAFT dates "submit by 24 Dec" and "winners early January" in `src/components/hackathon/content.ts`.
+- **UNVERIFIED:** the migration on the live database (watch for the "more than one hackathon" guard), and the in-app tabs while signed in.
+
 ## A shared project link opens the project and its steps (24 Nov 2026, D169, branch `claude/project-vote-page`)
 - `VoteList` shows `ProjectView` for `?vote=ID`; steps are shared with the pop-up through `ApprovalSteps`. Unit tests only, not checked in a browser.
 

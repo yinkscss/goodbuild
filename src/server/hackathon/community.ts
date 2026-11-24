@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { Address } from "viem";
 import type { Db } from "@/server/db/client";
@@ -13,7 +13,8 @@ import {
 import { users } from "@/server/db/schema";
 import { allocateHackathonRewards } from "@/lib/hackathon-rewards";
 import { MAX_APPROVALS_PER_PERSON, type VoteStatus } from "@/lib/hackathon-vote";
-import { closeOf, EVENTS, eventId, type HackathonEvent } from "@/lib/hackathon-events";
+import { HACKATHON_CLOSE } from "@/lib/hackathon-events";
+import { HACKATHON_ID } from "./ids";
 
 const link = z.union([
   z.literal(""),
@@ -52,7 +53,6 @@ export async function saveParticipant(
   db: Db,
   user: Actor,
   input: z.input<typeof participantInput>,
-  event: HackathonEvent = "main",
 ) {
   const data = participantInput.parse(input);
   // Anyone signed in can vote before signing up (D126). A vote already confirmed on-chain carries over,
@@ -66,7 +66,7 @@ export async function saveParticipant(
     : null;
   const [row] = await db
     .insert(hackathonParticipants)
-    .values({ hackathon: eventId(event), userId: user.id, ...data, ...voted })
+    .values({ hackathon: HACKATHON_ID, userId: user.id, ...data, ...voted })
     .onConflictDoUpdate({
       target: [hackathonParticipants.hackathon, hackathonParticipants.userId],
       // The first email saved is kept: the signup form shows it locked, and a later request can't swap it.
@@ -84,49 +84,28 @@ export async function saveParticipant(
     .returning();
   return row;
 }
-export async function getParticipant(db: Db, userId: string, event: HackathonEvent = "main") {
+export async function getParticipant(db: Db, userId: string) {
   const [row] = await db
     .select()
     .from(hackathonParticipants)
     .where(
       and(
-        eq(hackathonParticipants.hackathon, eventId(event)),
+        eq(hackathonParticipants.hackathon, HACKATHON_ID),
         eq(hackathonParticipants.userId, userId),
       ),
     );
   return row ?? null;
 }
 
-/**
- * Signs this person up for another hackathon (D160) with the email they already gave, from any earlier
- * signup or their login. Returns the event's row, or null when there is no email to use yet.
- */
-export async function joinEvent(db: Db, user: Actor & { email?: string | null }, event: HackathonEvent) {
-  const existing = await getParticipant(db, user.id, event);
-  if (existing) return existing;
-  const [other] = await db
-    .select({ email: hackathonParticipants.email })
-    .from(hackathonParticipants)
-    .where(eq(hackathonParticipants.userId, user.id))
-    .orderBy(asc(hackathonParticipants.createdAt))
-    .limit(1);
-  const email = other?.email ?? user.email;
-  if (!email) return null;
-  return saveParticipant(db, user, { email }, event);
-}
-
 export async function saveEntry(
   db: Db,
   user: Actor & { email?: string | null },
   input: z.input<typeof entryInput>,
-  event: HackathonEvent = "main",
 ) {
-  if (new Date() >= closeOf(event))
+  if (new Date() >= HACKATHON_CLOSE)
     throw new CommunityError("Submissions are closed.", 410);
   const data = entryInput.parse(input);
-  const participant =
-    (await getParticipant(db, user.id, event)) ??
-    (event === "main" ? null : await joinEvent(db, user, event));
+  const participant = await getParticipant(db, user.id);
   if (!participant)
     throw new CommunityError(
       "Save your signup email before submitting a project.",
@@ -138,57 +117,29 @@ export async function saveEntry(
       "Verify with GoodDollar and vote first, then submit your project.",
       403,
     );
-  // One project, one hackathon (D160): an entry in another event has to be removed there first. The
-  // check and the write share one transaction under a per-builder lock, so two submissions at once
-  // (one to each hackathon) can't both pass the check.
-  const entry = await db.transaction(async (raw) => {
-    const tx = raw as unknown as Db;
-    await tx.execute(
-      sql`select pg_advisory_xact_lock(hashtext(${`hackathon:entry:${user.id}`}))`,
-    );
-    const [elsewhere] = await tx
-      .select({ hackathon: hackathonEntries.hackathon })
-      .from(hackathonEntries)
-      .where(
-        and(
-          eq(hackathonEntries.userId, user.id),
-          inArray(
-            hackathonEntries.hackathon,
-            EVENTS.filter((e) => e !== event).map(eventId),
-          ),
-        ),
-      )
-      .limit(1);
-    if (elsewhere)
-      throw new CommunityError(
-        "Your project is already entered in another hackathon. Each builder enters one hackathon.",
-        409,
-      );
-    const [row] = await tx
-      .insert(hackathonEntries)
-      .values({ hackathon: eventId(event), userId: user.id, ...data })
-      .onConflictDoUpdate({
-        target: [hackathonEntries.hackathon, hackathonEntries.userId],
-        set: data,
-      })
-      .returning();
-    return row;
-  });
+  const [entry] = await db
+    .insert(hackathonEntries)
+    .values({ hackathon: HACKATHON_ID, userId: user.id, ...data })
+    .onConflictDoUpdate({
+      target: [hackathonEntries.hackathon, hackathonEntries.userId],
+      set: data,
+    })
+    .returning();
   return entry;
 }
-export async function ownEntry(db: Db, userId: string, event: HackathonEvent = "main") {
+export async function ownEntry(db: Db, userId: string) {
   const [entry] = await db
     .select()
     .from(hackathonEntries)
     .where(
       and(
-        eq(hackathonEntries.hackathon, eventId(event)),
+        eq(hackathonEntries.hackathon, HACKATHON_ID),
         eq(hackathonEntries.userId, userId),
       ),
     );
   return entry ?? null;
 }
-export async function listEntries(db: Db, event: HackathonEvent = "main") {
+export async function listEntries(db: Db) {
   return db
     .select({
       id: hackathonEntries.id,
@@ -204,7 +155,7 @@ export async function listEntries(db: Db, event: HackathonEvent = "main") {
       hackathonApprovals,
       eq(hackathonApprovals.entryId, hackathonEntries.id),
     )
-    .where(eq(hackathonEntries.hackathon, eventId(event)))
+    .where(eq(hackathonEntries.hackathon, HACKATHON_ID))
     .groupBy(hackathonEntries.id)
     .orderBy(
       desc(sql`count(${hackathonApprovals.id})`),
@@ -222,10 +173,9 @@ export async function approveEntry(
   user: Actor,
   entryId: string,
   readRoot: (wallet: Address) => Promise<Address | null>,
-  now = new Date(),
-  event: HackathonEvent = "main",
+  now = new Date()
 ) {
-  if (now >= closeOf(event))
+  if (now >= HACKATHON_CLOSE)
     throw new CommunityError("Approvals are closed.", 410);
   const root = await readRoot(user.wallet as Address);
   if (!root)
@@ -245,7 +195,7 @@ export async function approveEntry(
     .where(
       and(
         eq(hackathonEntries.id, entryId),
-        eq(hackathonEntries.hackathon, eventId(event)),
+        eq(hackathonEntries.hackathon, HACKATHON_ID),
       ),
     );
   if (!entry) throw new CommunityError("Project not found.", 404);
@@ -265,7 +215,7 @@ export async function approveEntry(
     await tx.execute(
       sql`select pg_advisory_xact_lock(hashtext(${`hackathon:approve:${person}`}))`,
     );
-    const mine = await approvedEntryIds(tx, person, event);
+    const mine = await approvedEntryIds(tx, person);
     if (mine.length >= MAX_APPROVALS_PER_PERSON)
       throw new CommunityError(
         `You've used all ${MAX_APPROVALS_PER_PERSON} of your approvals.`,
@@ -308,7 +258,7 @@ async function hasVoted(db: Db, userId: string) {
 }
 
 /** Each approval unit assigned by one verified person in one hackathon, whichever wallet they used. */
-async function approvedEntryIds(db: Db, root: string, event: HackathonEvent) {
+async function approvedEntryIds(db: Db, root: string) {
   const rows = await db
     .select({ entryId: hackathonApprovals.entryId })
     .from(hackathonApprovals)
@@ -316,7 +266,7 @@ async function approvedEntryIds(db: Db, root: string, event: HackathonEvent) {
     .where(
       and(
         eq(hackathonApprovals.goodidRoot, root),
-        eq(hackathonEntries.hackathon, eventId(event)),
+        eq(hackathonEntries.hackathon, HACKATHON_ID),
       ),
     );
   return rows.map((r) => r.entryId);
@@ -326,8 +276,7 @@ async function approvedEntryIds(db: Db, root: string, event: HackathonEvent) {
 export async function voteStatus(
   db: Db,
   user: Actor | null,
-  readRoot: (wallet: Address) => Promise<Address | null>,
-  event: HackathonEvent = "main",
+  readRoot: (wallet: Address) => Promise<Address | null>
 ): Promise<VoteStatus> {
   const empty = {
     max: MAX_APPROVALS_PER_PERSON,
@@ -353,18 +302,20 @@ export async function voteStatus(
   }
   const voted = await hasVoted(db, user.id);
   if (!root) return { ...empty, voted, ...(checkFailed ? { checkFailed } : {}) };
-  const entryIds = await approvedEntryIds(db, root.toLowerCase(), event);
-  return { ...empty, verified: true, voted, entryIds, used: entryIds.length };
+  const entryIds = await approvedEntryIds(db, root.toLowerCase());
+  // Someone who approved in more than one of the merged hackathons (D170) can hold more than the cap;
+  // they keep those approvals, add no new ones, and never see more than the cap used.
+  return { ...empty, verified: true, voted, entryIds, used: Math.min(entryIds.length, MAX_APPROVALS_PER_PERSON) };
 }
 
 function csvCell(value: unknown) {
   const s = String(value ?? "");
   return `"${(/^[\s]*[=+@\-\t\r]/.test(s) ? "'" + s : s).replaceAll('"', '""')}"`;
 }
-export async function participantCsv(db: Db, event: HackathonEvent = "main") {
-  const id = eventId(event);
+export async function participantCsv(db: Db) {
+  const id = HACKATHON_ID;
   const rewards = new Map(
-    allocateHackathonRewards(await listEntries(db, event)).map((entry) => [
+    allocateHackathonRewards(await listEntries(db)).map((entry) => [
       entry.id,
       entry,
     ]),
@@ -394,7 +345,7 @@ export async function participantCsv(db: Db, event: HackathonEvent = "main") {
       and(
         eq(hackathonRegistrations.userId, users.id),
         // Credits are claimed once, under the main hackathon (D160).
-        eq(hackathonRegistrations.hackathon, eventId("main")),
+        eq(hackathonRegistrations.hackathon, HACKATHON_ID),
       ),
     )
     .where(eq(hackathonParticipants.hackathon, id))

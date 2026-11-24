@@ -92,32 +92,3 @@ it("waits for auth hydration before mounting the verification flow", () => {
   expect(screen.getByRole("status")).toHaveTextContent("Loading your signup");
   expect(screen.queryByText("Verify with GoodDollar")).not.toBeInTheDocument();
 });
-
-it("joins FUTMinna only when the email is saved there, and offers a retry if that fails (D161)", async () => {
-  nav.path = "/hackathon/futminna";
-  let joinOk = false;
-  const f = vi.fn(async (url: string, init?: RequestInit) => {
-    if (url.includes("join=1")) return joinOk ? new Response(JSON.stringify({ hackathon: "futminna-2026" })) : new Response("{}", { status: 500 });
-    if (init?.method === "POST") return new Response(JSON.stringify({ email: "student@example.com", flowstate: "pending" }));
-    return new Response("null");
-  });
-  vi.stubGlobal("fetch", f);
-  render(
-    <AuthContextProvider
-      value={{ ...unconfiguredAuth, ready: true, configured: true, user: { id: "u", wallet: "0x123", walletKind: "external", verified: false } }}
-    >
-      <RegisterSteps />
-    </AuthContextProvider>,
-  );
-  const joins = () => f.mock.calls.filter(([url]) => String(url).includes("join=1")).length;
-  await userEvent.type(await screen.findByLabelText(/email/i), "student@example.com");
-  // Opening the page joined nobody.
-  expect(joins()).toBe(0);
-  await userEvent.click(screen.getByRole("button", { name: "Save email & continue" }));
-  await screen.findByText(/couldn’t add you to the FUTMinna hackathon/);
-  expect(joins()).toBe(1);
-  joinOk = true;
-  await userEvent.click(screen.getByRole("button", { name: "Try again" }));
-  await waitFor(() => expect(screen.queryByText(/couldn’t add you to the FUTMinna hackathon/)).not.toBeInTheDocument());
-  expect(joins()).toBe(2);
-});

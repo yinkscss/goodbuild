@@ -36,7 +36,7 @@ export interface Ladder<T extends Entry> {
 
 /**
  * Build the ranked ladder from the public entry list; `myId` marks the viewer's own project. `zone` is
- * how many places count as the prize zone: the top 20 by default, the FUTMinna shortlist of 5 (D160).
+ * how many places count as the prize zone: the top 20 by default.
  */
 export function buildLadder<T extends Entry>(entries: T[], myId?: string | null, zone: number = REWARD_SLOTS): Ladder<T> {
   const rows = allocateHackathonRewards(entries)

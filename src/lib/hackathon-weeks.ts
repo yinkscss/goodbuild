@@ -1,5 +1,5 @@
 /**
- * Weekly Rising Star (D135): the published project with the most new approvals in each of three weeks
+ * Weekly Rising Star (D135): the published project with the most new approvals in each week (six, to 31 Dec since D170)
  * gets a badge. No money, so a project far down the ladder can still win it.
  *
  * A snapshot dated D is taken at about midnight West Africa time as D begins, so it holds the counts
@@ -11,7 +11,7 @@ export const WEEKS = [
   { n: 3, label: "3 to 10 Dec", boundary: "2026-12-11" },
 ] as const;
 
-/** Kadpoly runs to 31 Dec (D167), so it gets three more weeks after the main three. */
+/** The hackathon runs to 31 Dec (D167, D170), so three more weeks follow the first three. */
 export const LATE_WEEKS = [
   { n: 4, label: "11 to 17 Dec", boundary: "2026-12-18" },
   { n: 5, label: "18 to 24 Dec", boundary: "2026-12-25" },
@@ -22,7 +22,7 @@ export type Week = { n: number; label: string; boundary: string };
 
 /**
  * The Rising Star weeks of a hackathon that closes at `close`: every week whose end snapshot is taken
- * by the day after the close (WAT). Main and FUTMinna get weeks 1 to 3, Kadpoly 1 to 6.
+ * by the day after the close (WAT). Closing on 31 Dec, the hackathon gets weeks 1 to 6.
  */
 export function weeksUntil(close: Date): Week[] {
   const lastDay = new Date(close.getTime() + 3_600_000).toISOString().slice(0, 10);

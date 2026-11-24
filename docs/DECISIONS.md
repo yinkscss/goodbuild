@@ -2150,3 +2150,29 @@ The owner approved implementing all five parts of the first-build fix and openin
 - **Words:** a project "vote" is an approval of a hackathon entry (D155's three-approvals rule). Voting for GoodBuild on FlowState is a separate step we call the FlowState vote.
 - **Rule:** signing up and getting anything at all (welcome credits, an invite bonus, a project approval) goes through the full steps: sign in, verify with GoodDollar, and the one-tap FlowState vote for GoodBuild (D158). The invite page `/r/CODE` runs all three. The project approval dialog already does (email, GoodDollar, FlowState).
 - **Tried and dropped:** a separate `/vote` page and an invite page without the vote (this branch's first version). It wasn't what was meant, so neither shipped.
+
+### D170. One hackathon to 31 Dec: FUTMinna and Kadpoly merged into the main one (24 Nov 2026; amends D160, D161, D167)
+- **Decided by:** the owner, 24 Nov 2026: one hackathon ending 31 Dec, the same rules, one leaderboard, the campus links redirected to the main pages and the hackathon switch removed. The prize is the 1,000,000 G$ pool, ranked by approvals (D130). The FUTMinna ₦150,000 scholarship and the Kadpoly full tuition are dropped. Built by Claude. Plan: [HACKATHON_MERGE_PLAN.md](HACKATHON_MERGE_PLAN.md).
+- **One event:** `src/lib/hackathon-events.ts` now holds only `HACKATHON` (`million-2027`), closing at `2026-12-31T23:00:00Z`. Server functions and the API no longer take an event, so `?event=` is ignored. Entries, approvals, credit claims, referral payouts and the credit expiry all stop at 31 Dec for everyone. `claimCloseFor` is removed, along with the expiry's `waiting` count. Rising Star runs weeks 1 to 6.
+- **Data:** migration `0035_merge_hackathons.sql` moves everything under `million-2027`:
+  - **Signups:** one per person. A main signup takes the FlowState vote from a campus one; someone who signed up only on a campus keeps their earliest campus signup.
+  - **Projects and rank snapshots:** relabelled. Approvals move with their projects.
+  - **Safety:** the migration stops if a builder has projects in two hackathons, and it is safe to run twice.
+- **Approvals over the cap:** someone who approved in more than one hackathon keeps all those approvals, which can be up to 9. They can add no new approvals, and "used" never shows more than 3.
+- **Redirects** (`next.config.ts`, 307, query passed through):
+  - `/hackathon/{futminna,kadpoly}?vote=ID` goes to `/hackathon/projects?vote=ID`.
+  - Otherwise `/hackathon/{futminna,kadpoly}` goes to `/hackathon`.
+  - `/home/hackathon/{futminna,kadpoly}/…` goes to `/home/hackathon/…`.
+- **Removed:**
+  - the campus pages and components;
+  - the hackathon switch;
+  - the D161 member redirect and the `?stay` parameter;
+  - campus joining (`joinEvent`, `?join=1`);
+  - the one-hackathon-per-builder check;
+  - the campus callouts on `/hackathon`;
+  - the campus CSV buttons;
+  - the sitemap entries.
+  Old blog posts stay as written, and their links redirect.
+- **Dates:** the window is 18 Nov to 31 Dec, and voting closes on 31 Dec. Two dates are DRAFT and proposed by Claude, not confirmed by the owner: "Submit by 24 Dec for a fair vote" and "Winners announced early January".
+- **Budget:** the default stays 15,000 credits, and `HACKATHON_BUDGET_CREDITS` still overrides it.
+- **Checked:** the migration (PGlite test: overlapping signups, a vote only on a campus signup, over-cap approvals, the guard, running twice), the 31 Dec close, week-4 Rising Star, and every redirect on the dev server. The public page was checked in a browser. **UNVERIFIED:** the migration against the live database, and the in-app tabs while signed in.
