@@ -5,6 +5,9 @@ Written 4 Nov 2026 at the end of the first build session (claude.ai), for whoeve
 ## A shared project link opens the project and its steps (24 Nov 2026, D169, branch `claude/project-vote-page`)
 - `VoteList` shows `ProjectView` for `?vote=ID`; steps are shared with the pop-up through `ApprovalSteps`. Unit tests only, not checked in a browser.
 
+## The full steps for anything given (24 Nov 2026, D168, branch `claude/split-invite-and-vote`)
+- Docs only: signing up or getting anything needs sign in, GoodDollar and the FlowState vote. `/r/CODE` keeps all three steps; project approvals already did.
+
 ## DeepSeek plans and builds contracts from audited templates (21 Nov 2026, D165, branch `claude/elegant-pasteur-j73em3`)
 - **Models:** the spec step and the contracts phase run on DeepSeek. The first plan thinks `high`, later plans and contracts `low`. All fixes run on DeepSeek; Sonnet gets only the one retry after the same problems came back (`fixTierV2`). No Haiku.
 - **Templates:** `src/server/agent/contract-templates.ts` holds 9 abstract OpenZeppelin-based contracts (token, NFT, staking, escrow, vesting, votes token, governor, poll, savings). The spec names one per contract. They are written to `contracts/goodbuild/` (read-only for the builder) and the builder's contract inherits one.
