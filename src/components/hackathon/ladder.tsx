@@ -61,7 +61,7 @@ export function Ladder({ mode }: { mode: "web" | "app" }) {
   if (!entries) return <p role="status" className="text-sm text-grey-600">Loading the leaderboard…</p>;
 
   const { rows, mine, gapToPrizeZone } = buildLadder(entries, user ? myId : null, config.zone);
-  // Kadpoly (D166): the top places win and the rest of the zone waits, so a waitlisted builder also
+  // Kadpoly (D167): the top places win and the rest of the zone waits, so a waitlisted builder also
   // sees how far the winning places are.
   const campus = eventConfig(event).campus;
   const winners = campus && !campus.judged ? campus.winners : null;

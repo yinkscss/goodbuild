@@ -38,7 +38,7 @@ it("uses the next snapshot if the worker missed the boundary day, and skips week
   expect(risingStars(gap, order)).toEqual([{ week: 1, entryId: "a", gained: 6 }]);
 });
 
-it("gives Kadpoly six Rising Star weeks to 31 Dec, and the 10 Dec hackathons three (D166)", () => {
+it("gives Kadpoly six Rising Star weeks to 31 Dec, and the 10 Dec hackathons three (D167)", () => {
   const kadpolyWeeks = weeksUntil(new Date("2026-12-31T23:00:00Z"));
   expect(weeksUntil(new Date("2026-12-10T23:00:00Z")).map((w) => w.n)).toEqual([1, 2, 3]);
   expect(kadpolyWeeks.map((w) => w.n)).toEqual([1, 2, 3, 4, 5, 6]);

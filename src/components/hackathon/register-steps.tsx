@@ -35,7 +35,7 @@ export function RegisterSteps() {
 }
 function Registration() {
   const auth = useAuth();
-  // On a campus page (D160, D166) the same steps run: the main signup unlocks the shared credit claim,
+  // On a campus page (D160, D167) the same steps run: the main signup unlocks the shared credit claim,
   // and the person is also added to that campus's signup list.
   const { event, config } = useHackathonEvent();
   const { openConnect } = useSendGate();
@@ -349,7 +349,7 @@ function Registration() {
                 disabled={
                   !flowDone || !verified || claim.busy || claim.status === null
                 }
-                // On a campus page, join first: a campus member can claim until their campus closes (D166).
+                // On a campus page, join first: a campus member can claim until their campus closes (D167).
                 onClick={() => void join().then(() => claim.run())}
               >
                 {claim.busy

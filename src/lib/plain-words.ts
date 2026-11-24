@@ -44,10 +44,17 @@ export function plainError(message: string | undefined | null): string {
   if (!m) return "Something went wrong on our side. Your files are saved.";
   // Already written for people: the credits messages (D138).
   if (/^This build (paused|stopped) because your credits ran (low|out)/.test(m)) return m;
-  if (/AI provider|overloaded|rate.?limit|\b(429|502|503|529)\b|model/i.test(m)) return "The AI that writes your app isn't answering right now. That wasn't something you did. Your files are saved.";
+  // GoodBuild's own AI account ran out of money (23 Nov 2026): our problem, not a passing outage, and the owner is told.
+  if (isAiAccountEmpty(m)) return "GoodBuild's AI service is paused on our side. We've been alerted and are fixing it. Your files are saved, so try again a little later.";
+  if (/AI provider|overloaded|rate.?limit|\b(429|502|503|529)\b/i.test(m)) return "The AI that writes your app isn't answering right now. That wasn't something you did. Your files are saved.";
   if (/fetch failed|ECONNRESET|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|socket hang up|network|connection (was )?(reset|closed|refused)/i.test(m)) return "We lost the connection to one of our services while building. That wasn't something you did. Your files are saved.";
   if (/timed? ?out|ETIMEDOUT|deadline|took too long/i.test(m)) return "One step took too long, so GoodBuild stopped it. That wasn't something you did. Your files are saved.";
   if (/saved progress|older version of GoodBuild|no longer matches/i.test(m)) return "This build was interrupted and couldn't pick up where it left off. Your files are saved.";
   if (/design reference .* deleted/i.test(m)) return "A picture this build was using was deleted, so it couldn't continue. Your files are saved.";
   return "Something went wrong on our side. That wasn't something you did. Your files are saved.";
+}
+
+/** The build stopped because GoodBuild's own AI account is out of money (23 Nov 2026): retrying now can't help. */
+export function isAiAccountEmpty(message: string | undefined | null): boolean {
+  return /AI provider account is out of funds|Insufficient Balance/i.test(message ?? "");
 }

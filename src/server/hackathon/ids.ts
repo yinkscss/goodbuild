@@ -6,6 +6,6 @@ export const HACKATHON_ID = HACKATHON_EVENTS.main.id;
 
 /**
  * The main hackathon's close (DRAFT date, matches content.ts). Claims stop here for main-only builders;
- * a campus member can claim until their campus closes (D166, `claimCloseFor`).
+ * a campus member can claim until their campus closes (D167, `claimCloseFor`).
  */
 export const CLAIMS_CLOSE = closeOf("main");

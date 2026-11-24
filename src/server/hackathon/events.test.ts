@@ -109,7 +109,7 @@ it("records rank snapshots per hackathon", async () => {
   expect((await previousRanks(db, today)).size).toBe(0);
 });
 
-// Kadpoly (D166): a third hackathon on the same tables, with its own close on 31 Dec.
+// Kadpoly (D167): a third hackathon on the same tables, with its own close on 31 Dec.
 it("keeps Kadpoly separate from FUTMinna: one entry per builder, separate approvals", async () => {
   const student = await voter();
   await saveParticipant(db, student, { email: "s@example.com" });

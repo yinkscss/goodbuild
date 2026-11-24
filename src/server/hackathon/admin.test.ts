@@ -83,7 +83,7 @@ describe.each(testBackends())("hackathon admin on $name", (backend) => {
     expect(r.closed).toBe(false);
   });
 
-  it("keeps a Kadpoly member's credits, and their claim, open until Kadpoly closes (D166)", async () => {
+  it("keeps a Kadpoly member's credits, and their claim, open until Kadpoly closes (D167)", async () => {
     const KADPOLY_CLOSE = new Date("2026-12-31T23:00:00Z");
     const member = await registered();
     await db.insert(hackathonParticipants).values({ hackathon: "kadpoly-2026", userId: member.id, email: "k@example.com" });

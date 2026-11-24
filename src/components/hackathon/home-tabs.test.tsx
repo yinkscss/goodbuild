@@ -20,7 +20,7 @@ it("leaves the FUTMinna tabs as plain links", () => {
   expect(screen.getByRole("link", { name: "Get started" })).toHaveAttribute("aria-current", "page");
 });
 
-it("offers Kadpoly on the switch and keeps its tabs under its own path (D166)", () => {
+it("offers Kadpoly on the switch and keeps its tabs under its own path (D167)", () => {
   nav.path = "/home/hackathon/kadpoly/leaderboard";
   render(<HackathonTabs />);
   expect(screen.getByRole("link", { name: "Kadpoly" })).toHaveAttribute("aria-current", "page");

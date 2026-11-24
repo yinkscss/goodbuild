@@ -22,7 +22,7 @@ it("keeps the main hackathon's ids and URLs unchanged", () => {
   expect(eventApi("/api/hackathon/projects?mine=1", "futminna")).toBe("/api/hackathon/projects?mine=1&event=futminna");
 });
 
-it("marks Kadpoly's top 3 as winners and 4 and 5 as the waitlist; FUTMinna's top 5 as the shortlist (D166)", () => {
+it("marks Kadpoly's top 3 as winners and 4 and 5 as the waitlist; FUTMinna's top 5 as the shortlist (D167)", () => {
   expect([1, 3, 4, 5, 6].map((r) => zoneBadge("kadpoly", r))).toEqual(["Top 3", "Top 3", "Waitlist", "Waitlist", null]);
   expect([1, 5, 6].map((r) => zoneBadge("futminna", r))).toEqual(["Shortlist", "Shortlist", null]);
   expect(zoneBadge("main", 1)).toBeNull();

@@ -188,7 +188,8 @@ export async function startTurn(db: Db, args: QueueArgs, env: Record<string, str
     const key = root && source && !source.retryOfJobId && source.mode === "build" && source.status !== "stopped" && !creditPaused && !args.useCredits && source.startedAt ? `repair:${root}:${new Date().toISOString().slice(0, 7)}` : !source && !args.useCredits && root && project.currentVersion === 0 && args.mode === "build" ? `first:${root}` : null;
     const limit = source ? settings.repair : settings.first;
     const sponsored = key && await reserveSponsorship(tx, key, limit, env);
-    if (source && source.mode === "build" && source.status !== "stopped" && !sponsored && !args.useCredits) return { refused: { allowed: false, reason: "funding_unavailable", message: "The included repair allowance is unavailable or used up. Your progress is saved. You can request a smaller change using credits in the composer." } };
+    // A repair the free allowance doesn't cover runs on the person's credits, without asking or pausing (owner, 23 Nov 2026).
+    // decideStart still refuses when they have none, and the workspace then offers a top-up.
     const decision = sponsored ? { allowed: true as const, funding: "platform" as const, holdMicro: 0 } : await decideStart(tx, { userId: args.userId, projectId: args.projectId, mode: args.mode }, env);
     if (!decision.allowed) return { refused: decision };
     const job = await queueTurn(tx, args, decision.funding, decision.holdMicro);

@@ -24,7 +24,7 @@ export const START_CREDITS = 20;
 export const DEPLOY_CREDITS = 30;
 /**
  * Default cap on everything granted: 300 builders x 50 credits. Raised from 5,000 to 10,000 for
- * FUTMinna (D160) and to 15,000 for Kadpoly (D166), which share this budget. HACKATHON_BUDGET_CREDITS overrides.
+ * FUTMinna (D160) and to 15,000 for Kadpoly (D167), which share this budget. HACKATHON_BUDGET_CREDITS overrides.
  */
 export const DEFAULT_BUDGET_CREDITS = 15_000;
 export { CLAIMS_CLOSE };
@@ -63,7 +63,7 @@ export interface ClaimDeps {
 
 /**
  * When this person's hackathon credits stop: the latest close among the hackathons they signed up for,
- * and never before the main one (D166). A Kadpoly member can claim, and keeps their grant, until
+ * and never before the main one (D167). A Kadpoly member can claim, and keeps their grant, until
  * Kadpoly closes; everyone else stops at the main close.
  */
 export async function claimCloseFor(db: Db, userId: string): Promise<Date> {
@@ -152,7 +152,7 @@ function grantInLock(db: Db, user: { id: string; wallet: string }, root: string,
     if (row && row.userId !== user.id) {
       throw new HackathonError("claimed_elsewhere", "This GoodDollar identity already registered from another GoodBuild account. Sign in with that account to build.");
     }
-    // An expired grant is final: joining a hackathon that closes later (D166) doesn't reopen it.
+    // An expired grant is final: joining a hackathon that closes later (D167) doesn't reopen it.
     if (row?.expiredAt) throw new HackathonError("closed", "Submissions have closed, so hackathon credits can no longer be claimed.");
 
     const [spent] = await tx

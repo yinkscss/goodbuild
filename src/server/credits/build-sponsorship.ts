@@ -3,8 +3,9 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import type { Db } from "@/server/db/client";
 import { buildSponsorships, turnJobs } from "@/server/db/schema";
 
+export const SPONSORSHIP_EXHAUSTED_MESSAGE = "The included build allowance is used up. Your progress is saved. Choose a smaller next step or continue using credits.";
 export class SponsorshipExhaustedError extends Error {
-  constructor() { super("The included build allowance is used up. Your progress is saved. Choose a smaller next step or continue using credits."); }
+  constructor() { super(SPONSORSHIP_EXHAUSTED_MESSAGE); }
 }
 const amount = (raw: string | undefined, fallback: number) => raw !== undefined && Number.isSafeInteger(Number(raw)) && Number(raw) >= 0 ? Number(raw) : fallback;
 export function sponsorshipSettings(env: Record<string, string | undefined>) {
@@ -45,4 +46,13 @@ export async function platformJobAllowed(db: Db, jobId: string): Promise<boolean
   const [s] = await db.select({ id: buildSponsorships.jobId }).from(buildSponsorships).innerJoin(turnJobs, eq(turnJobs.id, buildSponsorships.jobId))
     .where(and(eq(buildSponsorships.jobId, jobId), inArray(turnJobs.status, ["queued", "running"])));
   return Boolean(s);
+}
+
+/**
+ * Give back a sponsorship that paid for nothing, so its allowance key can be reserved again. Used when a build
+ * failed because GoodBuild's own AI account was empty (23 Nov 2026): the person shouldn't lose a free build to it.
+ */
+export async function releaseUnusedSponsorship(db: Db, jobId: string): Promise<boolean> {
+  const rows = await db.delete(buildSponsorships).where(and(eq(buildSponsorships.jobId, jobId), eq(buildSponsorships.spentMicro, 0))).returning({ id: buildSponsorships.jobId });
+  return rows.length > 0;
 }

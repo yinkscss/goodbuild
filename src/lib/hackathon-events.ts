@@ -1,11 +1,11 @@
 /**
- * The hackathons GoodBuild runs side by side (D160, D166). Each one has its own entries, approvals,
+ * The hackathons GoodBuild runs side by side (D160, D167). Each one has its own entries, approvals,
  * leaderboard, signup list and closing time, all stored under its id in the existing hackathon tables.
  * Credits are not per event: every hackathon page uses the main hackathon's claim, so one GoodDollar
  * identity gets one grant whichever page it registers on.
  */
 
-/** A campus hackathon's school and prize (D160 FUTMinna, D166 Kadpoly). Page copy is built from it. */
+/** A campus hackathon's school and prize (D160 FUTMinna, D167 Kadpoly). Page copy is built from it. */
 export interface Campus {
   /** Short school name used in copy ("FUTMinna student?"). */
   short: string;
@@ -104,7 +104,7 @@ export const HACKATHON_EVENTS = {
       dates: "ends 10 Dec",
     },
   },
-  /** Kaduna Polytechnic (D166): FUTMinna's rules and voting; top 3 win full tuition, 4 and 5 waitlisted, closes 31 Dec. */
+  /** Kaduna Polytechnic (D167): FUTMinna's rules and voting; top 3 win full tuition, 4 and 5 waitlisted, closes 31 Dec. */
   kadpoly: {
     id: "kadpoly-2026",
     name: "Kadpoly Hackathon",

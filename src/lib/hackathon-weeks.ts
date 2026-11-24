@@ -11,7 +11,7 @@ export const WEEKS = [
   { n: 3, label: "3 to 10 Dec", boundary: "2026-12-11" },
 ] as const;
 
-/** Kadpoly runs to 31 Dec (D166), so it gets three more weeks after the main three. */
+/** Kadpoly runs to 31 Dec (D167), so it gets three more weeks after the main three. */
 export const LATE_WEEKS = [
   { n: 4, label: "11 to 17 Dec", boundary: "2026-12-18" },
   { n: 5, label: "18 to 24 Dec", boundary: "2026-12-25" },

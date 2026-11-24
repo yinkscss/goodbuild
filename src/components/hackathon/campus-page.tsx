@@ -15,7 +15,7 @@ import { SITE_URL } from "@/config/site-url";
 import { campusOf, HACKATHON_EVENTS, type CampusEvent } from "@/lib/hackathon-events";
 import { cn } from "@/lib/utils";
 
-/** The page metadata of a campus hackathon (D160, D166). */
+/** The page metadata of a campus hackathon (D160, D167). */
 export function campusMetadata(event: CampusEvent): Metadata {
   const { name, page } = HACKATHON_EVENTS[event];
   const c = campusOf(event);
@@ -79,7 +79,7 @@ function rulesOf(event: CampusEvent): string[] {
   ];
 }
 
-/** A campus hackathon (D160 FUTMinna, D166 Kadpoly): its own entries, leaderboard and approvals; the main hackathon's signup and credits. */
+/** A campus hackathon (D160 FUTMinna, D167 Kadpoly): its own entries, leaderboard and approvals; the main hackathon's signup and credits. */
 export function CampusHackathonPage({ event }: { event: CampusEvent }) {
   const { name, app, zone } = HACKATHON_EVENTS[event];
   const c = campusOf(event);

@@ -3,7 +3,7 @@ import { Ladder } from "./ladder";
 import { VoteList } from "./vote-list";
 import { campusOf, campusPicking, HACKATHON_EVENTS, type CampusEvent } from "@/lib/hackathon-events";
 
-/** In-app tab titles of a campus hackathon (D160, D166). */
+/** In-app tab titles of a campus hackathon (D160, D167). */
 export function campusTitle(event: CampusEvent, tab: string) {
   return { title: `${tab} · ${HACKATHON_EVENTS[event].name} · GoodBuild` };
 }

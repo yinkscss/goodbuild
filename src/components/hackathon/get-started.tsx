@@ -53,7 +53,7 @@ function useCampusMember(userId: string, event: CampusEvent) {
 }
 
 /**
- * The campus hackathon this person belongs to, if any (D161, D166). Someone in more than one opens on
+ * The campus hackathon this person belongs to, if any (D161, D167). Someone in more than one opens on
  * the first in HACKATHON_EVENTS order. `undefined` while loading.
  */
 function useCampusHome(userId: string) {
@@ -141,7 +141,7 @@ function campusNext(event: CampusEvent) {
 }
 
 /**
- * A campus hackathon's Get started (D160, D166). Registration and credits are the main hackathon's (one
+ * A campus hackathon's Get started (D160, D167). Registration and credits are the main hackathon's (one
  * grant per person), so the steps are the same, and registering here makes the person a member. Someone
  * registered for the main hackathon only joins with a button, so just looking at this tab changes
  * nothing about where their hackathon opens (D161).

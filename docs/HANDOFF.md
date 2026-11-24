@@ -46,7 +46,7 @@ Generated apps now update by themselves after a confirmed transaction, a saved-d
 ## One-tap vote split with GoodCash (20 Nov 2026, D158, branch `claude/nice-brown-jb0s8r`)
 Every vote button (invite step 3, /hackathon, the vote list, the free-credits card) now splits all of the person's available FlowState points 50/50 between GoodBuildIt and partner GoodCash in one transaction with one wallet confirmation. It falls back to GoodBuildIt only if GoodCash stops being a recipient or the ballot has no room for both. Someone who voted earlier but has points left gets them split on the next tap. Credits, invites and ambassador earnings still depend on GoodBuildIt support only. No migration. **UNVERIFIED** against live Celo/FlowState: after the deploy, vote once and check both projects' totals on FlowState.
 
-## Kadpoly hackathon (23 Nov 2026, D166, branch `claude/kadpoly-hackathon-version-625135`)
+## Kadpoly hackathon (23 Nov 2026, D167, branch `claude/kadpoly-hackathon-version-625135`)
 A third hackathon, for Kaduna Polytechnic: `/hackathon/kadpoly` and in-app `/home/hackathon/kadpoly`.
 - **Same as FUTMinna:** the setup and voting, built from the same shared campus page.
 - **Prize:** the top 3 by approvals win full tuition for the session, and places 4 and 5 are waitlisted.

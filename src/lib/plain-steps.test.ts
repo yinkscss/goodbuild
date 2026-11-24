@@ -58,6 +58,9 @@ describe("plain words (D164)", () => {
     expect(plainError("The AI provider has no valid API key. Set ANTHROPIC_API_KEY in .env.local")).toMatch(/^The AI that writes your app/);
     expect(plainError("This build was interrupted and couldn't continue: the saved progress no longer matches this build's steps. Retry to run it again.")).toMatch(/couldn't pick up where it left off/);
     expect(plainError("relation \"projects\" does not exist")).toMatch(/^Something went wrong on our side/);
+    expect(plainError("The AI provider rejected the request: Insufficient Balance (request_id: x)")).toMatch(/^GoodBuild's AI service is paused on our side/);
+    expect(plainError("The AI provider account is out of funds (DeepSeek, 402): Insufficient Balance")).toMatch(/We've been alerted/);
+    expect(plainError("Cannot read properties of undefined (reading 'model')")).toMatch(/^Something went wrong on our side/);
     expect(plainError(undefined)).toMatch(/Your files are saved/);
     const paused = "This build paused because your credits ran low. What it made so far is saved.";
     expect(plainError(paused)).toBe(paused);
