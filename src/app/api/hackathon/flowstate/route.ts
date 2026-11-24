@@ -172,8 +172,7 @@ export async function POST(request: Request) {
       })
       .where(eq(flowstateVoters.userId, s.user.id))
       .returning({ id: flowstateVoters.userId });
-    // Hackathon signups keep their own copy, for the CSV and the hackathon credit claim. Every hackathon
-    // this person signed up for gets it (D160), so the FUTMinna list shows the vote too.
+    // The hackathon signup keeps its own copy, for the CSV and the hackathon credit claim.
     await db
       .update(hackathonParticipants)
       .set({

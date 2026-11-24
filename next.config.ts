@@ -16,6 +16,18 @@ const nextConfig: NextConfig = {
     "/api/projects/[id]/publish": ["./publish-runtime.pack.gz"],
   },
   partialPrefetching: true,
+  // The FUTMinna and Kadpoly hackathons were merged into the main one (D170). Their old links open the
+  // matching main page; a shared project link (`?vote=ID`, D169) opens that project on the showcase.
+  // Temporary (307), and the query string is passed through.
+  async redirects() {
+    const campus = ":campus(futminna|kadpoly)";
+    return [
+      { source: `/hackathon/${campus}`, has: [{ type: "query", key: "vote" }], destination: "/hackathon/projects", permanent: false },
+      { source: `/hackathon/${campus}`, destination: "/hackathon", permanent: false },
+      { source: `/home/hackathon/${campus}`, destination: "/home/hackathon", permanent: false },
+      { source: `/home/hackathon/${campus}/:path*`, destination: "/home/hackathon/:path*", permanent: false },
+    ];
+  },
   turbopack: {
     rules: {
       "*.css": {

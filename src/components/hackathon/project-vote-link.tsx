@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useHackathonEvent } from "./use-event";
+import { HACKATHON } from "@/lib/hackathon-events";
 
 /** A direct link that opens the selected project's approval steps. */
 export function ProjectVoteLink({
@@ -13,8 +13,7 @@ export function ProjectVoteLink({
 }) {
   const [copied, setCopied] = React.useState(false);
   const [link, setLink] = React.useState("");
-  // A campus project's link opens its campus page (D160).
-  const votePage = useHackathonEvent().config.votePage;
+  const votePage = HACKATHON.votePage;
 
   React.useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- the origin only exists in the browser

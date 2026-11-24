@@ -5,7 +5,7 @@ import "@/components/hackathon/hackathon.css";
 
 /**
  * The hackathon inside the app (D155): Get started, My project, Leaderboard, Vote, each its own page.
- * FUTMinna (D160) has the same four under /home/hackathon/futminna, with a switch between the two.
+ * One hackathon since D170: the FUTMinna and Kadpoly pages redirect here.
  */
 export default function HackathonLayout({ children }: { children: React.ReactNode }) {
   return (

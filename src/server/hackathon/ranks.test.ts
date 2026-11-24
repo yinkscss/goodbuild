@@ -71,8 +71,8 @@ it("leaves projects that are new since the snapshot without a previous rank", as
 
 it("stops snapshotting after the day that holds the final ranking", async () => {
   await entry("a");
-  expect((await snapshotRanks(db, at("2026-12-10T23:30:00Z"))).written).toBe(1); // 11 Dec WAT: the final ranking
-  expect(await snapshotRanks(db, at("2026-12-11T23:30:00Z"))).toEqual({ day: "2026-12-12", written: 0 });
+  expect((await snapshotRanks(db, at("2026-12-31T23:30:00Z"))).written).toBe(1); // 1 Jan WAT: the final ranking
+  expect(await snapshotRanks(db, at("2027-01-01T23:30:00Z"))).toEqual({ day: "2027-01-02", written: 0 });
   expect(await db.select().from(hackathonEntries).where(eq(hackathonEntries.hackathon, HACKATHON_ID))).toHaveLength(1);
 });
 

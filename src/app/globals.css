@@ -204,8 +204,10 @@
  * - iOS Safari zooms the whole page when a field under 16px gets focus, which leaves the page
  *   wider than the screen. Fields are 16px on phones.
  * - Nothing may push the page wider than the viewport; long words and addresses wrap.
+ *   The clip sits on body only: the browser passes it to the page scroller. On html too, a menu or
+ *   dialog's scroll lock (overflow: hidden on body) turned body into its own scroller, and the
+ *   sticky headers scrolled away while it was open.
  */
-html,
 body {
   max-width: 100%;
   overflow-x: clip;

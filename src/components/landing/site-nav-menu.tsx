@@ -7,10 +7,13 @@ import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { NAV_LINKS } from "@/config/site-links";
 
-/** The top nav below the `lg` breakpoint, where the inline links don't fit beside the wallet pill. */
+/**
+ * The top nav below the `lg` breakpoint, where the inline links don't fit beside the wallet pill.
+ * Not modal: a modal menu locks page scroll, so a "/#pricing" link picked from it couldn't scroll there.
+ */
 export function SiteNavMenu() {
   return (
-    <DropdownMenu>
+    <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <Button variant="secondary" size="icon" className="lg:hidden" aria-label="Open menu">
           <Menu />

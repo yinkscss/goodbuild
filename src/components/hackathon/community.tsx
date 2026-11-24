@@ -3,10 +3,9 @@ import * as React from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth/context";
 import { useSendGate } from "@/components/auth/send-gate";
+import { HACKATHON } from "@/lib/hackathon-events";
 import { styles } from "./styles";
 import { ProjectVoteLink } from "./project-vote-link";
-import { eventApi } from "@/lib/hackathon-events";
-import { useHackathonEvent } from "./use-event";
 
 async function jsonRequest(url: string, body?: unknown) {
   const res = await fetch(
@@ -45,8 +44,6 @@ export function SubmissionForm() {
 }
 function Submission() {
   const { user } = useAuth();
-  // The hackathon this form submits to (D160), from the page's address.
-  const { event, config } = useHackathonEvent();
   const { openConnect } = useSendGate();
   const [fields, setFields] = React.useState(EMPTY);
   const [email, setEmail] = React.useState(user?.email ?? "");
@@ -63,8 +60,8 @@ function Submission() {
     if (!user) return;
     let stopped = false;
     void Promise.all([
-      jsonRequest(eventApi("/api/hackathon/projects?mine=1", event)),
-      jsonRequest(eventApi("/api/hackathon/participants", event)),
+      jsonRequest("/api/hackathon/projects?mine=1"),
+      jsonRequest("/api/hackathon/participants"),
     ])
       .then(([entry, participant]) => {
         if (stopped) return;
@@ -87,7 +84,7 @@ function Submission() {
     return () => {
       stopped = true;
     };
-  }, [user, event]);
+  }, [user]);
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
@@ -95,10 +92,10 @@ function Submission() {
     setSaved(null);
     try {
       if (!emailLocked) {
-        await jsonRequest(eventApi("/api/hackathon/participants", event), { email });
+        await jsonRequest("/api/hackathon/participants", { email });
         setEmailLocked(true);
       }
-      const entry = await jsonRequest(eventApi("/api/hackathon/projects", event), fields);
+      const entry = await jsonRequest("/api/hackathon/projects", fields);
       setSaved(entry.id);
       setProjectId(entry.id);
     } catch (e) {
@@ -129,7 +126,7 @@ function Submission() {
           Verify with GoodDollar and support our project with your vote. Then
           you can submit your project here.
         </p>
-        <a className={styles.btnV} href={config.app}>
+        <a className={styles.btnV} href={HACKATHON.app}>
           Go to the steps
         </a>
       </div>
@@ -264,7 +261,7 @@ function Submission() {
           Project saved.{" "}
           <Link
             className={styles.linkGhost}
-            href={event === "main" ? `/hackathon/projects?vote=${saved}` : `${config.app}/leaderboard`}
+            href={`/hackathon/projects?vote=${saved}`}
           >
             View it on the leaderboard →
           </Link>{" "}

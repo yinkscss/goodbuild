@@ -3,8 +3,6 @@ import { afterEach, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { AuthContextProvider, unconfiguredAuth } from "@/lib/auth/context";
 
-const path = vi.hoisted(() => ({ current: "/hackathon/futminna" }));
-vi.mock("next/navigation", () => ({ usePathname: () => path.current }));
 import { Ladder } from "./ladder";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -19,8 +17,7 @@ const entries = Array.from({ length: 6 }, (_, i) => ({
   approvals: 10 - i,
 }));
 
-function show(at: string) {
-  path.current = at;
+function show() {
   const fetcher = vi.fn(async () => new Response(JSON.stringify(entries)));
   vi.stubGlobal("fetch", fetcher);
   render(
@@ -31,25 +28,15 @@ function show(at: string) {
   return fetcher;
 }
 
-it("shows the FUTMinna leaderboard: its own entries, a top-5 shortlist and no G$ estimates (D160)", async () => {
-  const fetcher = show("/hackathon/futminna");
-  await screen.findByText("Project 0");
-  expect(fetcher).toHaveBeenCalledWith("/api/hackathon/projects?event=futminna", expect.anything());
-  expect(screen.getAllByText("Shortlist")).toHaveLength(5);
-  expect(screen.queryByText(/G\$/)).not.toBeInTheDocument();
-  expect(screen.getByText(/judges pick the winner/)).toBeInTheDocument();
-});
-
-it("leaves the main leaderboard as it was", async () => {
-  const fetcher = show("/hackathon");
+it("shows one leaderboard with G$ estimates and no campus badges (D170)", async () => {
+  const fetcher = show();
   await screen.findByText("Project 0");
   expect(fetcher).toHaveBeenCalledWith("/api/hackathon/projects", expect.anything());
-  expect(screen.queryByText("Shortlist")).not.toBeInTheDocument();
+  expect(screen.queryByText(/Shortlist|Waitlist/)).not.toBeInTheDocument();
   expect(screen.getAllByText(/est\. .* G\$/).length).toBeGreaterThan(0);
 });
 
-it("shows a FUTMinna builder ranked 6 to 20 once, not again below the list", async () => {
-  path.current = "/home/hackathon/futminna/leaderboard";
+it("shows a builder ranked inside the top 20 once, not again below the list", async () => {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string) => new Response(JSON.stringify(url.includes("mine") ? { id: "e5" } : entries))),

@@ -7,8 +7,7 @@ import { MICRO_PER_CREDIT } from "@/lib/credits-math";
 import { postLedgerEntry } from "@/server/credits/ledger";
 import type { Db } from "@/server/db/client";
 import { deployments } from "@/server/db/deploy-schema";
-import { closeOf, eventOfId } from "@/lib/hackathon-events";
-import { hackathonParticipants, hackathonRefusals, hackathonRegistrations, type HackathonRegistration } from "@/server/db/hackathon-schema";
+import { hackathonRefusals, hackathonRegistrations, type HackathonRegistration } from "@/server/db/hackathon-schema";
 import { users } from "@/server/db/schema";
 import { CLAIMS_CLOSE, HACKATHON_ID } from "./ids";
 import { recordReferral, referralHeld, settleReferral } from "./referrals";
@@ -23,8 +22,8 @@ export { HACKATHON_ID };
 export const START_CREDITS = 20;
 export const DEPLOY_CREDITS = 30;
 /**
- * Default cap on everything granted: 300 builders x 50 credits. Raised from 5,000 to 10,000 for
- * FUTMinna (D160) and to 15,000 for Kadpoly (D167), which share this budget. HACKATHON_BUDGET_CREDITS overrides.
+ * Default cap on everything granted: 300 builders x 50 credits. Raised from 5,000 to 10,000 (D160) and
+ * to 15,000 (D167) as the campus hackathons joined; kept for the merged hackathon (D170). HACKATHON_BUDGET_CREDITS overrides.
  */
 export const DEFAULT_BUDGET_CREDITS = 15_000;
 export { CLAIMS_CLOSE };
@@ -59,24 +58,6 @@ export interface ClaimDeps {
   ref?: unknown;
   now?: Date;
   env?: Record<string, string | undefined>;
-}
-
-/**
- * When this person's hackathon credits stop: the latest close among the hackathons they signed up for,
- * and never before the main one (D167). A Kadpoly member can claim, and keeps their grant, until
- * Kadpoly closes; everyone else stops at the main close.
- */
-export async function claimCloseFor(db: Db, userId: string): Promise<Date> {
-  const rows = await db
-    .select({ hackathon: hackathonParticipants.hackathon })
-    .from(hackathonParticipants)
-    .where(eq(hackathonParticipants.userId, userId));
-  let latest = CLAIMS_CLOSE;
-  for (const { hackathon } of rows) {
-    const event = eventOfId(hackathon);
-    if (event && closeOf(event) > latest) latest = closeOf(event);
-  }
-  return latest;
 }
 
 const toCredits = (micro: number) => Math.round(micro / MICRO_PER_CREDIT);
@@ -114,7 +95,7 @@ export async function claimHackathon(db: Db, user: { id: string; wallet: string 
   const env = deps.env ?? process.env;
   const now = deps.now ?? new Date();
   if (env.HACKATHON_CLAIMS === "off") throw new HackathonError("off", "Hackathon credits are paused right now. Try again later.");
-  if (now >= CLAIMS_CLOSE && now >= (await claimCloseFor(db, user.id)))
+  if (now >= CLAIMS_CLOSE)
     throw new HackathonError("closed", "Submissions have closed, so hackathon credits can no longer be claimed.");
 
   // The chain decides, never a stored flag or GoodDollar's redirect. Read outside the transaction.

@@ -14,16 +14,7 @@ import {
   useHackathonClaim,
 } from "./use-hackathon-claim";
 import { FlowstateVote } from "./flowstate-vote";
-import { useHackathonEvent } from "./use-event";
-/** Adds the signed-in person to another hackathon's signup list with the email they gave (D160). */
-async function joinEvent(event: string): Promise<boolean> {
-  try {
-    const res = await fetch(`/api/hackathon/participants?event=${event}&join=1`, { method: "POST" });
-    return res.ok && Boolean(await res.json());
-  } catch {
-    return false;
-  }
-}
+import { HACKATHON } from "@/lib/hackathon-events";
 type Participant = {
   email: string;
   flowstate: "pending" | "visited" | "skipped" | "voted";
@@ -35,9 +26,6 @@ export function RegisterSteps() {
 }
 function Registration() {
   const auth = useAuth();
-  // On a campus page (D160, D167) the same steps run: the main signup unlocks the shared credit claim,
-  // and the person is also added to that campus's signup list.
-  const { event, config } = useHackathonEvent();
   const { openConnect } = useSendGate();
   const user = auth.user;
   const [participant, setParticipant] = React.useState<Participant | null>(
@@ -49,28 +37,11 @@ function Registration() {
   const [verifiedHere, setVerifiedHere] = React.useState(false);
   const verified = Boolean(user?.verified) || verifiedHere;
   const confettiRef = React.useRef<HTMLCanvasElement>(null);
-  // Registering from a FUTMinna page makes the person a FUTMinna member (D161): at the email step, or
-  // when credits are claimed here. Only looking at the page changes nothing.
-  const wasRegistered = React.useRef(true);
-  /** A FUTMinna join that failed, kept visible with a retry until it goes through. */
-  const [joinFailed, setJoinFailed] = React.useState(false);
-  const join = React.useCallback(async () => {
-    if (event === "main") return;
-    setJoinFailed(!(await joinEvent(event)));
-  }, [event]);
-  const celebrate = React.useCallback(() => {
-    burst(confettiRef.current);
-    if (!wasRegistered.current) void join();
-  }, [join]);
+  const celebrate = React.useCallback(() => burst(confettiRef.current), []);
   const claim = useHackathonClaim(user && verified ? user.id : null, celebrate);
-  // Only the first registration counts: collecting the later deploy credits here doesn't join anyone.
-  const registeredNow = claim.status ? claim.status.registered : true;
-  React.useEffect(() => {
-    wasRegistered.current = registeredNow;
-  }, [registeredNow]);
   const { busy, note, showLinkGuide, verify } = useGoodIdVerify(
     () => setVerifiedHere(true),
-    () => `${window.location.origin}${config.page}#register`,
+    () => `${window.location.origin}${HACKATHON.page}#register`,
   );
   React.useEffect(() => {
     if (!user) return;
@@ -108,7 +79,7 @@ function Registration() {
     return () => {
       stopped = true;
     };
-  }, [user, event]);
+  }, [user]);
   async function save() {
     setSaving(true);
     setError("");
@@ -122,7 +93,6 @@ function Registration() {
       if (!res.ok)
         throw new Error(data.message ?? "Could not save. Try again.");
       setParticipant(data);
-      await join();
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -326,7 +296,7 @@ function Registration() {
                 <Link className={styles.cta} href="/">
                   Start building →
                 </Link>
-                <Link className={styles.ghostLight} href={`${config.app}/project`}>
+                <Link className={styles.ghostLight} href={`${HACKATHON.app}/project`}>
                   Submit or update your project
                 </Link>
                 {claim.status.deployPending && (
@@ -349,8 +319,7 @@ function Registration() {
                 disabled={
                   !flowDone || !verified || claim.busy || claim.status === null
                 }
-                // On a campus page, join first: a campus member can claim until their campus closes (D167).
-                onClick={() => void join().then(() => claim.run())}
+                onClick={() => void claim.run()}
               >
                 {claim.busy
                   ? "Adding credits…"
@@ -364,14 +333,6 @@ function Registration() {
       {error && (
         <p className={styles.error} role="alert">
           {error}
-        </p>
-      )}
-      {joinFailed && (
-        <p className={styles.error} role="alert">
-          You’re registered, but we couldn’t add you to the {config.label} hackathon.{" "}
-          <button type="button" className="font-semibold underline" onClick={() => void join()}>
-            Try again
-          </button>
         </p>
       )}
     </>
