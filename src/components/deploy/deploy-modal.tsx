@@ -175,18 +175,18 @@ export function FaucetGuide({ className }: { className?: string }) {
       ),
     },
     {
-      title: "Open the Celo Sepolia faucet",
+      title: "Open Celo\u2019s free test money page",
       body: (
         <a className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-violet hover:underline" href={FAUCET_URL} target="_blank" rel="noreferrer">
           faucet.celo.org/celo-sepolia <ExternalLink className="size-3" aria-hidden />
         </a>
       ),
     },
-    { title: "Paste your address and request CELO", body: <span className="mt-1 block text-xs text-grey-600">Pick Celo Sepolia, paste the address, and confirm. The test CELO arrives in under a minute.</span> },
+    { title: "Paste your address and ask for test CELO", body: <span className="mt-1 block text-xs text-grey-600">Pick Celo Sepolia (Celo&rsquo;s free test network), paste the address, and confirm. The test CELO arrives in under a minute.</span> },
     { title: "Come back and try again", body: <span className="mt-1 block text-xs text-grey-600">Test CELO has no value. It only pays the network fee on Sepolia.</span> },
   ];
   return (
-    <ol className={cn("space-y-3 rounded-tip bg-surface p-3 text-sm", className)} aria-label="Get free test CELO">
+    <ol className={cn("space-y-3 rounded-tip bg-surface p-3 text-sm", className)} aria-label="Get free test money">
       {steps.map((st, i) => (
         <li key={st.title} className="flex gap-3">
           <span className="grid size-6 shrink-0 place-items-center rounded-full bg-tint text-xs font-bold text-violet">{i + 1}</span>
@@ -849,7 +849,7 @@ export function DeployModal({
         {!isMainnet && state.plan && state.stage === "ready" && (
           <div className="mt-3 text-right">
             <button type="button" className="text-xs font-medium text-violet hover:underline" aria-expanded={showFaucet} onClick={() => setShowFaucet((v) => !v)}>
-              {showFaucet ? "Hide the faucet guide" : "Need free test CELO? See how"}
+              {showFaucet ? "Hide how to get test money" : "Need free test money? See how"}
             </button>
             {showFaucet && <FaucetGuide className="mt-2 text-left" />}
           </div>

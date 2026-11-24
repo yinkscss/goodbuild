@@ -1,5 +1,5 @@
 import "server-only";
-import { and, eq, isNull, sql, desc, lt } from "drizzle-orm";
+import { and, eq, isNull, isNotNull, gte, sql, desc, lt } from "drizzle-orm";
 import { decodeEventLog, erc20Abi, isAddress, type Hex } from "viem";
 import { GOODDOLLAR_MAINNET } from "@/config/gooddollar";
 import { ambassadorEarnings as earnings, ambassadorPayouts as payouts, ambassadorAudit as audit } from "@/server/db/ambassador-schema";
@@ -11,6 +11,7 @@ import { users } from "@/server/db/schema";
 import { flowstateVoters } from "@/server/db/hackathon-schema";
 import type { Db } from "@/server/db/client";
 import { publicClientFor } from "@/server/deploy/service";
+import { adminWallets } from "@/server/settings/mainnet-access";
 
 export class AmbassadorError extends Error {}
 const launch = () => {
@@ -82,8 +83,10 @@ export async function confirmPayout(db: Db, actorId: string, id: string, hash: H
     if (!p) throw new AmbassadorError("Payout request not found.");
     if (p.status === "paid" && p.txHash === hash.toLowerCase()) return;
     if (p.status !== "processing") throw new AmbassadorError("Mark this request Processing before recording payment.");
-    const senders = (process.env.AMBASSADOR_PAYOUT_WALLETS ?? "").split(",").map(x => x.trim().toLowerCase()).filter(x => isAddress(x));
-    if (!senders.length) throw new AmbassadorError("Configure AMBASSADOR_PAYOUT_WALLETS before confirming payments.");
+    // The admin wallets are the payout wallets: the admin pays by hand from one of them. AMBASSADOR_PAYOUT_WALLETS is only an optional override.
+    const override = (process.env.AMBASSADOR_PAYOUT_WALLETS ?? "").split(",").map(x => x.trim().toLowerCase()).filter(x => isAddress(x));
+    const senders = override.length ? override : [...adminWallets()];
+    if (!senders.length) throw new AmbassadorError("No admin wallet is set, so payments can't be confirmed.");
     const client = publicClientFor(42220);
     const receipt = await client.getTransactionReceipt({ hash });
     const head = await client.getBlockNumber();
@@ -115,7 +118,7 @@ export async function repairAmbassadorEarnings(db: Db, userId: string, page = 0)
   const candidates = await db.select({ userId: referrals.refereeUserId, wallet: users.wallet, hash: flowstateVoters.txHash })
     .from(referrals).innerJoin(users, eq(users.id, referrals.refereeUserId))
     .innerJoin(flowstateVoters, eq(flowstateVoters.userId, users.id))
-    .where(and(eq(referrals.referrerUserId, userId), sql`${referrals.createdAt} >= ${start}`, sql`${flowstateVoters.votedAt} is not null`))
+    .where(and(eq(referrals.referrerUserId, userId), gte(referrals.createdAt, start), isNotNull(flowstateVoters.votedAt)))
     .orderBy(desc(referrals.createdAt)).limit(25).offset(page * 25);
   for (const c of candidates) {
     const [existing] = await db.select({ id: earnings.id }).from(earnings).where(eq(earnings.root, sql`(select lower(goodid_root) from users where id = ${c.userId})`));

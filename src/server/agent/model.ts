@@ -12,10 +12,14 @@ export type ModelTier = "strong" | "cheap";
  * Which tier each kind of work uses (D19). DeepSeek writes the first pass; Claude fixes what
  * the checks reject. Moving follow-up edits to Claude later is one line: build for edits.
  */
-export const TIER_FOR = { plan: "cheap", build: "cheap", fix: "strong", testFix: "cheap", review: "cheap", spec: "strong", contracts: "strong" } as const satisfies Record<string, ModelTier>;
+export const TIER_FOR = { plan: "cheap", build: "cheap", fix: "strong", testFix: "cheap", review: "cheap", spec: "cheap", contracts: "cheap", stubborn: "strong" } as const satisfies Record<string, ModelTier>;
 /** `testFix`: first auto-fix attempt when every failing check is a contract test (D19 amendment). Later attempts use `fix`. */
 /** `review`: reading the screenshots of a finished build (D87), on DeepSeek since D162 (owner, 21 Nov 2026). What it finds is fixed on `build`. */
-/** `spec` and `contracts` (D152, harness v2 only): the app's plan and acceptance flows, then its contracts and their tests. */
+/** `spec` and `contracts` (D152, harness v2 only): the app's plan and acceptance flows, then its contracts and their tests. On DeepSeek since D165 (owner, 21 Nov 2026: "Sonnet is crazy expensive"): the first plan thinks hard, later ones lightly, and contracts are built from GoodBuild's audited templates. */
+/** `stubborn` (D165): the one attempt on Sonnet, when the same problems came back after DeepSeek's fix. */
+
+/** How hard DeepSeek thinks (D165). DeepSeek's own levels are low, high and max ("medium" is read as high). */
+export type Effort = "low" | "high" | "max";
 
 export const MODEL_IDS: Record<ModelTier, string> = { strong: "claude-sonnet-5-5", cheap: "deepseek-flash" };
 const KEY_NAME: Record<ModelTier, string> = { strong: "ANTHROPIC_API_KEY", cheap: "DEEPSEEK_API_KEY" };
@@ -74,6 +78,8 @@ export interface ModelRequest {
    * marked already, so a long fix pass otherwise re-sends everything after them at the full price.
    */
   cacheTail?: boolean;
+  /** DeepSeek's thinking strength for this call (D165). Ignored by Anthropic and when noThinking is set. */
+  effort?: Effort;
 }
 
 /** Streaming chat with tool calls. Implemented over the Vercel AI SDK, or scripted in tests. */
@@ -86,6 +92,22 @@ export class ModelUnavailableError extends Error {
     super(message);
     this.name = "ModelUnavailableError";
   }
+}
+
+/**
+ * GoodBuild's own account with the AI provider is out of money (HTTP 402, "Insufficient Balance"). Every build
+ * fails the same way until the owner tops it up, so retrying is pointless and the owner is told (23 Nov 2026).
+ */
+export class ProviderFundsError extends ModelUnavailableError {
+  constructor(message: string) {
+    super(message);
+    this.name = "ProviderFundsError";
+  }
+}
+
+/** True for an error message saved from a ProviderFundsError, or a raw provider balance refusal. */
+export function isProviderFundsMessage(message: string): boolean {
+  return /AI provider account is out of funds|Insufficient Balance/i.test(message);
 }
 
 function defaultModels(): Record<ModelTier, LanguageModel> {
@@ -136,11 +158,11 @@ export function aiSdkClient(models?: Record<ModelTier, LanguageModel>, idleMs = 
           maxOutputTokens: req.maxTokens,
           maxRetries: req.noRetries ? 0 : 1,
           abortSignal: signal,
-          ...(req.noThinking ? { providerOptions: { deepseek: { thinking: { type: "disabled" } } } } : {}),
+          ...(req.noThinking ? { providerOptions: { deepseek: { thinking: { type: "disabled" } } } } : req.effort && tier === "cheap" ? { providerOptions: { deepseek: { reasoningEffort: req.effort } } } : {}),
         });
       } catch (error) {
         clearTimeout(idleTimer);
-        throw new ModelUnavailableError(describe(error, tier));
+        throw unavailable(error, tier);
       }
 
       let finishReason: string | null = null;
@@ -179,7 +201,7 @@ export function aiSdkClient(models?: Record<ModelTier, LanguageModel>, idleMs = 
         if (idle.signal.aborted && !req.signal?.aborted) throw idle.signal.reason;
       } catch (error) {
         if (idle.signal.aborted && !req.signal?.aborted) throw new ModelUnavailableError(`The AI provider sent nothing for ${Math.round(idleMs / 1000)} seconds.`);
-        throw new ModelUnavailableError(describe(error, tier));
+        throw unavailable(error, tier);
       } finally {
         clearTimeout(idleTimer);
       }
@@ -286,8 +308,18 @@ function parseArgs(raw: string): unknown {
   }
 }
 
+function unavailable(error: unknown, tier: ModelTier): ModelUnavailableError {
+  if (error instanceof ModelUnavailableError) return error;
+  const message = describe(error, tier);
+  return isProviderFundsMessage(message) ? new ProviderFundsError(message) : new ModelUnavailableError(message);
+}
+
 function describe(error: unknown, tier: ModelTier): string {
   if (error instanceof ModelUnavailableError) return error.message;
+  const provider = tier === "strong" ? "Anthropic" : "DeepSeek";
+  if ((APICallError.isInstance(error) && error.statusCode === 402) || /Insufficient Balance/i.test((error as { message?: string })?.message ?? "")) {
+    return `The AI provider account is out of funds (${provider}, 402): ${(error as { message?: string }).message ?? "payment required"}`;
+  }
   const key = KEY_NAME[tier];
   const keyHelp = `The AI provider has no valid API key. Set ${key} in .env.local, then restart \`pnpm dev\`.`;
   if (LoadAPIKeyError.isInstance(error)) return keyHelp;

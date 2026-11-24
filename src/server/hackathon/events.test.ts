@@ -72,7 +72,7 @@ it("lets a builder enter one hackathon only", async () => {
   await saveEntry(db, student, project("First"), "futminna");
   // Editing it in FUTMinna is fine.
   await expect(saveEntry(db, student, project("First, renamed"), "futminna")).resolves.toMatchObject({ title: "First, renamed" });
-  await expect(saveEntry(db, student, project("Second"))).rejects.toThrow(/already entered in the other hackathon/);
+  await expect(saveEntry(db, student, project("Second"))).rejects.toThrow(/already entered in another hackathon/);
   expect(await listEntries(db)).toHaveLength(0);
 });
 
@@ -107,4 +107,37 @@ it("records rank snapshots per hackathon", async () => {
   const today = new Date("2026-11-21T12:00:00Z");
   expect([...(await previousRanks(db, today, "futminna")).entries()]).toEqual([[campus.id, 1]]);
   expect((await previousRanks(db, today)).size).toBe(0);
+});
+
+// Kadpoly (D167): a third hackathon on the same tables, with its own close on 31 Dec.
+it("keeps Kadpoly separate from FUTMinna: one entry per builder, separate approvals", async () => {
+  const student = await voter();
+  await saveParticipant(db, student, { email: "s@example.com" });
+  const kad = await saveEntry(db, student, project("Kad game"), "kadpoly");
+  await expect(saveEntry(db, student, project("Other"), "futminna")).rejects.toThrow(/already entered in another hackathon/);
+  expect((await listEntries(db, "kadpoly")).map((e) => e.id)).toEqual([kad.id]);
+  expect(await listEntries(db, "futminna")).toHaveLength(0);
+  const fan = await voter();
+  const root = wallet();
+  const readRoot = async (w: string) => (w === fan.wallet ? root : wallet());
+  await approveEntry(db, fan, kad.id, readRoot, new Date(), "kadpoly");
+  expect((await voteStatus(db, fan, readRoot, "kadpoly")).used).toBe(1);
+  expect((await voteStatus(db, fan, readRoot, "futminna")).used).toBe(0);
+});
+
+it("keeps Kadpoly open after the main close on 10 Dec, until the end of 31 Dec", async () => {
+  const student = await voter();
+  await saveParticipant(db, student, { email: "s@example.com" });
+  const kad = await saveEntry(db, student, project("Kad game"), "kadpoly");
+  const fan = await voter();
+  const root = wallet();
+  const readRoot = async (w: string) => (w === fan.wallet ? root : wallet());
+  const dec20 = new Date("2026-12-20T12:00:00Z");
+  await expect(approveEntry(db, fan, kad.id, readRoot, dec20, "futminna")).rejects.toThrow(/closed/);
+  await expect(approveEntry(db, fan, kad.id, readRoot, dec20, "kadpoly")).resolves.toMatchObject({ used: 1 });
+  await expect(approveEntry(db, fan, kad.id, readRoot, new Date("2026-12-31T23:00:00Z"), "kadpoly")).rejects.toThrow(/closed/);
+  vi.setSystemTime(dec20);
+  await expect(saveEntry(db, student, project("Kad game v2"), "kadpoly")).resolves.toMatchObject({ title: "Kad game v2" });
+  expect((await snapshotRanks(db, dec20, "kadpoly")).written).toBe(1);
+  expect((await snapshotRanks(db, dec20, "futminna")).written).toBe(0);
 });

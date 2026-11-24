@@ -9,7 +9,8 @@ import { contextMessage, systemPrompt } from "./prompt";
 import { loadGuides } from "./guides";
 import { starterFiles, WALLET_HELPERS, withStarterHelpers } from "./template";
 import { Workspace } from "./workspace";
-import { WALLET_PATHS, walletHelpersFor } from "./wallet-template";
+import { USE_WALLET, WALLET_PATHS, walletHelpersFor, withCurrentWalletHelpers } from "./wallet-template";
+import { OLD_USE_WALLET } from "./fixtures/use-wallet-before-d163";
 import { buildPublishedApp, WALLETCONNECT_PATH } from "@/server/publish/build";
 import { publishedHeaders } from "@/server/publish/service";
 
@@ -397,3 +398,40 @@ export function ConnectButton() {
 }
 `,
 };
+
+describe("typed addresses (D163)", () => {
+  it("refuses a token address typed into the app, even one a character short, and says what to use", () => {
+    const issues = walletIssues({
+      "src/lib/tokens.ts": 'export const GD = "0x62B8B11039FcfE5aB0C56E743cC61eBd4b1EC5e";\n',
+      "src/components/Pay.tsx": "await publicClient.readContract({ address: '0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A', abi, functionName: 'balanceOf' });\n",
+      "src/lib/x.ts": 'export const vault = "0x1111111111111111111111111111111111111111" as Address;\n',
+    });
+    expect(issues.map((i) => i.file)).toEqual(["src/lib/tokens.ts", "src/components/Pay.tsx", "src/lib/x.ts"]);
+    expect(issues[0].message).toMatch(/Don't type an address \(0x62B8B110…\)/);
+    expect(issues[0].message).toContain("useGdBalance() from src/lib/goodbuild/gooddollar");
+  });
+
+  it("allows sample addresses in demo data, the zero address, GoodBuild's own files and the contracts", () => {
+    expect(walletIssues({
+      "src/pages/Board.tsx": 'const rows = [{ name: "Ada", wallet: "0x80fB000000000000000000000000000000007AD0" }];\nexport const A = () => <Avatar address="0x80fB000000000000000000000000000000007AD0" />;\n',
+      "src/App.tsx": 'const none = "0x0000000000000000000000000000000000000000";\n',
+      "src/lib/db.ts": 'const v = "0x000000000000000000000000000000000000dead";\n',
+      "src/lib/goodbuild/gooddollar.ts": 'export const gdAddress = "0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A";\n',
+      "contracts/deploy.json": '{"x": "0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A"}',
+    })).toEqual([]);
+  });
+
+  it("gives every project the real G$ address for its network, never a typed one", () => {
+    const mainnet = starterFiles(42220)["src/lib/goodbuild/gooddollar.ts"];
+    expect(mainnet).toContain('export const gdAddress: Address | null = "0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A";');
+    expect(starterFiles(11142220)["src/lib/goodbuild/gooddollar.ts"]).toMatch(/export const gdAddress: Address \| null = (null|"0x[0-9a-fA-F]{40}");/);
+    expect(walletIssues(starterFiles(42220))).toEqual([]);
+  });
+
+  it("moves untouched useWallet and ConnectButton copies to the ones with network state", () => {
+    const before = withCurrentWalletHelpers({ "src/lib/useWallet.ts": OLD_USE_WALLET, "src/components/ConnectButton.tsx": "edited by the builder" });
+    expect(before["src/lib/useWallet.ts"]).toBe(USE_WALLET);
+    expect(USE_WALLET).toContain("switchNetwork");
+    expect(before["src/components/ConnectButton.tsx"]).toBe("edited by the builder");
+  });
+});

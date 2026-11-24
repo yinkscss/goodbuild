@@ -78,6 +78,10 @@ export default function HackathonPage() {
           <span>FUTMinna student? There’s a separate hackathon for you, with its own leaderboard and a ₦150,000 scholarship.</span>
           <Link href={HACKATHON_EVENTS.futminna.page}>FUTMinna hackathon →</Link>
         </div>
+        <div className={styles.strip}>
+          <span>Kadpoly student? The top 3 in the Kadpoly hackathon win full tuition for the session.</span>
+          <Link href={HACKATHON_EVENTS.kadpoly.page}>Kadpoly hackathon →</Link>
+        </div>
 
         <section id="prizes" className={styles.section}>
           <div className={styles.shead}>

@@ -316,3 +316,19 @@ it("counts a vote recorded only on the hackathon signup, from before flowstate_v
   await expect(approveEntry(db, early, entry.id, rootFor(wallet(), early.wallet))).resolves.toMatchObject({ approved: true, used: 1 });
   expect(await voteStatus(db, early, async () => null)).toMatchObject({ voted: true });
 });
+
+it("retries a dropped Celo read and flags a check that keeps failing, instead of saying unverified", async () => {
+  const voter = await user();
+  const root = wallet();
+  let calls = 0;
+  const flaky = async () => {
+    if (calls++ === 0) throw new Error("rpc timeout");
+    return root;
+  };
+  expect(await voteStatus(db, voter, flaky)).toMatchObject({ verified: true });
+  expect((await voteStatus(db, voter, flaky)).checkFailed).toBeUndefined();
+  const down = async () => {
+    throw new Error("rpc down");
+  };
+  expect(await voteStatus(db, voter, down)).toMatchObject({ signedIn: true, verified: false, checkFailed: true });
+});

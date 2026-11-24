@@ -1998,3 +1998,144 @@ The owner approved implementing all five parts of the first-build fix and openin
   - PROGRESSIVE_DELIVERY.md is updated to match.
 - **Not changed:** v1 turns (saved before v2) keep their old fix loop.
 - **UNVERIFIED:** the token targets (Sonnet under about 80K input tokens for a milestone build, DeepSeek fix calls under about 20K) and the pass rate on real builds. The token report in each build's log measures both after deploy.
+
+### D163. The wallet milestone is plug and play, and the type check stops misreading wallet code (21 Nov 2026; amends D36, D68, D162)
+- Decided by: the owner, in chat ("go"), after the second live run of the savings-goals app. Diagnosis and build by Claude.
+- **What went wrong in that run.** The wallet connected, but the build sat in "Fixing a problem (try 1 of 5)" for over eight minutes, and the page said "Balance unavailable: Address … is invalid". Four causes:
+  1. The wallet milestone asks for "connection and network states", but `useWallet()` had no network state. The builder wrote its own hook that called the wallet directly.
+  2. The type check flagged that valid code. viem's `request` types collapse to `{ method: unknown; params: unknown }` without strictNullChecks, which the check leaves off on purpose. Reproduced: GoodBuild's own starter has 7 such errors with the check's settings and none with strictNullChecks on.
+  3. D162 sends type errors to one fix attempt, so the false alarm started a fix. Inside it, `run_checks` still said "worth fixing", so the builder chased a note it couldn't fix.
+  4. GoodBuild gave the front end no G$ address. The builder typed it from memory: the first 22 characters were right, the rest invented, and it was one character short.
+- **Changes:**
+  - `useWallet()` also gives `chainId`, `networkName`, `onRightNetwork`, `wrongNetwork` and `switchNetwork()`. The wallet layer tracks `chainChanged`, and `ConnectButton` shows "Switch to <network>" when the wallet is elsewhere. Untouched copies of `useWallet.ts` and `ConnectButton.tsx` move to the new ones; edited copies stay the builder's.
+  - A new, always-current platform file, `src/lib/goodbuild/gooddollar.ts`, gives `gdAddress` and `useGdBalance()` (`{balance, formatted, loading, error, available}`; it updates by itself after a transaction, a wallet switch and on the page's timer). The address comes from `src/config/gooddollar.ts`: the real G$ on Celo, GoodBuild's test G$ on Celo Sepolia, null where there is none.
+  - The type check drops only viem's two loose-mode misreads: a `request` reported as missing `params`, and a `...Parameters` type reported as missing `account`. Everything else is reported as before.
+  - Inside a fix, or once type errors have had their one attempt, `run_checks` reports leftover notes as "for information only, don't spend more steps on them". A v2 fix attempt takes at most 12 rounds.
+  - The wallet milestone's acceptance names the pieces to plug in: ConnectButton, `useWallet()` and `useGdBalance()`, with no wallet, network or token code of the builder's own. The prompt and the wallet-layer refusal list the new fields.
+  - The build refuses an address typed into the app's front end (a quoted `0x` with 38 to 42 hex digits), and says what to use instead. The zero and dead addresses, GoodBuild's own files and `contracts/` are left alone.
+- **Tests:**
+  - The type check on real builder-style wallet code, a direct `provider.request` hook and the kit's hooks, passes with no type errors; the same test fails without the filter, with the run's exact error.
+  - A real-browser run with a stand-in wallet shows "On Celo Sepolia" and the G$ state from the kit.
+  - A v2 build that writes wallet code runs the real type check and makes no fix attempt.
+  - Leftover notes during a fix are reported as information, the address check works, every network gets the right G$ address, and untouched copies are upgraded.
+- **Not changed:** strictNullChecks stays off for apps; turning it on would report loose code that runs fine, such as `useState(null)` followed by a value.
+- **UNVERIFIED:** the next real wallet milestone on the live site.
+
+### D164. What a person sees while GoodBuild builds: the plan as a checklist, one problem card with one button, plain words (21 Nov 2026; amends D87, D138, D153, D162, D163)
+- Decided by: the owner, in chat, after Claude's audit of the build screen and a mock ([GoodBuild Build Clarity](https://claude.ai/artifact/Qp4xxF5J7o4oiEXPpkLHsC)): "build the plan in one PR"; "two buttons would confuse the users, we are supposed to hold them like babies and guide them all step of the way"; "no need to show free fix, just show the credit cost in the text area". Plan and build by Claude: [BUILD_CLARITY_PLAN.md](BUILD_CLARITY_PLAN.md).
+- **Research.** From Codex: the live plan checklist (`update_plan`), the end-of-task summary, undo, and lasting project notes (AGENTS.md). From GPT Engineer: nothing new; its clarify step and self-heal are already here. Not taken: Codex's best-of-N (N times the cost, and picking code is a developer's job), and GPT Engineer's file picker and editable prompts (settings by another name).
+- **The plan as a checklist.** In Build mode, the builder's plan (`set_plan`, or the spec's plan in v2) shows as a checklist, with GoodBuild's own last step, "Checking it works on a phone and a computer". One step works at a time, and a "Step 2 of 5" counter sits on top.
+  - Each step row saves which plan step it belongs to (`Step.plan`).
+  - A file whose name matches a later plan step moves the checklist forward. A spec step's route or contract name counts, and a contract step doesn't take front-end files. The checks after the build move it to the last step. It never moves back.
+  - There's no new tool and no extra model call. **UNVERIFIED:** how often names match on real builds; when none match, the checklist stays put until the checks.
+- **One trail line.** Under the working step, one line in plain words says what's happening, with the file name faint at its end. It slides in and fades up and out (200 ms) when that part is done. It stays still for people who prefer reduced motion. Before the plan exists, the same line runs under "Thinking".
+- **Plain words for every step** (`src/lib/plain-steps.ts`), worked out on screen from the saved labels, so older turns read the same way:
+  - "Writing GoalCard.tsx" becomes "Building the goal card"; a hook becomes "Making goals work"; styles become "Choosing colours and layout".
+  - Deleting and renaming become "Tidying up", and a package becomes "Adding a building block".
+  - Guide reads and the plan row are hidden.
+  - "Fixing errors (attempt 1 of 3)" becomes "Fixing a small thing it found", and "Auto-fix: failed · 1 error left" becomes "1 problem still needs a fix".
+  - A test checks that no label shown to a person contains a file extension.
+- **A finished build reads like the owner's approved mock** (asked for: "I'd like to see the response in a much cleaner way").
+  - The card shows a "Ready to try" pill and one headline: the reply's first sentence, or the milestone's.
+  - Below it, a short list: what works (green ticks) and what comes later (an empty circle).
+  - One violet "Next: …" button carries the first suggestion; the other is a chip.
+  - One quiet footer line holds the check ("✓ Checked on a phone and a computer"), the steps (folded, tap to open), the cost and Undo.
+  - The list comes from the builder: `suggest_next` takes optional `works` (1–3 short lines) and `later` (one line), so there's no extra model call. It's saved as `record.outcome`.
+  - A milestone build writes the headline and "later" itself, for example "Connect a wallet, payments on Celo come next. Payments are off until then." This replaces "implementation saved; live behaviour still needs verification".
+  - Without a list (older turns, or a builder that didn't give one), the reply shows as before.
+- **Milestones have plain names:** "Your app's screens", "Connect a wallet", "Play with others", "Sign-in and saved data" and "Payments on Celo". A test checks that each name, sent as a request, picks its own milestone.
+- **One problem card, one button.** Whatever went wrong (the build stopped, still needs a fix, or the preview crashed), the newest reply shows one card with one button, "Fix it for me".
+  - It continues the failed build from its saved files and carries the preview's crash, so one press fixes both. The retry route takes an optional `note` (up to 3,000 characters), which is added to the draft's notes for the builder.
+  - The preview's own error card is hidden while this card shows. The check notes have no button of their own then.
+  - A build paused for credits keeps its own words and its Continue button.
+- **No dead end on a second fix, and no talk of free fixes** (the owner). When GoodBuild's repair allowance doesn't cover a retry, the workspace runs it on credits at once. It doesn't show the old refusal and the "Continue using credits" button. The cost shows only where costs already show, beside the prompt box. If the credits can't cover it, the out-of-credits card shows, as for any build. The server's refusal is unchanged; the workspace answers it. The "GoodBuild covered X of AI" line after a paid-for build is gone too (the owner: "yes").
+- **Plain errors.** An unexpected error reads as one sentence for its cause (`plainError`), such as "We lost the connection to one of our services while building. That wasn't something you did." Anything unknown reads "Something went wrong on our side". The raw message stays on the record, behind "Technical details (for support)", which replaces "Logs".
+- **The preview's crash card** says "The goal list crashed when it opened" and has "Fix it for me". The file, line and message are behind the same fold.
+- **Undo this change.** The newest finished build has "Undo" (in the footer of a finished build, otherwise a button) with a confirm in the page. It goes back to the version before it with the existing revert, and costs nothing. The Versions menu says "Go back to v3?" instead of "Revert".
+- **Smaller changes:**
+  - Plan / Build has a visible hint on phones too: "Talk it through. Nothing changes." / "Changes your app."
+  - The two checks read the same: "Checked on a phone and a computer: looks right".
+  - The deploy card says "one signature" instead of kB.
+  - "Upgrade" becomes "Update your live contract".
+  - The faucet guide is "Get free test money", and Sepolia is "Celo's free test network".
+- **What GoodBuild remembers** (P17 memory decisions) shows as a folded list under the chat, each with "Forget" (`POST /api/projects/[id]/memory`, refused while a build runs).
+- **Not changed:** the server's step labels, logs and errors (tests and support read them), how builds are charged, and the sponsorship rules.
+
+### D165. DeepSeek plans and writes contracts from GoodBuild's audited templates; Sonnet only for a stubborn error (21 Nov 2026; amends D19, D152, D162)
+- Decided by: the owner, in chat: "Sonnet 5.5 is ... crazy expensive"; the first plan on DeepSeek thinking high, later ones lighter; "for like stubborn build errors, we can activate" Sonnet; "Haiku is bad"; "preload standard audited templates ERC20, ERC721, staking and vote, escrow, vesting, governance". Approved as one PR ("I approve"), with Claude's recommendations: keep one Sonnet attempt as the last resort, and the template list below. Build and live measurements by Claude.
+- **Models.**
+  - The spec step runs on DeepSeek. The app's first plan thinks `high`; a later one (a new milestone's contracts, a contract change) thinks `low`. DeepSeek has no "medium": the SDK reads it as high.
+  - The contracts phase runs on DeepSeek at `low`. Measured live, three specs each: thinking off made compile errors in all three; `low` wrote working child contracts in 14 to 44 seconds (one test file had a mistake the fix loop handles); `high` took about 75 seconds and 14K to 16K thinking tokens, and once wrote nothing because thinking filled the 16K output limit.
+  - Every fix runs on DeepSeek. Only when the same problems come back after a fix does the one fresh, try-another-way attempt (D162) go to Sonnet. The fix loop stops on a second repeat, so a build pays for one Sonnet call chain at most.
+  - The front end, the visual check and plan-first questions are unchanged (DeepSeek). Haiku is not used.
+  - `ModelRequest.effort` carries the level; it becomes `providerOptions.deepseek.reasoningEffort` and never reaches Anthropic.
+- **The spec step's rounds:** 5 instead of 3. DeepSeek read guides for 4 or 5 rounds in every live run, so 3 would have ended most of them without a spec. If there is still no spec, it is told "Call write_spec now" and gets 2 more rounds.
+- **Templates** (`src/server/agent/contract-templates.ts`), abstract contracts built from OpenZeppelin 5:
+  - GoodToken: fixed-supply ERC-20, burnable, permit.
+  - GoodNFT: ERC-721, free or paid in G$, with a max supply and a per-wallet limit.
+  - GoodStaking: rewards over time, the StakingRewards design, with the G$ one-step stake.
+  - GoodEscrow: deals with an optional arbiter and a deadline refund.
+  - GoodVesting: OpenZeppelin's VestingWallet with a cliff.
+  - GoodVotesToken and GoodGovernor: OpenZeppelin's Governor, counting in seconds.
+  - GoodPoll: one vote per wallet.
+  - GoodSavings: G$ goals, gifts allowed, only the owner withdraws after the unlock date.
+- **How they are used:**
+  - The planner names one per contract (`template` in the spec, or "none" for custom logic such as a game's rules or a pool). With no name, words in the contract's name and purpose pick one.
+  - A DAO always gets the voting token, never the plain one. A contract can't take a template's name.
+  - Before the contracts phase, the chosen templates are written to `contracts/goodbuild/`. The phase is told each one's constructor and functions, and an example child.
+  - The builder's contract inherits a template and only sets its values. The compiled child's ABI, inherited functions included, is exported to the front end as before.
+  - An upgradeable project gets no templates, because its contracts can't have constructors (D33).
+- **Safe zones: inherit, don't copy.**
+  - `contracts/goodbuild/` can't be written (`pathProblem`).
+  - A project contract or library named like an OpenZeppelin money or access base (ERC20, Ownable, ReentrancyGuard, SafeERC20, Governor, ...) or like a template is refused, with the import to use. Interfaces are allowed.
+- **Exploit tests:**
+  - On testnet, the vault and DAO rule (D76) reads only the app's own code. A child that only configures a template needs none; one that adds its own deposit or withdraw still does.
+  - GoodBuild's template tests include the attacks: strangers, gifts sent straight to the contract, double release. Another test checks that every function that pays out has `nonReentrant`.
+  - Before a mainnet deploy, the gate still reads the compiled code, inherited parts included (custodyOf), and asks for exploit tests as before.
+- **Contract tests' EVM** lifts the 24 KB cap for test contracts only. A test contract carries the code of everything it deploys, and a DAO's test (token plus Governor) went over it. Real contracts keep their 24 KB check.
+- **Tests:**
+  - Each template's child compiles under GoodBuild's checks, and its tests pass in a local EVM.
+  - All the templates compile with the older OpenZeppelin of the paris fallback.
+  - The spec picks templates (named, matched, none) and refuses a template's name. The copy check works.
+  - A full scripted build: the planner reads past its rounds, is asked to write, the savings template goes in, the template can't be edited, and the child's ABI is exported.
+  - The tier and effort of every call are checked, and Sonnet is used only for the repeat.
+- **UNVERIFIED:** a full live build on the site. The live runs above called DeepSeek directly with the real prompts, the spec tool and the templates, outside the worker.
+
+### D166. An empty AI provider account is named, alerted and not retried; repairs past the free allowance run on credits unasked (23 Nov 2026; amends D138, D164)
+- Decided by: the owner, in chat: "If the free allowance has finished, automatically charge them from their credit. You don't have to ask them, you don't have to pause, just keep working." The rest is Claude's fix for the failure found on the server.
+- **What happened (verified on the production database, 23 Nov 2026):** from 12:05 UTC every build failed with DeepSeek's "Insufficient Balance" (HTTP 402). That was 42 jobs across 5 projects and 4 people, with no successful build after it. DeepSeek's balance endpoint read −0.01 USD, `is_available: false`. The card said "The AI that writes your app isn't answering right now", so each person tapped "Fix it for me" again and again. One project (an errand app, "Errand") failed 12 times.
+- **Changes:**
+  - A 402 or "Insufficient Balance" becomes `ProviderFundsError` with the provider named. The runner doesn't retry it, because every attempt fails the same way.
+  - The owner gets a Telegram alert (`TELEGRAM_SUPPORT_CHAT_ID`), at most once every 30 minutes per worker.
+  - The card says "GoodBuild's AI service is paused on our side. We've been alerted and are fixing it." It no longer reads as a passing outage.
+  - `plainError` no longer counts every message containing "model" as an AI outage. Our own bugs read "on our side".
+  - A repair the free allowance doesn't cover (used up, or a retry of a retry) is no longer refused with `funding_unavailable`. It runs on the person's credits through `decideStart`, with no question and no pause. With no credits, `decideStart` still refuses and the workspace offers a top-up.
+  - When a sponsored build's free allowance runs out partway, the worker queues the rest at once as a continuation on the person's credits, from the saved draft (`continueOnCredits`). A job keeps one funding source for life (trigger `funding_refuse_change`), so this is a new job rather than a switch. The workspace attaches to it as soon as the old job ends.
+  - A sponsored build that fails because our AI account is empty, having spent nothing, gives its allowance back (`releaseUnusedSponsorship`). The person keeps their free build or repair.
+  - The card for an empty AI account doesn't say "Tap the button", since tapping can't help until the account is topped up.
+- **Found on the server:** on 23 Nov this outage used up 3 allowances with 0 spent (one first build and two monthly repairs, across two people). Holds on the 26 credit-funded failures were all returned, and nobody was charged.
+- **Open (owner):** whether a DeepSeek funding failure should fall back to Sonnet, which costs more (see D165), so builds keep working while the account is empty.
+
+### D167. A Kadpoly (Kaduna Polytechnic) hackathon: FUTMinna's setup, three full-tuition winners, closes 31 Dec (23 Nov 2026; extends D160, D161)
+- Decided by: the owner ("create a Kadpoly version of the FUTMinna hackathon, same rules, same settings, same setup"). In chat, the owner chose the terms another session passed on: the top 3 win full tuition for the session, places 4 and 5 are waitlisted, it starts 23 Nov and closes at the end of 31 Dec. Kadpoly only, no second polytechnic. Built by Claude.
+- **Events are now a list.** `src/lib/hackathon-events.ts` has `main`, `futminna` and `kadpoly` (`kadpoly-2026`). Each event has its own `closesAt`/`closesLabel`. Each campus event has a `campus` block (school, prize wording, `winners`, `judged`), and every campus page is built from that block. `parseEvent` and `eventFromPath` accept any listed event. No migration: the same tables, rows under the new id.
+- **Shared pages.** The FUTMinna public page became `CampusHackathonPage` (`src/components/hackathon/campus-page.tsx`), and the in-app tabs became `campus-app-pages.tsx`. `/hackathon/futminna` and `/hackathon/kadpoly`, and the four tabs under `/home/hackathon/<event>`, are a few lines each. FUTMinna's copy is unchanged except for the one-hackathon rule, which now names three hackathons.
+- **Prize.** FUTMinna is judged (the top 5 are the shortlist and judges pick one winner). Kadpoly is not judged in that sense: when voting closes, the top 3 by approvals win and places 4 and 5 are waitlisted. If a winner can't show they're a Kadpoly student, the next on the waitlist takes their place. The public rules keep FUTMinna's "Judges look for something creative…" line, matching the blog post's "What the judges look for". The leaderboard badges places 1–3 "Top 3" and 4–5 "Waitlist", and a waitlisted builder sees how many approvals they need to reach the top 3.
+- **Close dates.** Entries, approvals and rank snapshots stop at each event's own close. FUTMinna and the main hackathon still close at the end of 10 Dec; Kadpoly closes at the end of 31 Dec.
+- **Credits (one grant, shared budget, unchanged).** A person's claim and grant now last until the latest close among the hackathons they signed up for (`claimCloseFor`):
+  - A Kadpoly member can claim credits after 10 Dec, until 31 Dec.
+  - The expiry sweep leaves a Kadpoly member's unspent grant alone until Kadpoly closes, and removes it after that.
+  - Everyone else stops at 10 Dec, as before.
+  - On a campus page, the first credit claim joins that campus before claiming, so a member is recorded before the claim checks the date.
+  - Referral payouts and the admin claims report still follow the main close.
+  - An expired grant is final: joining Kadpoly after being expired on 10 Dec doesn't reopen the claim.
+- **Rising Star (D135)** runs to each hackathon's close (owner, 23 Nov). Main and FUTMinna keep weeks 1–3 to 10 Dec, and Kadpoly adds weeks 4–6 (11–17, 18–24 and 25–31 Dec), read from its snapshots (`weeksUntil`).
+- **Budget:** the owner raised the shared default to 15,000 credits (`DEFAULT_BUDGET_CREDITS`, 300 builders × 50) for Kadpoly. `HACKATHON_BUDGET_CREDITS` still overrides it.
+- **Judges:** the owner confirmed that the top 3 by votes win. Judges only check the entry rules.
+- **Membership (D161), for more than one campus.** `/home/hackathon` opens on the campus hackathon the person belongs to. Someone in two campuses opens on the first in the list (FUTMinna). The switch lists all three hackathons. Each builder still enters one hackathon only.
+- **Admin:** one CSV export button per campus.
+- **For the owner:**
+  - Anyone who joins Kadpoly can claim main-hackathon credits until 31 Dec, which is the point of the later close.
+  - The waitlist replacement rule matches the owner's terms as the blog post states them.
+  - The admin report shows "closed" from 10 Dec while Kadpoly members can still claim. The expiry sweep's new `waiting` count is not shown on the admin page.
+- **UNVERIFIED** with real sign-ins: the in-app tabs, joining and claiming were checked only by tests (PGlite and components). The public pages were checked in a browser, on desktop and at phone width.

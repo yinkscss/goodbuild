@@ -13,7 +13,7 @@ export function ProjectVoteLink({
 }) {
   const [copied, setCopied] = React.useState(false);
   const [link, setLink] = React.useState("");
-  // A FUTMinna project's link opens the FUTMinna page (D160).
+  // A campus project's link opens its campus page (D160).
   const votePage = useHackathonEvent().config.votePage;
 
   React.useEffect(() => {

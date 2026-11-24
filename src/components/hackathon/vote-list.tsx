@@ -8,7 +8,7 @@ import { allocateHackathonRewards } from "@/lib/hackathon-rewards";
 import { MAX_APPROVALS_PER_PERSON, type VoteStatus } from "@/lib/hackathon-vote";
 import { FlowstateVote } from "./flowstate-vote";
 import { ProjectVoteLink } from "./project-vote-link";
-import { eventApi, type HackathonEvent } from "@/lib/hackathon-events";
+import { eventApi, eventConfig, type HackathonEvent } from "@/lib/hackathon-events";
 import { useHackathonEvent } from "./use-event";
 
 type Entry = { id: string; alias: string; title: string; pitch: string; liveUrl: string; sourceUrl: string; approvals: number };
@@ -151,7 +151,7 @@ export function VoteList() {
             : `Each verified person gets ${status.max} approvals`}
         </p>
         <p className="mt-1 text-grey-600">
-          Add one approval at a time. You can put all {status.max} on one project or spread them around. Voting closes at the end of 10 Dec.
+          Add one approval at a time. You can put all {status.max} on one project or spread them around. Voting closes at the end of {eventConfig(event).closesLabel}.
         </p>
       </div>
       {error && <p role="alert" className="mt-3 text-sm text-danger">{error}</p>}
@@ -250,7 +250,11 @@ function StepsDialog({
   const verify = useGoodIdVerify(
     () => void refresh(),
     () => `${window.location.origin}${window.location.pathname}#vote`,
-    async () => Boolean((await refresh())?.verified),
+    async () => {
+      const next = await refresh();
+      if (next?.checkFailed) throw new Error("We couldn’t reach Celo to check your verification. Press Verify to try again.");
+      return Boolean(next?.verified);
+    },
   );
   const allDone = status.signedIn && status.verified && status.voted;
   const entryApprovals = entry
@@ -279,7 +283,12 @@ function StepsDialog({
             <button type="button" className={BTN} disabled={!status.signedIn || verify.busy} onClick={() => void verify.verify()}>
               {verify.busy ? "Checking…" : "Verify"}
             </button>
-            {verify.note && <p role="alert" className="mt-2 text-xs text-danger">{verify.note}</p>}
+            {verify.note && (
+              <p role="alert" className="mt-2 text-xs text-danger">
+                {verify.note}
+                {verify.showLinkGuide && " If you verified with another wallet, link it first, then try again."}
+              </p>
+            )}
           </Step>
           <Step n={3} done={status.voted} title="Support us">
             {status.signedIn && status.verified ? <FlowstateVote label="Support" onConfirmed={() => void refresh()} /> : <p className="text-xs text-grey-600">Finish the steps above first.</p>}

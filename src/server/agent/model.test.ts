@@ -3,7 +3,7 @@ import { LoadAPIKeyError, APICallError } from "ai";
 import { MockLanguageModelV4, simulateReadableStream } from "ai/test";
 import { describe, expect, it } from "vitest";
 
-import { aiSdkClient, ModelUnavailableError, toSdkMessages, withFallback, type ChatMessage, type ModelClient, type ModelEvent, type ModelRequest } from "./model";
+import { aiSdkClient, ModelUnavailableError, ProviderFundsError, toSdkMessages, withFallback, type ChatMessage, type ModelClient, type ModelEvent, type ModelRequest } from "./model";
 
 type Chunk = Record<string, unknown>;
 
@@ -130,6 +130,18 @@ describe("aiSdkClient", () => {
     expect(u.callId).toBeTruthy();
   });
 
+  it("sends DeepSeek the thinking level asked for, and none to Anthropic (D165)", async () => {
+    const cheap = mockModel({ modelId: "deepseek-flash" });
+    const strong = mockModel();
+    await collect(aiSdkClient({ strong, cheap }), request({ tier: "cheap", effort: "high" }));
+    await collect(aiSdkClient({ strong, cheap }), request({ tier: "cheap", effort: "low", noThinking: true }));
+    await collect(aiSdkClient({ strong, cheap }), request({ tier: "strong", effort: "high" }));
+    expect(cheap.doStreamCalls[0].providerOptions).toEqual({ deepseek: { reasoningEffort: "high" } });
+    // Thinking off wins over a level.
+    expect(cheap.doStreamCalls[1].providerOptions).toEqual({ deepseek: { thinking: { type: "disabled" } } });
+    expect(strong.doStreamCalls[0].providerOptions).toBeUndefined();
+  });
+
   it("sends the system prompt with an Anthropic cache marker", async () => {
     const strong = mockModel();
     await collect(aiSdkClient({ strong, cheap: strong }), request({ messages: [{ role: "system", content: "You build dApps." }, { role: "user", content: "hi" }] }));
@@ -153,6 +165,13 @@ describe("aiSdkClient", () => {
     const strong = mockModel({ error: new APICallError({ message: "boom", url: "https://x", requestBodyValues: {}, statusCode: 503, isRetryable: false }) });
     const err = await collect(aiSdkClient({ strong, cheap: strong })).catch((e) => e);
     expect(err.message).toMatch(/unreachable/);
+  });
+
+  it("names an empty provider account (402) as our funding problem, not an outage (23 Nov 2026)", async () => {
+    const cheap = mockModel({ error: new APICallError({ message: "Insufficient Balance", url: "https://api.deepseek.com", requestBodyValues: {}, statusCode: 402, isRetryable: false }) });
+    const err = await collect(aiSdkClient({ strong: cheap, cheap }), request({ tier: "cheap" })).catch((e) => e);
+    expect(err).toBeInstanceOf(ProviderFundsError);
+    expect(err.message).toMatch(/out of funds \(DeepSeek, 402\): Insufficient Balance/);
   });
 });
 

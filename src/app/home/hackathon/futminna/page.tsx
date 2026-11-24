@@ -1,8 +1,9 @@
 import { GetStarted } from "@/components/hackathon/get-started";
+import { campusTitle } from "@/components/hackathon/campus-app-pages";
 
-export const metadata = { title: "Get started · FUTMinna Hackathon · GoodBuild" };
+export const metadata = campusTitle("futminna", "Get started");
 
-/** FUTMinna's Get started (D160). The component reads the event from the path. */
+/** Futminna's Get started (D160, D167). The component reads the event from the path. */
 export default function FutminnaGetStartedPage() {
   return <GetStarted />;
 }

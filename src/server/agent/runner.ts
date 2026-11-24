@@ -22,18 +22,20 @@ import { typeCheck, typeCheckMode, type TypeCheckMode } from "./type-check";
 import { dbAssetStore, type AssetStore } from "./asset-store";
 import { ASSETS_MODULE, assetManifest, assetsModule, reviewImage, visionImage } from "./assets";
 import { HISTORY_WINDOW, memoryBlock, updateMemory, type Memory, type MemoryMessage } from "./memory";
-import { MODEL_IDS, TIER_FOR, ModelUnavailableError, type ChatMessage, type ModelClient, type ModelEvent, type ModelTier, type ToolCall, type UserPart } from "./model";
+import { MODEL_IDS, TIER_FOR, ModelUnavailableError, ProviderFundsError, type ChatMessage, type Effort, type ModelClient, type ModelEvent, type ModelTier, type ToolCall, type UserPart } from "./model";
 import { INTAKE_MAX_TOKENS, INTAKE_PROMPT, PLAN_ASK_TOOL_NAME, askedJustBefore, fallbackIntake, intakeTools, intakeContext, isGameRequest, latestIntake, parseIntake, parsePlanQuestions, planBrief } from "./plan-intake";
 import { BUILD_TOOLS, SPEC_TOOLS, V2_BUILD_TOOLS, contextWithPicks, planTools, systemPrompt } from "./prompt";
-import { CONTRACT_WORK, SPEC_MAX_ROUNDS, V2_LIMITS, usesHarnessV2 } from "./harness";
+import { CONTRACT_WORK, SPEC_LAST_ROUNDS, SPEC_MAX_ROUNDS, V2_LIMITS, usesHarnessV2 } from "./harness";
 import { acceptanceSummary, formatFlowResults, type FlowResult } from "./acceptance";
 import { SPEC_PATH, readSpec, specRequest, type AppSpec } from "./spec";
+import { TEMPLATE_REFUSAL, isTemplatePath, templateFiles, templatesBrief, templatesFor, type ContractTemplate } from "./contract-templates";
 import { capResult, requestView } from "./request-view";
 import { readRange } from "./codebase";
 import { fixContext, reviewFixContext } from "./focused";
 import { addTokens, formatTokenReport } from "./token-report";
 import { checkpoint, claimTurn, loadFiles, recordUsage, releaseTurn } from "./store";
 import { decideFunding } from "@/server/credits/cap";
+import { alertProviderFunds } from "./provider-alert";
 import { CREDITS_PAUSED_MESSAGE, OutOfCreditsError, ensureHold, fitCall, headroomMicro, worstCaseCallMicro } from "@/server/credits/holds";
 import { fillMiniApp, type MiniAppInfo } from "./kits/mini-app";
 import { formatCredits } from "@/lib/credits-math";
@@ -54,7 +56,8 @@ import {
   type TurnSetup,
 } from "./turn-progress";
 import { deliveryContext, milestoneAllows, scopeRefusal } from "./delivery";
-import { SponsorshipExhaustedError, sponsorshipCanCall } from "@/server/credits/build-sponsorship";
+import { milestoneName } from "@/lib/plain-words";
+import { SponsorshipExhaustedError, releaseUnusedSponsorship, sponsorshipCanCall } from "@/server/credits/build-sponsorship";
 import type { DeliveryPlan } from "@/server/db/schema";
 import { Workspace, type FileChange } from "./workspace";
 import { requestGithubSync } from "@/server/github/sync";
@@ -248,10 +251,19 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
 
   /** While a fix attempt runs, the steps it takes are shown under it. */
   let stepParent: string | undefined;
+  /**
+   * Which plan step the work is on (D164), so the person sees the plan as a checklist. It only moves forward:
+   * a file whose name matches a later plan step moves it there, and the checks after the build move it to
+   * GoodBuild's own last step, "checking it works" (index = the plan's length).
+   */
+  let planCursor = 0;
+  /** What the builder said works now, and what doesn't yet, from suggest_next (D164). */
+  let builderSaid: { works?: string[]; later?: string } = {};
   const step = (input: Step) => {
     const i = record.steps.findIndex((x) => x.id === input.id);
     const parent = input.parent ?? (i >= 0 ? record.steps[i].parent : undefined) ?? (stepParent && stepParent !== input.id ? stepParent : undefined);
-    const s = parent ? { ...input, parent } : input;
+    const planned = input.plan ?? (i >= 0 ? record.steps[i].plan : undefined) ?? (record.plan?.steps.length && input.id !== "plan" && record.mode !== "plan" ? planCursor : undefined);
+    const s = { ...input, ...(parent ? { parent } : {}), ...(planned !== undefined ? { plan: planned } : {}) };
     if (i >= 0) record.steps[i] = s;
     else record.steps.push(s);
     out({ type: "step", step: s });
@@ -319,8 +331,6 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     let tools = intake ? intakeTools(setup.request) : input.mode === "plan" ? planTools(setup.canAsk === true) : v2 ? V2_BUILD_TOOLS : BUILD_TOOLS;
     /** v2: where the running phase began. Older file bodies and long results are trimmed from what is sent (requestView). */
     let trimBefore = 0;
-    /** v2: which tier wrote each file this turn, so its first fix goes back to the writer. */
-    const authors = new Map<string, ModelTier>();
     let specWritten = false;
 
     let calls = 0;
@@ -337,6 +347,8 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     const picturesWanted = () => stage === "spec" || (stage === "build" && frontEndCalls === 0);
     /** The step the next model calls serve, for the token report (D162). */
     let stage = intake ? "plan questions" : input.mode === "plan" ? "plan" : "build";
+    /** How hard DeepSeek thinks in the running phase (D165): the first plan high, later plans and contracts low. */
+    let effort: Effort | undefined;
 
     /** Replay is over: tell the client the turn's state so far, then stream live again. */
     const goLive = () => {
@@ -429,7 +441,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
         // for, so a resumed build replays it however it was fitted.
         const asked = side
           ? { tier, messages: side.messages, maxTokens: side.maxTokens }
-          : { tier, messages: v2 ? requestView(convo, trimBefore, { dropImages: !picturesWanted() }) : convo, tools, maxTokens: intake ? INTAKE_MAX_TOKENS : MAX_TOKENS, ...(intake ? { noThinking: true } : {}), ...(v2 && tier === "strong" ? { cacheTail: true } : {}) };
+          : { tier, messages: v2 ? requestView(convo, trimBefore, { dropImages: !picturesWanted() }) : convo, tools, maxTokens: intake ? INTAKE_MAX_TOKENS : MAX_TOKENS, ...(intake ? { noThinking: true } : {}), ...(v2 && tier === "strong" ? { cacheTail: true } : {}), ...(effort && tier === "cheap" && !intake ? { effort } : {}) };
         const ask = side ? asked : await fitToCredit(asked);
         for (let attempt = 0; ; attempt++) {
           try {
@@ -449,7 +461,8 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
             break;
           } catch (error) {
             stopIfRequested();
-            if (attempt >= 1 || !(error instanceof ModelUnavailableError)) throw error;
+            // An empty provider account fails every attempt the same way: no point retrying.
+            if (attempt >= 1 || !(error instanceof ModelUnavailableError) || error instanceof ProviderFundsError) throw error;
             log("! the AI provider failed mid-response; retrying once");
             replyText = "";
             deltas.length = 0;
@@ -521,8 +534,10 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     };
 
     /** Record next-step chips from suggest_next. Fix passes (quiet) don't change them. */
-    const takeSuggestions = (items: string[] | undefined, quiet: boolean) => {
+    const takeSuggestions = (items: string[] | undefined, quiet: boolean, said?: { works?: string[]; later?: string }) => {
       if (!items?.length || quiet) return;
+      // The latest accepted reply speaks for the build, even when it leaves the list out (D164).
+      builderSaid = { works: said?.works, later: said?.later };
       record.suggestions = items;
       out({ type: "suggestions", items });
     };
@@ -632,7 +647,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
           if (opts.endOn === call.name && outcome.ok) ended = true;
           if (outcome.guides?.length) log(`guides: ${outcome.guides.join(", ")}`);
           if (outcome.access) log(`· ${outcome.access}`);
-          takeSuggestions(outcome.suggestions, quiet);
+          takeSuggestions(outcome.suggestions, quiet, outcome);
           // v2: the spec's plan card stays; the builder's own set_plan only loads its guides.
           if (outcome.plan && !(specWritten && call.name === "set_plan")) {
             record.plan = outcome.plan;
@@ -640,7 +655,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
             step({ id: "plan", label: "Plan", detail: outcome.plan.summary || `${outcome.plan.steps.length} steps`, status: "done" });
           }
           if (outcome.change) {
-            if (v2) authors.set(outcome.change.path, tier);
+            if (record.plan && planCursor < record.plan.steps.length) planCursor = Math.max(planCursor, planStepFor(record.plan.steps, outcome.change.path) ?? planCursor);
             record.changes.push(outcome.change);
             out({ type: "file", change: outcome.change });
             log(`→ ${outcome.change.op === "delete" ? "deleted" : "wrote"} ${outcome.change.path}`);
@@ -753,6 +768,11 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       const flowsFailing = ((lastAcceptance as FlowResult[] | undefined) ?? []).filter((r) => r.status === "fail");
       if (flowsFailing.length) return `${found.length ? `The checks found problems:\n${formatIssues(found)}\n\n` : ""}These acceptance flows from the spec fail (they show what doesn't work yet; fix the app, then run_acceptance):\n${formatFlowResults(flowsFailing)}`;
       if (!found.length) return "All checks pass. Don't run them again unless you edit more files.";
+      // D163: inside a fix, or once type errors have had their one attempt, notes are information, not work. In the
+      // first live run a fix step chased a type note it couldn't fix for over eight minutes.
+      if (report.ok && (stage === "fix" || stage === "visual fix" || (typesMode === "fix" && typeFixesLeft === 0))) {
+        return `Nothing blocks the build: the checks that matter pass. These are notes for information only. Don't spend more steps on them; finish and reply:\n${formatIssues(found)}`;
+      }
       return `${report.ok ? "Nothing blocks the build, but these are worth fixing" : "The checks found problems"}. Fix them with edit_file (read a file before editing it), then run_checks again if you changed more than a line or two:\n${formatIssues(found)}`;
     };
     /** The checks on the files as they are, or the builder's own last check if nothing changed since. */
@@ -895,8 +915,8 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     };
 
     /**
-     * v2 (D152): the spec call on the strong model writes the plan and acceptance flows; when the spec has
-     * contracts and the delivery scope allows them, the strong model writes and tests them, and they are
+     * v2 (D152, D165): the spec call writes the plan and acceptance flows; when the spec has contracts and the
+     * delivery scope allows them, the contracts phase writes and tests them from GoodBuild's templates, and they are
      * compiled before the front end is written. Returns the front end's write rule: no contracts/ once they
      * have been written in their own phase.
      */
@@ -909,7 +929,15 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       tools = SPEC_TOOLS;
       convo.push({ role: "user", content: specRequest(hasContracts, contractsAllowed) });
       stage = "spec";
+      // D165: the app's first plan thinks hard; a later one (a new milestone's contracts, a contract change) lightly.
+      effort = readSpec(ws.files) ? "low" : "high";
       await phase(TIER_FOR.spec, true, { endOn: "write_spec", maxRounds: SPEC_MAX_ROUNDS });
+      if (!specWritten && !atFreeCeiling()) {
+        log("! spec: still reading after the spec step's rounds; asked to write it now");
+        convo.push({ role: "user", content: "You have read enough. Call write_spec now with what you know; don't read any more files." });
+        await phase(TIER_FOR.spec, true, { endOn: "write_spec", maxRounds: SPEC_LAST_ROUNDS });
+      }
+      effort = undefined;
       stage = "build";
       tools = V2_BUILD_TOOLS;
       const spec = specWritten ? readSpec(ws.files) : null;
@@ -924,14 +952,23 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       let contractsWritten = false;
       if (spec.contracts.length && contractsAllowed && !atFreeCeiling()) {
         step({ id: "contracts", label: "Writing the contracts", status: "running" });
-        log("phase: contracts (strong model)");
-        convo.push({ role: "user", content: contractsPhaseMessage(spec) });
+        log("phase: contracts (fast model, from GoodBuild's templates)");
+        // D165: GoodBuild's audited templates go in first, so DeepSeek configures them instead of writing money code.
+        // An upgradeable project's contracts can't have constructors, so it keeps writing its own (D33).
+        const templates = contractOptions?.upgradeable ? [] : templatesFor(spec);
+        convo.push({ role: "user", content: contractsPhaseMessage(spec, templates) });
         stage = "contracts";
         // Its own conversation (D162): the request and project context, and the contracts to write. The spec
         // step's rounds and the pictures stay out, and the front end then doesn't re-read the contract work.
-        await focused([...convo.slice(1, 1 + setup.prefix.length), { role: "user", content: contractsPhaseMessage(spec) }], () =>
-          phase(TIER_FOR.contracts, true, { gate: (p) => (p.startsWith("contracts/") ? null : CONTRACTS_ONLY) }),
+        for (const t of templates) for (const [path, body] of Object.entries(templateFiles(t))) ws.files[path] = body;
+        if (templates.length) log(`contracts: templates ${templates.map((t) => t.id).join(", ")}`);
+        // Measured live (D165): with the templates, "low" wrote working contracts in 14 to 44 s; "high" thought for
+        // up to 16K tokens and once wrote nothing; thinking off made compile errors in all three tries.
+        effort = "low";
+        await focused([...convo.slice(1, 1 + setup.prefix.length), { role: "user", content: contractsPhaseMessage(spec, templates) }], () =>
+          phase(TIER_FOR.contracts, true, { gate: (p) => (p.startsWith("contracts/") ? (isTemplatePath(p) ? TEMPLATE_REFUSAL : null) : CONTRACTS_ONLY) }),
         );
+        effort = undefined;
         stage = "build";
         contractsWritten = true;
         // Compiled now, so the front end imports the real ABI instead of guessing it.
@@ -965,7 +1002,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
         out({ type: "questions", intake: record.intake });
       }
     }
-    // v2 (D152): the spec call, then the contracts on the strong model, before the front end is written.
+    // v2 (D152, D165): the spec call, then the contracts, before the front end is written. All on DeepSeek.
     let uiGate: PhaseOptions["gate"];
     if (v2) uiGate = await specAndContracts();
     const finished = intake || (await phase(input.mode === "plan" ? TIER_FOR.plan : TIER_FOR.build, false, { gate: uiGate }));
@@ -994,7 +1031,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
               log(`· repeated edit failure in ${path}; supplied current contents and requested a different strategy`);
             }
           } else if (outcome.change) failures.delete(path);
-          takeSuggestions(outcome.suggestions, false);
+          takeSuggestions(outcome.suggestions, false, outcome);
           convo.push({ role: "tool", tool_call_id: call.id, content: outcome.result });
         } else {
           convo.push({ role: "tool", tool_call_id: call.id, content: "Not run: no tool steps left in this pass." });
@@ -1072,6 +1109,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     // change this event while it waits to be saved. The checkpoint emit below still follows.
     emit({ type: "files", files: { ...ws.files } });
     // Checks and auto-fix (up to MAX_FIX_ATTEMPTS). Stops on the same errors twice, on two attempts in a row without progress, or at the fix budget.
+    if (record.plan?.steps.length) planCursor = record.plan.steps.length;
     let report = await checkNow(0);
     let previous = "";
     const initialErrors = report.errors.length;
@@ -1116,8 +1154,8 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
         typeFixesLeft = 0;
         checked = undefined;
       }
-      const fixWith = v2 ? fixTierByWriter(attempt, report.errors, authors) : fixTier(attempt, report.errors);
-      if (v2) log(`· fix attempt ${attempt} on the ${fixWith === "cheap" ? "fast" : "strong"} model (the files' writer)${same ? ", started fresh" : ""}`);
+      const fixWith = v2 ? fixTierV2(same) : fixTier(attempt, report.errors);
+      if (v2) log(`· fix attempt ${attempt} on the ${fixWith === "cheap" ? "fast" : "strong"} model${same ? " (the same problems came back), started fresh" : ""}`);
       stepParent = `fix:${attempt}`;
       const startFiles = { ...ws.files };
       try {
@@ -1125,7 +1163,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
         if (v2) {
           // A conversation of its own (D162): the problems and the files they name, not the whole build so far.
           const context = fixContext({ request: setup.request, summary: readSpec(ws.files)?.summary, issues, errors: report.errors, files: ws.files, ...(same && beforeAttempt ? { before: beforeAttempt } : {}) });
-          await focused(context, () => phase(fixWith, true));
+          await focused(context, () => phase(fixWith, true, { maxRounds: FIX_MAX_ROUNDS }));
         } else {
           convo.push({
             role: "user",
@@ -1243,6 +1281,8 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     record.checks = { errors: report.errors.length, warnings: report.warnings.length };
     record.status = report.ok ? "ready" : "needs_fix";
     const endStatus = record.status;
+    /** The builder's own words, before GoodBuild fills in a default or a milestone's summary (D164). */
+    const ownReply = text.replace(/\s+/g, " ").trim();
 
     if (!text.trim()) {
       text = report.ok ? "Your working version is saved. You can continue with the next change." : "Your progress is saved for recovery. The checks found issues to fix.";
@@ -1258,9 +1298,24 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       const verified = [...new Set([...(delivery.verified ?? []), ...provedNow])];
       const remaining = delivery.milestones.flatMap((m, i) => i > index || !verified.includes(m.id) ? [`${m.title}${report.ok && i <= index && !verified.includes(m.id) ? " (needs verification)" : ""}`] : []);
       record.delivery = { title: delivery.milestones[index].title, remaining, demo: delivery.milestones[index].id !== "payments" };
-      text = report.ok ? `${delivery.milestones[index].title}: ${deliveryVerified ? "browser acceptance passed" : "implementation saved; live behaviour still needs verification"}.${record.delivery.demo ? " Live payments remain disabled." : " Deployment and wallet confirmation are still required for live payments."}${remaining.length ? ` Still to finish: ${remaining.join(", ")}.` : " The saved milestones are complete."}` : "Your progress is saved. This milestone still needs a fix before it replaces your working version.";
-      record.suggestions = report.ok && index + 1 < delivery.milestones.length ? delivery.milestones.slice(index + 1, index + 3).map((m) => m.title) : undefined;
+      // D164: plain words. The milestone's technical state stays in record.delivery and the log.
+      const milestone = delivery.milestones[index];
+      const later = delivery.milestones.slice(index + 1);
+      if (report.ok) {
+        record.outcome = milestoneOutcome({ id: milestone.id, checked: deliveryVerified, later: later.map((m) => m.id), works: builderSaid.works });
+        // The builder's reply (deploy details such as constructor arguments) stays, under the milestone's headline.
+        if (ownReply) record.outcome.detail = ownReply;
+        text = [record.outcome.headline, ownReply, record.outcome.later].filter(Boolean).join(" ");
+      } else text = "Your files are saved. This part still needs a fix before it replaces your working version.";
+      record.suggestions = report.ok && later.length ? later.slice(0, 2).map((m) => milestoneName(m.id, m.title)) : undefined;
       out({ type: "text_set", text });
+    }
+    // D164: a finished build with the builder's list of what works shows a headline and that list.
+    if (report.ok && !record.outcome && builderSaid.works?.length) {
+      const headline = firstSentence(text).slice(0, 200);
+      // The rest of the reply (deploy details such as constructor arguments) shows under the headline.
+      const detail = text.replace(/\s+/g, " ").trim().slice(headline.length).trim();
+      record.outcome = { headline, works: builderSaid.works, ...(detail ? { detail } : {}), ...(builderSaid.later ? { later: builderSaid.later } : {}) };
     }
     summary = firstLine(text) || summary;
     emit({ type: "snapshot", text, record: structuredClone(record) });
@@ -1317,6 +1372,12 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
           : error instanceof Error
             ? error.message
             : "The build failed unexpectedly.";
+    if (error instanceof ProviderFundsError) {
+      alertProviderFunds(message);
+      // Our empty account, not their build: an allowance that paid for nothing goes back.
+      const jobId = job.jobId;
+      if (funding === "platform" && jobId && !record.sponsoredMicro) await job.commit((tx) => releaseUnusedSponsorship(tx, jobId)).catch(rethrowLease);
+    }
     await persistDraft(message).catch(rethrowLease);
     record.jobId = job.jobId;
     record.draftSaved = draftPersisted;
@@ -1617,6 +1678,8 @@ interface PhaseOptions {
 }
 
 const EDIT_TOOLS = ["create_file", "edit_file", "delete_file", "rename_file"];
+/** v2 (D163): rounds one fix attempt may take. A fix is a few edits and a check; more means it is going round in circles. */
+const FIX_MAX_ROUNDS = 12;
 /** v2's rolling trim inside one pass (D162): every this many rounds... */
 const TRIM_EVERY = 8;
 /** ...everything but the last this many rounds is trimmed. */
@@ -1638,9 +1701,11 @@ function stringArg(call: ToolCall, name: string): string {
   }
 }
 
-function contractsPhaseMessage(spec: AppSpec): string {
+function contractsPhaseMessage(spec: AppSpec, templates: ContractTemplate[]): string {
+  const brief = templatesBrief(templates);
   return `CONTRACTS. Write the contracts in the spec, and nothing else yet: contracts/<Name>.sol for each; contracts/test/<Name>.t.sol for each one that holds, moves, sells or swaps value (read_guide "contract-tests"), with a test for every invariant; and contracts/deploy.json. Then run_tests, and fix until every test passes. Fix the contract when it misbehaves; change a test only when its expectation is wrong. When they pass, stop with a one-line note: another model writes the front end next, from the spec and the compiled ABI.
 
+${brief ? `\n${brief}\n` : ""}
 Contracts in the spec:
 ${JSON.stringify(spec.contracts, null, 2)}`;
 }
@@ -1657,7 +1722,7 @@ ${JSON.stringify(spec, null, 2).slice(0, 12_000)}`;
 }
 
 /**
- * Whether a v2 turn runs the spec step (D152). The strong model plans once per app (owner, 21 Nov 2026): a later
+ * Whether a v2 turn runs the spec step (D152). The planner plans once per app (owner, 21 Nov 2026): a later
  * milestone reuses the spec and plans again only when it brings contracts the spec doesn't have yet. Outside
  * milestones, a change to the contracts re-plans.
  */
@@ -1668,13 +1733,13 @@ export function wantsSpec(o: { spec: AppSpec | null; milestone: boolean; contrac
 }
 
 /**
- * v2's fixes (D152) go back to whichever model wrote the failing files, on every attempt (owner, 21 Nov 2026):
- * the fast model fixes the front end it wrote, the strong one the contracts and tests it wrote. Files from
- * earlier turns go by path. Only a set that includes the strong model's files goes to it.
+ * v2's fixes since D165 (owner, 21 Nov 2026: "Sonnet is crazy expensive", "for stubborn build errors, we can
+ * activate" it): DeepSeek fixes everything first. Only when the same problems came back after its fix does the
+ * one fresh, different-way attempt go to Sonnet. That attempt happens at most once a build (the fix loop stops
+ * on a second repeat), so a build pays for one Sonnet fix at most.
  */
-export function fixTierByWriter(_attempt: number, errors: CheckIssue[], authors: Map<string, ModelTier>): ModelTier {
-  const writers = errors.map((e) => authors.get(e.file) ?? (e.file.startsWith("contracts/") ? "strong" : "cheap"));
-  return writers.every((t) => t === "cheap") ? "cheap" : "strong";
+export function fixTierV2(sameProblemsAgain: boolean): ModelTier {
+  return sameProblemsAgain ? TIER_FOR.stubborn : TIER_FOR.build;
 }
 
 /**
@@ -1978,6 +2043,50 @@ export function fixProgress(best: number, stalls: number, errorsNow: number): { 
 
 function onlySuggestions(calls: ToolCall[]): boolean {
   return calls.length > 0 && calls.every((c) => c.name === "suggest_next");
+}
+
+/** Words in a name: "GoalCard.tsx" → ["goal", "card"], "/my-goals" → ["my", "goals"]. Plurals lose their "s". */
+/**
+ * A milestone build's end in plain words (D164): a headline, what works (the builder's own list when it gave one)
+ * and what comes later. The next step is the first suggestion, shown as the "Next" button.
+ */
+export function milestoneOutcome(o: { id: string; checked: boolean; later: string[]; works?: string[] }): { headline: string; works: string[]; later?: string; detail?: string } {
+  const what = o.id === "interface" ? "Your app's screens are built" : o.id === "wallet" ? "Connecting a wallet works" : o.id === "multiplayer" ? "Playing with others is built" : o.id === "integrations" ? "Sign-in and saved data are built" : o.id === "payments" ? "Payments on Celo are built" : "This part is built";
+  const headline = `${what}. ${o.checked ? "Try it in the preview." : "GoodBuild will try it again in a browser on your next change."}`;
+  const names = o.later.map((id) => { const n = milestoneName(id); return n.charAt(0).toLowerCase() + n.slice(1); });
+  const payments = o.later.includes("payments");
+  const later = names.length
+    ? `${names.join(", ").replace(/^./, (c) => c.toUpperCase())} ${names.length === 1 ? "comes" : "come"} next.${payments ? " Payments are off until then." : ""}`
+    : o.id === "payments" ? "To take real payments, deploy your contract and sign from your wallet." : undefined;
+  return { headline, works: o.works ?? [], ...(later ? { later } : {}) };
+}
+
+function nameWords(text: string): string[] {
+  return text
+    .replace(/\.[a-z]+$/i, "")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((w) => w.length > 2 && !["use", "app", "index", "main", "page", "the", "and", "for", "src", "components", "pages", "hooks", "lib"].includes(w))
+    .map((w) => w.replace(/s$/, ""));
+}
+
+/**
+ * The plan step a file belongs to (D164), by its name: "GoalList.tsx" matches "Goals: add and list savings goals".
+ * Only the part before a step's colon (a page's route or a contract's name) or its first five words count, so
+ * a file isn't matched to a step that merely mentions it. Undefined when nothing matches.
+ */
+export function planStepFor(steps: string[], path: string): number | undefined {
+  const file = new Set(nameWords(path.split("/").pop() ?? path));
+  if (!file.size) return undefined;
+  const contract = /\.sol$/i.test(path);
+  const at = steps.findIndex((s) => {
+    const head = s.includes(":") ? s.slice(0, s.indexOf(":")) : s.split(/\s+/).slice(0, 5).join(" ");
+    // A spec's contract step ("SavingsGoals: …") doesn't take the front end's files.
+    if (s.includes(":") && !contract && /^[A-Z][a-z0-9]+[A-Z]\w*$/.test(head)) return false;
+    return nameWords(head).some((w) => file.has(w));
+  });
+  return at < 0 ? undefined : at;
 }
 
 function toolLabel(call: ToolCall): string | null {

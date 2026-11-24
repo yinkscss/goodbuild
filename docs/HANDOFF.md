@@ -2,6 +2,30 @@
 
 Written 4 Nov 2026 at the end of the first build session (claude.ai), for whoever continues in Claude Code. Read CLAUDE.md and docs/BUILD_PROMPT_STAGE1.md first; this file only covers where things stand.
 
+## DeepSeek plans and builds contracts from audited templates (21 Nov 2026, D165, branch `claude/elegant-pasteur-j73em3`)
+- **Models:** the spec step and the contracts phase run on DeepSeek. The first plan thinks `high`, later plans and contracts `low`. All fixes run on DeepSeek; Sonnet gets only the one retry after the same problems came back (`fixTierV2`). No Haiku.
+- **Templates:** `src/server/agent/contract-templates.ts` holds 9 abstract OpenZeppelin-based contracts (token, NFT, staking, escrow, vesting, votes token, governor, poll, savings). The spec names one per contract. They are written to `contracts/goodbuild/` (read-only for the builder) and the builder's contract inherits one.
+- **Checks:** a contract that redeclares an OpenZeppelin or template base is refused. On testnet, exploit tests are asked only for the app's own money code; the mainnet gate is unchanged.
+- **Spec step:** 5 rounds plus a "write it now" nudge with 2 more.
+- No migration, no setting. **To check after deploy:** a savings and a DAO build; watch for `contracts: templates ...` and the `tokens by step:` line in the worker log.
+
+## What a person sees while it builds (21 Nov 2026, D164, branch `claude/wizardly-mendel-yayvkq`)
+Plan: [BUILD_CLARITY_PLAN.md](BUILD_CLARITY_PLAN.md). Mock: [GoodBuild Build Clarity](https://claude.ai/artifact/Qp4xxF5J7o4oiEXPpkLHsC).
+- **Checklist:** in Build mode, the plan shows as a checklist with GoodBuild's own last step, and one trail line under the working step that fades when that part is done (`PlanProgress`, `TrailLine` in `turn-view.tsx`; `Step.plan`, `planStepFor` in `runner.ts`).
+- **Plain words:** steps (`src/lib/plain-steps.ts`), errors and milestone names (`src/lib/plain-words.ts`).
+- **A finished build** is a "Ready to try" headline, a short list of what works and what comes later, one "Next" button and one quiet footer (`FinishedBuild`). The list is the builder's: `suggest_next` takes `works` and `later`, saved as `record.outcome`.
+- **One problem card, one button, "Fix it for me":** it retries from the saved files with the preview's crash as a `note`. A retry the repair allowance doesn't cover runs on credits straight away; the cost shows only beside the prompt box.
+- **Undo this change** on the newest build. **What GoodBuild remembers** is listed under the chat, each item with Forget.
+- **No migration.** Turns saved before have no `Step.plan`, and keep plain step rows.
+- **To check after deploy:** on a few real builds, does the checklist move through the steps, or stay on step 1 until the checks? Name matching is UNVERIFIED.
+
+## The wallet milestone is plug and play (21 Nov 2026, D163, branch `claude/elegant-pasteur-j73em3`)
+- `useWallet()` now gives the network (`chainId`, `onRightNetwork`, `wrongNetwork`, `switchNetwork()`), and `ConnectButton` offers "Switch to <network>".
+- `src/lib/goodbuild/gooddollar.ts` gives the real G$ address for the project's network and `useGdBalance()`.
+- The type check no longer misreads valid wallet code.
+- A fix doesn't chase leftover notes and takes at most 12 rounds.
+- The build refuses typed-in addresses.
+
 ## The builder fixes its own mistakes and spends fewer tokens (21 Nov 2026, D162, branch `claude/elegant-pasteur-j73em3`)
 After the failed savings-goals run. Plan: [BUILDER_RELIABILITY_PLAN.md](BUILDER_RELIABILITY_PLAN.md).
 - **Tokens:** every build's log ends with a token report by step and model, also saved on the turn.
@@ -21,6 +45,16 @@ Generated apps now update by themselves after a confirmed transaction, a saved-d
 
 ## One-tap vote split with GoodCash (20 Nov 2026, D158, branch `claude/nice-brown-jb0s8r`)
 Every vote button (invite step 3, /hackathon, the vote list, the free-credits card) now splits all of the person's available FlowState points 50/50 between GoodBuildIt and partner GoodCash in one transaction with one wallet confirmation. It falls back to GoodBuildIt only if GoodCash stops being a recipient or the ballot has no room for both. Someone who voted earlier but has points left gets them split on the next tap. Credits, invites and ambassador earnings still depend on GoodBuildIt support only. No migration. **UNVERIFIED** against live Celo/FlowState: after the deploy, vote once and check both projects' totals on FlowState.
+
+## Kadpoly hackathon (23 Nov 2026, D167, branch `claude/kadpoly-hackathon-version-625135`)
+A third hackathon, for Kaduna Polytechnic: `/hackathon/kadpoly` and in-app `/home/hackathon/kadpoly`.
+- **Same as FUTMinna:** the setup and voting, built from the same shared campus page.
+- **Prize:** the top 3 by approvals win full tuition for the session, and places 4 and 5 are waitlisted.
+- **Close:** 31 Dec. Each event now has its own close date, and Kadpoly members keep and can claim their credits until then.
+- **No migration.**
+- **Budget:** the shared default is now 15,000 credits. **Needs the owner:** if `.env.production` sets `HACKATHON_BUDGET_CREDITS`, change it to 15000 (it overrides the default).
+- **Rising Star:** Kadpoly gets weeks 4–6, running to 31 Dec.
+- **UNVERIFIED** with real sign-ins.
 
 ## FUTMinna hackathon (20 Nov 2026, D160, branch `claude/futminna-hackathon`)
 A separate hackathon for FUTMinna students: `/hackathon/futminna` and in-app `/home/hackathon/futminna` (with a switch between the two hackathons). Its own entries, approvals, leaderboard (top 5 shortlist, no G$ estimates) and signup CSV; the main hackathon's signup and credit claim, so one grant per person. Each builder enters one hackathon. `DEFAULT_BUDGET_CREDITS` is now 10,000. People who register from a FUTMinna page are FUTMinna members, and their hackathon opens on FUTMinna (D161). No migration. **Needs the owner:** if `.env.production` sets `HACKATHON_BUDGET_CREDITS`, change it to 10000 (it overrides the default). **UNVERIFIED** with real sign-ins on the live site.

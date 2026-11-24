@@ -16,6 +16,7 @@
 
 import { createHash } from "node:crypto";
 
+import { goodDollarAddress } from "@/config/gooddollar";
 import { LIVE, LIVE_PATH } from "./live-template";
 
 export const WALLET_DIR = "src/lib/goodbuild/";
@@ -51,6 +52,8 @@ export interface WalletState {
   account: Address | null;
   wallet: WalletInfo | null;
   connecting: boolean;
+  /** The network the wallet is on (a chain id), once it is known. */
+  chainId: number | null;
 }
 
 export class WalletError extends Error {
@@ -80,7 +83,7 @@ const WALLETCONNECT: WalletInfo = { id: "walletconnect", name: "WalletConnect", 
 /** OKX Wallet: the extension injects window.okxwallet (OKX's docs). OKX also says that route is "compatible with OKX App's built-in DApp browser", so it is expected there too (UNVERIFIED). The id is its EIP-6963 rdns, so the choice is remembered the same way whether or not it announced itself. */
 const OKX_ID = "com.okex.wallet";
 
-let state: WalletState = { account: null, wallet: null, connecting: false };
+let state: WalletState = { account: null, wallet: null, connecting: false, chainId: null };
 let active: Provider | null = null;
 let pending: Promise<Address> | null = null;
 let restoring: Promise<void> | null = null;
@@ -238,19 +241,32 @@ const onAccountsChanged = (accounts: string[]) => {
   else void disconnectWallet();
 };
 const onDisconnect = () => void disconnectWallet();
+const onChainChanged = (hex: string) => {
+  const id = typeof hex === "string" ? parseInt(hex, 16) : Number(hex);
+  setState({ chainId: Number.isFinite(id) ? id : null });
+};
 
 function detach() {
   active?.removeListener?.("accountsChanged", onAccountsChanged as Handler);
   active?.removeListener?.("disconnect", onDisconnect as Handler);
+  active?.removeListener?.("chainChanged", onChainChanged as Handler);
 }
 
 function adopt(info: WalletInfo, provider: Provider, account: Address): Address {
   detach();
   active = provider;
   provider.on?.("accountsChanged", onAccountsChanged as Handler);
+  provider.on?.("chainChanged", onChainChanged as Handler);
   if (info.kind === "walletconnect") provider.on?.("disconnect", onDisconnect as Handler);
   remember(info);
   setState({ account, wallet: info });
+  // Which network the wallet is on, for useWallet's chainId and onRightNetwork.
+  void provider
+    .request({ method: "eth_chainId" })
+    .then((hex) => {
+      if (active === provider) onChainChanged(hex as string);
+    })
+    .catch(() => {});
   return account;
 }
 
@@ -402,7 +418,7 @@ export async function disconnectWallet(): Promise<void> {
   detach();
   active = null;
   remember(null);
-  setState({ account: null, wallet: null });
+  setState({ account: null, wallet: null, chainId: null });
   if (!provider) return;
   if (wallet?.kind === "walletconnect") await provider.disconnect?.().catch(() => {});
   else await provider.request({ method: "wallet_revokePermissions", params: [{ eth_accounts: {} }] } as never).catch(() => {});
@@ -442,7 +458,10 @@ export async function ensureChain(provider: EIP1193Provider | null = active): Pr
   if (!provider) throw new WalletError("not_connected", "Connect a wallet first.");
   const hex = "0x" + appChain.id.toString(16);
   const current = await provider.request({ method: "eth_chainId" }).catch(() => null);
-  if (typeof current === "string" && parseInt(current, 16) === appChain.id) return;
+  if (typeof current === "string" && parseInt(current, 16) === appChain.id) {
+    if (provider === active && state.chainId !== appChain.id) setState({ chainId: appChain.id });
+    return;
+  }
   try {
     await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: hex }] });
   } catch {
@@ -465,6 +484,12 @@ export async function ensureChain(provider: EIP1193Provider | null = active): Pr
       await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: hex }] });
     }
   }
+  if (provider === active) setState({ chainId: appChain.id });
+}
+
+/** Switch the connected wallet to this app's network (useWallet's switchNetwork). Connect first. */
+export async function switchNetwork(): Promise<void> {
+  await ensureChain();
 }
 
 /** Connect if needed, switch to this app's chain, and return the provider and account to send with. */
@@ -810,6 +835,7 @@ export const WALLET_PATHS = {
   chooser: WALLET_DIR + "walletChooser.tsx",
   walletConnect: WALLET_DIR + "walletConnect.tsx",
   live: LIVE_PATH,
+  gooddollar: WALLET_DIR + "gooddollar.ts",
 } as const;
 
 /** GoodBuild's wallet files: always present and always current in every project. */
@@ -829,9 +855,91 @@ function walletSourceFor(chainId: number): string {
     .replace("export const appChain = celoSepolia;", `export const appChain = ${selected};`);
 }
 
+/**
+ * G$ for the project's network (D163), always current like the wallet files. In the first live run the builder
+ * typed the G$ address from memory, got it wrong and the balance broke: the address now comes from GoodBuild's
+ * config (the real G$ on Celo, GoodBuild's test G$ on Celo Sepolia, null where there is none).
+ */
+export function gooddollarSourceFor(chainId = SEPOLIA_CHAIN_ID): string {
+  const address = goodDollarAddress(chainId);
+  return GOODDOLLAR.replace("export const gdAddress: Address | null = null;", "export const gdAddress: Address | null = " + (address ? JSON.stringify(address) : "null") + ";");
+}
+
+const GOODDOLLAR = String.raw`/**
+ * Written by GoodBuild: G$ (GoodDollar) on this app's network. Don't edit it, and never type a token
+ * address yourself. gdAddress is the real G$ on Celo, GoodBuild's test G$ on Celo Sepolia, or null where
+ * this network has none yet. useGdBalance() reads the connected wallet's G$ and updates by itself after a
+ * transaction, a wallet switch and on the page's refresh timer.
+ */
+import { useEffect, useState, useSyncExternalStore } from "react";
+import { createPublicClient, erc20Abi, formatUnits, http, type Address } from "viem";
+import { subscribeChanges } from "./live";
+import { appChain, subscribeWallet, walletState } from "./wallet";
+
+/** Written by GoodBuild for this project's network. */
+export const gdAddress: Address | null = null;
+
+const client = createPublicClient({ chain: appChain, transport: http() });
+let decimals: number | null = null;
+
+/** The G$ balance of an address, in G$'s smallest unit, and G$'s decimals. Throws when it can't be read. */
+export async function readGdBalance(owner: Address): Promise<{ raw: bigint; decimals: number }> {
+  if (!gdAddress) throw new Error("There is no G$ on this network yet.");
+  const [raw, dec] = await Promise.all([
+    client.readContract({ address: gdAddress, abi: erc20Abi, functionName: "balanceOf", args: [owner] }),
+    decimals === null ? client.readContract({ address: gdAddress, abi: erc20Abi, functionName: "decimals" }) : Promise.resolve(decimals),
+  ]);
+  decimals = Number(dec);
+  return { raw: raw as bigint, decimals };
+}
+
+/**
+ * The connected wallet's G$: balance (smallest unit) and formatted ("1,234.5"), or null before it is known.
+ * error is a short sentence to show when it can't be read; available is false where there is no G$.
+ */
+export function useGdBalance(): { balance: bigint | null; formatted: string | null; loading: boolean; error: string | null; available: boolean } {
+  const { account } = useSyncExternalStore(subscribeWallet, walletState, walletState);
+  const [balance, setBalance] = useState<bigint | null>(null);
+  const [formatted, setFormatted] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setBalance(null);
+    setFormatted(null);
+    setError(null);
+    if (!account || !gdAddress) return;
+    let stopped = false;
+    const load = async () => {
+      setLoading(true);
+      try {
+        const { raw, decimals: dec } = await readGdBalance(account);
+        if (stopped) return;
+        setBalance(raw);
+        setFormatted(Number(formatUnits(raw, dec)).toLocaleString(undefined, { maximumFractionDigits: 2 }));
+        setError(null);
+      } catch {
+        if (!stopped) setError("Couldn't read the G$ balance right now.");
+      } finally {
+        if (!stopped) setLoading(false);
+      }
+    };
+    void load();
+    const unsubscribe = subscribeChanges(() => load());
+    return () => {
+      stopped = true;
+      unsubscribe();
+    };
+  }, [account]);
+
+  return { balance, formatted, loading, error, available: gdAddress !== null };
+}
+`;
+
 export function walletHelpersFor(chainId = SEPOLIA_CHAIN_ID): Record<string, string> {
   return {
     [WALLET_PATHS.wallet]: walletSourceFor(chainId),
+    [WALLET_PATHS.gooddollar]: gooddollarSourceFor(chainId),
     [WALLET_PATHS.chooser]: CHOOSER,
     [WALLET_PATHS.walletConnect]: WALLETCONNECT_STUB,
     // Live data (D159): one refresh signal per tab, GoodBuild's like the wallet layer.
@@ -902,12 +1010,14 @@ function legacyChainFor(source: string, chainId: number): string {
 }
 
 export const USE_WALLET = String.raw`import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
-import { connectWallet, disconnectWallet, restoreWallet, subscribeWallet, walletState } from "./goodbuild/wallet";
+import { appChain, connectWallet, disconnectWallet, restoreWallet, subscribeWallet, switchNetwork as switchWalletNetwork, walletState } from "./goodbuild/wallet";
 
 /**
- * The connected account, the wallet's name, connect and disconnect, and any connection error.
+ * The connected account, the wallet's name, connect and disconnect, and any connection error, plus the
+ * network: chainId, networkName (this app's network), onRightNetwork, wrongNetwork and switchNetwork().
  * connect() shows the wallet list (browser wallets and, once published, phone wallets by QR code or
- * link); inside MiniPay it connects on its own. The last wallet used reconnects on the next visit.
+ * link) and moves the wallet to this app's network; inside MiniPay it connects on its own. The last
+ * wallet used reconnects on the next visit.
  */
 export function useWallet() {
   const state = useSyncExternalStore(subscribeWallet, walletState, walletState);
@@ -932,7 +1042,30 @@ export function useWallet() {
     await disconnectWallet();
   }, []);
 
-  return { account: state.account, walletName: state.wallet?.name ?? null, connect, disconnect, connecting: state.connecting, error };
+  const switchNetwork = useCallback(async () => {
+    setError(null);
+    try {
+      await switchWalletNetwork();
+    } catch (e) {
+      if ((e as { code?: unknown }).code !== 4001) setError(e instanceof Error ? e.message : "Could not switch network.");
+    }
+  }, []);
+
+  const onRightNetwork = state.account !== null && state.chainId === appChain.id;
+  const wrongNetwork = state.account !== null && state.chainId !== null && state.chainId !== appChain.id;
+  return {
+    account: state.account,
+    walletName: state.wallet?.name ?? null,
+    connect,
+    disconnect,
+    connecting: state.connecting,
+    error,
+    chainId: state.chainId,
+    networkName: appChain.name,
+    onRightNetwork,
+    wrongNetwork,
+    switchNetwork,
+  };
 }
 `;
 
@@ -943,7 +1076,14 @@ import { shortAddress } from "../lib/utils";
 
 /** Connect button: opens the wallet list; once connected, shows the address and a disconnect button. */
 export function ConnectButton() {
-  const { account, connect, disconnect, connecting, walletName } = useWallet();
+  const { account, connect, disconnect, connecting, walletName, wrongNetwork, switchNetwork, networkName } = useWallet();
+  if (account && wrongNetwork) {
+    return (
+      <Button variant="outline" onClick={switchNetwork} title={"Your wallet is on another network"}>
+        Switch to {networkName}
+      </Button>
+    );
+  }
   if (account) {
     return (
       <div className="inline-flex items-center gap-1">
@@ -975,6 +1115,22 @@ const LEGACY: Record<string, { sha256: string; current: string }> = {
   "src/components/ConnectButton.tsx": { sha256: "3b22244b9be11f78416d45ed398562ee89806ed08a8e47b1b46b8ee72f707241", current: CONNECT_BUTTON },
 };
 
+/**
+ * Untouched copies of useWallet.ts and ConnectButton.tsx as GoodBuild wrote them before D163 (no network state, no
+ * switch button). They move to the current ones; a copy the builder changed stays as it is.
+ */
+const BEFORE_NETWORK_STATE: Record<string, { sha256: string; current: string }> = {
+  "src/lib/useWallet.ts": { sha256: "2a216fd5898ecf85220b56650327f9a41314b45cfe737b9fe2e49d66aa2be22f", current: USE_WALLET },
+  "src/components/ConnectButton.tsx": { sha256: "586d60560002e82352c89b44869dffcfad0c42e673d94cd6f51043ad58e0d7fa", current: CONNECT_BUTTON },
+};
+
+function upgradeUntouched(files: Record<string, string>): Record<string, string> {
+  for (const [path, { sha256, current }] of Object.entries(BEFORE_NETWORK_STATE)) {
+    if (path in files && createHash("sha256").update(files[path]).digest("hex") === sha256) files[path] = current;
+  }
+  return files;
+}
+
 const LEGACY_CHAIN = "src/lib/chain.ts";
 const LEGACY_HOOK = "src/lib/useWallet.ts";
 const LEGACY_BUTTON = "src/components/ConnectButton.tsx";
@@ -1000,11 +1156,11 @@ export function withCurrentWalletHelpers(files: Record<string, string>, chainId 
     // network constant with the project. Known GoodBuild chain helpers can be safely regenerated.
     if (savedChainHash === oldChainHash) out[LEGACY_CHAIN] = legacyChainFor(savedChain!, chainId);
     else if (savedChainHash && CHAIN_TEMPLATE_HASHES.has(savedChainHash)) out[LEGACY_CHAIN] = chainSourceFor(chainId);
-    return out;
+    return upgradeUntouched(out);
   }
   for (const p of [LEGACY_CHAIN, LEGACY_HOOK, LEGACY_BUTTON]) {
     if (isOld(p) && p !== LEGACY_CHAIN) out[p] = LEGACY[p].current;
   }
   if (savedChainHash === oldChainHash || (savedChainHash && CHAIN_TEMPLATE_HASHES.has(savedChainHash))) out[LEGACY_CHAIN] = chainSourceFor(chainId);
-  return out;
+  return upgradeUntouched(out);
 }

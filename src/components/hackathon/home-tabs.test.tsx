@@ -19,3 +19,11 @@ it("leaves the FUTMinna tabs as plain links", () => {
   expect(screen.getByRole("link", { name: "Get started" })).toHaveAttribute("href", "/home/hackathon/futminna");
   expect(screen.getByRole("link", { name: "Get started" })).toHaveAttribute("aria-current", "page");
 });
+
+it("offers Kadpoly on the switch and keeps its tabs under its own path (D167)", () => {
+  nav.path = "/home/hackathon/kadpoly/leaderboard";
+  render(<HackathonTabs />);
+  expect(screen.getByRole("link", { name: "Kadpoly" })).toHaveAttribute("aria-current", "page");
+  expect(screen.getByRole("link", { name: "Leaderboard" })).toHaveAttribute("href", "/home/hackathon/kadpoly/leaderboard");
+  expect(screen.getByRole("link", { name: "FUTMinna" })).toHaveAttribute("href", "/home/hackathon/futminna");
+});

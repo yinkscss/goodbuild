@@ -8,20 +8,83 @@ const initial = {
   files: {}, messages: [], versions: [], estimate: { buildMicro: 10000, planMicro: 1000 }, assets: [], outdatedContracts: [], upgradableContracts: [], offerVerification: false, freePolicy: "verified", availableMicro: 0, jobs: [],
 } satisfies WorkspaceState;
 afterEach(() => vi.unstubAllGlobals());
-it("retries the job without adding a synthetic user message, and requires an explicit paid choice", async () => {
+it("retries the job without adding a synthetic user message, and runs on credits when the repair allowance doesn't cover it (D164)", async () => {
   const fetcher = vi.fn(async (url: string, init?: RequestInit) => {
-    if (url.endsWith("/retry")) return Response.json(init?.body === JSON.stringify({ useCredits: true }) ? { jobId: "child" } : { error: "funding_unavailable", message: "Included repair used up" }, { status: init?.body === JSON.stringify({ useCredits: true }) ? 202 : 402 });
+    if (url.endsWith("/retry")) {
+      const paid = JSON.parse(String(init?.body)).useCredits === true;
+      return Response.json(paid ? { jobId: "child" } : { error: "funding_unavailable", message: "Included repair used up" }, { status: paid ? 202 : 402 });
+    }
+    return Response.json(initial);
+  });
+  vi.stubGlobal("fetch", fetcher);
+  const { result } = renderHook(() => useWorkspace(initial));
+  act(() => result.current.retry("failed-job", false, "The preview shows this error. Fix it:\nTypeError"));
+  await waitFor(() => expect(fetcher.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(2));
+  await waitFor(() => expect(result.current.error).toBeNull());
+  expect(result.current.state.messages).toEqual([]);
+  expect(result.current.needsCredits).toBe(false);
+  const posts = fetcher.mock.calls.filter(([, init]) => init?.method === "POST");
+  expect(posts.map(([url]) => url)).toEqual(["/api/projects/project/turns/failed-job/retry", "/api/projects/project/turns/failed-job/retry"]);
+  expect(posts.map(([, init]) => JSON.parse(String(init?.body)))).toEqual([
+    { useCredits: false, note: "The preview shows this error. Fix it:\nTypeError" },
+    { useCredits: true, note: "The preview shows this error. Fix it:\nTypeError" },
+  ]);
+});
+
+it("shows the out-of-credits card when even the credits can't cover the fix", async () => {
+  const fetcher = vi.fn(async (url: string, init?: RequestInit) => {
+    if (url.endsWith("/retry")) {
+      const paid = JSON.parse(String(init?.body)).useCredits === true;
+      return Response.json(paid ? { error: "out_of_credits", message: "Top up" } : { error: "funding_unavailable" }, { status: 402 });
+    }
     return Response.json(initial);
   });
   vi.stubGlobal("fetch", fetcher);
   const { result } = renderHook(() => useWorkspace(initial));
   act(() => result.current.retry("failed-job"));
-  await waitFor(() => expect(result.current.paidRetryJobId).toBe("failed-job"));
-  expect(result.current.state.messages).toEqual([]);
+  await waitFor(() => expect(result.current.needsCredits).toBe(true));
+  expect(result.current.error).toBeNull();
+});
+
+it("keeps the preview's crash for the next try when a retry is turned away, and says why (D164)", async () => {
+  let answer: () => Response = () => Response.json({ error: "one_build_at_a_time", message: "Another of your builds is running." }, { status: 402 });
+  const fetcher = vi.fn(async (url: string) => (url.endsWith("/retry") ? answer() : Response.json(initial)));
+  vi.stubGlobal("fetch", fetcher);
+  const { result } = renderHook(() => useWorkspace(initial));
+  act(() => result.current.onPreviewError({ title: "TypeError", message: "x is undefined" }, 1));
+  await waitFor(() => expect(result.current.previewError?.message).toBe("x is undefined"));
+  act(() => result.current.retry("failed-job", false, "The preview shows this error. Fix it:\nTypeError\nx is undefined"));
+  await waitFor(() => expect(result.current.error).toBe("Another of your builds is running."));
   expect(result.current.needsCredits).toBe(false);
-  act(() => result.current.retry("failed-job", true));
-  await waitFor(() => expect(result.current.paidRetryJobId).toBeNull());
-  const posts = fetcher.mock.calls.filter(([, init]) => init?.method === "POST");
-  expect(posts.map(([url]) => url)).toEqual(["/api/projects/project/turns/failed-job/retry", "/api/projects/project/turns/failed-job/retry"]);
-  expect(posts.map(([, init]) => JSON.parse(String(init?.body)))).toEqual([{ useCredits: false }, { useCredits: true }]);
+  expect(result.current.previewError?.message).toBe("x is undefined");
+  answer = () => Response.json({ jobId: "child" }, { status: 202 });
+  act(() => result.current.retry("failed-job", false, "The preview shows this error. Fix it:\nTypeError\nx is undefined"));
+  await waitFor(() => expect(result.current.previewError).toBeNull());
+});
+
+it("keeps a newer crash that came while the retry was being sent, even with the same message (D164)", async () => {
+  let accept: (r: Response) => void = () => undefined;
+  const fetcher = vi.fn((url: string) => (url.endsWith("/retry") ? new Promise<Response>((r) => { accept = r; }) : Promise.resolve(Response.json(initial))));
+  vi.stubGlobal("fetch", fetcher);
+  const { result } = renderHook(() => useWorkspace(initial));
+  act(() => result.current.onPreviewError({ title: "TypeError", message: "x is undefined", path: "/src/A.tsx", line: 3 }, 1));
+  act(() => result.current.retry("failed-job", false, "The preview shows this error in src/A.tsx:3. Fix it:\nTypeError\nx is undefined"));
+  await waitFor(() => expect(fetcher.mock.calls.some(([url]) => String(url).endsWith("/retry"))).toBe(true));
+  act(() => result.current.onPreviewError({ title: "TypeError", message: "x is undefined", path: "/src/B.tsx", line: 9 }, 1));
+  await act(async () => accept(Response.json({ jobId: "child" }, { status: 202 })));
+  await waitFor(() => expect(fetcher.mock.calls.filter(([url]) => !String(url).endsWith("/retry")).length).toBeGreaterThan(0));
+  expect(result.current.previewError?.path).toBe("/src/B.tsx");
+});
+
+it("drops the crash of the version that Undo leaves, and keeps it when going back fails (D164)", async () => {
+  let ok = false;
+  const fetcher = vi.fn(async (url: string) => (url.endsWith("/revert") ? (ok ? Response.json({ version: 3 }) : Response.json({ error: "busy" }, { status: 409 })) : Response.json(initial)));
+  vi.stubGlobal("fetch", fetcher);
+  const { result } = renderHook(() => useWorkspace(initial));
+  act(() => result.current.onPreviewError({ title: "TypeError", message: "x is undefined" }, 2));
+  await act(async () => result.current.revert(1));
+  expect(result.current.previewError?.message).toBe("x is undefined");
+  ok = true;
+  await act(async () => result.current.revert(1));
+  expect(result.current.previewError).toBeNull();
 });

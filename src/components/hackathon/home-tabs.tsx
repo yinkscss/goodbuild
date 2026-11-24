@@ -11,8 +11,6 @@ const SECTIONS = [
   { path: "/vote", label: "Vote" },
 ];
 
-const EVENT_LABEL = { main: "Main hackathon", futminna: "FUTMinna" } as const;
-
 /** Link to the public page of the hackathon being shown: its rules and prizes. */
 export function HackathonRulesLink() {
   const { config } = useHackathonEvent();
@@ -42,7 +40,7 @@ export function HackathonTabs() {
               aria-current={on ? "page" : undefined}
               className={`shrink-0 rounded-full px-4 py-1.5 text-[13px] font-medium outline-none focus-visible:shadow-focus ${on ? "bg-surface text-violet shadow-card" : "text-violet/70 hover:text-violet"}`}
             >
-              {EVENT_LABEL[e]}
+              {HACKATHON_EVENTS[e].label}
             </Link>
           );
         })}
@@ -51,7 +49,7 @@ export function HackathonTabs() {
         {SECTIONS.map((t) => {
           const base = `${config.app}${t.path}`;
           const on = path === base;
-          // The main Get started keeps the switch's choice, so a FUTMinna member isn't sent back (D161).
+          // The main Get started keeps the switch's choice, so a campus member isn't sent back (D161).
           const href = event === "main" && t.path === "" ? `${base}?stay=1` : base;
           return (
             <Link

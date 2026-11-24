@@ -1,6 +1,7 @@
 import { isTestFile } from "@/lib/deploy/test-file";
 
 import type { CheckIssue } from "../checks";
+import { isTemplatePath } from "../contract-templates";
 import { stripSolidity } from "../solidity-text";
 
 import type { Kit } from "./registry";
@@ -23,8 +24,11 @@ type Role = "vault" | "dao";
  * turn a money-holding contract into a "known vault shape" that skips the owner's review.
  */
 export function rolesOf(files: Record<string, string>): Role[] {
+  // GoodBuild's templates (D165) are tested by GoodBuild, attacks included (contract-templates.test.ts): only the
+  // app's own code is read here, so a contract that just configures one needs no exploit tests on testnet. A
+  // mainnet deploy still reads the compiled code, inherited parts included (custodyOf in exploit-gate.ts).
   const source = Object.entries(files)
-    .filter(([p]) => /^contracts\/.*\.sol$/.test(p) && !isTestFile(p))
+    .filter(([p]) => /^contracts\/.*\.sol$/.test(p) && !isTestFile(p) && !isTemplatePath(p))
     .map(([, c]) => stripSolidity(c))
     .join("\n");
   const roles: Role[] = [];
