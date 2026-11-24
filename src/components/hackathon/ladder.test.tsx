@@ -50,3 +50,21 @@ it("shows a builder ranked inside the top 20 once, not again below the list", as
   expect(screen.getAllByText("Project 5")).toHaveLength(1);
   expect(screen.getAllByText("You")).toHaveLength(1);
 });
+
+it("lists every project: past the top 20, and ideas not live yet (D170)", async () => {
+  const many = [
+    ...Array.from({ length: 23 }, (_, i) => ({ id: `p${i}`, alias: `B${i}`, title: `Live ${i}`, pitch: "", liveUrl: "https://x.example", sourceUrl: "", approvals: 30 - i })),
+    { id: "idea", alias: "Ida", title: "Just an idea", pitch: "", liveUrl: "", sourceUrl: "", approvals: 0 },
+  ];
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(many))));
+  render(
+    <AuthContextProvider value={{ ...unconfiguredAuth }}>
+      <Ladder mode="web" />
+    </AuthContextProvider>,
+  );
+  await screen.findByText("Live 0");
+  expect(screen.getByText("Live 22")).toBeInTheDocument();
+  expect(screen.getByText("Prize zone ends at #20")).toBeInTheDocument();
+  expect(screen.getByText("Just an idea")).toBeInTheDocument();
+  expect(screen.getByText(/Not live yet: ranked once/)).toBeInTheDocument();
+});

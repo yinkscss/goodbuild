@@ -143,6 +143,7 @@ export const PARTNERS: Array<{
 ];
 
 export const RULES: Array<{ ok: boolean; text: string }> = [
+  { ok: true, text: "Open to everyone, wherever you study or work. One hackathon, one leaderboard." },
   { ok: true, text: "18 or older, verified once with GoodDollar." },
   { ok: true, text: "One verified wallet per person. Teams of up to 4." },
   {
@@ -182,6 +183,10 @@ export const FAQ: Array<{ q: string; a: string }> = [
   {
     q: "Can I submit before my app is ready?",
     a: "Yes. Sign in and register your idea, then return to add your live app and source code. Approvals open once you add a live app link.",
+  },
+  {
+    q: "I'm at FUTMinna or Kadpoly. Is there a separate hackathon for my school?",
+    a: "Not any more. On 24 Nov the FUTMinna and Kadpoly hackathons joined this one, so there is one hackathon for everyone with one leaderboard and the 1,000,000 G$ pool, closing 31 Dec. If you already signed up, entered or approved projects there, all of it carried over. The school scholarships are no longer offered.",
   },
 ];
 
