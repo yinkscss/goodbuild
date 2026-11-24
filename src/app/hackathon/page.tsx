@@ -297,7 +297,7 @@ function Poster() {
         <span className={styles.line}><span><span className={styles.big}>Earn.</span></span></span>
       </h1>
       <div className={styles.posterFoot}>
-        <p>The GoodBuild Hackathon. Ship a dApp on Celo that moves GoodDollar. Connect your wallet, verify once with GoodDollar, and get free build credits to start.</p>
+        <p>The GoodBuild Hackathon. Ship a dApp on Celo that moves GoodDollar. Connect your wallet, verify once with GoodDollar, and get free build credits to start. One hackathon for everyone: FUTMinna and Kadpoly students compete on the same leaderboard.</p>
         <a className={styles.cta} href="#register">
           Register to build
           <span className={styles.disc}>
