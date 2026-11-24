@@ -30,6 +30,15 @@ const renderList = () =>
     </AuthContextProvider>,
   );
 
+it("a shared project link scrolls the project into view", async () => {
+  const scroll = vi.fn();
+  window.HTMLElement.prototype.scrollIntoView = scroll;
+  window.history.replaceState(null, "", `/hackathon/projects?vote=${id}`);
+  renderList();
+  await screen.findByRole("heading", { name: "Pay Pals" });
+  expect(scroll).toHaveBeenCalledWith({ block: "start" });
+});
+
 it("a shared project link shows that project and the three steps on the page, not the whole list", async () => {
   window.history.replaceState(null, "", `/hackathon/projects?vote=${id}`);
   renderList();

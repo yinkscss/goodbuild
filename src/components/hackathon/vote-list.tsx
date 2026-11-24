@@ -311,8 +311,13 @@ function ProjectView({
 }) {
   // Back from GoodDollar, the same address (with the shared project in it) opens again.
   const verify = useVerifyForVotes(refresh, () => `${window.location.origin}${window.location.pathname}${window.location.search}`);
+  // The list sits low on a campus page, below its intro. A friend's link lands on the project, not the top of the page.
+  const top = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    top.current?.scrollIntoView?.({ block: "start" });
+  }, []);
   return (
-    <div className="mx-auto max-w-[640px]">
+    <div ref={top} className="mx-auto max-w-[640px] scroll-mt-20">
       <div className="rounded-card bg-surface p-6 shadow-card sm:p-8">
         <p className="text-xs font-semibold uppercase tracking-wide text-violet">A friend asked for your approval</p>
         <h2 className="mt-2 text-2xl font-bold">{entry.title}</h2>
