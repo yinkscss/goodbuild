@@ -8,7 +8,7 @@ import { cleanReferralCode } from "@/lib/referral";
 
 export const metadata = {
   title: "You're invited · GoodBuild",
-  description: "A friend invited you to GoodBuild. Verify with GoodDollar, vote for us in one tap, and get free credits to build.",
+  description: "A friend invited you to GoodBuild. Sign up, verify with GoodDollar and claim free credits to build your own app.",
   robots: { index: false },
 };
 
@@ -19,7 +19,7 @@ async function Steps({ params }: { params: Promise<{ code: string }> }) {
   return <InviteSteps code={code} />;
 }
 
-/** Where an invite link lands (D155): sign in, verify with GoodDollar, one-tap vote. Works signed out. */
+/** Where an invite link lands (D168): sign up, verify with GoodDollar, claim free credits. Works signed out. */
 export default function InvitePage({ params }: { params: Promise<{ code: string }> }) {
   return (
     <>
@@ -29,7 +29,7 @@ export default function InvitePage({ params }: { params: Promise<{ code: string 
           <p className="eyebrow">You&rsquo;re invited</p>
           <h1 className="display mt-3 text-[32px] font-extrabold sm:text-[44px]">A friend invited you to GoodBuild</h1>
           <p className="mt-4 max-w-xl text-base text-grey-600">
-            Build your own app by describing it. Do two quick things and you both get free credits.
+            Build your own app by describing it. Sign up and claim your free credits to start.
           </p>
           <Suspense fallback={<div className="skeleton mt-8 h-[260px] rounded-card motion-reduce:animate-none" />}>
             <Steps params={params} />

@@ -2139,3 +2139,10 @@ The owner approved implementing all five parts of the first-build fix and openin
   - The waitlist replacement rule matches the owner's terms as the blog post states them.
   - The admin report shows "closed" from 10 Dec while Kadpoly members can still claim. The expiry sweep's new `waiting` count is not shown on the admin page.
 - **UNVERIFIED** with real sign-ins: the in-app tabs, joining and claiming were checked only by tests (PGlite and components). The public pages were checked in a browser, on desktop and at phone width.
+
+### D168. Invite links are for signing up; the vote has its own page (24 Nov 2026; amends D155, D158)
+- **Decided by:** the owner, 24 Nov 2026.
+- **Change:** `/r/CODE` is now sign up, verify with GoodDollar, claim free credits, start building. The three-step vote (sign in, verify, one-tap vote for GoodBuild and GoodCash) moved to its own page, `/vote`, which shows the project first.
+- **Credits still follow D125:** the welcome credits need a verified person and a vote. On an invite, someone who is verified but hasn't voted sees "Vote to unlock credits" linking to `/vote`; the vote adds the welcome credits and pays the invite bonus as before (D155). `WELCOME_REQUIRES_VOTE=off` would make the invite page a pure sign-up.
+- **Unchanged:** attribution (the invite is recorded on sign-in), the 3-friend cap, one per GoodDollar identity, the ambassador G$ rule.
+

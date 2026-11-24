@@ -2,6 +2,9 @@
 
 Written 4 Nov 2026 at the end of the first build session (claude.ai), for whoever continues in Claude Code. Read CLAUDE.md and docs/BUILD_PROMPT_STAGE1.md first; this file only covers where things stand.
 
+## Invite link and vote link are separate (24 Nov 2026, D168, branch `claude/split-invite-and-vote`)
+- `/r/CODE` signs people up and claims free credits (`InviteSteps`); `/vote` is the project vote with the three steps (`VoteSteps`). Not verified in a real browser; unit tests only.
+
 ## DeepSeek plans and builds contracts from audited templates (21 Nov 2026, D165, branch `claude/elegant-pasteur-j73em3`)
 - **Models:** the spec step and the contracts phase run on DeepSeek. The first plan thinks `high`, later plans and contracts `low`. All fixes run on DeepSeek; Sonnet gets only the one retry after the same problems came back (`fixTierV2`). No Haiku.
 - **Templates:** `src/server/agent/contract-templates.ts` holds 9 abstract OpenZeppelin-based contracts (token, NFT, staking, escrow, vesting, votes token, governor, poll, savings). The spec names one per contract. They are written to `contracts/goodbuild/` (read-only for the builder) and the builder's contract inherits one.
