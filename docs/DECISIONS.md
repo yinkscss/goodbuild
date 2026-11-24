@@ -2139,3 +2139,9 @@ The owner approved implementing all five parts of the first-build fix and openin
   - The waitlist replacement rule matches the owner's terms as the blog post states them.
   - The admin report shows "closed" from 10 Dec while Kadpoly members can still claim. The expiry sweep's new `waiting` count is not shown on the admin page.
 - **UNVERIFIED** with real sign-ins: the in-app tabs, joining and claiming were checked only by tests (PGlite and components). The public pages were checked in a browser, on desktop and at phone width.
+
+### D169. A shared project link opens the project and the steps on the page (24 Nov 2026; amends D155's pop-up)
+- **Decided by:** the owner, 24 Nov 2026.
+- **Change:** a project's vote link (`?vote=ID` on that hackathon's vote page) now shows that project (title, pitch, try the app) with the three steps beneath it: connect, verify with GoodDollar, support us on FlowState. Then the friend adds an approval of their 3. A "See all projects" link goes to the full list. Before, it opened the whole list with a pop-up.
+- **Unchanged:** the approvals rules, the pop-up from the full list, and the link format (so links already shared still work).
+
