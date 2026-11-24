@@ -7,6 +7,7 @@ import { AppShell } from "@/components/home/app-shell";
 import { ExpireButton } from "@/components/hackathon/expire-button";
 import { explorerAddressUrl } from "@/lib/deploy/explorer";
 import { shortAddress } from "@/lib/format";
+import { CAMPUS_EVENTS, HACKATHON_EVENTS } from "@/lib/hackathon-events";
 import { getDb } from "@/server/db/client";
 import { DEPLOY_CREDITS, START_CREDITS } from "@/server/hackathon/claim";
 import { hackathonReport, type HackathonReport } from "@/server/hackathon/admin";
@@ -84,7 +85,11 @@ function ReportView({ r }: { r: HackathonReport }) {
     <div className="mt-8 space-y-4">
       <div className="flex flex-wrap gap-3">
         <a href="/api/hackathon/export" className="inline-flex rounded-full bg-ink px-5 py-3 text-sm text-white">Export all signup emails & progress (CSV)</a>
-        <a href="/api/hackathon/export?event=futminna" className="inline-flex rounded-full bg-violet px-5 py-3 text-sm text-white">Export FUTMinna signups & projects (CSV)</a>
+        {CAMPUS_EVENTS.map((e) => (
+          <a key={e} href={`/api/hackathon/export?event=${e}`} className="inline-flex rounded-full bg-violet px-5 py-3 text-sm text-white">
+            Export {HACKATHON_EVENTS[e].label} signups & projects (CSV)
+          </a>
+        ))}
       </div>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <Tile label="Registered" value={fmt(r.registered)} note={`${START_CREDITS} credits each`} />

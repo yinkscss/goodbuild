@@ -3,7 +3,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth/context";
 import { buildLadder, type LadderRow } from "@/lib/hackathon-ladder";
-import { eventApi } from "@/lib/hackathon-events";
+import { campusPicking, eventApi, eventConfig, zoneBadge } from "@/lib/hackathon-events";
 import { useHackathonEvent } from "./use-event";
 
 type Entry = { id: string; alias: string; title: string; liveUrl: string; sourceUrl: string; approvals: number; pitch: string; prevRank?: number | null; stars?: number[] };
@@ -61,6 +61,12 @@ export function Ladder({ mode }: { mode: "web" | "app" }) {
   if (!entries) return <p role="status" className="text-sm text-grey-600">Loading the leaderboard…</p>;
 
   const { rows, mine, gapToPrizeZone } = buildLadder(entries, user ? myId : null, config.zone);
+  // Kadpoly (D167): the top places win and the rest of the zone waits, so a waitlisted builder also
+  // sees how far the winning places are.
+  const campus = eventConfig(event).campus;
+  const winners = campus && !campus.judged ? campus.winners : null;
+  const gapToWin =
+    winners && mine && mine.entry.rank > winners ? buildLadder(entries, myId, winners).gapToPrizeZone : null;
   if (rows.length === 0)
     return (
       <p className="text-sm text-grey-600">
@@ -85,39 +91,41 @@ export function Ladder({ mode }: { mode: "web" | "app" }) {
           </p>
           <p className="mt-1 text-grey-600">
             {gapToPrizeZone === 0
-              ? `You’re in the ${zoneLabel}.`
+              ? `You’re in the ${zoneLabel}.${gapToWin ? ` ${gapToWin} more ${gapToWin === 1 ? "approval" : "approvals"} to reach the top ${winners}.` : ""}`
               : `${gapToPrizeZone ?? "A few"} more ${gapToPrizeZone === 1 ? "approval" : "approvals"} to reach the ${zoneLabel}.`}{" "}
             {config.showsGd
-              ? `Estimated earnings: ${gd(mine.entry.totalGd)} G$ (an estimate until voting closes on 10 Dec).`
-              : "Judges pick the scholarship winner from the shortlist after voting closes on 10 Dec."}
+              ? `Estimated earnings: ${gd(mine.entry.totalGd)} G$ (an estimate until voting closes on ${config.closesLabel}).`
+              : event === "main"
+                ? ""
+                : campusPicking(event)}
           </p>
         </div>
       )}
       <ol className="m-0 list-none p-0">
         {shown.map((row) => (
-          <LadderItem key={row.entry.id} row={row} you={row.entry.id === myId} showsGd={config.showsGd} shortlisted={!config.showsGd && row.inPrizeZone} />
+          <LadderItem key={row.entry.id} row={row} you={row.entry.id === myId} showsGd={config.showsGd} badge={zoneBadge(event, row.entry.rank)} />
         ))}
       </ol>
       {outside && (
         <>
           <p className="my-3 text-center text-xs font-semibold text-warning">
-            {zoneLabel === "shortlist" ? "Shortlist" : "Prize zone"} ends at #{config.zone}
+            {zoneLabel === "prize zone" ? "Prize zone" : zoneLabel === "shortlist" ? "Shortlist" : "Waitlist"} ends at #{config.zone}
           </p>
           <ol className="m-0 list-none p-0">
-            <LadderItem row={outside} you showsGd={config.showsGd} shortlisted={false} />
+            <LadderItem row={outside} you showsGd={config.showsGd} badge={null} />
           </ol>
         </>
       )}
       <p className="mt-4 text-xs text-grey-600">
         {config.showsGd
           ? "Ranked by verified approvals; ties go to the earlier submission. Amounts are estimates, not balances or confirmed payments."
-          : `Ranked by verified approvals; ties go to the earlier submission. The top ${config.zone} are the shortlist; judges pick the winner.`}
+          : `Ranked by verified approvals; ties go to the earlier submission. ${event === "main" ? "" : campusPicking(event)}`}
       </p>
     </div>
   );
 }
 
-function LadderItem<T extends Entry>({ row, you, showsGd, shortlisted }: { row: LadderRow<T>; you: boolean; showsGd: boolean; shortlisted: boolean }) {
+function LadderItem<T extends Entry>({ row, you, showsGd, badge }: { row: LadderRow<T>; you: boolean; showsGd: boolean; badge: string | null }) {
   const { entry, league, moved, stars } = row;
   return (
     <li className={`grid grid-cols-[2.5rem_1fr_auto] items-center gap-3 border-t border-ink/5 py-3 first:border-t-0 ${you ? "-mx-3 rounded-block bg-tint px-3" : ""}`}>
@@ -126,7 +134,7 @@ function LadderItem<T extends Entry>({ row, you, showsGd, shortlisted }: { row: 
         <p className="flex flex-wrap items-center gap-2 font-semibold">
           <span className="truncate">{entry.title}</span>
           {you && <span className="rounded-full bg-violet px-2.5 py-0.5 text-[11px] font-semibold text-white">You</span>}
-          {shortlisted && <span className="rounded-full bg-tint px-2.5 py-0.5 text-[11px] font-semibold text-violet">Shortlist</span>}
+          {badge && <span className="rounded-full bg-tint px-2.5 py-0.5 text-[11px] font-semibold text-violet">{badge}</span>}
           {league && <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${LEAGUE_STYLE[league]}`}>{league}</span>}
           {stars.length > 0 && (
             <span className="rounded-full bg-pink px-2.5 py-0.5 text-[11px] font-semibold text-violet-ink">

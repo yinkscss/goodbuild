@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { risingStars, type Snapshot } from "./hackathon-weeks";
+import { risingStars, weeksUntil, type Snapshot } from "./hackathon-weeks";
 
 const snap = (day: string, entryId: string, approvals: number): Snapshot => ({ day, entryId, approvals });
 const order = ["a", "b", "c"];
@@ -36,4 +36,20 @@ it("uses the next snapshot if the worker missed the boundary day, and skips week
   expect(risingStars(late, order)).toEqual([{ week: 1, entryId: "a", gained: 4 }]);
   const gap = [snap("2026-12-03", "a", 6)]; // no week 1 snapshot, so week 2 has no baseline
   expect(risingStars(gap, order)).toEqual([{ week: 1, entryId: "a", gained: 6 }]);
+});
+
+it("gives Kadpoly six Rising Star weeks to 31 Dec, and the 10 Dec hackathons three (D167)", () => {
+  const kadpolyWeeks = weeksUntil(new Date("2026-12-31T23:00:00Z"));
+  expect(weeksUntil(new Date("2026-12-10T23:00:00Z")).map((w) => w.n)).toEqual([1, 2, 3]);
+  expect(kadpolyWeeks.map((w) => w.n)).toEqual([1, 2, 3, 4, 5, 6]);
+  const order = ["a", "b"];
+  // a gains 1 a week; b sits still until the last week, then gains 9.
+  const days = ["2026-11-26", "2026-12-03", "2026-12-11", "2026-12-18", "2026-12-25", "2027-01-01"];
+  const rows: Snapshot[] = days.flatMap((day, i) => [
+    { day, entryId: "a", approvals: i + 1 },
+    { day, entryId: "b", approvals: i === 5 ? 9 : 0 },
+  ]);
+  const stars = risingStars(rows, order, kadpolyWeeks);
+  expect(stars.map((s) => [s.week, s.entryId])).toEqual([[1, "a"], [2, "a"], [3, "a"], [4, "a"], [5, "a"], [6, "b"]]);
+  expect(risingStars(rows, order).map((s) => s.week)).toEqual([1, 2, 3]);
 });

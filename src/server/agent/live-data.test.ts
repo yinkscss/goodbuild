@@ -196,8 +196,16 @@ describe("the shared refresh signal (src/lib/goodbuild/live.ts)", () => {
     expect(fn.mock.calls.length).toBeGreaterThanOrEqual(8);
     fn.mockClear();
     window.dispatchEvent(new Event("pointerdown"));
+    // A tick comes within one active interval. The idle timer may already be due a moment later, so
+    // that one and the first fast tick can both land in this window: one or two, never none.
     await vi.advanceTimersByTimeAsync(live.ACTIVE_EVERY_MS * 1.2 + 100);
-    expect(fn).toHaveBeenCalledTimes(1);
+    expect(fn.mock.calls.length).toBeGreaterThanOrEqual(1);
+    expect(fn.mock.calls.length).toBeLessThanOrEqual(2);
+    // Then the active rate (12-18 s apart): at least 3 in a minute, where idle (48-72 s) gives at most 1.
+    fn.mockClear();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(fn.mock.calls.length).toBeGreaterThanOrEqual(3);
+    expect(fn.mock.calls.length).toBeLessThanOrEqual(5);
   });
 
   it("a quick tab switch doesn't refetch; a tick right after a refresh is skipped", async () => {

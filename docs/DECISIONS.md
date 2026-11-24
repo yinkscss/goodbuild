@@ -2115,3 +2115,27 @@ The owner approved implementing all five parts of the first-build fix and openin
   - The card for an empty AI account doesn't say "Tap the button", since tapping can't help until the account is topped up.
 - **Found on the server:** on 23 Nov this outage used up 3 allowances with 0 spent (one first build and two monthly repairs, across two people). Holds on the 26 credit-funded failures were all returned, and nobody was charged.
 - **Open (owner):** whether a DeepSeek funding failure should fall back to Sonnet, which costs more (see D165), so builds keep working while the account is empty.
+
+### D167. A Kadpoly (Kaduna Polytechnic) hackathon: FUTMinna's setup, three full-tuition winners, closes 31 Dec (23 Nov 2026; extends D160, D161)
+- Decided by: the owner ("create a Kadpoly version of the FUTMinna hackathon, same rules, same settings, same setup"). In chat, the owner chose the terms another session passed on: the top 3 win full tuition for the session, places 4 and 5 are waitlisted, it starts 23 Nov and closes at the end of 31 Dec. Kadpoly only, no second polytechnic. Built by Claude.
+- **Events are now a list.** `src/lib/hackathon-events.ts` has `main`, `futminna` and `kadpoly` (`kadpoly-2026`). Each event has its own `closesAt`/`closesLabel`. Each campus event has a `campus` block (school, prize wording, `winners`, `judged`), and every campus page is built from that block. `parseEvent` and `eventFromPath` accept any listed event. No migration: the same tables, rows under the new id.
+- **Shared pages.** The FUTMinna public page became `CampusHackathonPage` (`src/components/hackathon/campus-page.tsx`), and the in-app tabs became `campus-app-pages.tsx`. `/hackathon/futminna` and `/hackathon/kadpoly`, and the four tabs under `/home/hackathon/<event>`, are a few lines each. FUTMinna's copy is unchanged except for the one-hackathon rule, which now names three hackathons.
+- **Prize.** FUTMinna is judged (the top 5 are the shortlist and judges pick one winner). Kadpoly is not judged in that sense: when voting closes, the top 3 by approvals win and places 4 and 5 are waitlisted. If a winner can't show they're a Kadpoly student, the next on the waitlist takes their place. The public rules keep FUTMinna's "Judges look for something creative…" line, matching the blog post's "What the judges look for". The leaderboard badges places 1–3 "Top 3" and 4–5 "Waitlist", and a waitlisted builder sees how many approvals they need to reach the top 3.
+- **Close dates.** Entries, approvals and rank snapshots stop at each event's own close. FUTMinna and the main hackathon still close at the end of 10 Dec; Kadpoly closes at the end of 31 Dec.
+- **Credits (one grant, shared budget, unchanged).** A person's claim and grant now last until the latest close among the hackathons they signed up for (`claimCloseFor`):
+  - A Kadpoly member can claim credits after 10 Dec, until 31 Dec.
+  - The expiry sweep leaves a Kadpoly member's unspent grant alone until Kadpoly closes, and removes it after that.
+  - Everyone else stops at 10 Dec, as before.
+  - On a campus page, the first credit claim joins that campus before claiming, so a member is recorded before the claim checks the date.
+  - Referral payouts and the admin claims report still follow the main close.
+  - An expired grant is final: joining Kadpoly after being expired on 10 Dec doesn't reopen the claim.
+- **Rising Star (D135)** runs to each hackathon's close (owner, 23 Nov). Main and FUTMinna keep weeks 1–3 to 10 Dec, and Kadpoly adds weeks 4–6 (11–17, 18–24 and 25–31 Dec), read from its snapshots (`weeksUntil`).
+- **Budget:** the owner raised the shared default to 15,000 credits (`DEFAULT_BUDGET_CREDITS`, 300 builders × 50) for Kadpoly. `HACKATHON_BUDGET_CREDITS` still overrides it.
+- **Judges:** the owner confirmed that the top 3 by votes win. Judges only check the entry rules.
+- **Membership (D161), for more than one campus.** `/home/hackathon` opens on the campus hackathon the person belongs to. Someone in two campuses opens on the first in the list (FUTMinna). The switch lists all three hackathons. Each builder still enters one hackathon only.
+- **Admin:** one CSV export button per campus.
+- **For the owner:**
+  - Anyone who joins Kadpoly can claim main-hackathon credits until 31 Dec, which is the point of the later close.
+  - The waitlist replacement rule matches the owner's terms as the blog post states them.
+  - The admin report shows "closed" from 10 Dec while Kadpoly members can still claim. The expiry sweep's new `waiting` count is not shown on the admin page.
+- **UNVERIFIED** with real sign-ins: the in-app tabs, joining and claiming were checked only by tests (PGlite and components). The public pages were checked in a browser, on desktop and at phone width.
