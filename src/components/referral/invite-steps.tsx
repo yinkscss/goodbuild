@@ -3,6 +3,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useSendGate } from "@/components/auth/send-gate";
 import { useGoodIdVerify } from "@/components/auth/use-goodid-verify";
+import { FlowstateVote } from "@/components/hackathon/flowstate-vote";
 import { useAuth } from "@/lib/auth/context";
 import { REFERRAL_BONUS_CREDITS, invitePath } from "@/lib/referral";
 import { cn } from "@/lib/utils";
@@ -19,16 +20,13 @@ function Step({ n, title, done, active, children }: { n: number; title: string; 
   );
 }
 
-type Claim = "idle" | "checking" | "done" | "needs-vote" | "error";
-
-/** Where an invite lands (D168): sign up, verify with GoodDollar, claim free credits. Voting is its own page, /vote. */
+/** Sign in, verify with GoodDollar, one-tap vote split with GoodCash (D155, D158). Each step opens when the one before it is done. */
 export function InviteSteps({ code }: { code: string }) {
   const auth = useAuth();
   const { openConnect } = useSendGate();
   const user = auth.user;
   const [verifiedHere, setVerifiedHere] = React.useState(false);
-  const [claim, setClaim] = React.useState<Claim>("idle");
-  const [claimNote, setClaimNote] = React.useState<string | null>(null);
+  const [voted, setVoted] = React.useState(false);
   const verified = Boolean(user?.verified) || verifiedHere;
   const { busy, note, showLinkGuide, verify } = useGoodIdVerify(
     () => setVerifiedHere(true),
@@ -49,38 +47,15 @@ export function InviteSteps({ code }: { code: string }) {
       .catch(() => undefined);
   }, [user, code]);
 
-  const claimCredits = React.useCallback(async () => {
-    setClaim("checking");
-    setClaimNote(null);
-    try {
-      const res = await fetch("/api/account/goodid", { method: "POST" });
-      const body = (await res.json().catch(() => ({}))) as { needsVote?: boolean; welcomeError?: string; message?: string };
-      if (!res.ok) throw new Error(body.message ?? "We couldn't add your credits. Try again.");
-      if (body.needsVote) setClaim("needs-vote");
-      else if (body.welcomeError) { setClaim("error"); setClaimNote(body.welcomeError); }
-      else setClaim("done");
-    } catch (error) {
-      setClaim("error");
-      setClaimNote(error instanceof Error ? error.message : "We couldn't add your credits. Try again.");
-    }
-  }, []);
-  // The moment they're verified, check for their credits once. The same call that confirms verification adds them.
-  const asked = React.useRef(false);
-  React.useEffect(() => {
-    if (!user || !verified || asked.current) return;
-    asked.current = true;
-    void claimCredits();
-  }, [user, verified, claimCredits]);
-
   if (!auth.ready) return <p role="status" className="mt-8 text-sm text-grey-600">Loading…</p>;
   const signedIn = Boolean(user);
   return (
     <>
       <ol className="mt-8 space-y-3">
-        <Step n={1} title="Sign up" done={signedIn} active={!signedIn}>
+        <Step n={1} title="Sign in" done={signedIn} active={!signedIn}>
           <p className="text-sm text-grey-600">Use your email, or connect a wallet.</p>
           <button type="button" onClick={openConnect} className="rounded-full bg-violet px-6 py-3 text-sm font-medium text-white outline-none focus-visible:shadow-focus">
-            Sign up to start
+            Sign in to start
           </button>
         </Step>
         <Step n={2} title="Verify you&rsquo;re a real person with GoodDollar" done={verified} active={signedIn}>
@@ -95,31 +70,15 @@ export function InviteSteps({ code }: { code: string }) {
             </p>
           )}
         </Step>
-        <Step n={3} title="Claim your free credits" done={claim === "done"} active={signedIn && verified}>
-          {claim === "needs-vote" ? (
-            <>
-              <p className="text-sm text-grey-600">One more tap: vote for GoodBuild, and your free credits are added right away.</p>
-              <Link href="/vote" className="inline-block rounded-full bg-violet px-6 py-3 text-sm font-medium text-white outline-none focus-visible:shadow-focus">
-                Vote to unlock credits
-              </Link>
-            </>
-          ) : (
-            <>
-              <p className="text-sm text-grey-600">{claim === "checking" ? "Adding your credits…" : "Your free credits are added to your account."}</p>
-              {claim === "error" && (
-                <>
-                  <p role="alert" className="text-sm text-danger">{claimNote}</p>
-                  <button type="button" onClick={() => void claimCredits()} className="rounded-full bg-violet px-6 py-3 text-sm font-medium text-white outline-none focus-visible:shadow-focus">Try again</button>
-                </>
-              )}
-            </>
-          )}
+        <Step n={3} title="Vote for GoodBuild and GoodCash" done={voted} active={signedIn && verified}>
+          <p className="text-sm text-grey-600">One tap. We check you&rsquo;re eligible and split all your votes equally between GoodBuild and our partner GoodCash. We cover the network fee.</p>
+          <FlowstateVote label="Tap to vote" verifyHref={invitePath(code)} onConfirmed={() => setVoted(true)} />
         </Step>
       </ol>
-      {claim === "done" && (
+      {voted && (
         <div className="mt-6 rounded-block bg-violet p-5 text-white">
-          <p className="text-lg font-semibold">You&rsquo;re in! Your free credits are ready.</p>
-          <p className="mt-1 text-sm text-white/80">When you vote for GoodBuild, you and your friend both get {REFERRAL_BONUS_CREDITS} extra credits.</p>
+          <p className="text-lg font-semibold">You&rsquo;re in! Your free credits are on the way.</p>
+          <p className="mt-1 text-sm text-white/80">If a friend invited you, you both get {REFERRAL_BONUS_CREDITS} extra credits.</p>
           <Link href="/home" className="mt-4 inline-block rounded-full bg-white px-6 py-3 text-sm font-medium text-ink outline-none focus-visible:shadow-focus">
             Start building →
           </Link>

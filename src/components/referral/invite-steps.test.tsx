@@ -8,6 +8,11 @@ import { InviteSteps } from "./invite-steps";
 const openConnect = vi.fn();
 vi.mock("@/components/auth/send-gate", () => ({ useSendGate: () => ({ openConnect }) }));
 vi.mock("@/components/auth/use-goodid-verify", () => ({ useGoodIdVerify: () => ({ verify: vi.fn(), busy: false, note: null, showLinkGuide: false }) }));
+vi.mock("@/components/hackathon/flowstate-vote", () => ({
+  FlowstateVote: ({ onConfirmed, verifyHref }: { onConfirmed: () => void; verifyHref: string }) => (
+    <button data-verify={verifyHref} onClick={onConfirmed}>Tap to vote</button>
+  ),
+}));
 
 const wallet = "0x1111111111111111111111111111111111111111";
 afterEach(() => {
@@ -20,35 +25,32 @@ const renderSteps = (user: { verified: boolean } | null) =>
       <InviteSteps code="ABCD2345" />
     </AuthContextProvider>,
   );
-const reply = (body: unknown) => vi.fn<(url: string, init?: RequestInit) => Promise<Response>>(async (url) => new Response(JSON.stringify(String(url).includes("referral") ? { recorded: true } : body)));
 
-it("signed out: asks to sign up and doesn't call the server yet", async () => {
+it("signed out: asks to sign in and doesn't call the server yet", async () => {
   const f = vi.fn();
   vi.stubGlobal("fetch", f);
   renderSteps(null);
-  await userEvent.click(screen.getByRole("button", { name: "Sign up to start" }));
+  await userEvent.click(screen.getByRole("button", { name: "Sign in to start" }));
   expect(openConnect).toHaveBeenCalled();
+  expect(screen.queryByRole("button", { name: "Tap to vote" })).not.toBeInTheDocument();
   expect(f).not.toHaveBeenCalled();
 });
 
-it("signed in: tells the server whose link it was once, then offers verify; there is no vote step", async () => {
-  const f = reply({});
+it("signed in: tells the server whose link it was once, then offers verify first", async () => {
+  const f = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>(async () => new Response(JSON.stringify({ recorded: true })));
   vi.stubGlobal("fetch", f);
   renderSteps({ verified: false });
   await waitFor(() => expect(f).toHaveBeenCalledTimes(1));
-  expect(JSON.parse(String(f.mock.calls[0][1]?.body))).toEqual({ code: "ABCD2345" });
+  expect(JSON.parse(String(vi.mocked(f).mock.calls[0][1]?.body))).toEqual({ code: "ABCD2345" });
   expect(screen.getByRole("button", { name: "Verify with GoodDollar" })).toBeInTheDocument();
-  expect(screen.queryByText(/Tap to vote/)).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Tap to vote" })).not.toBeInTheDocument();
 });
 
-it("verified and credits added: shows the way in", async () => {
-  vi.stubGlobal("fetch", reply({ verified: true, welcomeMicro: 40_000_000 }));
+it("verified: the one-tap vote opens, and a confirmed vote shows the thank-you and a way in", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ recorded: false }))));
   renderSteps({ verified: true });
+  const vote = await screen.findByRole("button", { name: "Tap to vote" });
+  expect(vote).toHaveAttribute("data-verify", "/r/ABCD2345");
+  await userEvent.click(vote);
   expect(await screen.findByRole("link", { name: /Start building/ })).toHaveAttribute("href", "/home");
-});
-
-it("verified but not voted yet: points to the vote page", async () => {
-  vi.stubGlobal("fetch", reply({ verified: true, needsVote: true }));
-  renderSteps({ verified: true });
-  expect(await screen.findByRole("link", { name: "Vote to unlock credits" })).toHaveAttribute("href", "/vote");
 });
