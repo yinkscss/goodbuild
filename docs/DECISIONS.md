@@ -2144,6 +2144,7 @@ The owner approved implementing all five parts of the first-build fix and openin
 - **Decided by:** the owner, 24 Nov 2026.
 - **Change:** a project's vote link (`?vote=ID` on that hackathon's vote page) now shows that project (title, pitch, try the app) with the three steps beneath it: connect, verify with GoodDollar, support us on FlowState. Then the friend adds an approval of their 3. A "See all projects" link goes to the full list. Before, it opened the whole list with a pop-up.
 - **Unchanged:** the approvals rules, the pop-up from the full list, and the link format (so links already shared still work).
+- **Landing (24 Nov 2026):** the page scrolls the shared project into view, because the list sits below the campus page's intro.
 
 ### D168. Anything free or given needs the FlowState vote; "votes" on projects are approvals (24 Nov 2026; confirms D125, D155)
 - **Decided by:** the owner, 24 Nov 2026.
