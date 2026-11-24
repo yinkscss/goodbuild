@@ -2,6 +2,9 @@
 
 Written 4 Nov 2026 at the end of the first build session (claude.ai), for whoever continues in Claude Code. Read CLAUDE.md and docs/BUILD_PROMPT_STAGE1.md first; this file only covers where things stand.
 
+## A shared project link opens the project and its steps (24 Nov 2026, D169, branch `claude/project-vote-page`)
+- `VoteList` shows `ProjectView` for `?vote=ID`; steps are shared with the pop-up through `ApprovalSteps`. Unit tests only, not checked in a browser.
+
 ## The full steps for anything given (24 Nov 2026, D168, branch `claude/split-invite-and-vote`)
 - Docs only: signing up or getting anything needs sign in, GoodDollar and the FlowState vote. `/r/CODE` keeps all three steps; project approvals already did.
 

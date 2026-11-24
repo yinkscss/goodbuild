@@ -3,7 +3,7 @@ import * as React from "react";
 import { useAuth } from "@/lib/auth/context";
 import { useSendGate } from "@/components/auth/send-gate";
 import { useGoodIdVerify } from "@/components/auth/use-goodid-verify";
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { allocateHackathonRewards } from "@/lib/hackathon-rewards";
 import { MAX_APPROVALS_PER_PERSON, type VoteStatus } from "@/lib/hackathon-vote";
 import { FlowstateVote } from "./flowstate-vote";
@@ -50,6 +50,7 @@ export function VoteList() {
   const [error, setError] = React.useState("");
   const [notice, setNotice] = React.useState("");
   const shareLinkHandled = React.useRef(false);
+  const [sharedId, setSharedId] = React.useState<string | null>(null);
 
   const loadEntries = React.useCallback(async () => {
     try {
@@ -90,9 +91,8 @@ export function VoteList() {
     shareLinkHandled.current = true;
     const requested = new URLSearchParams(window.location.search).get("vote");
     if (requested && entries.some((entry) => entry.id === requested)) {
-      writePending(event, requested);
       // eslint-disable-next-line react-hooks/set-state-in-effect -- a shared URL selects its project on arrival
-      setPicked(requested);
+      setSharedId(requested);
     }
   }, [entries, event]);
 
@@ -141,6 +141,23 @@ export function VoteList() {
 
   if (!entries) return <p role="status" className="text-sm text-grey-600">{error || "Loading projects…"}</p>;
   const pickedEntry = ladder.find((r) => r.entry.id === picked)?.entry ?? null;
+  const sharedEntry = sharedId ? entries.find((e) => e.id === sharedId) ?? null : null;
+
+  if (sharedEntry) {
+    return (
+      <ProjectView
+        entry={sharedEntry}
+        status={status}
+        busy={busyId !== null}
+        refresh={loadStatus}
+        onApprove={() => void approve(sharedEntry.id)}
+        openConnect={openConnect}
+        error={error}
+        notice={notice}
+        allHref={eventConfig(event).votePage}
+      />
+    );
+  }
 
   return (
     <div>
@@ -247,67 +264,148 @@ function StepsDialog({
   onClose: () => void;
   openConnect: () => void;
 }) {
-  const verify = useGoodIdVerify(
+  const verify = useVerifyForVotes(refresh, () => `${window.location.origin}${window.location.pathname}#vote`);
+  return (
+    <Dialog open={Boolean(entry)} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogTitle className="pr-10 text-xl font-semibold">Verify, then approve {entry?.title ?? "this project"}</DialogTitle>
+        <ApprovalSteps entry={entry} status={status} busy={busy} refresh={refresh} onApprove={onApprove} openConnect={openConnect} verify={verify} />
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function useVerifyForVotes(refresh: () => Promise<VoteStatus | void> | void, returnTo: () => string) {
+  return useGoodIdVerify(
     () => void refresh(),
-    () => `${window.location.origin}${window.location.pathname}#vote`,
+    returnTo,
     async () => {
       const next = await refresh();
       if (next?.checkFailed) throw new Error("We couldn’t reach Celo to check your verification. Press Verify to try again.");
       return Boolean(next?.verified);
     },
   );
+}
+
+/** What a friend's shared link opens: the project itself, then the steps to approve it, on the page (not in a pop-up). */
+function ProjectView({
+  entry,
+  status,
+  busy,
+  refresh,
+  onApprove,
+  openConnect,
+  error,
+  notice,
+  allHref,
+}: {
+  entry: Entry;
+  status: VoteStatus;
+  busy: boolean;
+  refresh: () => Promise<VoteStatus | void> | void;
+  onApprove: () => void;
+  openConnect: () => void;
+  error: string;
+  notice: string;
+  allHref: string;
+}) {
+  // Back from GoodDollar, the same address (with the shared project in it) opens again.
+  const verify = useVerifyForVotes(refresh, () => `${window.location.origin}${window.location.pathname}${window.location.search}`);
+  return (
+    <div className="mx-auto max-w-[640px]">
+      <div className="rounded-card bg-surface p-6 shadow-card sm:p-8">
+        <p className="text-xs font-semibold uppercase tracking-wide text-violet">A friend asked for your approval</p>
+        <h2 className="mt-2 text-2xl font-bold">{entry.title}</h2>
+        <small className="text-grey-600">by {entry.alias} · {entry.approvals} {entry.approvals === 1 ? "approval" : "approvals"}</small>
+        <p className="mt-3 text-base text-grey-600">{entry.pitch}</p>
+        <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+          {entry.liveUrl ? (
+            <a className="font-medium text-violet underline-offset-4 hover:underline" href={entry.liveUrl} target="_blank" rel="noreferrer">Try the app ↗</a>
+          ) : (
+            <span className="text-grey-600">Building soon</span>
+          )}
+          {entry.sourceUrl && (
+            <a className="font-medium text-violet underline-offset-4 hover:underline" href={entry.sourceUrl} target="_blank" rel="noreferrer">Source code ↗</a>
+          )}
+        </div>
+      </div>
+      <div className="mt-4 rounded-card bg-surface p-6 shadow-card sm:p-8">
+        <h3 className="text-lg font-semibold">Three quick steps to approve it</h3>
+        <ApprovalSteps entry={entry} status={status} busy={busy} refresh={refresh} onApprove={onApprove} openConnect={openConnect} verify={verify} />
+        {error && <p role="alert" className="mt-3 text-sm text-danger">{error}</p>}
+        {notice && <p role="status" className="mt-3 text-sm text-violet">{notice}</p>}
+      </div>
+      <a href={allHref} className="mt-4 inline-block text-sm font-medium text-violet underline-offset-4 hover:underline">See all projects →</a>
+    </div>
+  );
+}
+
+function ApprovalSteps({
+  entry,
+  status,
+  busy,
+  refresh,
+  onApprove,
+  openConnect,
+  verify,
+}: {
+  entry: Entry | null;
+  status: VoteStatus;
+  busy: boolean;
+  refresh: () => Promise<VoteStatus | void> | void;
+  onApprove: () => void;
+  openConnect: () => void;
+  verify: ReturnType<typeof useGoodIdVerify>;
+}) {
   const allDone = status.signedIn && status.verified && status.voted;
   const entryApprovals = entry
     ? status.entryIds.filter((id) => id === entry.id).length
     : 0;
   const approvalsLeft = status.max - status.used;
   return (
-    <Dialog open={Boolean(entry)} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-md">
-        <DialogTitle className="pr-10 text-xl font-semibold">Verify, then approve {entry?.title ?? "this project"}</DialogTitle>
-        <DialogDescription className="mt-1 text-sm text-grey-600">
-          {approvalsLeft > 0
-            ? `You have ${approvalsLeft} approval${approvalsLeft === 1 ? "" : "s"} left. Add one per click; you can put several on ${entry?.title ?? "this project"}.`
-            : `You’ve used all ${status.max} approvals.`}
-        </DialogDescription>
-        {entryApprovals > 0 && (
-          <p className="text-sm text-violet">
-            You’ve assigned {entryApprovals} {entryApprovals === 1 ? "approval" : "approvals"} to this project so far.
-          </p>
-        )}
-        <ol className="m-0 mt-5 grid list-none gap-3 p-0">
-          <Step n={1} done={status.signedIn} title="Connect your email" note="We create your wallet for you.">
-            <button type="button" className={BTN} onClick={openConnect}>Connect with email</button>
-          </Step>
-          <Step n={2} done={status.verified} title="Verify with GoodDollar" note="A free face check that proves you’re one person.">
-            <button type="button" className={BTN} disabled={!status.signedIn || verify.busy} onClick={() => void verify.verify()}>
-              {verify.busy ? "Checking…" : "Verify"}
-            </button>
-            {verify.note && (
-              <p role="alert" className="mt-2 text-xs text-danger">
-                {verify.note}
-                {verify.showLinkGuide && " If you verified with another wallet, link it first, then try again."}
-              </p>
-            )}
-          </Step>
-          <Step n={3} done={status.voted} title="Support us">
-            {status.signedIn && status.verified ? <FlowstateVote label="Support" onConfirmed={() => void refresh()} /> : <p className="text-xs text-grey-600">Finish the steps above first.</p>}
-          </Step>
-        </ol>
-        <button
-          type="button"
-          className="mt-5 w-full rounded-full bg-ink px-5 py-3 text-sm font-medium text-white outline-none focus-visible:shadow-focus disabled:opacity-40"
-          disabled={!allDone || busy || approvalsLeft <= 0}
-          onClick={onApprove}
-        >
-          {approvalsLeft <= 0
-            ? `All ${status.max} approvals used`
-            : allDone
-              ? `${entryApprovals > 0 ? "Add 1 more approval to" : "Add 1 approval to"} ${entry?.title ?? "this project"}`
-              : "Finish verification, then add an approval"}
-        </button>
-      </DialogContent>
-    </Dialog>
+    <>
+      <p className="mt-1 text-sm text-grey-600">
+        {approvalsLeft > 0
+          ? `You have ${approvalsLeft} approval${approvalsLeft === 1 ? "" : "s"} left. Add one per click; you can put several on ${entry?.title ?? "this project"}.`
+          : `You’ve used all ${status.max} approvals.`}
+      </p>
+      {entryApprovals > 0 && (
+        <p className="text-sm text-violet">
+          You’ve assigned {entryApprovals} {entryApprovals === 1 ? "approval" : "approvals"} to this project so far.
+        </p>
+      )}
+      <ol className="m-0 mt-5 grid list-none gap-3 p-0">
+        <Step n={1} done={status.signedIn} title="Connect your email" note="We create your wallet for you.">
+          <button type="button" className={BTN} onClick={openConnect}>Connect with email</button>
+        </Step>
+        <Step n={2} done={status.verified} title="Verify with GoodDollar" note="A free face check that proves you’re one person.">
+          <button type="button" className={BTN} disabled={!status.signedIn || verify.busy} onClick={() => void verify.verify()}>
+            {verify.busy ? "Checking…" : "Verify"}
+          </button>
+          {verify.note && (
+            <p role="alert" className="mt-2 text-xs text-danger">
+              {verify.note}
+              {verify.showLinkGuide && " If you verified with another wallet, link it first, then try again."}
+            </p>
+          )}
+        </Step>
+        <Step n={3} done={status.voted} title="Support us">
+          {status.signedIn && status.verified ? <FlowstateVote label="Support" onConfirmed={() => void refresh()} /> : <p className="text-xs text-grey-600">Finish the steps above first.</p>}
+        </Step>
+      </ol>
+      <button
+        type="button"
+        className="mt-5 w-full rounded-full bg-ink px-5 py-3 text-sm font-medium text-white outline-none focus-visible:shadow-focus disabled:opacity-40"
+        disabled={!allDone || busy || approvalsLeft <= 0}
+        onClick={onApprove}
+      >
+        {approvalsLeft <= 0
+          ? `All ${status.max} approvals used`
+          : allDone
+            ? `${entryApprovals > 0 ? "Add 1 more approval to" : "Add 1 approval to"} ${entry?.title ?? "this project"}`
+            : "Finish verification, then add an approval"}
+      </button>
+    </>
   );
 }
 
