@@ -62,7 +62,7 @@ async function main() {
         const d = await classifyTurn(state);
         done[r.id] = { stamp: stampOf(state), n: Number(r.n), request: state.request, signals: d.signals, ms: d.ms, tokens: d.response.usage, legacy: legacySignals(r.content), displayKind: d.displayKind };
       } catch (e) {
-        done[r.id] = { n: Number(r.n), request: state.request, error: (e as Error).message };
+        done[r.id] = { stamp: stampOf(state), n: Number(r.n), request: state.request, error: (e as Error).message };
       }
       writeFileSync(cacheFile, JSON.stringify(done, null, 1));
     }
