@@ -34,7 +34,7 @@ export function ConnectModal({
   hasPendingPrompt: boolean;
 }) {
   const auth = useAuth();
-  const busy = ["sending-code", "verifying-code", "connecting", "signing"].includes(auth.phase);
+  const busy = ["sending-code", "awaiting-device", "verifying-code", "connecting", "signing"].includes(auth.phase);
 
   // Close once signed in; the gate then sends the saved prompt.
   React.useEffect(() => {
@@ -154,7 +154,7 @@ function ConnectModalBody({ hasPendingPrompt, busy }: { hasPendingPrompt: boolea
                   />
                 )}
                 <Button type="submit" variant="primary" className="px-5 py-2.5" disabled={busy}>
-                  {auth.phase === "sending-code" || auth.phase === "verifying-code" ? (
+                  {auth.phase === "sending-code" || auth.phase === "verifying-code" || auth.phase === "awaiting-device" ? (
                     <Loader2 className="animate-spin" aria-label="Working" />
                   ) : null}
                   {awaitingCode ? "Verify code" : "Continue with email"}
@@ -216,6 +216,19 @@ function ConnectModalBody({ hasPendingPrompt, busy }: { hasPendingPrompt: boolea
               })}
             </ul>
           </>
+        )}
+
+        {auth.phase === "awaiting-device" && (
+          <p className="mt-4 flex items-start gap-2 rounded-block bg-tint px-4 py-3 text-sm text-violet-ink" role="status">
+            <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin text-violet" aria-hidden />
+            <span>
+              Check your email for <b className="font-semibold">{email}</b> and tap the link to approve this device. Then come back here and
+              we&apos;ll send your 6-digit code.{" "}
+              <button type="button" className="text-violet hover:underline" onClick={() => auth.reset()}>
+                Start over
+              </button>
+            </span>
+          </p>
         )}
 
         {(auth.phase === "connecting" || auth.phase === "signing") && (

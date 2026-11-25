@@ -2177,3 +2177,13 @@ The owner approved implementing all five parts of the first-build fix and openin
 - **Dates:** the window is 18 Nov to 31 Dec, and voting closes on 31 Dec. Two dates are DRAFT and proposed by Claude, not confirmed by the owner: "Submit by 24 Dec for a fair vote" and "Winners announced early January".
 - **Budget:** the default stays 15,000 credits, and `HACKATHON_BUDGET_CREDITS` still overrides it.
 - **Checked:** the migration (PGlite test: overlapping signups, a vote only on a campus signup, over-cap approvals, the guard, running twice), the 31 Dec close, week-4 Rising Star, and every redirect on the dev server. The public page was checked in a browser. **UNVERIFIED:** the migration against the live database, and the in-app tabs while signed in.
+
+### D171. Email sign-in never spins forever: device approval, extra-step and timeout handling (24 Nov 2026)
+- **Decided by:** the owner asked for the fix after a user's "Continue with email" spun without end on iPhone Safari. Built by Claude.
+- **Cause:** `sendEmailCode` (`src/lib/auth/magic/magic-auth.tsx`) only moved on when Magic said `email-otp-sent`. Any other answer, or none, left the button spinning. Magic's device verification is the likely case: a known email on a new phone gets an "approve this device" link first. **UNVERIFIED** for this user: the Magic dashboard logs weren't checked, and a blocked Magic frame (content blocker, or goodbuildit.xyz missing from Magic's allowed origins) would look the same.
+- **Change:**
+  - A new auth phase, `awaiting-device`: the modal asks the person to tap the link in their email, pauses the other buttons, and offers Start over.
+  - The link expiring, Magic's extra sign-in step (MFA, which we can't show) and too many attempts each end with a plain message.
+  - A 30-second deadline while waiting on Magic (not while the person is in their inbox), started again after the device is approved.
+  - Start over, a different email, or closing the modal cancels Magic's request.
+- **Checked:** unit tests for each event and the timeout; the modal's new state. **Not checked** on a real phone or against live Magic.
