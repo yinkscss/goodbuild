@@ -77,7 +77,7 @@ const respond = (set: Record<string, number>): JevResponse => ({
 });
 
 it("resolves requested, excluded, unspecified and conflicting answers", () => {
-  const s = resolveAnswers(respond({ multiplayer: 0.97, wallet_excluded: 0.95, game: 0.9, game_excluded: 0.9, shop: 0.5 }));
+  const s = resolveAnswers(respond({ multiplayer: 0.97, wallet_excluded: 0.95, game: 0.9, game_excluded: 0.9, shop: 0.4 }));
   expect(s.multiplayer).toBe("requested");
   expect(s.wallet).toBe("excluded");
   expect(s.dashboard).toBe("unspecified");

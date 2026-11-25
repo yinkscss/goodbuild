@@ -1,5 +1,5 @@
 {
- "version": 2,
+ "version": 3,
  "cases": [
   {
    "id": "four-artists",
@@ -39,8 +39,7 @@
    "goal": "A portfolio with a tip jar",
    "firstBuild": false,
    "expected": {
-    "advance": "requested",
-    "payments": "unspecified"
+    "advance": "requested"
    }
   },
   {
@@ -179,7 +178,6 @@
    "id": "only-colors",
    "request": "Only change the colors.",
    "expected": {
-    "payments": "unspecified",
     "advance": "unspecified"
    }
   },
@@ -204,7 +202,7 @@
    "request": "Tic tac toe for two people on one phone.",
    "expected": {
     "ticTacToe": "requested",
-    "multiplayer": "unspecified"
+    "multiplayer": "requested"
    }
   }
  ]

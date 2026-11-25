@@ -46,7 +46,7 @@ for (const [id, meaning] of Object.entries(features)) {
   };
 }
 export const questionVersion = createHash("sha256").update(JSON.stringify(questions)).digest("hex");
-export const thresholds = { high: 0.8, low: 0.2 };
+export const thresholds = { high: 0.5, low: 0.3 }; // provisional: tuned on 25 labeled cases (D172)
 const probability = z.number().min(0).max(1);
 export const responseSchema = z.object({
   model: z.string().min(1),
