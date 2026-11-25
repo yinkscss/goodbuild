@@ -54,6 +54,12 @@ export function plainError(message: string | undefined | null): string {
   return "Something went wrong on our side. That wasn't something you did. Your files are saved.";
 }
 
+/**
+ * D177: while GoodBuild's AI account is empty, a request waits instead of failing. D166's card wording, plus that
+ * it will start by itself, so nobody taps again and again.
+ */
+export const AI_PAUSED_HELD = "GoodBuild's AI service is paused on our side. We've been alerted and are fixing it. Your request is saved and will start on its own.";
+
 /** The build stopped because GoodBuild's own AI account is out of money (23 Nov 2026): retrying now can't help. */
 export function isAiAccountEmpty(message: string | undefined | null): boolean {
   return /AI provider account is out of funds|Insufficient Balance/i.test(message ?? "");

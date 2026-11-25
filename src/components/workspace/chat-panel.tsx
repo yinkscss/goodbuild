@@ -21,7 +21,7 @@ import { hasMiniPayKit } from "@/lib/minipay-checklist";
 import { FirstWait } from "./first-wait";
 import { MiniPayGuide } from "./minipay-guide";
 import { OldFundsCard } from "./old-funds-card";
-import { TurnView } from "./turn-view";
+import { HeldNotice, TurnView } from "./turn-view";
 import type { PublishInfo } from "./use-publish";
 import type { UseWorkspace } from "./use-workspace";
 import { FreeCreditsCard } from "@/components/credits/free-credits-card";
@@ -112,6 +112,10 @@ export function ChatPanel({
     // After a top-up the retry runs on credits and still carries the preview's crash (D164).
     runRetry(retryRequest(record, crash, { afterTopUp: true }));
   };
+  // D177: GoodBuild's AI account is empty and a request is waiting for it, so it starts on its own.
+  const holding = Boolean(state.aiPaused) && state.jobs.some((j) => j.status === "queued");
+  // The head request hasn't started: show that it's waiting, not a "Thinking" clock running for hours.
+  const heldHead = Boolean(live && holding && state.jobs[0]?.status === "queued" && live.record.jobId === state.jobs[0].id && !live.text && !live.record.steps.length);
   const continueCost = { needMicro: state.estimate.buildMicro, haveMicro: state.availableMicro };
   return (
     <section aria-label="Chat" className="flex min-h-0 flex-col rounded-card bg-surface shadow-card">
@@ -174,6 +178,7 @@ export function ChatPanel({
                   : undefined
               }
               fixDisabled={running}
+              held={holding && m.id === lastAssistantId}
               onSuggest={!live && canSuggest && m.id === lastAssistantId ? suggest : undefined}
               checking={m.id === lastAssistantId && ws.checking}
               checkFailed={m.id === lastAssistantId ? ws.checkFailed : null}
@@ -193,7 +198,8 @@ export function ChatPanel({
             />
           );
         })}
-        {live && (
+        {live && heldHead && <HeldNotice />}
+        {live && !heldHead && (
           <TurnView
             text={live.text}
             record={live.record}

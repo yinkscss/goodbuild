@@ -14,6 +14,7 @@ import { systemPrompt } from "@/server/agent/prompt";
 import { listVersions, loadFiles } from "@/server/agent/store";
 import { starterFiles, withStarterHelpers } from "@/server/agent/template";
 import { activeJobs } from "@/server/jobs/jobs";
+import { projectWaiting } from "@/server/agent/provider-status";
 import { shouldOfferVerification } from "@/server/credits/cap";
 import { freePolicy } from "@/server/credits/free-grants";
 import { availableMicro } from "@/server/credits/available";
@@ -57,6 +58,8 @@ export interface WorkspaceState {
   /** Paid credit plus free AI left, in micro-USD (null when the ledger is unreadable). Shown in the header chip. */
   availableMicro: number | null;
   jobs: Array<{ id: string; status: "queued" | "running"; userMessageId: string; assistantMessageId: string | null; mode: string }>;
+  /** D177: a queued request of this project waits for GoodBuild's empty AI account, and starts on its own when it works. */
+  aiPaused?: boolean;
   /** What GoodBuild remembers about this app (D164): the memory's decisions, which the person can remove. */
   remembered?: string[];
 }
@@ -116,6 +119,7 @@ export async function workspaceState(db: Db, projectId: string, ownerId: string)
       const origin = publicAssetOrigin();
       return { ...a, ...(origin ? { url: publicAssetUrl(origin, projectId, a.id) } : {}), pending: pending.has(a.id) };
     }),
+    aiPaused: await projectWaiting(db, projectId),
     jobs: (await activeJobs(db, projectId)).map((j) => ({
       id: j.id,
       status: j.status as "queued" | "running",
