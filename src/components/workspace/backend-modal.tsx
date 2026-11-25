@@ -9,6 +9,7 @@ import { DATA_RULES_PATH, describeRule, parseDataRules } from "@/lib/app-data";
 import { inferKind, type ContractKind } from "@/lib/contract-kind";
 import { cn } from "@/lib/utils";
 import { AppDataRow } from "./app-data-row";
+import { SAVED_DATA_LEAD } from "@/lib/turn-actions";
 
 /** The helpers every starter app has. Using them anywhere else means the app saves data (D31). */
 const HELPERS = new Set(["src/lib/db.ts", "src/lib/useDb.ts"]);
@@ -41,7 +42,7 @@ export interface BackendIdea {
 const idea = (label: string, detail: string, what: string): BackendIdea => ({
   label,
   detail,
-  prompt: `Add saved data to this app (GoodBuild's built-in backend, with wallet sign-in): ${what} Keep everything that already works, and keep money and ownership in the contract.`,
+  prompt: `${SAVED_DATA_LEAD}, with wallet sign-in): ${what} Keep everything that already works, and keep money and ownership in the contract.`,
 });
 
 /** Ideas that fit what each kind of app does. Only things the store supports: private per wallet, or public to read. */
@@ -83,8 +84,8 @@ const GENERAL: BackendIdea[] = [
 const DECIDE: BackendIdea = idea("Let the builder decide", "It adds saved data where it helps this app", "decide what this app should remember between visits, add it where it helps most, and tell me what you added.");
 
 /** Two ideas for this app, two general ones, and "let the builder decide". No typing needed. */
-export function backendIdeas(project: { name: string; templateId?: string | null }): BackendIdea[] {
-  const kind = inferKind({ templateId: project.templateId, text: project.name });
+export function backendIdeas(project: { name: string; templateId?: string | null; displayKind?: ContractKind }): BackendIdea[] {
+  const kind = inferKind({ templateId: project.templateId, text: project.name, displayKind:project.displayKind });
   return [...[...(IDEAS[kind] ?? []).slice(0, 2), ...GENERAL].slice(0, 5), DECIDE];
 }
 
@@ -113,7 +114,7 @@ export function BackendModal({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   projectId: string;
-  project: { name: string; templateId?: string | null };
+  project: { name: string; templateId?: string | null; displayKind?: ContractKind };
   files: Record<string, string>;
   published: boolean;
   busy: boolean;

@@ -1,3 +1,4 @@
+import type { JevDecision } from "./jev";
 import type { Db } from "@/server/db/client";
 import type { FundingSource } from "@/server/db/schema";
 import type { TurnRecord } from "@/lib/turn-types";
@@ -20,6 +21,7 @@ export type SavedPart = { type: "text"; text: string } | { type: "asset-image"; 
 export type SavedMessage = Exclude<ChatMessage, { role: "user" }> | { role: "user"; content: string | SavedPart[]; cache?: boolean };
 
 export interface TurnSetup {
+  decision?: JevDecision;
   v: number;
   assistantId: string;
   userMessageId: string;
@@ -104,6 +106,7 @@ export class ResumeFailedError extends Error {}
  * commits plainly and saves nothing; the worker's version fences every commit on its lease.
  */
 export interface TurnJobContext {
+  decision?: JevDecision;
   /** True when the caller holds the project's turn lock (the job lease). */
   lockHeld: boolean;
   /** Who funds the job, fixed when it was created (D48). Without a job, the runner decides it. */

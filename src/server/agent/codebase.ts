@@ -286,7 +286,7 @@ export interface ContextPick {
 export function selectContext(
   files: Record<string, string>,
   request: string,
-  opts: { budgetChars?: number; recent?: string[]; history?: string } = {},
+  opts: { relevantFiles?: string[]; budgetChars?: number; recent?: string[]; history?: string } = {},
 ): ContextPick[] {
   const budget = opts.budgetChars ?? 40_000;
   // The app-data guide documents these two, and every turn on every small project would pay for them
@@ -298,7 +298,7 @@ export function selectContext(
   files = Object.fromEntries(
     Object.entries(files).filter(([p]) => p !== TEMPLATE_IMAGE_MODULE && p !== "src/lib/db.ts" && p !== "src/lib/useDb.ts" && p !== "src/fx/fx.css" && !p.startsWith("src/lib/goodbuild/") && !(p in UI_PRIMITIVES)),
   );
-  const want = requestTerms(request);
+  const want = opts.relevantFiles ? terms(request) : requestTerms(request);
   const soft = terms(opts.history ?? "").filter((t) => !want.includes(t));
   const symbols = symbolIndex(files);
   const scored: ContextPick[] = [];
@@ -320,6 +320,7 @@ export function selectContext(
       if (n) score += Math.min(3, n) * (t.length >= 5 ? 1 : 0.5);
     }
     for (const t of soft) if (pathTokens.has(t) || symTokens.has(t)) score += 1;
+    if (opts.relevantFiles?.includes(p)) { score += 24; why.push("Jev relevance"); }
     if (opts.recent?.includes(p)) {
       score += 3;
       why.push("changed last turn");

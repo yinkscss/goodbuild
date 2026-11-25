@@ -317,7 +317,9 @@ function unavailable(error: unknown, tier: ModelTier): ModelUnavailableError {
 function describe(error: unknown, tier: ModelTier): string {
   if (error instanceof ModelUnavailableError) return error.message;
   const provider = tier === "strong" ? "Anthropic" : "DeepSeek";
-  if ((APICallError.isInstance(error) && error.statusCode === 402) || /Insufficient Balance/i.test((error as { message?: string })?.message ?? "")) {
+  // 402 is DeepSeek's "Insufficient Balance" and Anthropic's documented `billing_error`. Anthropic's "credit balance
+  // is too low" wording is from memory, not its docs (UNVERIFIED, D177): matched too, in case it comes as a 400.
+  if ((APICallError.isInstance(error) && error.statusCode === 402) || /Insufficient Balance|billing_error|credit balance is too low/i.test(`${(error as { message?: string })?.message ?? ""} ${APICallError.isInstance(error) ? (error.responseBody ?? "") : ""}`)) {
     return `The AI provider account is out of funds (${provider}, 402): ${(error as { message?: string }).message ?? "payment required"}`;
   }
   const key = KEY_NAME[tier];

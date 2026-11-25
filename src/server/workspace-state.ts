@@ -14,6 +14,7 @@ import { systemPrompt } from "@/server/agent/prompt";
 import { listVersions, loadFiles } from "@/server/agent/store";
 import { starterFiles, withStarterHelpers } from "@/server/agent/template";
 import { activeJobs } from "@/server/jobs/jobs";
+import { projectWaiting } from "@/server/agent/provider-status";
 import { shouldOfferVerification } from "@/server/credits/cap";
 import { freePolicy } from "@/server/credits/free-grants";
 import { availableMicro } from "@/server/credits/available";
@@ -31,7 +32,7 @@ export interface WorkspaceMessage {
 }
 
 export interface WorkspaceState {
-  project: { id: string; name: string; status: string; chainId: number; currentVersion: number; building: boolean; upgradeable: boolean; templateId?: string | null };
+  project: { id: string; name: string; status: string; chainId: number; currentVersion: number; building: boolean; upgradeable: boolean; templateId?: string | null; displayKind?: DeliveryPlan["displayKind"] };
   files: Record<string, string>;
   messages: WorkspaceMessage[];
   versions: Array<{ number: number; summary: string; createdAt: string; revertedFrom: number | null }>;
@@ -57,6 +58,8 @@ export interface WorkspaceState {
   /** Paid credit plus free AI left, in micro-USD (null when the ledger is unreadable). Shown in the header chip. */
   availableMicro: number | null;
   jobs: Array<{ id: string; status: "queued" | "running"; userMessageId: string; assistantMessageId: string | null; mode: string }>;
+  /** D177: a queued request of this project waits for GoodBuild's empty AI account, and starts on its own when it works. */
+  aiPaused?: boolean;
   /** What GoodBuild remembers about this app (D164): the memory's decisions, which the person can remove. */
   remembered?: string[];
 }
@@ -78,8 +81,10 @@ export async function workspaceState(db: Db, projectId: string, ownerId: string)
     uploaded.map((a) => ({ id: a.id, createdAt: a.createdAt.toISOString() })),
   );
   const jobRows = await db.select({ id: turnJobs.id, assistantId: turnJobs.assistantMessageId }).from(turnJobs).where(eq(turnJobs.projectId, projectId));
+  const delivery = (await db.select().from(buildDeliveries).where(eq(buildDeliveries.projectId, projectId)))[0]?.plan;
   return {
     project: {
+      displayKind: delivery?.displayKind,
       id: project.id,
       name: project.name,
       status: project.status,
@@ -90,7 +95,7 @@ export async function workspaceState(db: Db, projectId: string, ownerId: string)
       templateId: project.templateId,
     },
     files,
-    delivery: (await db.select().from(buildDeliveries).where(eq(buildDeliveries.projectId, projectId)))[0]?.plan,
+    delivery,
     messages: owned.messages.map((m) => ({
       id: m.id,
       role: m.role as WorkspaceMessage["role"],
@@ -114,6 +119,7 @@ export async function workspaceState(db: Db, projectId: string, ownerId: string)
       const origin = publicAssetOrigin();
       return { ...a, ...(origin ? { url: publicAssetUrl(origin, projectId, a.id) } : {}), pending: pending.has(a.id) };
     }),
+    aiPaused: await projectWaiting(db, projectId),
     jobs: (await activeJobs(db, projectId)).map((j) => ({
       id: j.id,
       status: j.status as "queued" | "running",

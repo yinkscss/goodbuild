@@ -6,7 +6,7 @@ import type { Browser, BrowserContext, Page, Route } from "playwright-core";
 import { buildPublishedApp, moduleStarts, PublishBuildError, type PublishedFile } from "@/server/publish/build";
 
 import type { CheckIssue } from "./checks";
-import { CHECK_WALLET, checkControls, GAME_CHECK_SPEED, gameCanvas, gameCheckScript, insideMiniPay, judgeRounds, pickBrowserWallet, playRounds, probeReport, standInWalletScript, walletAndBoard } from "./game-check";
+import { CHECK_WALLET, checkControls, GAME_CHECK_SPEED, gameButton, gameCanvas, gameCheckScript, insideMiniPay, judgeRounds, pickBrowserWallet, playRounds, probeReport, standInWalletScript, walletAndBoard } from "./game-check";
 import { ALL_FLOWS_MS, parseFlows, runFlows, type FlowResult } from "./acceptance";
 import { KITS, kitIdsOf } from "./kits/registry";
 
@@ -26,7 +26,7 @@ const KIT_FILES: Record<string, true> = Object.fromEntries(KITS.flatMap((k) => O
 export interface RunCheckOptions {
   /** Uploaded image names, served as blank placeholders so a real asset isn't reported as broken. */
   assets?: string[];
-  delivery?: { id: string; goal: string; verifyWallet?: boolean };
+  delivery?: { id: string; goal: string; ticTacToe?: boolean; verifyWallet?: boolean };
   /** The project's chain, for the wallet-less RPC stub. */
   chainId?: number;
   /** The project is a game or a 3D scene: start it and play for a moment (set from its kits). */
@@ -393,7 +393,7 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
   let deliveryVerified = options.delivery?.id === "interface";
   const deliveryIssues: string[] = [];
   let walletOk: boolean | undefined;
-  if (options.delivery && /tic[- ]tac[- ]toe/i.test(options.delivery.goal)) deliveryIssues.push(...await checkTicTacToe(page));
+  if (options.delivery && (options.delivery.ticTacToe ?? /tic[- ]tac[- ]toe/i.test(options.delivery.goal))) deliveryIssues.push(...await checkTicTacToe(page));
   if (options.delivery?.id === "wallet" || options.delivery?.verifyWallet) {
     const wallet = await walletAndBoard(page, { board: false });
     deliveryIssues.push(...wallet.issues);
@@ -436,7 +436,7 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
     if (options.screenshots && played) gameShots.push({ width: PHONE.width, png: await page.screenshot({ type: "png" }), shows });
   };
   if (!blank && !seen.length && options.game) {
-    const start = page.getByRole("button", { name: /\b(play|start|begin|go|race|tap to)\b/i }).first();
+    const start = await gameButton(page,"play");
     const hasStart = await start.isVisible().catch(() => false);
     if (played) {
       // Two frames of the idle loop, so a start screen that draws is seen drawing.
@@ -472,7 +472,7 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
     const showing = (await canvas.isVisible().catch(() => false)) || (played && (await running()));
     if (showing) {
       if (options.screenshots && played && !(await running())) {
-        await page.getByRole("button", { name: /\b(play|again|retry|restart|start|race)\b/i }).first().click({ timeout: 1_000 }).catch(() => undefined);
+        await (await gameButton(page,"restart")).click({ timeout: 1_000 }).catch(() => undefined);
         await settle(page, 300);
       }
       if (!options.screenshots || !played || (await running())) await phoneShot("playing");
@@ -717,7 +717,7 @@ export async function runCheck(files: Record<string, string>, options: RunCheckO
       // Acceptance flows (D152) get their own time on top: ALL_FLOWS_MS bounds them.
       timer = setTimeout(() => resolve({ ran: false, issues: [], note: "skipped: the app took too long to open" }), (options.timeoutMs ?? (kits.includes("game-2d") ? GAME_TIMEOUT_MS : DEFAULT_TIMEOUT_MS)) + (options.acceptance ? ALL_FLOWS_MS : 0));
     });
-    const ticTacToe = options.delivery?.id === "interface" && /tic[- ]tac[- ]toe/i.test(options.delivery.goal);
+    const ticTacToe = options.delivery?.id === "interface" && (options.delivery.ticTacToe ?? /tic[- ]tac[- ]toe/i.test(options.delivery.goal));
     const game = ticTacToe ? false : options.game ?? (kits.includes("game-2d") || kits.includes("three-d"));
     // The game's own code, so the kit's files (which name GameCanvas and round in comments) don't count.
     const authored = Object.entries(files).filter(([p]) => /^src\/.*\.(tsx?|jsx?)$/.test(p) && !(p in KIT_FILES)).map(([, c]) => c);

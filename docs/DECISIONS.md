@@ -2197,3 +2197,90 @@ The owner approved implementing all five parts of the first-build fix and openin
 - **Not changed:** codes, the bonus, the cap, and the hackathon referral (D136), which stays separate. No leaderboard or ranks yet.
 - **Checked:** unit test for the status words; lint on touched files. **Not checked** in a browser or on a phone.
 
+### D174. Jev (TypeSafe System One) decides what a request asks for, instead of keyword regexes (25 Nov 2026)
+- **Decided by:** the owner asked for regex routing in the build harness to be replaced with Jev classification so the product can grow past fixed keyword lists. Built by Claude (continuing a Codex draft). Plan: `docs/HARNESS_JEV_MIGRATION.md`; regex inventory: `docs/HARNESS_REGEX_INVENTORY.csv`.
+- **Change:** each turn gets one saved decision (`src/server/agent/jev.ts`): for 17 capabilities, "requested", "excluded", "unspecified" or "unclear", from independent yes/no questions in one call to `POST /v1/systemone`. Intake, milestone choice, kits, display category and file picking read it. The worker classifies after funding is admitted (`src/server/jobs/jev-routing.ts`), saves the result on the user message so a resumed job reuses it, and charges the call once.
+- **Switch:** Jev decides whenever `TYPESAFE_API_KEY` is set on the server (owner chose to turn it on at merge, 25 Nov 2026). `JEV_ROUTING=0` forces the old rules, `shadow` logs Jev beside them, `1` forces Jev on. Without the key, or if Jev errors or times out, the old rules run for that turn and nothing is charged.
+- **Kept as code:** exact validators, path rules, permissions, parsers and test assertions stay regex or parsers. Tests and compilers still decide whether something works.
+- **Tools:** `scripts/jev-eval.ts` records and replays labeled cases (`docs/evals/jev/corpus.json`) into an HTML report (`--record` needs the key; replay needs none). `scripts/check-routing-regex.mjs` runs on pull requests and flags a new regex that routes a request.
+- **Shadow mode:** `JEV_ROUTING=shadow` keeps the built-in rules in charge, runs Jev beside them on every build job, and saves the per-capability disagreements on the message (`meta.jevShadow`) and in the log (`jev_shadow`). It is not charged to the user. Use it for the first live cohort before `JEV_ROUTING=1`.
+- **Style of game:** `puzzle` and `turnBased` are Jev capabilities, so a quiz is still asked quiz questions under Jev (before, Jev always meant "action").
+- **Measured (live Jev, `jev-latest`):** thresholds 0.4 / 0.3, tuned on 28 cases (`corpus.json`, all labels pass). On 74 held-out cases written afterwards (`heldout.json`, labels by the engineer, NOT real user traffic), on the 10 capabilities the old rules can answer, Jev gets 127 of 135 labels right against 101 for the old rules. Most Jev misses are "unclear" or "unspecified" (nothing added), not false "requested". One quoted-label case ("Rename the menu item 'Multiplayer'") wrongly asked for multiplayer until the question said quoted text doesn't count. Run-to-run noise near the threshold was seen (0.56 vs 0.63 on the same text).
+- **Real prompts (25 Nov 2026):** replayed all 277 user messages in the production `messages` table (64 projects, 5 to 25 Nov), read-only, through Jev with `scripts/jev-replay.ts` (emails and addresses redacted; raw prompts stay in the gitignored `.data/`). Latency p50 282 ms, p95 366 ms. About 3,600 input tokens a call, about $0.00015 at $0.042 per million. Jev and the old rules disagree on 90 labels across the 64 first messages. Reading samples: Jev finds multiplayer and saved-data needs the old rules miss (savings circles, "play amongst themselves"), and treats "something with G dollar" as payments. It over-reads "Community Voting App" as payments and multiplayer, and misses an explicit wallet/MiniPay need in a few very long hackathon briefs. No ground-truth labels exist for these yet, so this is a comparison, not an accuracy score.
+- **UNVERIFIED:** accuracy on real prompts (needs labels on the disagreements), and a real build with the live writer model (the end-to-end test uses a scripted writer and a stubbed Jev, `src/server/jobs/jev-e2e.test.ts`). The intake planner prompt grew about 40 tokens (plan-first test bound raised to 1,800). The old keyword lists stay as the fallback until the shadow run agrees; remove them after.
+
+### D175. Buttons skip Jev, vague first messages get three ideas, gap signals in shadow only (25 Nov 2026; builds on D174)
+- **Decided by:** the owner ("Proceed with all", then "Approve both" on the plan, 25 Nov 2026) after a study of 277 production messages. Built by Claude. Stacked on #190 (D174).
+- **Why:** 125 of 277 messages were button presses or pasted error reports, and Jev read them as fresh requests (about 45% of its tokens). Offline replay: classifying "Start building" / "Skip the questions" changed the decision in 12 of 39 presses, and every change was a loss (multiplayer, wallet, payments dropped) or a false "next milestone". A "what should I build?" question on a gallery-template project went straight to a paid build, because templates skip the questions.
+- **Buttons carry an id:** every canned send posts `action` (`start_building`, `skip_questions`, `repair`, `resume`, `add_saved_data`; `src/lib/turn-actions.ts`), saved as `meta.turnAction`. Old clients send none, so the server recognises the exact texts the app's own buttons write (shared constants, not keyword lists). With Jev on, a button turn reuses the newest saved decision on the project. No call, no hold and no charge; `reusedFrom` names the message, and its file picks aren't reused. "Add saved data" also marks saved data as requested. Shadow mode skips button turns.
+- **Repairs keep their milestone:** `repair` (Fix it for me, a preview crash, visual or review problems, a stopped or failed deploy, errors left by a build) and `resume` (continue a paused build) never add or advance a milestone, under Jev and under the built-in rules. Before this, a pasted error that mentioned a contract could start the on-chain milestone. Funding rules are unchanged. These sends never plan first either.
+- **First-message ideas:** a project's first message that asks what to build, or names nothing to build (a bare greeting, or "I want a G dollar app"), gets three ready ideas as chips, with no job, no hold and no credits (`src/server/agent/first-ideas.ts`, rule in `src/lib/first-intent.ts`). The ideas are a G$ savings circle, a G$ tip jar and event tickets paid in G$, or three games if they asked about games. It happens once per project, gallery templates included. On the 277 messages it catches 3 of 64 first messages and no concrete request. **This is a new deterministic routing rule, against D174's direction (owner approved).** The shadow `vague` signal is how it gets replaced. Remove the rule once that signal is labelled and agrees.
+- **Shadow-only signals:** `photoInput`, `inAppAi`, `reminders`, `roles`, `liveMultiplayer`, `outOfScope`, `vague`, one yes/no question each, asked only under `JEV_ROUTING=shadow` and saved in `meta.jevShadow.extra` (probabilities and those at 0.4 or above). Nothing acts on them. The live question set and its version are unchanged (pinned in `jev-buttons.test.ts`: `5a17e3a2…`). Shadow calls carry their own version (`81a90e68…`).
+- **Measured (paid, `heldout.json` only, 74 cases × 2 calls, 25 Nov 2026):** base 3,389 input / 820 output tokens a call, 309 ms. With the shadow signals: 3,644 / 954, 317 ms, so **+255 input tokens a call (+7.5%)**. Real cost of the run: **$0.0219** at $0.042 per million input tokens (`model-pricing.ts`). The held-out cases have no labels for the new signals. On these concrete requests `outOfScope` fired on 25 of 74 and `vague` on 12, which looks like over-flagging: **accuracy unverified**, and they need labels before anything acts on them.
+- **Decline wording:** the builder prompt and the planner now say plainly that AI inside the app (chat, reading photos, an AI game master) and later reminders or notifications aren't possible yet, then build or ask about the rest (owner: no in-app AI yet, reminders later).
+
+### D176. After a working build: an "Add your logo or photo" chip and a "Publish so others can use it" step (25 Nov 2026)
+- **Decided by:** the owner approved surfacing both ("Proceed with all") after November's production messages. Users asked in chat to add their logo, portrait or tab icon 5+ times and how to deploy or publish 10+ times, though both already existed. Built by Claude. The number may need renumbering if sibling PRs (D172–D175) land first.
+- **Logo chip** (`src/components/workspace/next-steps.tsx`): it shows under the chat when the newest build works and the project has no logo yet. It asks "My logo" or "A photo or picture" (a portrait mustn't become the tab icon and palette), uploads through the existing upload route, then becomes "Use my logo in the app" or "Use my photo in the app". That chip sends one message with the picture, so nothing is spent until the person presses it. "Not now", or using it, hides the chip for that project (stored in the browser).
+- **Logo as tab icon by default** (`src/server/agent/logo-icon.ts`): before each build, like the palette, on build turns (never plan turns, which don't change files), GoodBuild adds `<link rel="icon" href="/assets/<logo>" data-gb-logo>` to `public/index.html` when the app sets no icon of its own. The marked link follows the newest logo and is removed when no logo is left, so a removed logo never leaves a broken `/assets/` path. An icon the builder or the person set stays as it is.
+- **Publish step:** one card shows when the newest build works, the app has something to publish, it isn't live, publishing isn't turned off for it, it isn't a MiniPay app (MiniPayGuide already covers that) and no contract is waiting on newer changes. With contracts not yet on Celo, its Publish button opens the existing deploy window (signed from their wallet), which offers Publish when it's done. Otherwise the button opens the existing publish window. Neither flow changed.
+- **Checked:** unit and component tests (including when the steps show, in `nextSteps`), typecheck, and the states on `/dev/preview?next=logo|logo-added|publish|publish-contract`. **Not checked:** a real build with an uploaded logo, or the card inside a signed-in workspace.
+
+### D177. An empty AI account pauses builds and holds requests to start on their own; a low-balance alert; a weekly funnel (25 Nov 2026; amends D166)
+- **Decided by:** the owner, 25 Nov 2026, approving the reliability plan drawn from production data (5 to 25 Nov, 64 projects): "Proceed with all." The owner then approved this build's plan with the pause per AI provider: "Approve both". Built by Claude. The 5 USD alert line and the 3- and 5-minute check intervals are Claude's picks.
+- **Why:** on 23 Nov the DeepSeek account hit zero and 48 builds failed. One person tried 12 times. D166 named the cause and alerted the owner, but each new request still failed, and the card said "try again a little later".
+- **The owner accepted the plan's four recommendations (25 Nov 2026):**
+  1. Alert the owner before the account is empty, and when it is empty pause new builds with a friendly card and keep each request to run later (this decision).
+  2. No AI inside generated apps yet. The builder declines such a request plainly.
+  3. Staked games only as pure-skill games with a fixed entry. This is already the builder's rule.
+  4. Reminders later. A calendar for now.
+- **Pause and hold:**
+  - A new table, `provider_status` (migration 0036), has one row per provider (`deepseek`, `anthropic`). Every worker reads it, so a pause set by one worker holds everywhere.
+  - The first `ProviderFundsError` sets `paused_at` and sends one Telegram message per pause, across all workers. D166's per-worker 30-minute alert is now only the fallback, for when the pause can't be written.
+  - **Per provider** (`JOB_WAITS`). Every build starts on DeepSeek (TIER_FOR), so while DeepSeek is paused `claimJob` starts no queued job. Anthropic only fixes what DeepSeek couldn't, so while Anthropic is paused only the re-run of a build that failed on Anthropic waits, and other builds keep running. A crashed build already under way always resumes.
+  - New requests are accepted as usual (same funding checks) and wait in the queue.
+  - `checkHolds` doesn't count a queued job as stuck while paused, or for 6 hours after the pause ends. The 23 Nov outage lasted about 6 hours, as long as the stuck limit.
+- **The build that hit the empty account** is re-run once, automatically, by the worker (`holdAfterProviderFunds`). This happens only if it spent nothing; D166 found 0 spent on every 23 Nov failure.
+  - The re-run is a retry job that keeps the failed build's funding. Its unspent free allowance moves across whole (the same `build_sponsorships` row), or a credit build sets credit aside again through `decideStart`. Nothing is charged while it waits.
+  - **Cap:** one re-run per failure (the existing one-retry-per-job rule). A re-run, or a retry of an empty-account failure, that fails the same way again isn't held again. It shows the plain card.
+  - If the build can't be held (it spent something, other requests were already waiting on the project, or there are no credits for a hold), D166's handling stands: an unspent free allowance is given back, and the card stays.
+  - **What people see:** a held request shows "Waiting to start" and D166's wording, followed by "Your request is saved and will start on its own." (`AI_PAUSED_HELD`). It doesn't show a "Thinking" clock. The failed build's card says the same and has no "Fix it for me" button. The workspace state has `aiPaused`, true when one of the project's queued requests is waiting.
+- **Starting again:**
+  - Every 3 minutes, one process checks the paused provider. The check is claimed in the database, so it runs once in total even with the inline worker and `pnpm worker` both live.
+  - DeepSeek: the free balance endpoint. Builds start again only when it reports `is_available` and at least 0.5 USD (3.5 CNY), so the held builds don't all start and empty it again.
+  - Anthropic: a 1-token call.
+  - When the check passes, held builds start in queue order and the owner gets "builds are back on". `pnpm provider:resume [deepseek|anthropic]` restarts at once.
+- **Early warning:**
+  - Every 5 minutes, `GET https://api.deepseek.com/user/balance` (Bearer key). The fields are from DeepSeek's API docs (api-docs.deepseek.com/api/get-user-balance; amounts are strings; currency USD or CNY).
+  - Below **5 USD** (or 35 CNY), the owner gets one Telegram message. It is sent again only after a top-up brings the balance back above the line. `DEEPSEEK_LOW_BALANCE` overrides the line.
+  - Why 5 USD: a DeepSeek build costs a few US cents, so 5 USD is many builds of warning. This was not measured against production spend; docs/DEPLOY.md has the query to size it.
+  - `is_available: false` pauses builds before any build fails.
+  - Anthropic has no balance check, because none is assumed to exist.
+- **Anthropic out of credit:**
+  - Its documented 402 `billing_error` was already caught by D166's 402 rule.
+  - "billing_error" or "credit balance is too low" in the error body now also counts. The second phrase is from memory, not Anthropic's docs: **UNVERIFIED**.
+- **Weekly funnel** (`pnpm funnel`, `scripts/funnel-report.ts`, `src/server/reports/funnel.ts`):
+  - It is read-only, inside a READ ONLY transaction.
+  - Projects are counted by the week they were started (cohorts, Mondays UTC): started, got a version, published, deployed a contract.
+  - Build errors are counted per week queued, grouped by cause in plainError's buckets, with jobs, projects and people for each.
+  - It never prints prompts or error text. A test plants a prompt and checks it never appears.
+  - Usage is in docs/DEPLOY.md.
+- **Checked:** tests on PGlite cover:
+  - pause and hold;
+  - the allowance moving across;
+  - one retry per failure;
+  - nothing starting while paused;
+  - the stuck check leaving held jobs alone;
+  - restart and the second-failure cap;
+  - alert once, re-arm, `is_available` pause, the resume floor, CNY;
+  - the Anthropic probe;
+  - the cards;
+  - the funnel.
+
+  **UNVERIFIED:** the live DeepSeek balance call and Anthropic probe; the Telegram messages on the real chat; the held card in a browser while signed in; the migration on the live database.
+- **For the owner:**
+  - A credit build that is held keeps its credit set aside (not spent) while it waits. If the person stops it, the credit goes back as usual.
+  - Whether an empty DeepSeek account should fall back to Sonnet (D166's open question) is still open. Holding makes it less urgent.
+  - The per-provider trade-off: while Anthropic is empty, new builds still run on DeepSeek. One that reaches a Sonnet fix step fails there, possibly after spending, and is then not held: it shows D166's card. Only a failure that spent nothing is re-run.
+  - If DeepSeek's balance can't be read (the endpoint changed, say), the 3-minute check falls back to a 1-token DeepSeek call, so a pause still clears by itself. A failed balance read is logged with its HTTP status.
+  - Stopping a held request gives back the free allowance set aside for it, and "Fix it for me" works again afterwards.

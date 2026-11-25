@@ -1,0 +1,631 @@
+{
+ "version": 2,
+ "note": "held-out: written after thresholds were tuned on corpus.json; labels by the engineer, not real user traffic",
+ "cases": [
+  {
+   "id": "s-tip-jar",
+   "request": "A G$ tip jar for my campus coding club. Supporters send G$ and the page shows the total and the latest tips.",
+   "expected": {
+    "payments": "requested",
+    "gd": "requested",
+    "game": "unspecified"
+   }
+  },
+  {
+   "id": "s-class-vote",
+   "request": "A poll for our 400-level class to pick the excursion destination. One vote per wallet, results visible after it closes.",
+   "expected": {
+    "payments": "requested",
+    "game": "unspecified"
+   }
+  },
+  {
+   "id": "s-savings",
+   "request": "An ajo savings circle for 5 friends. Everyone deposits 50 G$ every week and the pot goes to one member each week in turn.",
+   "expected": {
+    "payments": "requested",
+    "gd": "requested",
+    "game": "unspecified"
+   }
+  },
+  {
+   "id": "s-badges",
+   "request": "Soulbound NFT attendance badges for our monthly builder meetups that organisers can mint to attendees' wallets.",
+   "expected": {
+    "payments": "requested",
+    "game": "unspecified"
+   }
+  },
+  {
+   "id": "s-crowdfund",
+   "request": "A crowdfund for new library chairs: goal of 50,000 G$ by a deadline, and everyone can claim a refund if we miss it.",
+   "expected": {
+    "payments": "requested",
+    "gd": "requested"
+   }
+  },
+  {
+   "id": "s-token",
+   "request": "My own token called Lagos Coin with a fixed supply of 1,000,000, and a page where people buy it with G$ at a fixed price.",
+   "expected": {
+    "payments": "requested",
+    "gd": "requested"
+   }
+  },
+  {
+   "id": "s-escrow",
+   "request": "An escrow for buying and selling used textbooks on campus: the buyer pays G$ in, and it is released to the seller when the buyer confirms they got the book.",
+   "expected": {
+    "payments": "requested",
+    "gd": "requested"
+   }
+  },
+  {
+   "id": "s-membership",
+   "request": "A gym membership pass: members pay 200 G$ for 30 days, and the front desk can check whether a wallet's pass is still active.",
+   "expected": {
+    "payments": "requested",
+    "gd": "requested"
+   }
+  },
+  {
+   "id": "s-grants",
+   "request": "A small grants pot for our student union: anyone can propose a project, members vote, and the owner pays G$ to the winner.",
+   "expected": {
+    "payments": "requested",
+    "gd": "requested"
+   }
+  },
+  {
+   "id": "s-coffee",
+   "request": "A landing page for Kola Coffee, a coffee kiosk in Yaba, Lagos, that opens at 7am and sells cold brew and zobo.",
+   "expected": {
+    "website": "requested",
+    "payments": "unspecified",
+    "wallet": "unspecified",
+    "game": "unspecified"
+   }
+  },
+  {
+   "id": "s-portfolio",
+   "request": "A portfolio site for Amaka Obi, a product designer in Abuja: a short intro, four project cards and a contact section.",
+   "expected": {
+    "website": "requested",
+    "payments": "unspecified",
+    "wallet": "unspecified",
+    "game": "unspecified"
+   }
+  },
+  {
+   "id": "s-rsvp",
+   "request": "A page for our tech meetup on 14 December in Ibadan with the schedule and an RSVP form that saves each person's name and email for me to read.",
+   "expected": {
+    "integrations": "requested",
+    "payments": "unspecified",
+    "game": "unspecified"
+   }
+  },
+  {
+   "id": "s-catch",
+   "request": "A game where you catch falling mangoes in a basket on your phone. It gets faster as you go and keeps your best score.",
+   "expected": {
+    "game": "requested",
+    "multiplayer": "unspecified",
+    "payments": "unspecified"
+   }
+  },
+  {
+   "id": "s-betting",
+   "request": "A sports betting app where people bet G$ on Premier League matches.",
+   "expected": {
+    "payments": "requested"
+   }
+  },
+  {
+   "id": "s-edit-board",
+   "request": "Add a leaderboard page of the top tippers.",
+   "expected": {
+    "leaderboard": "requested",
+    "payments": "unspecified"
+   },
+   "goal": "A G$ tip jar for my football club with a public list of supporters.",
+   "firstBuild": false
+  },
+  {
+   "id": "s-edit-style",
+   "request": "Make the main button bigger and change the accent colour to green.",
+   "expected": {
+    "payments": "unspecified",
+    "wallet": "unspecified",
+    "advance": "unspecified"
+   },
+   "goal": "A waitlist page for Zuri, a food delivery app launching in Enugu.",
+   "firstBuild": false
+  },
+  {
+   "id": "s-edit-about",
+   "request": "Add an About page with our story and a five-question FAQ, and link it from the menu.",
+   "expected": {
+    "payments": "unspecified",
+    "wallet": "unspecified",
+    "advance": "unspecified"
+   },
+   "goal": "A landing page for a tailoring shop in Surulere called Needle and Thread.",
+   "firstBuild": false
+  },
+  {
+   "id": "s-edit-msg",
+   "request": "Let each tip carry a short message, and show the messages in the list.",
+   "expected": {
+    "payments": "requested"
+   },
+   "goal": "A G$ tip jar for our choir.",
+   "firstBuild": false
+  },
+  {
+   "id": "n-ludo",
+   "request": "Ludo for four players on the same link, each on their own phone.",
+   "expected": {
+    "game": "requested",
+    "multiplayer": "requested"
+   }
+  },
+  {
+   "id": "n-quiz-duel",
+   "request": "A trivia duel where two friends race to answer the same questions.",
+   "expected": {
+    "game": "requested",
+    "multiplayer": "requested"
+   }
+  },
+  {
+   "id": "n-solo-puzzle",
+   "request": "A sliding puzzle I can play alone on the bus. No accounts, no wallet.",
+   "expected": {
+    "game": "requested",
+    "multiplayer": "excluded",
+    "wallet": "excluded"
+   }
+  },
+  {
+   "id": "n-chess",
+   "request": "Chess where I can challenge someone and we take turns online.",
+   "expected": {
+    "game": "requested",
+    "multiplayer": "requested"
+   }
+  },
+  {
+   "id": "n-snake",
+   "request": "Snake game with a high score table for everyone who plays.",
+   "expected": {
+    "game": "requested",
+    "leaderboard": "requested"
+   }
+  },
+  {
+   "id": "n-no-board",
+   "request": "A reaction speed game. Keep scores private, no public ranking.",
+   "expected": {
+    "game": "requested",
+    "leaderboard": "excluded"
+   }
+  },
+  {
+   "id": "n-shop-game",
+   "request": "A farm game where players spend coins in a shop to buy seeds and tools.",
+   "expected": {
+    "game": "requested",
+    "shop": "requested"
+   }
+  },
+  {
+   "id": "n-3d-room",
+   "request": "An interactive 3D showroom where visitors can rotate a sneaker.",
+   "expected": {
+    "threeD": "requested",
+    "game": "unspecified"
+   }
+  },
+  {
+   "id": "n-3d-game",
+   "request": "A 3D maze you walk through with arrow keys.",
+   "expected": {
+    "threeD": "requested",
+    "game": "requested"
+   }
+  },
+  {
+   "id": "n-wallet-connect",
+   "request": "Visitors should connect their wallet to see their token balance.",
+   "expected": {
+    "wallet": "requested"
+   }
+  },
+  {
+   "id": "n-wallet-article",
+   "request": "A blog post explaining what a crypto wallet is, for beginners.",
+   "expected": {
+    "wallet": "unspecified",
+    "website": "requested",
+    "payments": "unspecified"
+   }
+  },
+  {
+   "id": "n-wallet-never",
+   "request": "A school notice board. Please no crypto or wallet stuff anywhere.",
+   "expected": {
+    "wallet": "excluded",
+    "payments": "excluded",
+    "website": "requested"
+   }
+  },
+  {
+   "id": "n-minipay",
+   "request": "Make it work inside MiniPay so people can pay from the Opera Mini app.",
+   "expected": {
+    "miniPay": "requested"
+   }
+  },
+  {
+   "id": "n-minipay-no",
+   "request": "A normal website for my bakery, not for MiniPay.",
+   "expected": {
+    "miniPay": "excluded",
+    "website": "requested"
+   }
+  },
+  {
+   "id": "n-celo",
+   "request": "Accept CELO payments for my photography bookings.",
+   "expected": {
+    "native": "requested",
+    "payments": "requested"
+   }
+  },
+  {
+   "id": "n-gd",
+   "request": "Let people donate G$ to our church building fund.",
+   "expected": {
+    "gd": "requested",
+    "payments": "requested"
+   }
+  },
+  {
+   "id": "n-dash",
+   "request": "A dashboard showing my shop's daily sales and top products.",
+   "expected": {
+    "dashboard": "requested",
+    "payments": "unspecified"
+   }
+  },
+  {
+   "id": "n-login",
+   "request": "Add a sign in with email so members can see their profile.",
+   "expected": {
+    "integrations": "requested",
+    "dashboard": "unspecified"
+   }
+  },
+  {
+   "id": "n-anim",
+   "request": "A landing page with smooth scroll animations and fade-in sections.",
+   "expected": {
+    "motion": "requested",
+    "website": "requested"
+   }
+  },
+  {
+   "id": "n-vault",
+   "request": "A shared vault for our family where three of us must approve withdrawals.",
+   "expected": {
+    "vault": "requested",
+    "payments": "requested"
+   }
+  },
+  {
+   "id": "n-dao",
+   "request": "A DAO for our hostel where members vote on spending the pot.",
+   "expected": {
+    "vault": "requested",
+    "payments": "requested"
+   }
+  },
+  {
+   "id": "n-ttt",
+   "request": "Noughts and crosses for two players.",
+   "expected": {
+    "ticTacToe": "requested"
+   }
+  },
+  {
+   "id": "n-ttt-ref",
+   "request": "A website about the history of tic tac toe.",
+   "expected": {
+    "ticTacToe": "unspecified",
+    "website": "requested",
+    "game": "unspecified"
+   }
+  },
+  {
+   "id": "n-quoted",
+   "request": "Rename the menu item 'Multiplayer' to 'Play together'.",
+   "expected": {
+    "multiplayer": "unspecified",
+    "game": "unspecified"
+   },
+   "goal": "A landing page for our game studio",
+   "firstBuild": false
+  },
+  {
+   "id": "n-quoted2",
+   "request": "Change the text on the button from 'Connect wallet' to 'Sign in'.",
+   "expected": {
+    "wallet": "unspecified",
+    "payments": "unspecified"
+   },
+   "goal": "A club website",
+   "firstBuild": false
+  },
+  {
+   "id": "n-go-ahead",
+   "request": "Yes, go ahead with the next one.",
+   "expected": {
+    "advance": "requested"
+   },
+   "goal": "A tip jar with a leaderboard",
+   "firstBuild": false
+  },
+  {
+   "id": "n-continue-it",
+   "request": "Okay continue.",
+   "expected": {
+    "advance": "requested"
+   },
+   "goal": "A savings circle",
+   "firstBuild": false
+  },
+  {
+   "id": "n-fix",
+   "request": "The button on the right is cut off on my phone, can you fix it?",
+   "expected": {
+    "advance": "unspecified",
+    "payments": "unspecified",
+    "wallet": "unspecified"
+   },
+   "goal": "A tipping page",
+   "firstBuild": false
+  },
+  {
+   "id": "n-more-colors",
+   "request": "Use blue instead of green.",
+   "expected": {
+    "advance": "unspecified",
+    "payments": "unspecified"
+   },
+   "goal": "A donations page",
+   "firstBuild": false
+  },
+  {
+   "id": "n-later-pay",
+   "request": "Now let people pay for the course with G$.",
+   "expected": {
+    "payments": "requested",
+    "gd": "requested"
+   },
+   "goal": "A course landing page",
+   "firstBuild": false
+  },
+  {
+   "id": "n-later-login",
+   "request": "Add a login so students can save their progress.",
+   "expected": {
+    "integrations": "requested"
+   },
+   "goal": "A quiz site",
+   "firstBuild": false
+  },
+  {
+   "id": "n-later-no-login",
+   "request": "Don't add a login, keep it open for everyone.",
+   "expected": {
+    "integrations": "excluded"
+   },
+   "goal": "A quiz site",
+   "firstBuild": false
+  },
+  {
+   "id": "n-db",
+   "request": "Save every order in a database and email me a copy.",
+   "expected": {
+    "integrations": "requested"
+   }
+  },
+  {
+   "id": "n-booking",
+   "request": "A booking page where clients pick a time slot and I get notified.",
+   "expected": {
+    "integrations": "requested"
+   }
+  },
+  {
+   "id": "n-uploads",
+   "request": "Let students upload their assignments as PDF files.",
+   "expected": {
+    "integrations": "requested"
+   }
+  },
+  {
+   "id": "n-static",
+   "request": "A single static page with my CV. Nothing to log in to.",
+   "expected": {
+    "website": "requested",
+    "integrations": "excluded"
+   }
+  },
+  {
+   "id": "n-cue",
+   "request": "A cue board for two stage managers to trigger lighting cues together.",
+   "expected": {
+    "multiplayer": "requested",
+    "game": "unspecified"
+   }
+  },
+  {
+   "id": "n-draw",
+   "request": "A shared whiteboard for my study group, everyone draws at once.",
+   "expected": {
+    "multiplayer": "requested",
+    "game": "unspecified"
+   }
+  },
+  {
+   "id": "n-guess",
+   "request": "Everyone submits a caption for a photo and the group votes on the best one.",
+   "expected": {
+    "multiplayer": "requested"
+   }
+  },
+  {
+   "id": "n-recipe",
+   "request": "A recipe collection with ingredient lists and cooking times.",
+   "expected": {
+    "website": "requested",
+    "game": "unspecified",
+    "payments": "unspecified"
+   }
+  },
+  {
+   "id": "n-price-list",
+   "request": "A price list page for my salon, prices in naira.",
+   "expected": {
+    "website": "requested",
+    "payments": "unspecified",
+    "wallet": "unspecified"
+   }
+  },
+  {
+   "id": "n-history",
+   "request": "Show the last 10 payments people made in a table.",
+   "expected": {
+    "dashboard": "requested",
+    "payments": "unspecified"
+   },
+   "goal": "A shop dashboard",
+   "firstBuild": false
+  },
+  {
+   "id": "n-stake",
+   "request": "Let people stake G$ and earn rewards each week.",
+   "expected": {
+    "payments": "requested",
+    "gd": "requested"
+   }
+  },
+  {
+   "id": "n-nft",
+   "request": "Mint an NFT for every graduate of our bootcamp.",
+   "expected": {
+    "payments": "requested"
+   }
+  },
+  {
+   "id": "n-shopping-site",
+   "request": "An online store for my handmade bags with a cart and checkout.",
+   "expected": {
+    "integrations": "requested"
+   }
+  },
+  {
+   "id": "n-no-pay-store",
+   "request": "A catalogue for my bags. Customers message me on WhatsApp, no online payment.",
+   "expected": {
+    "payments": "excluded",
+    "website": "requested"
+   }
+  },
+  {
+   "id": "n-arcade",
+   "request": "A little arcade with three games and a coins shop where you can buy hats.",
+   "expected": {
+    "game": "requested",
+    "shop": "requested"
+   }
+  },
+  {
+   "id": "n-timer",
+   "request": "A pomodoro timer with a calm look.",
+   "expected": {
+    "game": "unspecified",
+    "payments": "unspecified",
+    "wallet": "unspecified",
+    "multiplayer": "unspecified"
+   }
+  },
+  {
+   "id": "n-couples",
+   "request": "A game for two lovers to answer questions about each other on their own phones.",
+   "expected": {
+    "game": "requested",
+    "multiplayer": "requested"
+   }
+  },
+  {
+   "id": "n-ai",
+   "request": "A page where people paste text and get a summary.",
+   "expected": {
+    "integrations": "requested",
+    "game": "unspecified"
+   }
+  },
+  {
+   "id": "n-leaderboard-only",
+   "request": "A leaderboard of the top students in our coding bootcamp, updated by me.",
+   "expected": {
+    "leaderboard": "requested",
+    "game": "unspecified"
+   }
+  },
+  {
+   "id": "n-ranking-site",
+   "request": "A page ranking the best jollof rice spots in Lagos.",
+   "expected": {
+    "leaderboard": "unspecified",
+    "website": "requested"
+   }
+  },
+  {
+   "id": "n-ayo",
+   "request": "Ayo Olopon board game for two people.",
+   "expected": {
+    "turnBased": "requested",
+    "game": "requested"
+   }
+  },
+  {
+   "id": "n-sudoku",
+   "request": "Sudoku with an easy, medium and hard mode.",
+   "expected": {
+    "puzzle": "requested",
+    "game": "requested"
+   }
+  },
+  {
+   "id": "n-flappy",
+   "request": "A flappy-bird style game with a parrot.",
+   "expected": {
+    "game": "requested",
+    "puzzle": "unspecified",
+    "turnBased": "unspecified"
+   }
+  },
+  {
+   "id": "n-site-puzzle",
+   "request": "A shop selling jigsaw puzzles, with prices and photos.",
+   "expected": {
+    "puzzle": "unspecified",
+    "website": "requested"
+   }
+  }
+ ]
+}

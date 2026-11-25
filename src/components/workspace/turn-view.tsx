@@ -11,8 +11,9 @@ import type { Step, TurnRecord } from "@/lib/turn-types";
 import { formatClock, useElapsed, WaitNote, WaveDots } from "@/components/ui/wait";
 import { cn } from "@/lib/utils";
 import { CHECKING_STEP, plainStep, planStepText } from "@/lib/plain-steps";
-import { isAiAccountEmpty, plainError, plainMilestoneTitle } from "@/lib/plain-words";
+import { AI_PAUSED_HELD, isAiAccountEmpty, plainError, plainMilestoneTitle } from "@/lib/plain-words";
 import { PlanCard, PlanDraftCard, type PlanActions, type PlanDraftActions } from "./plan-card";
+import { REVIEW_FIX_LEAD, VISUAL_FIX_LEAD, type TurnAction } from "@/lib/turn-actions";
 
 /** A step running this long gets a calm explanation (A2). */
 const SLOW_STEP_SECONDS = 20;
@@ -227,6 +228,7 @@ export function TurnError({
   disabled,
   continueCost,
   previewError,
+  held,
 }: {
   record: TurnRecord;
   onFix: () => void;
@@ -234,7 +236,10 @@ export function TurnError({
   continueCost?: ContinueCost;
   /** The preview's crash, when there is one: the button fixes it too (D164). */
   previewError?: string | null;
+  /** D177: this build failed on GoodBuild's empty AI account and is saved to start again on its own: no button. */
+  held?: boolean;
 }) {
+  if (held && isAiAccountEmpty(record.error)) return <HeldNotice />;
   // Paused for credits (D138): its files are a saved draft, and Continue picks up from them.
   const paused = record.paused === "credits";
   const needsFix = record.status === "needs_fix" && !paused;
@@ -329,7 +334,7 @@ export function SuggestionChips({ items, onPick, disabled }: { items: string[]; 
 }
 
 /** Visual check result (P17): a quiet line when it looks right, a card with "Fix these" when not. */
-export function VisualCheckNote({ record, checking, failed, onFix, disabled }: { record: TurnRecord; checking?: boolean; failed?: string | null; onFix?: (prompt: string) => void; disabled: boolean }) {
+export function VisualCheckNote({ record, checking, failed, onFix, disabled }: { record: TurnRecord; checking?: boolean; failed?: string | null; onFix?: (prompt: string, action?: TurnAction) => void; disabled: boolean }) {
   const check = record.visualCheck;
   if (!check && checking) {
     return (
@@ -353,7 +358,7 @@ export function VisualCheckNote({ record, checking, failed, onFix, disabled }: {
       </p>
     );
   }
-  const prompt = `Fix these visual problems the preview check found on ${check.width <= 600 ? "a phone" : "a computer"} (${check.width}px wide):\n${check.issues.map((i) => `- ${i}`).join("\n")}`;
+  const prompt = `${VISUAL_FIX_LEAD} on ${check.width <= 600 ? "a phone" : "a computer"} (${check.width}px wide):\n${check.issues.map((i) => `- ${i}`).join("\n")}`;
   return (
     <div className="mt-4 rounded-block bg-canvas p-4" role="status">
       <div className="flex items-start gap-3">
@@ -369,7 +374,7 @@ export function VisualCheckNote({ record, checking, failed, onFix, disabled }: {
       </div>
       {onFix && (
         <div className="mt-3 flex justify-end">
-          <Button variant="chipSelected" size="sm" disabled={disabled} onClick={() => onFix(prompt)}>
+          <Button variant="chipSelected" size="sm" disabled={disabled} onClick={() => onFix(prompt, "repair")}>
             <Wrench />
             Fix it for me
           </Button>
@@ -383,7 +388,7 @@ export function VisualCheckNote({ record, checking, failed, onFix, disabled }: {
  * The builder's own look at the page (D87). A quiet line when it looked right or when it fixed what
  * it saw; a card with "Fix these" only when it saw something and left the page as it was.
  */
-export function ReviewNote({ record, onFix, disabled }: { record: TurnRecord; onFix?: (prompt: string) => void; disabled: boolean }) {
+export function ReviewNote({ record, onFix, disabled }: { record: TurnRecord; onFix?: (prompt: string, action?: TurnAction) => void; disabled: boolean }) {
   const review = record.review;
   if (!review) return null;
   if (review.ok) {
@@ -408,7 +413,7 @@ export function ReviewNote({ record, onFix, disabled }: { record: TurnRecord; on
       </details>
     );
   }
-  const prompt = `Fix these problems you saw when you looked at the page:\n${review.issues.map((i) => `- ${i}`).join("\n")}`;
+  const prompt = `${REVIEW_FIX_LEAD}:\n${review.issues.map((i) => `- ${i}`).join("\n")}`;
   return (
     <div className="mt-4 rounded-block bg-canvas p-4" role="status">
       <div className="flex items-start gap-3">
@@ -424,7 +429,7 @@ export function ReviewNote({ record, onFix, disabled }: { record: TurnRecord; on
       </div>
       {onFix && (
         <div className="mt-3 flex justify-end">
-          <Button variant="chipSelected" size="sm" disabled={disabled} onClick={() => onFix(prompt)}>
+          <Button variant="chipSelected" size="sm" disabled={disabled} onClick={() => onFix(prompt, "repair")}>
             <Wrench />
             Fix it for me
           </Button>
@@ -461,7 +466,7 @@ export function FinishedBuild({
   works: string[];
   later?: string;
   chainId: number;
-  onSuggest?: (prompt: string) => void;
+  onSuggest?: (prompt: string, action?: TurnAction) => void;
   disabled: boolean;
   onUndo?: () => void;
   checking?: boolean;
@@ -577,6 +582,21 @@ export function FinishedBuild({
  * build log and file changes stay on the record (the error card's Logs, the Code tab) but aren't
  * shown here: people found them confusing, and they say nothing someone building an app needs.
  */
+/** D177: a request waiting while GoodBuild's AI account is empty (DESIGN_SYSTEM §4 card, warning dot, no button). */
+export function HeldNotice() {
+  return (
+    <div className="mt-4 rounded-block bg-canvas p-4" role="status">
+      <div className="flex items-start gap-3">
+        <span className="mt-1.5 size-2 shrink-0 rounded-full bg-warning" aria-hidden />
+        <div className="min-w-0">
+          <p className="text-sm font-medium">Waiting to start</p>
+          <p className="text-sm text-grey-600">{AI_PAUSED_HELD}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function TurnView({
   text,
   record,
@@ -593,6 +613,7 @@ export function TurnView({
   continueCost,
   onUndo,
   previewError,
+  held,
 }: {
   text: string;
   record: TurnRecord;
@@ -607,7 +628,7 @@ export function TurnView({
   /** What Continue on a build paused for credits would cost, and what the person has (D138). Latest turn only. */
   continueCost?: ContinueCost;
   /** Set on the latest turn only: shows its suggestion chips. */
-  onSuggest?: (prompt: string) => void;
+  onSuggest?: (prompt: string, action?: TurnAction) => void;
   /** The visual check of this turn's preview is running. */
   checking?: boolean;
   /** Why the visual check of this turn's preview has no result, when it has none. */
@@ -618,6 +639,8 @@ export function TurnView({
   draft?: PlanDraftActions;
   /** Set while the questions are still being written. */
   onSkipPlan?: () => void;
+  /** D177: an empty-AI-account failure whose request is saved to start on its own. */
+  held?: boolean;
 }) {
   const showError = !live && (record.status === "needs_fix" || record.status === "error");
   // The clock runs whenever nothing has been said yet, and starts again at each new step or log line, so a
@@ -678,7 +701,7 @@ export function TurnView({
       {record.intake && <PlanCard intake={record.intake} actions={plan} />}
       {record.mode === "plan" && record.plan && !record.intake && <PlanDraftCard plan={record.plan} actions={!live ? draft : undefined} />}
       {!live && record.status === "ready" && <DeployCard record={record} chainId={chainId} />}
-      {showError && <TurnError record={record} onFix={onFix} disabled={fixDisabled} continueCost={continueCost} previewError={previewError} />}
+      {showError && <TurnError record={record} onFix={onFix} disabled={fixDisabled} continueCost={continueCost} previewError={previewError} held={held} />}
       {!live && record.status === "stopped" && record.mode === "build" && (
         <p className="mt-3 flex items-center gap-2 text-xs text-grey-600" role="status">
           <span className="size-2 shrink-0 rounded-full bg-grey-400" aria-hidden />

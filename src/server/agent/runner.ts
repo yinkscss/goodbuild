@@ -1,3 +1,4 @@
+import { wants } from "./jev";
 import "server-only";
 
 import { and, asc, eq } from "drizzle-orm";
@@ -36,6 +37,7 @@ import { addTokens, formatTokenReport } from "./token-report";
 import { checkpoint, claimTurn, loadFiles, recordUsage, releaseTurn } from "./store";
 import { decideFunding } from "@/server/credits/cap";
 import { alertProviderFunds } from "./provider-alert";
+import { pauseProvider, providerOf } from "./provider-status";
 import { CREDITS_PAUSED_MESSAGE, OutOfCreditsError, ensureHold, fitCall, headroomMicro, worstCaseCallMicro } from "@/server/credits/holds";
 import { fillMiniApp, type MiniAppInfo } from "./kits/mini-app";
 import { formatCredits } from "@/lib/credits-math";
@@ -57,12 +59,13 @@ import {
 } from "./turn-progress";
 import { deliveryContext, milestoneAllows, scopeRefusal } from "./delivery";
 import { milestoneName } from "@/lib/plain-words";
-import { SponsorshipExhaustedError, releaseUnusedSponsorship, sponsorshipCanCall } from "@/server/credits/build-sponsorship";
+import { SponsorshipExhaustedError, sponsorshipCanCall } from "@/server/credits/build-sponsorship";
 import type { DeliveryPlan } from "@/server/db/schema";
 import { Workspace, type FileChange } from "./workspace";
 import { requestGithubSync } from "@/server/github/sync";
 
 import { applyPalette, ensureReadable, paletteById } from "@/lib/palettes";
+import { withLogoIcon } from "./logo-icon";
 import type { PlanIntake, Step, TurnEvent, TurnMode, TurnRecord } from "@/lib/turn-types";
 
 export type { Step, TurnEvent, TurnMode, TurnRecord };
@@ -174,7 +177,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
   let lastAcceptance: FlowResult[] | undefined;
   const open = openWith ? async (files: Record<string, string>) => {
     const flows = acceptanceOn ? readSpec(files)?.acceptance ?? [] : [];
-    const result = await openWith(files, { assets: assetNames, chainId, ...(delivery && job.deliveryIndex !== undefined ? { delivery: { id: delivery.milestones[job.deliveryIndex].id, goal: delivery.goal, verifyWallet: walletDelivered(delivery) } } : {}), ...(flows.length ? { acceptance: { flows } } : {}) });
+    const result = await openWith(files, { assets: assetNames, chainId, ...(delivery && job.deliveryIndex !== undefined ? { delivery: { id: delivery.milestones[job.deliveryIndex].id, goal: delivery.goal, ticTacToe:delivery.ticTacToe, verifyWallet: walletDelivered(delivery) } } : {}), ...(flows.length ? { acceptance: { flows } } : {}) });
     runtimeRan = result.ran;
     lastAcceptance = result.acceptance;
     // Acceptance flows never block a build (owner, 21 Nov 2026): a flow the planner got wrong can't send the
@@ -258,7 +261,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
    */
   let planCursor = 0;
   /** What the builder said works now, and what doesn't yet, from suggest_next (D164). */
-  let builderSaid: { works?: string[]; later?: string } = {};
+  let builderSaid: { works?: string[]; later?: string; completion?: "complete" | "remaining" } = {};
   const step = (input: Step) => {
     const i = record.steps.findIndex((x) => x.id === input.id);
     const parent = input.parent ?? (i >= 0 ? record.steps[i].parent : undefined) ?? (stepParent && stepParent !== input.id ? stepParent : undefined);
@@ -313,7 +316,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     assetNames = setup.assetNames;
     chainId = setup.chainId;
     packagesV2 = setup.harness === "v2" && input.mode === "build";
-    const ws = new Workspace(setup.baseFiles, { v2: packagesV2 });
+    const ws = new Workspace(setup.baseFiles, { v2: packagesV2, typedSpec: Boolean(setup.decision) });
     turnWs = ws;
     workspace = ws;
     if (job.deliveryIndex !== undefined) delivery = (await db.select().from(buildDeliveries).where(eq(buildDeliveries.projectId, input.projectId)))[0]?.plan;
@@ -328,7 +331,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     acceptanceOn = v2;
     let convo: ChatMessage[] = [{ role: "system", content: intake ? INTAKE_PROMPT : systemPrompt(input.mode, setup.canAsk === true, v2) }, ...rehydrate(setup.prefix, images)];
     // The tools of the phase that is running (v2's spec call has its own).
-    let tools = intake ? intakeTools(setup.request) : input.mode === "plan" ? planTools(setup.canAsk === true) : v2 ? V2_BUILD_TOOLS : BUILD_TOOLS;
+    let tools = intake ? intakeTools(setup.request, setup.decision) : input.mode === "plan" ? planTools(setup.canAsk === true) : v2 ? V2_BUILD_TOOLS : BUILD_TOOLS;
     /** v2: where the running phase began. Older file bodies and long results are trimmed from what is sent (requestView). */
     let trimBefore = 0;
     let specWritten = false;
@@ -534,10 +537,10 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     };
 
     /** Record next-step chips from suggest_next. Fix passes (quiet) don't change them. */
-    const takeSuggestions = (items: string[] | undefined, quiet: boolean, said?: { works?: string[]; later?: string }) => {
+    const takeSuggestions = (items: string[] | undefined, quiet: boolean, said?: { works?: string[]; later?: string; completion?: "complete" | "remaining" }) => {
       if (!items?.length || quiet) return;
       // The latest accepted reply speaks for the build, even when it leaves the list out (D164).
-      builderSaid = { works: said?.works, later: said?.later };
+      builderSaid = { completion:said?.completion, works: said?.works, later: said?.later };
       record.suggestions = items;
       out({ type: "suggestions", items });
     };
@@ -655,7 +658,11 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
             step({ id: "plan", label: "Plan", detail: outcome.plan.summary || `${outcome.plan.steps.length} steps`, status: "done" });
           }
           if (outcome.change) {
-            if (record.plan && planCursor < record.plan.steps.length) planCursor = Math.max(planCursor, planStepFor(record.plan.steps, outcome.change.path) ?? planCursor);
+            if (record.plan && planCursor < record.plan.steps.length) {
+              const step = typeof args.step === "number" && Number.isInteger(args.step) && args.step > 0 && args.step <= record.plan.steps.length ? args.step - 1 : undefined;
+              const matched = setup.decision ? step : step ?? planStepFor(record.plan.steps, outcome.change.path);
+              planCursor = Math.max(planCursor, matched ?? planCursor);
+            }
             record.changes.push(outcome.change);
             out({ type: "file", change: outcome.change });
             log(`→ ${outcome.change.op === "delete" ? "deleted" : "wrote"} ${outcome.change.path}`);
@@ -923,7 +930,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     const specAndContracts = async (): Promise<PhaseOptions["gate"]> => {
       const hasContracts = hasContractsIn(ws.files);
       const contractsAllowed = !delivery || job.deliveryIndex === undefined || delivery.milestones[job.deliveryIndex]?.id === "payments";
-      const wantSpec = wantsSpec({ spec: readSpec(ws.files), milestone: job.deliveryIndex !== undefined, contractsAllowed, hasContracts, firstBuild: setup.firstBuild, request: setup.request });
+      const wantSpec = wantsSpec({ spec: readSpec(ws.files), milestone: job.deliveryIndex !== undefined, contractsAllowed, hasContracts, firstBuild: setup.firstBuild, request: setup.request, contractChange:setup.decision ? setup.decision.signals.payments === "requested" : undefined });
       if (!wantSpec || atFreeCeiling()) return undefined;
       step({ id: "spec", label: "Planning the app", status: "running" });
       tools = SPEC_TOOLS;
@@ -991,10 +998,10 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     if (intake) {
       const replied = await callModel(TIER_FOR.plan);
       const asked = replied.find((c) => c.name === "ask_questions");
-      const parsed = asked ? parseIntake(asked.arguments, setup.request) : null;
+      const parsed = asked ? parseIntake(asked.arguments, setup.request, setup.decision) : null;
       // Plain words with no tool call are the model answering a question or refusing: leave those be.
       if (parsed || asked || cutOff || !text.trim()) {
-        record.intake = parsed ?? fallbackIntake(setup.request);
+        record.intake = parsed ?? fallbackIntake(setup.request, setup.decision);
         if (!text.trim()) {
           text = "A few quick questions so I build the right thing.";
           out({ type: "text_set", text });
@@ -1052,7 +1059,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       const passes = moreBuildPasses();
       for (let pass = 1; pass <= passes; pass++) {
         const last = replies.at(-1);
-        if (!last || !soundsUnfinished(last) || atFreeCeiling()) break;
+        if (!last || !(setup.decision && builderSaid.completion ? builderSaid.completion === "remaining" : soundsUnfinished(last)) || atFreeCeiling()) break;
         stopIfRequested();
         log(`· the builder said the plan isn't finished; building the rest (pass ${pass + 1})`);
         step({ id: `more:${pass}`, label: "Building the rest of the plan", detail: `pass ${pass + 1} of ${passes + 1}`, status: "running" });
@@ -1068,7 +1075,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
         } else if (text !== textBefore) {
           out({ type: "text_set", text });
         }
-        step({ id: `more:${pass}`, label: "Building the rest of the plan", detail: fresh && !soundsUnfinished(fresh) ? "done" : `pass ${pass + 1} of ${passes + 1}`, status: "done" });
+        step({ id: `more:${pass}`, label: "Building the rest of the plan", detail: fresh && !(setup.decision && builderSaid.completion ? builderSaid.completion === "remaining" : soundsUnfinished(fresh)) ? "done" : `pass ${pass + 1} of ${passes + 1}`, status: "done" });
         if (!done || !fresh) break;
       }
     }
@@ -1373,10 +1380,10 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
             ? error.message
             : "The build failed unexpectedly.";
     if (error instanceof ProviderFundsError) {
-      alertProviderFunds(message);
-      // Our empty account, not their build: an allowance that paid for nothing goes back.
-      const jobId = job.jobId;
-      if (funding === "platform" && jobId && !record.sponsoredMicro) await job.commit((tx) => releaseUnusedSponsorship(tx, jobId)).catch(rethrowLease);
+      // D177: pause new builds for every worker; the first pause tells the owner. If the pause can't be written,
+      // fall back to D166's per-worker alert. The worker then holds this build for later or gives its allowance back.
+      const paused = await pauseProvider(db, providerOf(message), message).then(() => true, () => false);
+      if (!paused) alertProviderFunds(message);
     }
     await persistDraft(message).catch(rethrowLease);
     record.jobId = job.jobId;
@@ -1455,6 +1462,13 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       });
     }
     record.jobId = job.jobId;
+    if (job.decision && job.decision.chargedMicro) {
+      const {model,response,chargedMicro} = job.decision;
+      addTokens((record.tokens ??= []),"classification",{model,inputTokens:response.usage.input_tokens,outputTokens:response.usage.output_tokens,cachedInputTokens:0});
+      if(funding==="platform") record.sponsoredMicro=(record.sponsoredMicro??0)+(chargedMicro??0);
+      else record.chargedMicro+=chargedMicro??0;
+      emit({type:"usage",chargedMicro: funding==="platform" ? 0 : chargedMicro??0,totalChargedMicro:record.chargedMicro,model,inputTokens:response.usage.input_tokens,outputTokens:response.usage.output_tokens,cachedInputTokens:0});
+    }
     emit({ type: "start", messageId: assistantId, mode: input.mode });
 
     let files = job.draft?.baseVersion === project.currentVersion ? job.draft.files : await loadFiles(db, input.projectId);
@@ -1474,6 +1488,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     if (isIntake) {
       const result: TurnSetup = {
         v: TURN_SETUP_VERSION,
+        ...(job.decision ? {decision:job.decision} : {}),
         assistantId,
         userMessageId,
         request,
@@ -1484,7 +1499,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
         chainId: project.chainId,
         contractOptions: {},
         baseFiles: files,
-        prefix: [{ role: "user", content: intakeContext(request, assets) }],
+        prefix: [{ role: "user", content: intakeContext(request, assets, job.decision) }],
         imageAssetIds: [],
         recordAtStart: structuredClone(record),
         text,
@@ -1506,6 +1521,8 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     const canAsk = input.mode === "plan" && !askedJustBefore(chat.filter((m) => m.id !== assistantId && m.id !== userMessageId));
     const chosenPalette = firstBuild ? paletteById(brief.paletteId) : undefined;
     if (chosenPalette && files["public/index.html"] !== undefined) files["public/index.html"] = applyPalette(files["public/index.html"], chosenPalette);
+    // D176: an uploaded logo is the tab icon unless the app already sets one.
+    if (input.mode === "build" && files["public/index.html"] !== undefined) files["public/index.html"] = withLogoIcon(files["public/index.html"], assets);
 
     // Kits (D71): one the request clearly asks for is on before the builder starts, so its packages and
     // starter files are there even if the builder forgets to ask. In place before the workspace
@@ -1522,10 +1539,15 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       for (const path of Object.keys(files)) if (path.startsWith("contracts/") || path.startsWith(PLATFORM_DIR)) delete files[path];
     }
     // v2 (D152): capability kits (motion, dashboard) are the builder's choice, not turned on by request words.
-    const newKits = input.mode === "build" ? detectKits(kitWords, files).filter((k) => (!localOnly || !Object.keys(k.files).some((p) => p.startsWith("contracts/"))) && !(v2 && V2_OPTIONAL_KITS.includes(k.id))) : [];
+    const intent = job.decision;
+    const kitFeatures = { "game-2d":"game", "three-d":"threeD", "mini-app":"miniPay", "dao-vault":"vault", "dashboard":"dashboard", "motion":"motion" } as const;
+    const candidates = () => intent ? Object.entries(kitFeatures)
+      .filter(([,feature])=>intent.signals[feature] === "requested")
+      .map(([id])=>kitById(id)!).filter(k=>k && !kitsOf(files).some(active=>active.id === k.id)) : detectKits(kitWords, files);
+    const newKits = input.mode === "build" ? candidates().filter((k) => (!localOnly || !Object.keys(k.files).some((p) => p.startsWith("contracts/"))) && !(v2 && V2_OPTIONAL_KITS.includes(k.id))) : [];
     // A Yes to the plan's MiniPay question (D88) turns the MiniPay kit on, whatever its words.
     const miniAppKit = kitById("mini-app");
-    if (input.mode === "build" && brief.miniPay && miniAppKit && !kitsOf(files).includes(miniAppKit) && !newKits.includes(miniAppKit)) newKits.push(miniAppKit);
+    if (input.mode === "build" && intent?.signals.miniPay !== "excluded" && brief.miniPay && miniAppKit && !kitsOf(files).includes(miniAppKit) && !newKits.includes(miniAppKit)) newKits.push(miniAppKit);
     // A game with a leaderboard that works in MiniPay (D93): MiniPay allows no sign-in signature, so its
     // players post to the leaderboard contract. That means a deploy, so only these games get it.
     const willHave = (id: string) => kitsOf(files).some((k) => k.id === id) || newKits.some((k) => k.id === id);
@@ -1539,12 +1561,12 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     // A 3D game (D113) gets the game kit too: its probe, building blocks, sound, leaderboard and shop work in a
     // Scene3D the same way, so "a 3D maze game" isn't left without them just because its words missed the 2D list.
     const game2dKit = kitById("game-2d");
-    if (input.mode === "build" && game2dKit && willHave("three-d") && !willHave("game-2d") && isGameRequest(kitWords)) newKits.push(game2dKit);
+    if (input.mode === "build" && game2dKit && willHave("three-d") && !willHave("game-2d") && wants(intent, "game", () => isGameRequest(kitWords))) newKits.push(game2dKit);
     const boardKit = kitById("game-board");
-    if (input.mode === "build" && brief.leaderboard && boardKit && willHave("game-2d") && willHave("mini-app") && !willHave("game-board")) newKits.push(boardKit);
+    if (input.mode === "build" && intent?.signals.leaderboard !== "excluded" && brief.leaderboard && boardKit && willHave("game-2d") && willHave("mini-app") && !willHave("game-board")) newKits.push(boardKit);
     // A game that sells things (D95): the tested G$ shop, by the words of the request or the plan's answers.
     const shopKit = kitById("game-shop");
-    if (input.mode === "build" && shopKit && willHave("game-2d") && !willHave("game-shop") && SHOP_WORDS.test(kitWords)) newKits.push(shopKit);
+    if (input.mode === "build" && shopKit && willHave("game-2d") && !willHave("game-shop") && wants(intent, "shop", () => SHOP_WORDS.test(kitWords))) newKits.push(shopKit);
     // A gallery template is a designed page (D60): it gets the motion kit (D84) whatever its words say.
     const motionKit = kitById("motion");
     if (input.mode === "build" && firstBuild && motionKit && templateBriefFor(project.templateId) && !newKits.includes(motionKit)) newKits.push(motionKit);
@@ -1602,6 +1624,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
 
     const upgradeable = await isUpgradeableProject(db, input.projectId);
     const ctx = contextWithPicks({
+      relevantFiles: intent?.reusedFrom ? undefined : intent?.relevantFiles,
       files,
       request,
       // Evals only: shrink the budget to exercise search on a mid-size project (HARNESS.md).
@@ -1634,6 +1657,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     if (v2) log("harness: v2 (D152)");
     const result: TurnSetup = {
       v: TURN_SETUP_VERSION,
+        ...(job.decision ? {decision:job.decision} : {}),
       assistantId,
       userMessageId,
       request,
@@ -1644,7 +1668,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       priorStatus: finalStatus,
       assetNames: names,
       chainId: project.chainId,
-      contractOptions: { gdToken: mentionsGd(userText), allowNative: mentionsNativeCelo(userText), ...(upgradeable ? { upgradeable } : {}), ...(v2 ? { allowRequire: true } : {}) },
+      contractOptions: { gdToken: intent?.signals.gd === "excluded" ? false : intent?.signals.gd === "requested" || mentionsGd(userText), allowNative: intent?.signals.native === "excluded" ? false : intent?.signals.native === "requested" || mentionsNativeCelo(userText), ...(upgradeable ? { upgradeable } : {}), ...(v2 ? { allowRequire: true } : {}) },
       baseFiles: files,
       prefix,
       imageAssetIds,
@@ -1726,8 +1750,8 @@ ${JSON.stringify(spec, null, 2).slice(0, 12_000)}`;
  * milestone reuses the spec and plans again only when it brings contracts the spec doesn't have yet. Outside
  * milestones, a change to the contracts re-plans.
  */
-export function wantsSpec(o: { spec: AppSpec | null; milestone: boolean; contractsAllowed: boolean; hasContracts: boolean; firstBuild: boolean; request: string }): boolean {
-  const contractChange = o.hasContracts && CONTRACT_WORK.test(o.request);
+export function wantsSpec(o: { spec: AppSpec | null; milestone: boolean; contractsAllowed: boolean; hasContracts: boolean; firstBuild: boolean; contractChange?: boolean; request: string }): boolean {
+  const contractChange = o.hasContracts && (o.contractChange ?? CONTRACT_WORK.test(o.request));
   if (!o.spec) return o.milestone || o.firstBuild || contractChange;
   return o.milestone ? o.contractsAllowed && !o.spec.contracts.length : contractChange;
 }

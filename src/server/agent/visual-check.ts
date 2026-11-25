@@ -70,7 +70,10 @@ export async function runVisualCheck(args: {
   if (!turn) return null;
   const request = rows.slice(0, rows.indexOf(turn)).reverse().find((m) => m.role === "user")?.content ?? "";
   // "Fix these" or "Start building" doesn't say it's a game: the project's first messages do.
-  const game = isGameRequest(rows.filter((m) => m.role === "user").map((m) => m.content).join("\n"));
+  const prior = rows.slice(0,rows.indexOf(turn)).filter(m=>m.role==="user");
+  // This screenshot's own request decides; if it has no classification, the words of the whole conversation do.
+  const classification = (prior.at(-1)?.meta?.jev as {decision?:{displayKind?:string}} | undefined)?.decision?.displayKind;
+  const game = classification ? classification === "game" : isGameRequest(prior.map(m=>m.content).join("\n"));
   const image = await visionImage(args.png, mime);
   let charged = 0;
   // Outside any turn, so who funds it is decided now (D48).

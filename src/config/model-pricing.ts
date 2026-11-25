@@ -22,6 +22,8 @@ export interface ModelPrice {
 }
 
 export const MODEL_PRICES: ModelPrice[] = [
+  // TypeSafe standard pricing, checked 25 Nov 2026: https://help.typesafe.ai/articles/5187202169-how-much-does-jev-cost
+  { match: /^jev(?:-|$)/i, label: "Jev", inputPerMTok: 0.042, cachedInputPerMTok: 0.042, outputPerMTok: 0 },
   { match: /claude-sonnet-5-5/, label: "Claude Sonnet 5.5", inputPerMTok: 2, cachedInputPerMTok: 0.1, outputPerMTok: 10, cacheWritePerMTok: 2.5 },
   { match: /deepseek-(flash|v4-flash|chat)/, label: "DeepSeek Flash", inputPerMTok: 0.3, cachedInputPerMTok: 0.006, outputPerMTok: 1.2 },
 ];

@@ -23,8 +23,9 @@ import * as registrySchema from "./registry-schema";
 import * as referralSchema from "./referral-schema";
 
 import * as ambassadorSchema from "./ambassador-schema";
+import * as providerSchema from "./provider-schema";
 
-const schema = { ...coreSchema, ...deploySchema, ...publishSchema, ...appDataSchema, ...settingsSchema, ...onchainCreditsSchema, ...creditQuotesSchema, ...githubSchema, ...hackathonSchema, ...gasGrantSchema, ...referralSchema, ...registrySchema, ...ambassadorSchema };
+const schema = { ...coreSchema, ...deploySchema, ...publishSchema, ...appDataSchema, ...settingsSchema, ...onchainCreditsSchema, ...creditQuotesSchema, ...githubSchema, ...hackathonSchema, ...gasGrantSchema, ...referralSchema, ...registrySchema, ...ambassadorSchema, ...providerSchema };
 
 /** Driver-agnostic handle: postgres-js in production, PGlite in dev and tests. */
 export type Db = PgDatabase<PgQueryResultHKT, typeof schema>;
