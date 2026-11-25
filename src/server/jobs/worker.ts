@@ -13,7 +13,9 @@ import { LeaseLostError } from "@/server/agent/turn-progress";
 import type { TurnEvent, TurnMode } from "@/lib/turn-types";
 import { nameProject } from "@/server/agent/project-name";
 import { checkAiAllowance } from "@/server/credits/cap";
-import { SPONSORSHIP_EXHAUSTED_MESSAGE } from "@/server/credits/build-sponsorship";
+import { SPONSORSHIP_EXHAUSTED_MESSAGE, releaseUnusedSponsorship } from "@/server/credits/build-sponsorship";
+import { isProviderFundsMessage } from "@/server/agent/model";
+import { runProviderChecks } from "@/server/agent/provider-status";
 import { MAX_ATTEMPTS, RENEW_MS, appendEvents, checkHolds, claimJob, failJob, jobContext, renewLease, startTurn, sweep } from "./jobs";
 
 /** Jobs one worker runs at once (different projects; one per project is enforced by the DB). */
@@ -66,6 +68,8 @@ export interface WorkerOptions {
   /** Cheap model with no thinking, to name a project on its first build. Without it, none is named. */
   namer?: () => ModelClient;
   concurrency?: number;
+  /** Tests: don't probe AI providers or read balances on each tick. */
+  skipProviderChecks?: boolean;
   /** Turn checks (tests). */
   deps?: Partial<Parameters<typeof runTurn>[0]>;
 }
@@ -85,6 +89,7 @@ export class TurnWorker {
   private lastSweep = 0;
   /** From when the worker started, so it can pick up crashed builds before anything counts them as stuck. */
   private lastHoldCheck = Date.now();
+  private lastProviderCheck = 0;
   private loop: Promise<void> | null = null;
 
   constructor(private readonly opts: WorkerOptions) {}
@@ -123,6 +128,12 @@ export class TurnWorker {
     if (Date.now() - this.lastHoldCheck > 60_000) {
       this.lastHoldCheck = Date.now();
       await checkHolds(db).catch((e) => console.warn(`[worker] the check on holds failed: ${(e as Error).message}`));
+    }
+    // D177: probe a paused AI account and read DeepSeek's balance. Each check is claimed in the database, so
+    // across all workers it runs once per interval; this only decides how often this one asks.
+    if (!this.opts.skipProviderChecks && Date.now() - this.lastProviderCheck > 30_000) {
+      this.lastProviderCheck = Date.now();
+      await runProviderChecks(db).catch((e) => console.warn(`[worker] provider check failed: ${(e as Error).message}`));
     }
     const started: TurnJob[] = [];
     while (this.running.size < (this.opts.concurrency ?? (Number(process.env.TURN_CONCURRENCY) || CONCURRENCY))) {
@@ -220,7 +231,10 @@ export class TurnWorker {
         { projectId: job.projectId, userId: job.userId, mode: job.mode as TurnMode, userMessageId: job.userMessageId },
         (e) => sink.push(e),
       );
-      if (!lost) await continueOnCredits(db, job, record);
+      if (!lost) {
+        await continueOnCredits(db, job, record);
+        await holdAfterProviderFunds(db, job, record);
+      }
     } catch (e) {
       if (!(e instanceof LeaseLostError) && !lost) {
         console.warn(`[worker] job ${job.id} failed: ${(e as Error).message}`);
@@ -252,6 +266,38 @@ export async function continueOnCredits(db: Db, job: Pick<TurnJob, "id" | "proje
     console.warn(`[worker] job ${job.id} couldn't continue on credits: ${(e as Error).message}`);
     return false;
   }
+}
+
+/**
+ * A build that failed because GoodBuild's AI account was empty (D177) and spent nothing is queued again, once, to
+ * start on its own when the account works: its free allowance moves to the re-run, or a credit build sets credit
+ * aside again (nothing is charged). If it can't be (a re-run that failed again, other builds waiting, no credits),
+ * an unspent free allowance is given back as in D166 and the card stays. Returns whether a re-run was queued.
+ */
+export async function holdAfterProviderFunds(
+  db: Db,
+  job: Pick<TurnJob, "id" | "projectId" | "userId" | "funding" | "retryOfJobId">,
+  record: { status: string; error?: string; chargedMicro?: number; sponsoredMicro?: number },
+  env: Record<string, string | undefined> = process.env,
+): Promise<boolean> {
+  if (record.status !== "error" || !isProviderFundsMessage(record.error ?? "")) return false;
+  const release = async () => {
+    if (job.funding === "platform") await releaseUnusedSponsorship(db, job.id).catch(() => false);
+    return false;
+  };
+  if ((record.chargedMicro ?? 0) > 0 || (record.sponsoredMicro ?? 0) > 0) return release();
+  // A held request runs once: a re-run (or a retry of an empty-account failure) that fails again isn't held again.
+  if (job.retryOfJobId) {
+    const [prior] = await db.select({ error: turnJobs.error }).from(turnJobs).where(eq(turnJobs.id, job.retryOfJobId));
+    if (prior && isProviderFundsMessage(prior.error ?? "")) return release();
+  }
+  try {
+    const started = await startTurn(db, { projectId: job.projectId, userId: job.userId, mode: "build", retryOfJobId: job.id, held: true }, env);
+    if ("job" in started) return true;
+  } catch (e) {
+    console.warn(`[worker] job ${job.id} couldn't be held for later: ${(e as Error).message}`);
+  }
+  return release();
 }
 
 const g = globalThis as unknown as { __gbTurnWorker?: TurnWorker };

@@ -36,6 +36,7 @@ import { addTokens, formatTokenReport } from "./token-report";
 import { checkpoint, claimTurn, loadFiles, recordUsage, releaseTurn } from "./store";
 import { decideFunding } from "@/server/credits/cap";
 import { alertProviderFunds } from "./provider-alert";
+import { pauseProvider, providerOf } from "./provider-status";
 import { CREDITS_PAUSED_MESSAGE, OutOfCreditsError, ensureHold, fitCall, headroomMicro, worstCaseCallMicro } from "@/server/credits/holds";
 import { fillMiniApp, type MiniAppInfo } from "./kits/mini-app";
 import { formatCredits } from "@/lib/credits-math";
@@ -57,7 +58,7 @@ import {
 } from "./turn-progress";
 import { deliveryContext, milestoneAllows, scopeRefusal } from "./delivery";
 import { milestoneName } from "@/lib/plain-words";
-import { SponsorshipExhaustedError, releaseUnusedSponsorship, sponsorshipCanCall } from "@/server/credits/build-sponsorship";
+import { SponsorshipExhaustedError, sponsorshipCanCall } from "@/server/credits/build-sponsorship";
 import type { DeliveryPlan } from "@/server/db/schema";
 import { Workspace, type FileChange } from "./workspace";
 import { requestGithubSync } from "@/server/github/sync";
@@ -1373,10 +1374,10 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
             ? error.message
             : "The build failed unexpectedly.";
     if (error instanceof ProviderFundsError) {
-      alertProviderFunds(message);
-      // Our empty account, not their build: an allowance that paid for nothing goes back.
-      const jobId = job.jobId;
-      if (funding === "platform" && jobId && !record.sponsoredMicro) await job.commit((tx) => releaseUnusedSponsorship(tx, jobId)).catch(rethrowLease);
+      // D177: pause new builds for every worker; the first pause tells the owner. If the pause can't be written,
+      // fall back to D166's per-worker alert. The worker then holds this build for later or gives its allowance back.
+      const paused = await pauseProvider(db, providerOf(message), message).then(() => true, () => false);
+      if (!paused) alertProviderFunds(message);
     }
     await persistDraft(message).catch(rethrowLease);
     record.jobId = job.jobId;

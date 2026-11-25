@@ -2197,3 +2197,61 @@ The owner approved implementing all five parts of the first-build fix and openin
 - **Not changed:** codes, the bonus, the cap, and the hackathon referral (D136), which stays separate. No leaderboard or ranks yet.
 - **Checked:** unit test for the status words; lint on touched files. **Not checked** in a browser or on a phone.
 
+### D177. An empty AI account pauses builds and holds requests to start on their own; a low-balance alert; a weekly funnel (25 Nov 2026; amends D166)
+- **Decided by:** the owner, 25 Nov 2026, approving the reliability plan drawn from production data (5 to 25 Nov, 64 projects): "Proceed with all." The owner then approved this build's plan with the pause per AI provider: "Approve both". Built by Claude. The 5 USD alert line and the 3- and 5-minute check intervals are Claude's picks.
+- **Why:** on 23 Nov the DeepSeek account hit zero and 48 builds failed. One person tried 12 times. D166 named the cause and alerted the owner, but each new request still failed, and the card said "try again a little later".
+- **The owner accepted the plan's four recommendations (25 Nov 2026):**
+  1. Alert the owner before the account is empty, and when it is empty pause new builds with a friendly card and keep each request to run later (this decision).
+  2. No AI inside generated apps yet. The builder declines such a request plainly.
+  3. Staked games only as pure-skill games with a fixed entry. This is already the builder's rule.
+  4. Reminders later. A calendar for now.
+- **Pause and hold:**
+  - A new table, `provider_status` (migration 0036), has one row per provider (`deepseek`, `anthropic`). Every worker reads it, so a pause set by one worker holds everywhere.
+  - The first `ProviderFundsError` sets `paused_at` and sends one Telegram message per pause, across all workers. D166's per-worker 30-minute alert is now only the fallback, for when the pause can't be written.
+  - **Per provider** (`JOB_WAITS`). Every build starts on DeepSeek (TIER_FOR), so while DeepSeek is paused `claimJob` starts no queued job. Anthropic only fixes what DeepSeek couldn't, so while Anthropic is paused only the re-run of a build that failed on Anthropic waits, and other builds keep running. A crashed build already under way always resumes.
+  - New requests are accepted as usual (same funding checks) and wait in the queue.
+  - `checkHolds` doesn't count a queued job as stuck while paused, or for 6 hours after the pause ends. The 23 Nov outage lasted about 6 hours, as long as the stuck limit.
+- **The build that hit the empty account** is re-run once, automatically, by the worker (`holdAfterProviderFunds`). This happens only if it spent nothing; D166 found 0 spent on every 23 Nov failure.
+  - The re-run is a retry job that keeps the failed build's funding. Its unspent free allowance moves across whole (the same `build_sponsorships` row), or a credit build sets credit aside again through `decideStart`. Nothing is charged while it waits.
+  - **Cap:** one re-run per failure (the existing one-retry-per-job rule). A re-run, or a retry of an empty-account failure, that fails the same way again isn't held again. It shows the plain card.
+  - If the build can't be held (it spent something, other requests were already waiting on the project, or there are no credits for a hold), D166's handling stands: an unspent free allowance is given back, and the card stays.
+  - **What people see:** a held request shows "Waiting to start" and D166's wording, followed by "Your request is saved and will start on its own." (`AI_PAUSED_HELD`). It doesn't show a "Thinking" clock. The failed build's card says the same and has no "Fix it for me" button. The workspace state has `aiPaused`, true when one of the project's queued requests is waiting.
+- **Starting again:**
+  - Every 3 minutes, one process checks the paused provider. The check is claimed in the database, so it runs once in total even with the inline worker and `pnpm worker` both live.
+  - DeepSeek: the free balance endpoint. Builds start again only when it reports `is_available` and at least 0.5 USD (3.5 CNY), so the held builds don't all start and empty it again.
+  - Anthropic: a 1-token call.
+  - When the check passes, held builds start in queue order and the owner gets "builds are back on". `pnpm provider:resume [deepseek|anthropic]` restarts at once.
+- **Early warning:**
+  - Every 5 minutes, `GET https://api.deepseek.com/user/balance` (Bearer key). The fields are from DeepSeek's API docs (api-docs.deepseek.com/api/get-user-balance; amounts are strings; currency USD or CNY).
+  - Below **5 USD** (or 35 CNY), the owner gets one Telegram message. It is sent again only after a top-up brings the balance back above the line. `DEEPSEEK_LOW_BALANCE` overrides the line.
+  - Why 5 USD: a DeepSeek build costs a few US cents, so 5 USD is many builds of warning. This was not measured against production spend; docs/DEPLOY.md has the query to size it.
+  - `is_available: false` pauses builds before any build fails.
+  - Anthropic has no balance check, because none is assumed to exist.
+- **Anthropic out of credit:**
+  - Its documented 402 `billing_error` was already caught by D166's 402 rule.
+  - "billing_error" or "credit balance is too low" in the error body now also counts. The second phrase is from memory, not Anthropic's docs: **UNVERIFIED**.
+- **Weekly funnel** (`pnpm funnel`, `scripts/funnel-report.ts`, `src/server/reports/funnel.ts`):
+  - It is read-only, inside a READ ONLY transaction.
+  - Projects are counted by the week they were started (cohorts, Mondays UTC): started, got a version, published, deployed a contract.
+  - Build errors are counted per week queued, grouped by cause in plainError's buckets, with jobs, projects and people for each.
+  - It never prints prompts or error text. A test plants a prompt and checks it never appears.
+  - Usage is in docs/DEPLOY.md.
+- **Checked:** tests on PGlite cover:
+  - pause and hold;
+  - the allowance moving across;
+  - one retry per failure;
+  - nothing starting while paused;
+  - the stuck check leaving held jobs alone;
+  - restart and the second-failure cap;
+  - alert once, re-arm, `is_available` pause, the resume floor, CNY;
+  - the Anthropic probe;
+  - the cards;
+  - the funnel.
+
+  **UNVERIFIED:** the live DeepSeek balance call and Anthropic probe; the Telegram messages on the real chat; the held card in a browser while signed in; the migration on the live database.
+- **For the owner:**
+  - A credit build that is held keeps its credit set aside (not spent) while it waits. If the person stops it, the credit goes back as usual.
+  - Whether an empty DeepSeek account should fall back to Sonnet (D166's open question) is still open. Holding makes it less urgent.
+  - The per-provider trade-off: while Anthropic is empty, new builds still run on DeepSeek. One that reaches a Sonnet fix step fails there, possibly after spending, and is then not held: it shows D166's card. Only a failure that spent nothing is re-run.
+  - If DeepSeek's balance can't be read (the endpoint changed, say), the 3-minute check falls back to a 1-token DeepSeek call, so a pause still clears by itself. A failed balance read is logged with its HTTP status.
+  - Stopping a held request gives back the free allowance set aside for it, and "Fix it for me" works again afterwards.
