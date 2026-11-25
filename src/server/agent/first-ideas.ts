@@ -34,14 +34,16 @@ export async function answerWithIdeas(db: Db, input: { projectId: string; text: 
     const [job] = await tx.select({ id: turnJobs.id }).from(turnJobs).where(and(eq(turnJobs.projectId, input.projectId), ne(turnJobs.status, "cancelled"))).limit(1);
     if (job) return null;
     const replies = await tx.select({ meta: messages.meta }).from(messages).where(and(eq(messages.projectId, input.projectId), eq(messages.role, "assistant")));
-    if (replies.some((m) => m.meta?.ideas === true)) return null;
+    const shown = replies.find((m) => m.meta?.ideas === true);
+    // The same message sent twice (two tabs, a reload): it was answered already, so don't plan or build it now.
+    if (shown) return input.userMessageId && shown.meta?.ideasFor === input.userMessageId ? input.userMessageId : null;
     // now() is the same for both rows in one transaction: give the reply its own later time so it sorts after.
     const at = Date.now();
     let messageId = input.userMessageId;
     if (messageId) await tx.update(messages).set({ status: "done" }).where(and(eq(messages.id, messageId), eq(messages.projectId, input.projectId)));
     else [{ id: messageId }] = await tx.insert(messages).values({ projectId: input.projectId, role: "user", content: input.text, status: "done", meta: { mode: "build" }, createdAt: new Date(at) }).returning({ id: messages.id });
     const game = /\bgames?\b/i.test(input.text);
-    const record: TurnRecord & { ideas: true } = { kind: "turn", mode: "build", steps: [], log: [], changes: [], chargedMicro: 0, status: "answered", suggestions: game ? GAME_IDEAS : APP_IDEAS, ideas: true };
+    const record: TurnRecord & { ideas: true; ideasFor: string } = { kind: "turn", mode: "build", steps: [], log: [], changes: [], chargedMicro: 0, status: "answered", suggestions: game ? GAME_IDEAS : APP_IDEAS, ideas: true, ideasFor: messageId! };
     await tx.insert(messages).values({ projectId: input.projectId, role: "assistant", content: IDEAS_REPLY, status: "done", meta: record as unknown as Record<string, unknown>, createdAt: new Date(at + 1) });
     return messageId!;
   });

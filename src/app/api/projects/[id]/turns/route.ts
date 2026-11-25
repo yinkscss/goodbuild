@@ -56,7 +56,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/projects/[i
     }
     const action = parsed.data.action ?? actionFromText(prompt);
     // A first message that asks what to build, or names nothing to build, gets three ready ideas: no job, no credits (D173).
-    if (!action && mode === "build" && !skipPlan) {
+    if (!action && mode === "build" && !skipPlan && !parsed.data.assetIds?.length) {
       const text = prompt ?? owned.messages.find((m) => m.id === userMessageId)?.content ?? "";
       const answered = await answerWithIdeas(db, { projectId: id, text, userMessageId });
       if (answered) return NextResponse.json({ messageId: answered, status: "answered" }, { status: 200 });

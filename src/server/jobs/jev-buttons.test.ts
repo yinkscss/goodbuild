@@ -153,6 +153,9 @@ describe("first-message ideas (D173)", () => {
     expect(reply.createdAt.getTime()).toBeGreaterThan(rows.find((m) => m.role === "user")!.createdAt.getTime());
     expect(rows.find((m) => m.role === "user")?.status).toBe("done");
     expect(await db.select().from(turnJobs)).toHaveLength(0);
+    // The same message sent twice is the same answer, not a build.
+    expect(await answerWithIdeas(db, { projectId: project.id, text: first.content, userMessageId: first.id })).toBe(first.id);
+    expect((await db.select().from(messages).where(eq(messages.projectId, project.id))).filter((m) => m.role === "assistant")).toHaveLength(1);
     // Asked again: it plans or builds as usual.
     expect(await answerWithIdeas(db, { projectId: project.id, text: "I want to make a G dollar app" })).toBeNull();
   });

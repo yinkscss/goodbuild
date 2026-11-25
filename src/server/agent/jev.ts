@@ -119,7 +119,7 @@ export type JevDecision = {
   ms: number;
   chargedMicro?: number;
   /** Shadow signals' probabilities, when the call asked them (JEV_ROUTING=shadow only). */
-  shadow?: Record<ShadowSignal, number>;
+  shadow?: Partial<Record<ShadowSignal, number>>;
   /** Set when a button turn reused an earlier message's decision (D173): the id of that message. */
   reusedFrom?: string;
 };
@@ -154,7 +154,13 @@ export async function classifyTurn(
     fit >= thresholds.high && (kind.confidence ?? 0) >= thresholds.high ? (kind.choice as ContractKind) : "custom";
   const relevantFiles = (state.files ?? []).filter((_, index) => noul(response, "file_" + index) >= thresholds.high);
   const shadow = opts.shadow
-    ? (Object.fromEntries(Object.keys(shadowSignals).map((id) => [id, noul(response, "shadow_" + id)])) as Record<ShadowSignal, number>)
+    ? // Read leniently: a missing shadow answer must never lose the rest of the shadow record (D173).
+      (Object.fromEntries(
+        Object.keys(shadowSignals).flatMap((id) => {
+          const answer = response.answers["shadow_" + id];
+          return answer?.type === "noul" ? [[id, answer.noul]] : [];
+        }),
+      ) as Partial<Record<ShadowSignal, number>>)
     : undefined;
   return {
     ...(shadow ? { shadow } : {}),

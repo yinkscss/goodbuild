@@ -416,7 +416,7 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
       if (!isInfraError(error)) setPreviewError(error);
       if (!shouldAutoFix({ error, version, eligibleVersion: autoFixVersion, running: Boolean(attached.current) || state.jobs.length > 0 })) return;
       setAutoFixVersion(null);
-      void enqueue({ mode: "build", prompt: previewFixPrompt(error, true) });
+      void enqueue({ mode: "build", prompt: previewFixPrompt(error, true), action: "repair" });
     },
     [autoFixVersion, enqueue, state.jobs.length, setPreviewError],
   );

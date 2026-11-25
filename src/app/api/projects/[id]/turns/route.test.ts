@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 
 import { createTestDb, type Db } from "@/server/db/client";
-import { balances, projects, turnJobs, usageEvents, users } from "@/server/db/schema";
+import { balances, messages, projects, turnJobs, usageEvents, users } from "@/server/db/schema";
 
 let db: Db;
 let session: { user: { id: string; wallet: string } } | null = null;
@@ -75,5 +75,54 @@ describe("POST turns", () => {
     expect([job.funding, job.holdMicro]).toEqual(["paid", 1_000_000]);
     const [b] = await db.select().from(balances).where(eq(balances.userId, userId));
     expect([b.balanceMicro, b.reservedMicro]).toEqual([5_000_000, 1_000_000]);
+  });
+});
+
+describe("POST turns: first-message ideas and button ids (D173)", () => {
+  let userId: string;
+  let projectId: string;
+  beforeEach(async () => {
+    db = await createTestDb();
+    const wallet = `0x${randomUUID().replaceAll("-", "")}`;
+    const [u] = await db.insert(users).values({ wallet }).returning({ id: users.id });
+    userId = u.id;
+    session = { user: { id: userId, wallet } };
+    const [p] = await db.insert(projects).values({ ownerId: userId, name: "P", chainId: 11142220, currentVersion: 0 }).returning({ id: projects.id });
+    projectId = p.id;
+  });
+  const queueFirst = async (content: string) => (await db.insert(messages).values({ projectId, role: "user", content, status: "queued" }).returning({ id: messages.id }))[0].id;
+
+  it("answers the landing page's vague first message with ideas, no job, and the same on a double submit", async () => {
+    const first = await queueFirst("i want to build a gooddollar app");
+    for (let i = 0; i < 2; i++) {
+      const res = await send(projectId, { mode: "build", userMessageId: first });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ messageId: first, status: "answered" });
+    }
+    expect(await db.select().from(turnJobs)).toEqual([]);
+    const replies = (await db.select().from(messages).where(eq(messages.projectId, projectId))).filter((m) => m.role === "assistant");
+    expect(replies).toHaveLength(1);
+    expect((replies[0].meta?.suggestions as string[]).length).toBe(3);
+  });
+
+  it("queues a concrete first message as before", async () => {
+    const first = await queueFirst("A G$ tip jar for my blog");
+    const res = await send(projectId, { mode: "build", userMessageId: first });
+    expect(res.status).toBe(202);
+  });
+
+  it("saves the button id, and recognises an old client's button text", async () => {
+    const res = await send(projectId, { mode: "build", prompt: "Fix the remaining errors from the last build." });
+    expect(res.status).toBe(202);
+    const { messageId } = await res.json();
+    const [m] = await db.select().from(messages).where(eq(messages.id, messageId));
+    expect(m.meta?.turnAction).toBe("repair");
+    // A repair never plans first, even on a project with no version yet.
+    expect(m.meta?.intake).toBeUndefined();
+  });
+
+  it("rejects an unknown action id", async () => {
+    const res = await send(projectId, { mode: "build", prompt: "Start building", action: "launch_rockets" });
+    expect(res.status).toBe(400);
   });
 });
