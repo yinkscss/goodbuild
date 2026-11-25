@@ -68,7 +68,9 @@ async function main() {
     }
   }
   await Promise.all(Array.from({ length: 4 }, worker));
-  const ok = Object.values(done).filter((x): x is Required<Result> => !x.error);
+  // Summarise only this run's prompts: within --limit, and produced by the current model, questions and thresholds.
+  const current = rows.slice(0, limit).flatMap((r) => (done[r.id]?.stamp === stampOf(stateOf(r)) ? [done[r.id]] : []));
+  const ok = current.filter((x): x is Required<Result> => !x.error);
   const ms = ok.map((x) => x.ms).sort((a, b) => a - b);
   const tokens = ok.reduce((n, x) => n + x.tokens.input_tokens, 0);
   const dis: { feature: string; legacy: boolean; jev: string; n: number; request: string }[] = [];
@@ -78,7 +80,7 @@ async function main() {
   }
   const by: Record<string, number> = {};
   for (const d of dis) by[d.feature] = (by[d.feature] ?? 0) + 1;
-  const summary = { prompts: ok.length, errors: Object.values(done).length - ok.length, p50ms: ms[Math.floor(ms.length / 2)], p95ms: ms[Math.floor(ms.length * 0.95)], inputTokensTotal: tokens, inputTokensMean: Math.round(tokens / Math.max(1, ok.length)), disagreements: dis.length, byFeature: by };
+  const summary = { prompts: ok.length, errors: current.length - ok.length, p50ms: ms[Math.floor(ms.length / 2)], p95ms: ms[Math.floor(ms.length * 0.95)], inputTokensTotal: tokens, inputTokensMean: Math.round(tokens / Math.max(1, ok.length)), disagreements: dis.length, byFeature: by };
   writeFileSync(`${out}/summary.json`, JSON.stringify({ summary, disagreements: dis }, null, 1));
   console.log(JSON.stringify(summary, null, 1));
 }
