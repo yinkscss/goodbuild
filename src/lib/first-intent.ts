@@ -1,6 +1,6 @@
 /**
- * A project's first message that asks what to build, or names nothing to build ("I want a G dollar app",
- * "Hlo"), gets three ready ideas instead of a paid build (D175). Deliberately narrow: a concrete request,
+ * A project's first message that asks what to build, or names nothing to build (a bare greeting,
+ * or "I want a G dollar app"), gets three ready ideas instead of a paid build (D175). Deliberately narrow: a concrete request,
  * even a short one ("a quiz game"), or a request phrased as a question ("Can you build a quiz?") is never
  * caught. Missing a vague message costs what it cost before; catching a real request would cost a build.
  * Jev's shadow `vague` signal measures whether a classifier can replace this rule later.
