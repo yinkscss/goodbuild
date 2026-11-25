@@ -2,7 +2,8 @@
 // Usage: node --import tsx --require ./scripts/worker-preload.cjs scripts/jev-replay.ts --csv .data/prod-prompts.csv [--limit n]
 // Output goes to .data/jev-replay/ (gitignored): results.json and index.html. Emails and 0x addresses are redacted before sending.
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
-import { classifyTurn, type IntentState, type Feature, type Intent } from "../src/server/agent/jev";
+import { createHash } from "node:crypto";
+import { classifyTurn, questionVersion, thresholds, type IntentState, type Feature, type Intent } from "../src/server/agent/jev";
 import { legacySignals } from "../src/server/agent/jev-legacy";
 
 const args = process.argv.slice(2);
@@ -11,6 +12,8 @@ const out = ".data/jev-replay";
 mkdirSync(out, { recursive: true });
 
 type Result = {
+  /** What produced this result: reused only when the model, questions, thresholds and input all match. */
+  stamp?: string;
   n: number;
   request: string;
   error?: string;
@@ -45,15 +48,19 @@ async function main() {
   const limit = Number(opt("--limit", String(rows.length)));
   const cacheFile = `${out}/results.json`;
   const done: Record<string, Result> = existsSync(cacheFile) ? JSON.parse(readFileSync(cacheFile, "utf8")) : {};
-  const todo = rows.slice(0, limit).filter((r) => !done[r.id] || done[r.id].error);
+  const model = process.env.JEV_MODEL || "jev-latest";
+  const stampOf = (state: IntentState) =>
+    [model, questionVersion, thresholds.high, thresholds.low, createHash("sha256").update(JSON.stringify(state)).digest("hex")].join("/");
+  const stateOf = (r: Record<string, string>): IntentState => ({ request: redact(r.content), goal: goals.get(r.project_id), firstBuild: r.n === "1" });
+  const todo = rows.slice(0, limit).filter((r) => !done[r.id] || done[r.id].error || done[r.id].stamp !== stampOf(stateOf(r)));
   let next = 0;
   async function worker() {
     while (next < todo.length) {
       const r = todo[next++];
-      const state: IntentState = { request: redact(r.content), goal: goals.get(r.project_id), firstBuild: r.n === "1" };
+      const state = stateOf(r);
       try {
         const d = await classifyTurn(state);
-        done[r.id] = { n: Number(r.n), request: state.request, signals: d.signals, ms: d.ms, tokens: d.response.usage, legacy: legacySignals(r.content), displayKind: d.displayKind };
+        done[r.id] = { stamp: stampOf(state), n: Number(r.n), request: state.request, signals: d.signals, ms: d.ms, tokens: d.response.usage, legacy: legacySignals(r.content), displayKind: d.displayKind };
       } catch (e) {
         done[r.id] = { n: Number(r.n), request: state.request, error: (e as Error).message };
       }

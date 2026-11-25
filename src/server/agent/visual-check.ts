@@ -71,8 +71,8 @@ export async function runVisualCheck(args: {
   const request = rows.slice(0, rows.indexOf(turn)).reverse().find((m) => m.role === "user")?.content ?? "";
   // "Fix these" or "Start building" doesn't say it's a game: the project's first messages do.
   const prior = rows.slice(0,rows.indexOf(turn)).filter(m=>m.role==="user");
-  // The latest request before this screenshot decides, so a later change of kind wins over the first message.
-  const classification = [...prior].reverse().map(m=>(m.meta?.jev as {decision?:{displayKind?:string}} | undefined)?.decision?.displayKind).find(Boolean);
+  // This screenshot's own request decides; if it has no classification, the words of the whole conversation do.
+  const classification = (prior.at(-1)?.meta?.jev as {decision?:{displayKind?:string}} | undefined)?.decision?.displayKind;
   const game = classification ? classification === "game" : isGameRequest(prior.map(m=>m.content).join("\n"));
   const image = await visionImage(args.png, mime);
   let charged = 0;
