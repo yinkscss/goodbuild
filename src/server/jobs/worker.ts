@@ -1,6 +1,6 @@
 import "server-only";
 
-import { prepareJevRouting } from "./jev-routing";
+import { prepareJevRouting, shadowJev } from "./jev-routing";
 import { randomUUID } from "node:crypto";
 import { hostname } from "node:os";
 
@@ -218,6 +218,7 @@ export class TurnWorker {
       if (job.stopRequested) controller.abort();
       controller.signal.throwIfAborted();
       await prepareJevRouting(db, job, ctx);
+      if (process.env.JEV_ROUTING === "shadow" && process.env.TYPESAFE_API_KEY) void shadowJev(db, job, undefined, controller.signal);
       const record = await runTurn(
         { db, model: this.opts.model(), ...this.opts.deps, job: ctx },
         { projectId: job.projectId, userId: job.userId, mode: job.mode as TurnMode, userMessageId: job.userMessageId },

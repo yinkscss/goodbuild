@@ -42,7 +42,7 @@ const SAYS_LEADERBOARD = /\b(leader ?boards?|high ?score (?:board|table|list)s?|
 const REFUSES_LEADERBOARD = /\b(no|without|not|don'?t (?:want|need)|skip)\b[\w\s]{0,20}?\b(leader ?boards?|high ?score (?:board|table|list)s?|top scores?|ranking)\b/i;
 
 /** The request already asks for a leaderboard (and doesn't say it wants none). */
-const asksLeaderboard = (request: string) => SAYS_LEADERBOARD.test(request) && !REFUSES_LEADERBOARD.test(request);
+export const asksLeaderboard = (request: string) => SAYS_LEADERBOARD.test(request) && !REFUSES_LEADERBOARD.test(request);
 /** A question about scores or a leaderboard, which the server's card asks instead for a game. */
 const ASKS_SCORES = /\b(leader ?boards?|high ?scores?|scores?|rankings?)\b/i;
 
@@ -63,6 +63,12 @@ export function styleFromWords(request: string): GameStyle {
   if (/\b(quiz(?:zes)?|trivia|questions?|true or false|card games?|board games?|chess|draughts|checkers|ludo|whot|ayo|oware|tic[- ]tac[- ]toe|noughts and crosses|turn[- ]based|guess(?:ing)? game)\b/i.test(request)) return "turns";
   if (/\b(puzzles?|match[- ]?(?:3|three)|sudoku|crosswords?|word (?:games?|search|puzzles?)|memory game|sliding|jigsaw|sort(?:ing)? game)\b/i.test(request)) return "puzzle";
   return "action";
+}
+/** The kind of game: from Jev's answers when there are any, else by the request's words. */
+export function gameStyle(request: string, decision?: JevDecision): GameStyle {
+  if (!decision) return styleFromWords(request);
+  if (decision.signals.turnBased === "requested") return "turns";
+  return decision.signals.puzzle === "requested" ? "puzzle" : "action";
 }
 type GamePart = (typeof GAME_PARTS)[number]["id"];
 
@@ -403,7 +409,7 @@ function parseGameBrief(raw: unknown, request = "", decision?: JevDecision): Gam
   }
   // The kind of game (D115): the template's, else the model's, else by the request's words.
   const said = b.style === "action" || b.style === "puzzle" || b.style === "turns" ? b.style : undefined;
-  brief.style = template?.style ?? said ?? (decision ? "action" : styleFromWords(request));
+  brief.style = template?.style ?? said ?? (gameStyle(request, decision));
   return brief.name && brief.pitch ? brief : undefined;
 }
 
@@ -461,7 +467,7 @@ export function parseIntake(rawArguments: string, request: string, decision?: Je
   let questions = parseQuestions(args.questions, game ? MAX_GAME_MODEL_QUESTIONS : miniPay ? MAX_MODEL_QUESTIONS - 1 : MAX_MODEL_QUESTIONS, game, Boolean(decision));
   if (!questions.length) return null;
   const brief = game ? parseGameBrief(args.game_brief, request, decision) : undefined;
-  if (game) questions = withGameParts(questions, brief?.style ?? (decision ? "action" : styleFromWords(request)));
+  if (game) questions = withGameParts(questions, brief?.style ?? (gameStyle(request, decision)));
   const saidBoard = game && wants(decision, "leaderboard", () => asksLeaderboard(request));
   const palette = clean(args.recommended_palette, 20).toLowerCase();
   const all = [...questions, ...(game && !saidBoard && decision?.signals.leaderboard !== "excluded" ? [leaderboardQuestion()] : []), ...(miniPay ? [miniPayQuestion()] : [])];
@@ -495,7 +501,7 @@ export function fallbackIntake(request: string, decision?: JevDecision): PlanInt
   const questions = game
     ? [
         choice("q1", "How to play", "How should people play?", false, ["One tap or click", "Move left and right", "Answer questions"]),
-        ...GAME_PARTS.map((p) => partCards(decision ? "action" : styleFromWords(request))[p.id]()),
+        ...GAME_PARTS.map((p) => partCards(gameStyle(request, decision))[p.id]()),
         ...(saidBoard || decision?.signals.leaderboard === "excluded" ? [] : [leaderboardQuestion()]),
       ]
     : website

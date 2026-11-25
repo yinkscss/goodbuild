@@ -77,7 +77,7 @@ const respond = (set: Record<string, number>): JevResponse => ({
 });
 
 it("resolves requested, excluded, unspecified and conflicting answers", () => {
-  const s = resolveAnswers(respond({ multiplayer: 0.97, wallet_excluded: 0.95, game: 0.9, game_excluded: 0.9, shop: 0.4 }));
+  const s = resolveAnswers(respond({ multiplayer: 0.97, wallet_excluded: 0.95, game: 0.9, game_excluded: 0.9, shop: 0.35 }));
   expect(s.multiplayer).toBe("requested");
   expect(s.wallet).toBe("excluded");
   expect(s.dashboard).toBe("unspecified");
@@ -107,4 +107,28 @@ it("falls back to the built-in rules and charges nothing when Jev is unavailable
   const [saved] = await db.select().from(buildDeliveries);
   expect(saved.plan.milestones.length).toBeGreaterThan(0);
   expect(await db.select().from(usageEvents)).toHaveLength(0);
+});
+
+import { shadowJev } from "./jev-routing";
+
+it("shadow mode records where Jev and the built-in rules disagree and changes nothing else", async () => {
+  const db = await createTestDb();
+  const user = await signInUser(db, { wallet: "0x123", walletKind: "external", attestation: { ageOk: true, notUsPerson: true } });
+  const project = await createProjectFromPrompt(db, user.id, { prompt: "A gallery about wallets. Visitors never connect one.", network: "celo-sepolia" });
+  const [message] = await db.select().from(messages).where(eq(messages.projectId, project.id));
+  await startTurn(db, { userId: user.id, projectId: project.id, mode: "build", userMessageId: message.id }, { FREE_POLICY: "legacy" });
+  const job = (await claimJob(db, "w3"))!;
+  const answers = Object.fromEntries(
+    Object.keys(questions).map((k) => [k, k === "kind" ? { type: "choice", choice: "custom", confidence: 0.9, probabilities: { custom: 0.9 } } : { type: "noul", noul: k === "wallet_excluded" ? 0.9 : 0.01 }]),
+  );
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ model: "jev-test", answers, usage: { input_tokens: 5, output_tokens: 0 } })));
+  try {
+    await shadowJev(db, job, (state, signal) => classifyTurn(state, signal, { TYPESAFE_API_KEY: "fixture" }));
+    const [saved] = await db.select().from(messages).where(eq(messages.id, message.id));
+    const shadow = saved.meta?.jevShadow as { disagreements: { feature: string; legacy: boolean; jev: string }[] };
+    expect(shadow.disagreements).toContainEqual({ feature: "wallet", legacy: true, jev: "excluded" });
+    expect(await db.select().from(usageEvents)).toHaveLength(0);
+  } finally {
+    vi.unstubAllGlobals();
+  }
 });

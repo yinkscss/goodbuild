@@ -13,15 +13,14 @@ import {
   type JevDecision,
 } from "../src/server/agent/jev";
 import { requestedMilestones } from "../src/server/agent/delivery";
-import { isGameRequest, parseIntake } from "../src/server/agent/plan-intake";
-import { mentionsGd } from "../src/server/agent/checks";
+import { legacySignals } from "../src/server/agent/jev-legacy";
 
-const corpus = JSON.parse(readFileSync("docs/evals/jev/corpus.json", "utf8")) as {
+const args = process.argv.slice(2);
+const option = (name: string, fallback: string) => (args.includes(name) ? args[args.indexOf(name) + 1] : fallback);
+const corpus = JSON.parse(readFileSync(option("--corpus", "docs/evals/jev/corpus.json"), "utf8")) as {
   version: number;
   cases: Array<IntentState & { id: string; expected: Partial<Record<Feature, string>> }>;
 };
-const args = process.argv.slice(2);
-const option = (name: string, fallback: string) => (args.includes(name) ? args[args.indexOf(name) + 1] : fallback);
 const dir = resolve(option("--out-dir", ".data/jev-eval"));
 mkdirSync(dir, { recursive: true });
 const model = option("--model", process.env.JEV_MODEL || "jev-latest");
@@ -56,16 +55,7 @@ async function main() {
     const milestones = result ? requestedMilestones(state.request, result).map((m) => m.id) : [];
     for (const [feature, label] of Object.entries(expected)) {
       const capability = feature as Feature;
-      const before =
-        feature === "advance"
-          ? ["continue", "continue building", "build next", "next milestone"].includes(state.request.toLowerCase())
-          : feature === "game"
-            ? isGameRequest(state.request)
-            : feature === "gd"
-              ? mentionsGd(state.request)
-              : feature === "leaderboard"
-                ? !!parseIntake('{"questions":[{"question":"How?","options":["Tap","Keys"]}]}', state.request)?.leaderboard
-                : legacy.includes(feature as (typeof legacy)[number]);
+      const before = legacySignals(state.request)[capability] ?? false;
       const after = result?.signals[capability] ?? "unevaluated";
       const outcome = !result ? "unevaluated" : after === label ? "pass" : "regression";
       if (outcome === "regression") failed++;

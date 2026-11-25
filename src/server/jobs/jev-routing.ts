@@ -6,21 +6,16 @@ import { selectContext } from "../agent/codebase";
 import { and, asc, eq, lte, ne, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { buildDeliveries, messages, projects, turnJobs, type TurnJob } from "../db/schema";
-import { classifyTurn, questions, type JevDecision } from "../agent/jev";
+import { classifyTurn, questions, type IntentState, type JevDecision } from "../agent/jev";
+import { disagreements } from "../agent/jev-legacy";
 import { latestIntake, planBrief } from "../agent/plan-intake";
 import { deliveryFor, extendDelivery } from "../agent/delivery";
 import type { TurnJobContext } from "../agent/turn-progress";
 
-/** Called after admission, under the running worker's lease. Inference holds no SQL locks. */
-export async function prepareJevRouting(db: Db, job: TurnJob, ctx: TurnJobContext, classify = classifyTurn) {
-  if (ctx.resume?.setup) return;
-  const [source] = await db.select().from(messages).where(eq(messages.id, job.userMessageId));
-  const marker = source?.meta?.jev as { advance: boolean; decision?: JevDecision; unavailable?: boolean } | undefined;
-  if (!marker || marker.unavailable) return;
-  if (marker.decision) {
-    ctx.decision = job.retryOfJobId ? {...marker.decision,chargedMicro:0} : marker.decision;
-    return;
-  }
+
+type Source = { id: string; content: string; createdAt: Date };
+/** The facts Jev sees: this request, the first message, the plan answers and likely files. */
+async function buildState(db: Db, job: TurnJob, source: Source) {
   const [project] = await db
     .select({ revision: projects.currentVersion })
     .from(projects)
@@ -38,7 +33,40 @@ export async function prepareJevRouting(db: Db, job: TurnJob, ctx: TurnJobContex
   const candidates = selectContext(files, source.content)
     .slice(0, 16)
     .map((item) => item.path);
-  const state={request:source.content,goal,firstBuild,answers,...(candidates.length ? {files:candidates} : {})};
+  const state: IntentState = {request:source.content,goal,firstBuild,answers,...(candidates.length ? {files:candidates} : {})};
+  return { project, firstBuild, goal, state, candidates };
+}
+
+/**
+ * Shadow mode (JEV_ROUTING=shadow): classify, compare with the built-in rules, record the comparison on the
+ * message and in the log. Nothing the user sees depends on it, and it is never charged to them.
+ */
+export async function shadowJev(db: Db, job: TurnJob, classify = classifyTurn, signal?: AbortSignal) {
+  try {
+    const [source] = await db.select().from(messages).where(eq(messages.id, job.userMessageId));
+    if (!source || source.role !== "user") return;
+    const { state } = await buildState(db, job, source);
+    const decision = await classify(state, signal);
+    const diff = disagreements(source.content, decision.signals);
+    const record = { model: decision.model, version: decision.version, ms: decision.ms, tokens: decision.response.usage, signals: decision.signals, disagreements: diff };
+    console.log(JSON.stringify({ event: "jev_shadow", jobId: job.id, ...record }));
+    await db.update(messages).set({ meta: sql`coalesce(${messages.meta}, '{}'::jsonb) || ${JSON.stringify({ jevShadow: record })}::jsonb` }).where(eq(messages.id, source.id));
+  } catch (error) {
+    console.warn("Jev shadow run failed:", (error as Error).message);
+  }
+}
+
+/** Called after admission, under the running worker's lease. Inference holds no SQL locks. */
+export async function prepareJevRouting(db: Db, job: TurnJob, ctx: TurnJobContext, classify = classifyTurn) {
+  if (ctx.resume?.setup) return;
+  const [source] = await db.select().from(messages).where(eq(messages.id, job.userMessageId));
+  const marker = source?.meta?.jev as { advance: boolean; decision?: JevDecision; unavailable?: boolean } | undefined;
+  if (!marker || marker.unavailable) return;
+  if (marker.decision) {
+    ctx.decision = job.retryOfJobId ? {...marker.decision,chargedMicro:0} : marker.decision;
+    return;
+  }
+  const { project, firstBuild, goal, state, candidates } = await buildState(db, job, source);
   const inputBytes=Buffer.byteLength(JSON.stringify({state,questions}))+1024+candidates.reduce((n,p)=>n+Buffer.byteLength(p)+200,0);
   const worst=chargedMicro(costMicro("jev",{inputTokens:inputBytes,outputTokens:0}));
   if(job.funding==="paid" && !await ctx.commit(tx=>ensureHold(tx,job.id,worst))) throw new Error("Insufficient credit for classification");

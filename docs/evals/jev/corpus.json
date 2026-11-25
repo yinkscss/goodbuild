@@ -1,5 +1,5 @@
 {
- "version": 3,
+ "version": 4,
  "cases": [
   {
    "id": "four-artists",
@@ -203,6 +203,33 @@
    "expected": {
     "ticTacToe": "requested",
     "multiplayer": "requested"
+   }
+  },
+  {
+   "id": "quiz-style",
+   "request": "A trivia game about Nigerian history.",
+   "expected": {
+    "game": "requested",
+    "turnBased": "requested",
+    "puzzle": "unspecified"
+   }
+  },
+  {
+   "id": "puzzle-style",
+   "request": "A word search game for kids.",
+   "expected": {
+    "game": "requested",
+    "puzzle": "requested",
+    "turnBased": "unspecified"
+   }
+  },
+  {
+   "id": "runner-style",
+   "request": "An endless runner where a goat jumps over market stalls.",
+   "expected": {
+    "game": "requested",
+    "puzzle": "unspecified",
+    "turnBased": "unspecified"
    }
   }
  ]

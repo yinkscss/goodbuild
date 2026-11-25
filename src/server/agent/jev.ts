@@ -20,6 +20,8 @@ export const features = {
   gd: "transactions using GoodDollar (G$)",
   native: "transactions using the native CELO asset",
   ticTacToe: "a three-by-three noughts and crosses game",
+  puzzle: "a puzzle game such as matching, sliding, word or number puzzles",
+  turnBased: "a game played in turns or rounds, such as quizzes, trivia, card games or board games",
   advance: "advancing to the next saved milestone",
 } as const;
 export type Feature = keyof typeof features;
@@ -38,7 +40,7 @@ questions.knownKind.instructions +=
     .join(", ");
 for (const [id, meaning] of Object.entries(features)) {
   const focus =
-    "Use the latest request and explicit answers. On the first build include the goal. On later edits distinguish new work from existing background.";
+    "Use the latest request and explicit answers. On the first build include the goal. On later edits distinguish new work from existing background. Words that are only quoted text, labels being renamed, or the topic of a page do not count as asking for the capability.";
   questions[id] = { type: "noul", instructions: `Does the user ask for ${meaning} in this turn? ${focus}` };
   questions[id + "_excluded"] = {
     type: "noul",
@@ -46,7 +48,7 @@ for (const [id, meaning] of Object.entries(features)) {
   };
 }
 export const questionVersion = createHash("sha256").update(JSON.stringify(questions)).digest("hex");
-export const thresholds = { high: 0.5, low: 0.3 }; // provisional: tuned on 25 labeled cases (D172)
+export const thresholds = { high: 0.4, low: 0.3 }; // provisional: tuned on 25 cases, checked on 70 held-out ones (D172)
 const probability = z.number().min(0).max(1);
 export const responseSchema = z.object({
   model: z.string().min(1),
