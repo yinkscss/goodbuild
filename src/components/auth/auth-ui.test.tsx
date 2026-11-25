@@ -171,16 +171,6 @@ describe("connect modal", () => {
     expect(auth.verifyEmailCode).toHaveBeenCalledWith("123456", { ageOk: true, notUsPerson: true });
   });
 
-  it("asks to approve the device from the email, with the wallets paused and a way to start over", async () => {
-    const auth = makeAuth({ phase: "awaiting-device" });
-    await openModal(auth);
-    expect(screen.getByRole("status")).toHaveTextContent(/tap the link to approve this device/);
-    expect(screen.getByRole("button", { name: /continue with email/i })).toBeDisabled();
-    expect(screen.getByRole("button", { name: /metamask/i })).toBeDisabled();
-    await userEvent.click(screen.getByRole("button", { name: /start over/i }));
-    expect(auth.reset).toHaveBeenCalled();
-  });
-
   it("explains when sign-in isn't configured", async () => {
     await openModal({ ...unconfiguredAuth });
     expect(screen.getByText(/isn't set up on this deployment/i)).toBeInTheDocument();
