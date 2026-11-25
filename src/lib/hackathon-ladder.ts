@@ -28,6 +28,8 @@ export interface LadderRow<T extends Entry> {
 export interface Ladder<T extends Entry> {
   /** Published projects, best first. Ideas without a live app are not ranked. */
   rows: Array<LadderRow<T>>;
+  /** Projects entered without a live app yet: listed under the ranks, not ranked or paid until they go live. */
+  ideas: T[];
   /** The caller's own row, if they have a published project. */
   mine: LadderRow<T> | null;
   /** More approvals the caller needs to reach the prize zone (0 when already in it). */
@@ -65,5 +67,5 @@ export function buildLadder<T extends Entry>(entries: T[], myId?: string | null,
       }
     }
   }
-  return { rows, mine, gapToPrizeZone: gap };
+  return { rows, ideas: entries.filter((e) => !e.liveUrl), mine, gapToPrizeZone: gap };
 }

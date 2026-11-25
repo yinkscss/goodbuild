@@ -6,11 +6,17 @@ export const newsPosts: Post[] = [
     query: "futminna hackathon scholarship",
     cluster: "news",
     title: "FUTMinna Hackathon: Win a ₦150,000 Scholarship",
-    description: "GoodBuild and GoodCash open their first campus hackathon at FUTMinna. One builder wins a ₦150,000 scholarship. Registration is open until 10 December.",
+    description: "Update: the FUTMinna hackathon scholarship round has joined the one GoodBuild Hackathon, open to everyone with a 1,000,000 G$ pool until 31 December.",
     date: "2026-11-21",
     intro: "GoodBuild has opened registration for the FUTMinna hackathon, its first at a university. One creative builder at the Federal University of Technology Minna wins a ₦150,000 scholarship, and it is the first of many hackathons across Nigerian universities.",
     image: { src: "/blog/futminna-hackathon.png", alt: "FUTMinna Hackathon: build something good and win a ₦150,000 scholarship, by GoodBuild and GoodCash" },
     sections: [
+      {
+        heading: "Update, 24 November: one hackathon for everyone",
+        paragraphs: [
+          "The FUTMinna hackathon has joined the main [GoodBuild Hackathon](/hackathon). There is now one hackathon for everyone, students or not, with one leaderboard and a 1,000,000 G$ prize pool. Projects with the most verified approvals rank highest. Entries and approvals close on 31 December 2026. If you already signed up, entered or approved projects, all of it carried over. The ₦150,000 scholarship described below is no longer offered. [See the hackathon](/hackathon).",
+        ],
+      },
       {
         heading: "Why we're doing this",
         paragraphs: [
@@ -47,7 +53,7 @@ export const newsPosts: Post[] = [
       {
         heading: "Who can enter",
         paragraphs: [
-          "Registration is open now and entries close on 10 December. The hackathon is open to FUTMinna students aged 18 and over, and is not open to US persons. The winner must show they are a FUTMinna student before the scholarship is paid. [Register for the FUTMinna hackathon](/hackathon/futminna).",
+          "Registration is open now and entries close on 10 December. The hackathon is open to FUTMinna students aged 18 and over, and is not open to US persons. The winner must show they are a FUTMinna student before the scholarship is paid. [Join the GoodBuild Hackathon](/hackathon).",
         ],
       },
     ],
@@ -58,11 +64,17 @@ export const newsPosts: Post[] = [
     query: "kaduna polytechnic hackathon scholarship",
     cluster: "news",
     title: "Kaduna Polytechnic Hackathon: Top 3 Win Full Tuition",
-    description: "GoodBuild and GoodCash open the Kaduna Polytechnic hackathon on 23 November. The top three students win full tuition for the session. Entries close 31 December.",
+    description: "Update: the Kaduna Polytechnic hackathon scholarship round has joined the one GoodBuild Hackathon, open to everyone with a 1,000,000 G$ pool to 31 December.",
     date: "2026-11-23",
     intro: "GoodBuild and GoodCash open their Kaduna Polytechnic (Kadpoly) hackathon today, Monday 23 November 2026. The top three students win a scholarship that pays their full tuition fee for the session, and the next two join a waitlist of five in case a winner cannot be confirmed.",
     image: { src: "/blog/kadpoly-hackathon-scholarship.png", alt: "Kaduna Polytechnic Hackathon: build something good, three students win full tuition, top five waitlisted, by GoodBuild and GoodCash" },
     sections: [
+      {
+        heading: "Update, 24 November: one hackathon for everyone",
+        paragraphs: [
+          "The Kadpoly hackathon has joined the main [GoodBuild Hackathon](/hackathon). There is now one hackathon for everyone, students or not, with one leaderboard and a 1,000,000 G$ prize pool. Projects with the most verified approvals rank highest. Entries and approvals close on 31 December 2026. If you already signed up, entered or approved projects, all of it carried over. The full-tuition scholarship described below is no longer offered. [See the hackathon](/hackathon).",
+        ],
+      },
       {
         heading: "What you can win",
         paragraphs: [
@@ -73,7 +85,7 @@ export const newsPosts: Post[] = [
         heading: "How to enter",
         paragraphs: ["You do not need to know how to code. You describe an app or game and GoodBuild builds it. Follow these steps:"],
         steps: [
-          "**Register** on the [hackathon page](/hackathon/kadpoly) and sign in with your email.",
+          "**Register** on the [hackathon page](/hackathon) and sign in with your email.",
           "**Do the free face check.** GoodDollar confirms you are one real person. It costs nothing.",
           "**Support GoodBuildIt** with the in-app FlowState vote, which unlocks your free build credits.",
           "**Build your idea on GoodBuild.** New to this? Read [how to build a dApp without coding](/blog/build-a-dapp-without-coding).",
@@ -98,14 +110,14 @@ export const newsPosts: Post[] = [
       {
         heading: "Who can enter",
         paragraphs: [
-          "Entry is for current Kaduna Polytechnic students aged 18 and over. It is not open to US persons. Winners must prove they are enrolled before any scholarship is confirmed. Submissions and voting close on 31 December 2026. [Register now](/hackathon/kadpoly).",
+          "Entry is for current Kaduna Polytechnic students aged 18 and over. It is not open to US persons. Winners must prove they are enrolled before any scholarship is confirmed. Submissions and voting close on 31 December 2026. [Join the GoodBuild Hackathon](/hackathon).",
         ],
       },
     ],
     faq: [
-      { q: "How many students win the scholarship?", a: "Three. The top three students win their full tuition fee for the session. The top five are listed, and places four and five are waitlisted." },
+      { q: "Is the tuition scholarship still on?", a: "No. Since 24 November the Kadpoly hackathon is part of the one GoodBuild Hackathon, open to everyone, with a 1,000,000 G$ pool ranked by verified approvals." },
       { q: "Do I need to code?", a: "No. You describe what you want and GoodBuild builds it with AI, then you deploy it from your own wallet." },
-      { q: "When does it start?", a: "Today, Monday 23 November 2026. Submissions and voting close on 31 December 2026." },
+      { q: "When does it close?", a: "Submissions and voting close on 31 December 2026, for everyone." },
     ],
     related: ["futminna-hackathon-scholarship", "what-is-g-dollar-gooddollar-apps", "how-to-build-a-dapp-on-celo", "ai-app-builder-for-students"],
   },

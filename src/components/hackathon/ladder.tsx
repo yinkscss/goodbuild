@@ -58,8 +58,8 @@ export function Ladder({ mode }: { mode: "web" | "app" }) {
   if (failed && !entries) return <p role="status" className="text-sm text-grey-600">The leaderboard couldn’t load. Reload to try again.</p>;
   if (!entries) return <p role="status" className="text-sm text-grey-600">Loading the leaderboard…</p>;
 
-  const { rows, mine, gapToPrizeZone } = buildLadder(entries, user ? myId : null, config.zone);
-  if (rows.length === 0)
+  const { rows, ideas, mine, gapToPrizeZone } = buildLadder(entries, user ? myId : null, config.zone);
+  if (rows.length === 0 && ideas.length === 0)
     return (
       <p className="text-sm text-grey-600">
         No published projects yet. The first one to go live takes rank 1.{" "}
@@ -69,9 +69,9 @@ export function Ladder({ mode }: { mode: "web" | "app" }) {
       </p>
     );
 
-  const shown = rows.slice(0, 20);
-  // The builder's own row is added below the list only when the list doesn't already show it.
-  const outside = mine && !mine.inPrizeZone && !shown.some((row) => row.entry.id === mine.entry.id) ? mine : null;
+  // Every project is listed (D170): the ranked ones, a line where the prize zone ends, then ideas not live yet.
+  const inZone = rows.filter((row) => row.inPrizeZone);
+  const below = rows.filter((row) => !row.inPrizeZone);
 
   return (
     <div>
@@ -89,18 +89,35 @@ export function Ladder({ mode }: { mode: "web" | "app" }) {
         </div>
       )}
       <ol className="m-0 list-none p-0">
-        {shown.map((row) => (
+        {inZone.map((row) => (
           <LadderItem key={row.entry.id} row={row} you={row.entry.id === myId} />
         ))}
       </ol>
-      {outside && (
+      {below.length > 0 && (
         <>
-          <p className="my-3 text-center text-xs font-semibold text-warning">
-            Prize zone ends at #{config.zone}
-          </p>
+          <p className="my-3 text-center text-xs font-semibold text-warning">Prize zone ends at #{config.zone}</p>
           <ol className="m-0 list-none p-0">
-            <LadderItem row={outside} you />
+            {below.map((row) => (
+              <LadderItem key={row.entry.id} row={row} you={row.entry.id === myId} />
+            ))}
           </ol>
+        </>
+      )}
+      {ideas.length > 0 && (
+        <>
+          <p className="mt-5 mb-1 text-xs font-semibold text-grey-600">Not live yet: ranked once they add a live app</p>
+          <ul className="m-0 list-none p-0">
+            {ideas.map((idea) => (
+              <li key={idea.id} className="grid grid-cols-[2.5rem_1fr_auto] items-center gap-3 border-t border-ink/5 py-3 first:border-t-0">
+                <span className="display text-base font-extrabold text-grey-400" aria-hidden>–</span>
+                <div className="min-w-0">
+                  <p className="truncate font-semibold">{idea.title}</p>
+                  <p className="text-xs text-grey-600">by {idea.alias}</p>
+                </div>
+                <p className="text-right text-xs text-grey-600">Not live yet</p>
+              </li>
+            ))}
+          </ul>
         </>
       )}
       <p className="mt-4 text-xs text-grey-600">

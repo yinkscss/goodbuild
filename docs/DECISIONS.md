@@ -2173,10 +2173,11 @@ The owner approved implementing all five parts of the first-build fix and openin
   - the campus callouts on `/hackathon`;
   - the campus CSV buttons;
   - the sitemap entries.
-  Old blog posts stay as written, and their links redirect.
+  The FUTMinna and Kadpoly blog posts open with a 24 Nov update saying it is one hackathon for everyone, and their links point to `/hackathon`. The page hero, rules and FAQ say the same (owner, 24 Nov).
 - **Dates:** the window is 18 Nov to 31 Dec, and voting closes on 31 Dec. Two dates are DRAFT and proposed by Claude, not confirmed by the owner: "Submit by 24 Dec for a fair vote" and "Winners announced early January".
 - **Budget:** the default stays 15,000 credits, and `HACKATHON_BUDGET_CREDITS` still overrides it.
 - **Checked:** the migration (PGlite test: overlapping signups, a vote only on a campus signup, over-cap approvals, the guard, running twice), the 31 Dec close, week-4 Rising Star, and every redirect on the dev server. The public page was checked in a browser. **UNVERIFIED:** the migration against the live database, and the in-app tabs while signed in.
+- **Leaderboard lists every project (owner, 24 Nov):** all ranked projects are shown, not only the top 20, with a "Prize zone ends at #20" line. Entries without a live app are listed below as "Not live yet". They stay unranked and unpaid until they go live, as before.
 
 ### D171. Email sign-in never spins forever: device approval, extra-step and timeout handling (24 Nov 2026)
 - **Decided by:** the owner asked for the fix after a user's "Continue with email" spun without end on iPhone Safari. Built by Claude.
