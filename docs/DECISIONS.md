@@ -2188,3 +2188,11 @@ The owner approved implementing all five parts of the first-build fix and openin
   - A 30-second deadline while waiting on Magic (not while the person is in their inbox), started again after the device is approved.
   - Start over, a different email, or closing the modal cancels Magic's request.
 - **Checked:** unit tests for each event and the timeout; the modal's new state. **Not checked** on a real phone or against live Magic.
+
+### D172. Jev (TypeSafe System One) decides what a request asks for, instead of keyword regexes (25 Nov 2026)
+- **Decided by:** the owner asked for regex routing in the build harness to be replaced with Jev classification so the product can grow past fixed keyword lists. Built by Claude (continuing a Codex draft). Plan: `docs/HARNESS_JEV_MIGRATION.md`; regex inventory: `docs/HARNESS_REGEX_INVENTORY.csv`.
+- **Change:** each turn gets one saved decision (`src/server/agent/jev.ts`): for 17 capabilities, "requested", "excluded", "unspecified" or "unclear", from independent yes/no questions in one call to `POST /v1/systemone`. Intake, milestone choice, kits, display category and file picking read it. The worker classifies after funding is admitted (`src/server/jobs/jev-routing.ts`), saves the result on the user message so a resumed job reuses it, and charges the call once.
+- **Switch:** `JEV_ROUTING=1` plus `TYPESAFE_API_KEY` (server only). Off, or if Jev errors or times out, the old rules run for that turn and nothing is charged.
+- **Kept as code:** exact validators, path rules, permissions, parsers and test assertions stay regex or parsers. Tests and compilers still decide whether something works.
+- **Tools:** `scripts/jev-eval.ts` records and replays labeled cases (`docs/evals/jev/corpus.json`) into an HTML report (`--record` needs the key; replay needs none). `scripts/check-routing-regex.mjs` runs on pull requests and flags a new regex that routes a request.
+- **UNVERIFIED:** live Jev accuracy, thresholds (0.8 / 0.2) and latency until the full eval is run with a key; `jev-latest` as a model name is from the docs' examples, not `GET /v1/models`. The intake planner prompt grew about 40 tokens (plan-first test bound raised to 1,800).

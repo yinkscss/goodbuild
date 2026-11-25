@@ -15,8 +15,8 @@ import type { TurnJobContext } from "../agent/turn-progress";
 export async function prepareJevRouting(db: Db, job: TurnJob, ctx: TurnJobContext, classify = classifyTurn) {
   if (ctx.resume?.setup) return;
   const [source] = await db.select().from(messages).where(eq(messages.id, job.userMessageId));
-  const marker = source?.meta?.jev as { advance: boolean; decision?: JevDecision } | undefined;
-  if (!marker) return;
+  const marker = source?.meta?.jev as { advance: boolean; decision?: JevDecision; unavailable?: boolean } | undefined;
+  if (!marker || marker.unavailable) return;
   if (marker.decision) {
     ctx.decision = job.retryOfJobId ? {...marker.decision,chargedMicro:0} : marker.decision;
     return;
@@ -43,7 +43,14 @@ export async function prepareJevRouting(db: Db, job: TurnJob, ctx: TurnJobContex
   const worst=chargedMicro(costMicro("jev",{inputTokens:inputBytes,outputTokens:0}));
   if(job.funding==="paid" && !await ctx.commit(tx=>ensureHold(tx,job.id,worst))) throw new Error("Insufficient credit for classification");
   if(job.funding==="platform" && !await sponsorshipCanCall(db,job.id,worst)) throw new Error("Insufficient sponsored allowance for classification");
-  const decision=await classify(state,ctx.signal);
+  // A provider outage or malformed answer falls back to the built-in rules for this turn (nothing is charged).
+  let decision: JevDecision | undefined;
+  try {
+    decision = await classify(state, ctx.signal);
+  } catch (error) {
+    ctx.signal?.throwIfAborted();
+    console.warn("Jev classification unavailable, using the built-in rules:", (error as Error).message);
+  }
   ctx.signal?.throwIfAborted();
   const index = await ctx.commit(async (tx) => {
     const [current] = await tx.select().from(projects).where(eq(projects.id, job.projectId)).for("update");
@@ -60,7 +67,7 @@ export async function prepareJevRouting(db: Db, job: TurnJob, ctx: TurnJobContex
           const extension = extendDelivery(plan, source.content, decision);
           const picked = explicit >= 0 ? explicit : marker.advance ? -1 : extension.picked;
           if (explicit < 0 && !marker.advance) plan = extension.plan;
-          const advance = marker.advance || decision.signals.advance === "requested" || picked >= plan.completed;
+          const advance = marker.advance || decision?.signals.advance === "requested" || picked >= plan.completed;
           if (advance && picked > plan.completed) {
             const milestones = [...plan.milestones];
             milestones.splice(plan.completed, 0, ...milestones.splice(picked, 1));
@@ -78,7 +85,7 @@ export async function prepareJevRouting(db: Db, job: TurnJob, ctx: TurnJobContex
           .onConflictDoUpdate({ target: buildDeliveries.projectId, set: { plan } });
       }
     }
-    if (!marker.decision) {
+    if (decision) {
       const usage = await recordUsage(tx, {
         userId: job.userId,
         projectId: job.projectId,
@@ -100,7 +107,7 @@ export async function prepareJevRouting(db: Db, job: TurnJob, ctx: TurnJobContex
     await tx
       .update(messages)
       .set({
-        meta: sql`coalesce(${messages.meta}, '{}'::jsonb) || ${JSON.stringify({ jev: { ...marker, decision } })}::jsonb`,
+        meta: sql`coalesce(${messages.meta}, '{}'::jsonb) || ${JSON.stringify({ jev: { ...marker, ...(decision ? { decision } : { unavailable: true }) } })}::jsonb`,
       })
       .where(eq(messages.id, source.id));
     return index;

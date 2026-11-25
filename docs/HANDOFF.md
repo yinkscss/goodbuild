@@ -2,6 +2,10 @@
 
 Written 4 Nov 2026 at the end of the first build session (claude.ai), for whoever continues in Claude Code. Read CLAUDE.md and docs/BUILD_PROMPT_STAGE1.md first; this file only covers where things stand.
 
+## Jev classification replaces keyword routing (25 Nov 2026, D172, branch `claude/regex-jev-classification-d8ee9d`)
+- Off by default (`JEV_ROUTING=0`). Set `JEV_ROUTING=1` and `TYPESAFE_API_KEY` to turn on. Run `node --import tsx --require ./scripts/worker-preload.cjs scripts/jev-eval.ts --record` for the full eval, then open `.data/jev-eval/index.html`.
+- **Not done:** the live eval (needs the key), tuning thresholds, and replacing regexes beyond the pilot decisions. Unit tests only; type-check, browser and kit tests fail in this sandbox the same way on the base commit.
+
 ## One hackathon to 31 Dec (24 Nov 2026, D170, branch `claude/unified-hackathon-consolidation-06b240`)
 - FUTMinna and Kadpoly are merged into the main hackathon. There is one leaderboard, the prize is the 1,000,000 G$ pool, and everything closes at the end of 31 Dec. The campus pages redirect to the main ones, and the switch is gone.
 - **Migration 0035** moves campus signups, projects, approvals and rank history to `million-2027`.

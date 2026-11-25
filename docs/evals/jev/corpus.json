@@ -1,16 +1,211 @@
 {
-  "version": 1,
-  "cases": [
-    {"id":"four-artists","request":"Let four friends draw together in a private room. Everyone guesses who drew each picture.","expected":{"multiplayer":"requested","payments":"unspecified"}},
-    {"id":"wallet-gallery","request":"A gallery about wallets. Visitors never connect one.","expected":{"wallet":"excluded","payments":"unspecified"}},
-    {"id":"shared-canvas","request":"Let four friends draw together in a private room, with no wallet.","expected":{"multiplayer":"requested","wallet":"excluded"}},
-    {"id":"article","request":"A news site covering multiplayer video games and the people who design them.","expected":{"game":"unspecified","multiplayer":"unspecified"}},
-    {"id":"advance","request":"Looks great, go ahead with the next item we planned.","goal":"A portfolio with a tip jar","firstBuild":false,"expected":{"advance":"requested","payments":"unspecified"}},
-    {"id":"quoted","request":"Change the button label to ‘next milestone’.","firstBuild":false,"expected":{"advance":"unspecified"}},
-    {"id":"visual-edit","request":"Make the main button green.","goal":"A tipping app that connects wallets","firstBuild":false,"expected":{"payments":"unspecified","wallet":"unspecified"}},
-    {"id":"new-tips","request":"Let visitors leave the artist a G$ tip.","goal":"An artist portfolio","firstBuild":false,"expected":{"payments":"requested","gd":"requested"}},
-    {"id":"custom","request":"Build a rehearsal cue board for a stage manager to tap through lighting cues.","expected":{"game":"unspecified","wallet":"unspecified","payments":"unspecified"}},
-    {"id":"login","request":"Participants sign in by connecting their crypto wallets.","expected":{"wallet":"requested"}},
-    {"id":"local","request":"An offline maze game for one person. No leaderboard and no online multiplayer.","expected":{"game":"requested","multiplayer":"excluded","leaderboard":"excluded"}}
-  ]
+ "version": 2,
+ "cases": [
+  {
+   "id": "four-artists",
+   "request": "Let four friends draw together in a private room. Everyone guesses who drew each picture.",
+   "expected": {
+    "multiplayer": "requested",
+    "payments": "unspecified"
+   }
+  },
+  {
+   "id": "wallet-gallery",
+   "request": "A gallery about wallets. Visitors never connect one.",
+   "expected": {
+    "wallet": "excluded",
+    "payments": "unspecified"
+   }
+  },
+  {
+   "id": "shared-canvas",
+   "request": "Let four friends draw together in a private room, with no wallet.",
+   "expected": {
+    "multiplayer": "requested",
+    "wallet": "excluded"
+   }
+  },
+  {
+   "id": "article",
+   "request": "A news site covering multiplayer video games and the people who design them.",
+   "expected": {
+    "game": "unspecified",
+    "multiplayer": "unspecified"
+   }
+  },
+  {
+   "id": "advance",
+   "request": "Looks great, go ahead with the next item we planned.",
+   "goal": "A portfolio with a tip jar",
+   "firstBuild": false,
+   "expected": {
+    "advance": "requested",
+    "payments": "unspecified"
+   }
+  },
+  {
+   "id": "quoted",
+   "request": "Change the button label to \u2018next milestone\u2019.",
+   "firstBuild": false,
+   "expected": {
+    "advance": "unspecified"
+   }
+  },
+  {
+   "id": "visual-edit",
+   "request": "Make the main button green.",
+   "goal": "A tipping app that connects wallets",
+   "firstBuild": false,
+   "expected": {
+    "payments": "unspecified",
+    "wallet": "unspecified"
+   }
+  },
+  {
+   "id": "new-tips",
+   "request": "Let visitors leave the artist a G$ tip.",
+   "goal": "An artist portfolio",
+   "firstBuild": false,
+   "expected": {
+    "payments": "requested",
+    "gd": "requested"
+   }
+  },
+  {
+   "id": "custom",
+   "request": "Build a rehearsal cue board for a stage manager to tap through lighting cues.",
+   "expected": {
+    "game": "unspecified",
+    "wallet": "unspecified",
+    "payments": "unspecified"
+   }
+  },
+  {
+   "id": "login",
+   "request": "Participants sign in by connecting their crypto wallets.",
+   "expected": {
+    "wallet": "requested"
+   }
+  },
+  {
+   "id": "local",
+   "request": "An offline maze game for one person. No leaderboard and no online multiplayer.",
+   "expected": {
+    "game": "requested",
+    "multiplayer": "excluded",
+    "leaderboard": "excluded"
+   }
+  },
+  {
+   "id": "guess-drawing",
+   "request": "Four friends each submit a drawing. Everyone guesses who drew it.",
+   "expected": {
+    "multiplayer": "requested"
+   }
+  },
+  {
+   "id": "stage-managers",
+   "request": "A rehearsal cue board operated by two stage managers at the same time.",
+   "expected": {
+    "multiplayer": "requested",
+    "game": "unspecified",
+    "payments": "unspecified"
+   }
+  },
+  {
+   "id": "four-players",
+   "request": "A card game for four players.",
+   "expected": {
+    "game": "requested",
+    "multiplayer": "requested"
+   }
+  },
+  {
+   "id": "wallet-article",
+   "request": "Write an article page explaining how crypto wallets work.",
+   "expected": {
+    "wallet": "unspecified",
+    "website": "requested"
+   }
+  },
+  {
+   "id": "no-wallet-quiz",
+   "request": "A trivia quiz. Nobody should need a wallet.",
+   "expected": {
+    "game": "requested",
+    "wallet": "excluded"
+   }
+  },
+  {
+   "id": "solo-only",
+   "request": "A single-player snake game, nobody else can join.",
+   "expected": {
+    "game": "requested",
+    "multiplayer": "excluded"
+   }
+  },
+  {
+   "id": "shop",
+   "request": "A runner game with a store where players buy skins.",
+   "expected": {
+    "game": "requested",
+    "shop": "requested"
+   }
+  },
+  {
+   "id": "minipay",
+   "request": "A savings tracker that works inside MiniPay.",
+   "expected": {
+    "miniPay": "requested"
+   }
+  },
+  {
+   "id": "history-table",
+   "request": "Show a table of last month's payments on the dashboard.",
+   "expected": {
+    "dashboard": "requested",
+    "payments": "unspecified"
+   }
+  },
+  {
+   "id": "celo-tip",
+   "request": "Let fans tip me in CELO.",
+   "expected": {
+    "native": "requested",
+    "gd": "unspecified"
+   }
+  },
+  {
+   "id": "only-colors",
+   "request": "Only change the colors.",
+   "expected": {
+    "payments": "unspecified",
+    "advance": "unspecified"
+   }
+  },
+  {
+   "id": "continue",
+   "request": "continue",
+   "expected": {
+    "advance": "requested"
+   },
+   "firstBuild": false,
+   "goal": "A tipping page"
+  },
+  {
+   "id": "three-d",
+   "request": "A 3D scene of a spinning planet you can orbit with the mouse.",
+   "expected": {
+    "threeD": "requested"
+   }
+  },
+  {
+   "id": "tictactoe",
+   "request": "Tic tac toe for two people on one phone.",
+   "expected": {
+    "ticTacToe": "requested",
+    "multiplayer": "unspecified"
+   }
+  }
+ ]
 }
