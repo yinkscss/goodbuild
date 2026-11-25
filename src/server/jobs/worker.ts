@@ -217,8 +217,8 @@ export class TurnWorker {
       const ctx = await jobContext(db, job, this.id, controller.signal);
       // A stop requested before the first renewal.
       if (job.stopRequested) controller.abort();
-      controller.signal.throwIfAborted();
-      await prepareJevRouting(db, job, ctx);
+      // A job stopped before it started goes straight to runTurn, which records it as stopped.
+      if (!controller.signal.aborted) await prepareJevRouting(db, job, ctx);
       if (jevMode() === "shadow" && process.env.TYPESAFE_API_KEY) void shadowJev(db, job, undefined, controller.signal);
       const record = await runTurn(
         { db, model: this.opts.model(), ...this.opts.deps, job: ctx },

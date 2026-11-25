@@ -139,6 +139,11 @@ export async function classifyTurn(
     ms: Date.now() - start,
   };
 }
+const CONTINUE = /^(continue|continue building|build next|next milestone)[.!]?$/i;
+/** The plain words that mean "go on to the next milestone". */
+export function isContinuation(text: string) {
+  return CONTINUE.test(text.trim());
+}
 export function wants(decision: JevDecision | undefined, feature: Feature, legacy: () => boolean) {
   return decision ? decision.signals[feature] === "requested" : legacy();
 }

@@ -32,6 +32,7 @@ function parseCsv(text: string): Record<string, string>[] {
     else if (c === "\n") { row.push(cell); rows.push(row); row = []; cell = ""; }
     else if (c !== "\r") cell += c;
   }
+  if (cell !== "" || row.length) { row.push(cell); rows.push(row); }
   const [head, ...rest] = rows;
   return rest.filter((r) => r.length === head.length).map((r) => Object.fromEntries(head.map((h, i) => [h, r[i]])));
 }
@@ -44,7 +45,7 @@ async function main() {
   const limit = Number(opt("--limit", String(rows.length)));
   const cacheFile = `${out}/results.json`;
   const done: Record<string, Result> = existsSync(cacheFile) ? JSON.parse(readFileSync(cacheFile, "utf8")) : {};
-  const todo = rows.slice(0, limit).filter((r) => !done[r.id]);
+  const todo = rows.slice(0, limit).filter((r) => !done[r.id] || done[r.id].error);
   let next = 0;
   async function worker() {
     while (next < todo.length) {

@@ -6,7 +6,7 @@ import { selectContext } from "../agent/codebase";
 import { and, asc, eq, lte, ne, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { buildDeliveries, messages, projects, turnJobs, type TurnJob } from "../db/schema";
-import { classifyTurn, questions, type IntentState, type JevDecision } from "../agent/jev";
+import { classifyTurn, isContinuation, questions, type IntentState, type JevDecision } from "../agent/jev";
 import { disagreements } from "../agent/jev-legacy";
 import { latestIntake, planBrief } from "../agent/plan-intake";
 import { deliveryFor, extendDelivery } from "../agent/delivery";
@@ -60,7 +60,7 @@ export async function shadowJev(db: Db, job: TurnJob, classify = classifyTurn, s
 export async function prepareJevRouting(db: Db, job: TurnJob, ctx: TurnJobContext, classify = classifyTurn) {
   if (ctx.resume?.setup) return;
   const [source] = await db.select().from(messages).where(eq(messages.id, job.userMessageId));
-  const marker = source?.meta?.jev as { advance: boolean; decision?: JevDecision; unavailable?: boolean } | undefined;
+  const marker = source?.meta?.jev as { advance: boolean; completed?: number; decision?: JevDecision; unavailable?: boolean } | undefined;
   if (!marker || marker.unavailable) return;
   if (marker.decision) {
     ctx.decision = job.retryOfJobId ? {...marker.decision,chargedMicro:0} : marker.decision;
@@ -95,13 +95,14 @@ export async function prepareJevRouting(db: Db, job: TurnJob, ctx: TurnJobContex
           const extension = extendDelivery(plan, source.content, decision);
           const picked = explicit >= 0 ? explicit : marker.advance ? -1 : extension.picked;
           if (explicit < 0 && !marker.advance) plan = extension.plan;
-          const advance = marker.advance || decision?.signals.advance === "requested" || picked >= plan.completed;
+          const advance = marker.advance || (decision ? decision.signals.advance === "requested" : isContinuation(source.content)) || picked >= plan.completed;
           if (advance && picked > plan.completed) {
             const milestones = [...plan.milestones];
             milestones.splice(plan.completed, 0, ...milestones.splice(picked, 1));
             plan = { ...plan, milestones };
           }
-          index = advance ? plan.completed : plan.completed - 1;
+          // An ordinary edit keeps the scope it was admitted with, even if a milestone finished while it queued.
+          index = advance ? plan.completed : Math.max(0, Math.min(plan.completed, marker.completed ?? plan.completed) - 1);
           if (index >= plan.milestones.length) {
             const pending = plan.milestones.findIndex((m) => !plan.verified?.includes(m.id));
             index = pending >= 0 ? pending : plan.milestones.length - 1;

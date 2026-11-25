@@ -132,3 +132,23 @@ it("shadow mode records where Jev and the built-in rules disagree and changes no
     vi.unstubAllGlobals();
   }
 });
+
+import { parseIntake } from "../agent/plan-intake";
+import { isContinuation } from "../agent/jev";
+
+it("treats 'continue.' and 'continue!' as continuing, and a question with no topic by its words", () => {
+  expect(isContinuation("continue.")).toBe(true);
+  expect(isContinuation("Continue building!")).toBe(true);
+  expect(isContinuation("continue the colours")).toBe(false);
+  const decision = { signals: resolveAnswers(respond({ game: 0.9 })) } as never;
+  const args = JSON.stringify({
+    summary: "s",
+    questions: [
+      { question: "Which colours do you like?", label: "Colours", options: [{ label: "Blue" }, { label: "Green" }] },
+      { question: "What gets in the way?", label: "Hazards", topic: "obstacles", options: [{ label: "Rocks" }, { label: "Trees" }] },
+    ],
+    game_brief: { name: "Run", pitch: "p", loop: "l", lose: "x" },
+  });
+  const parsed = parseIntake(args, "a running game", decision);
+  expect(parsed?.questions.some((q) => /colours do you like/i.test(q.question) && q.id.startsWith("q") && !q.topic?.match(/palette/))).toBe(false);
+});

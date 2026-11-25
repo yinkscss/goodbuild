@@ -74,7 +74,7 @@ type GamePart = (typeof GAME_PARTS)[number]["id"];
 
 /** Which of the three a card asks about, by its own words (not its options). */
 function gamePartOf(q: PlanQuestion): GamePart | undefined {
-  if (q.topic) return GAME_PARTS.find(p=>p.id===q.topic)?.id;
+  if (q.topic && q.topic !== "general") return GAME_PARTS.find(p=>p.id===q.topic)?.id;
   const text = `${q.question} ${q.label}`;
   // Power-ups first: "special items that block enemies" is about power-ups.
   for (const id of ["powerups", "npcs", "obstacles"] as const) if (GAME_PARTS.find((p) => p.id === id)!.test.test(text)) return id;
@@ -282,10 +282,13 @@ function parseQuestions(raw: unknown, max = MAX_MODEL_QUESTIONS, game = false, t
     const options = parseOptions(entry.options);
     // The palette card already asks about colour, and the MiniPay card about MiniPay.
     if (!question || options.length < 2) continue;
-    const topic = String(entry.topic ?? "general");
-    if (typed ? ["palette","minipay"].includes(topic) : /\b(colou?rs?|palette)\b/i.test(question) || SAYS_MINIPAY.test(question)) continue;
+    const said = String(entry.topic ?? "");
+    const topic = ["obstacles", "powerups", "npcs", "palette", "minipay", "scores", "general"].includes(said) ? said : "general";
+    // A question with no valid topic is judged by its words, as without a classification.
+    const byTopic = typed && topic !== "general";
+    if (byTopic ? ["palette","minipay"].includes(topic) : /\b(colou?rs?|palette)\b/i.test(question) || SAYS_MINIPAY.test(question)) continue;
     // A game's scores are the leaderboard card's, which the server asks.
-    if (game && (typed ? topic === "scores" : ASKS_SCORES.test(question))) continue;
+    if (game && (byTopic ? topic === "scores" : ASKS_SCORES.test(question))) continue;
     questions.push({ id: `q${questions.length + 1}`, ...(typed ? { topic } : {}), kind: "choice", question, label: clean(entry.label, 32) || question.slice(0, 32), multiple: entry.multiple === true, options });
     if (questions.length === max) break;
   }
@@ -401,7 +404,9 @@ function parseGameBrief(raw: unknown, request = "", decision?: JevDecision): Gam
   // Only a template GoodBuild has: an id the model made up is dropped, and the build starts from scratch.
   // A multiplayer or social game never starts from a one-player template (D139): they share too little.
   const picked = gameTemplateById(typeof b.template === "string" ? b.template : undefined);
-  const social = wants(decision, "multiplayer", () => isMultiplayerGame([request, brief.name, brief.pitch, brief.loop, brief.lose].join("\n")));
+  const briefText = [brief.name, brief.pitch, brief.loop, brief.lose].join("\n");
+  // The request's classification, and also the brief the model wrote: it can describe real players the request didn't.
+  const social = wants(decision, "multiplayer", () => isMultiplayerGame([request, briefText].join("\n"))) || isMultiplayerGame(briefText);
   const template = picked && (!social || picked.multiplayer) ? picked : undefined;
   if (template) {
     brief.template = template.id;

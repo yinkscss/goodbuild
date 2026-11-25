@@ -169,7 +169,7 @@ export function Workspace({ initial }: { initial: WorkspaceState }) {
         open={backendOpen}
         onOpenChange={setBackendOpen}
         projectId={state.project.id}
-        project={{ name: state.project.name }}
+        project={{ name: state.project.name, templateId: state.project.templateId, displayKind: state.project.displayKind }}
         files={files}
         published={Boolean(publish.info?.live)}
         busy={running}

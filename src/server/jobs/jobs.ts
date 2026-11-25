@@ -1,6 +1,6 @@
 import "server-only";
 
-import { jevMode } from "../agent/jev";
+import { isContinuation, jevMode } from "../agent/jev";
 import { and, asc, eq, gt, inArray, sql } from "drizzle-orm";
 
 import type { Db } from "@/server/db/client";
@@ -55,7 +55,7 @@ type QueueArgs = {
   retryNote?: string;
   continueDelivery?: boolean;
   buildFromIntake?: boolean;
-  jev?: { advance: boolean; decision?: import("../agent/jev").JevDecision };
+  jev?: { advance: boolean; completed?: number; decision?: import("../agent/jev").JevDecision };
   useCredits?: boolean;
   baseVersion?: number;
   deliveryIndex?: number;
@@ -149,6 +149,7 @@ export async function startTurn(db: Db, args: QueueArgs, env: Record<string, str
     }
     args.baseVersion = project.currentVersion;
     let [delivery] = await tx.select().from(buildDeliveries).where(eq(buildDeliveries.projectId, project.id));
+    if (args.jev && delivery) args.jev = { ...args.jev, completed: delivery.plan.completed };
     if (!args.jev && args.mode === "build" && !delivery && project.currentVersion === 0) {
       const [first] = await tx.select().from(messages).where(and(eq(messages.projectId, project.id), eq(messages.role, "user"))).orderBy(asc(messages.createdAt)).limit(1);
       const plan = deliveryFor(first?.content || args.prompt || "Build the requested app");
@@ -174,7 +175,7 @@ export async function startTurn(db: Db, args: QueueArgs, env: Record<string, str
           }
         }
       }
-      const advance = args.continueDelivery || /^(continue|continue building|build next|next milestone)[.!]?$/i.test(prompt) || picked >= delivery.plan.completed;
+      const advance = args.continueDelivery || isContinuation(prompt) || picked >= delivery.plan.completed;
       if (advance && (await activeJobs(tx, project.id)).length) throw new Error("retry_busy");
       if (advance && picked > delivery.plan.completed) {
         const plan = { ...delivery.plan, milestones: [...delivery.plan.milestones] };

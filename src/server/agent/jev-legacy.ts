@@ -3,9 +3,8 @@
 import { requestedMilestones } from "./delivery";
 import { mentionsGd } from "./checks";
 import { asksLeaderboard, asksMiniPay, isGameRequest, isMultiplayerGame, looksLikeWebsite } from "./plan-intake";
-import type { Feature } from "./jev";
+import { isContinuation, type Feature } from "./jev";
 
-const CONTINUE = ["continue", "continue building", "build next", "next milestone"];
 
 /** Only the capabilities the built-in rules can answer are present. */
 export function legacySignals(request: string): Partial<Record<Feature, boolean>> {
@@ -20,7 +19,7 @@ export function legacySignals(request: string): Partial<Record<Feature, boolean>
     miniPay: asksMiniPay(request),
     leaderboard: asksLeaderboard(request),
     gd: mentionsGd(request),
-    advance: CONTINUE.includes(request.trim().toLowerCase()),
+    advance: isContinuation(request),
   };
 }
 

@@ -71,8 +71,15 @@ function walk(n, reason) {
     ts.isPropertyAccessExpression(n) &&
     ["test", "exec"].includes(n.name.text) &&
     checker.typeToString(checker.getTypeAtLocation(n.expression)).includes("RegExp");
+  const stringMethod =
+    ts.isCallExpression(n) &&
+    ts.isPropertyAccessExpression(n.expression) &&
+    ["match", "matchAll", "search"].includes(n.expression.name.text) &&
+    n.arguments.length > 0 &&
+    checker.typeToString(checker.getTypeAtLocation(n.arguments[0])).includes("RegExp");
   if (
     n.kind === ts.SyntaxKind.RegularExpressionLiteral ||
+    stringMethod ||
     ((ts.isNewExpression(n) || ts.isCallExpression(n)) && n.expression.getText(sf) === "RegExp") ||
     method
   ) {

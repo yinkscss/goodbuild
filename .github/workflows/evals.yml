@@ -47,6 +47,13 @@ jobs:
           else
             echo "ready=true" >> "$GITHUB_OUTPUT"
           fi
+          # The classifier key only gates the Jev steps, so the existing suite still runs without it.
+          if [ -z "$TYPESAFE_API_KEY" ]; then
+            echo "TYPESAFE_API_KEY is not set, so the Jev classification steps were skipped." >> "$GITHUB_STEP_SUMMARY"
+            echo "jev=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "jev=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - uses: actions/checkout@v4
         if: steps.keys.outputs.ready == 'true'
@@ -69,7 +76,7 @@ jobs:
         run: node node_modules/playwright-core/cli.js install --with-deps chromium-headless-shell
 
       - name: Record Jev classifications and replay labeled cases
-        if: steps.keys.outputs.ready == 'true'
+        if: steps.keys.outputs.ready == 'true' && steps.keys.outputs.jev == 'true'
         run: node --import tsx --require ./scripts/worker-preload.cjs scripts/jev-eval.ts --record --out-dir jev-eval
 
       - name: Build
@@ -111,7 +118,7 @@ jobs:
           node scripts/eval-suite.mjs "${args[@]}"
 
       - name: Check classification outcomes
-        if: steps.keys.outputs.ready == 'true'
+        if: steps.keys.outputs.ready == 'true' && steps.keys.outputs.jev == 'true'
         run: node --import tsx --require ./scripts/worker-preload.cjs scripts/jev-eval.ts --out-dir jev-eval --require-pass
 
       - name: Keep the results

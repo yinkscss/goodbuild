@@ -1057,7 +1057,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       const passes = moreBuildPasses();
       for (let pass = 1; pass <= passes; pass++) {
         const last = replies.at(-1);
-        if (!last || !(setup.decision ? builderSaid.completion === "remaining" : soundsUnfinished(last)) || atFreeCeiling()) break;
+        if (!last || !(setup.decision && builderSaid.completion ? builderSaid.completion === "remaining" : soundsUnfinished(last)) || atFreeCeiling()) break;
         stopIfRequested();
         log(`· the builder said the plan isn't finished; building the rest (pass ${pass + 1})`);
         step({ id: `more:${pass}`, label: "Building the rest of the plan", detail: `pass ${pass + 1} of ${passes + 1}`, status: "running" });
@@ -1073,7 +1073,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
         } else if (text !== textBefore) {
           out({ type: "text_set", text });
         }
-        step({ id: `more:${pass}`, label: "Building the rest of the plan", detail: fresh && !(setup.decision ? builderSaid.completion === "remaining" : soundsUnfinished(fresh)) ? "done" : `pass ${pass + 1} of ${passes + 1}`, status: "done" });
+        step({ id: `more:${pass}`, label: "Building the rest of the plan", detail: fresh && !(setup.decision && builderSaid.completion ? builderSaid.completion === "remaining" : soundsUnfinished(fresh)) ? "done" : `pass ${pass + 1} of ${passes + 1}`, status: "done" });
         if (!done || !fresh) break;
       }
     }
@@ -1664,7 +1664,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       priorStatus: finalStatus,
       assetNames: names,
       chainId: project.chainId,
-      contractOptions: { gdToken: wants(intent, "gd", () => mentionsGd(userText)), allowNative: wants(intent, "native", () => mentionsNativeCelo(userText)), ...(upgradeable ? { upgradeable } : {}), ...(v2 ? { allowRequire: true } : {}) },
+      contractOptions: { gdToken: intent?.signals.gd === "excluded" ? false : intent?.signals.gd === "requested" || mentionsGd(userText), allowNative: intent?.signals.native === "excluded" ? false : intent?.signals.native === "requested" || mentionsNativeCelo(userText), ...(upgradeable ? { upgradeable } : {}), ...(v2 ? { allowRequire: true } : {}) },
       baseFiles: files,
       prefix,
       imageAssetIds,

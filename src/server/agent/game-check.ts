@@ -232,8 +232,9 @@ const roundOver = (r: ProbeReport | null) => {
 const PLAY_AGAIN = /\b(play|again|retry|restart|start|race|replay|try again|go)\b/i;
 /** New games identify actions independent of the language visible to their players. */
 export async function gameButton(page:Page, action:"play"|"restart") {
-  const identified=page.getByTestId(action === "play" ? "gb-play" : "gb-restart").first();
-  if(await identified.count()) return identified;
+  const marked=page.getByTestId(action === "play" ? "gb-play" : "gb-restart");
+  // A responsive page can keep a hidden desktop control before the visible one.
+  for (let i=0, n=await marked.count(); i<n; i++) if (await marked.nth(i).isVisible()) return marked.nth(i);
   return page.getByRole("button",{name:action==="play" ? /\b(play|start|begin|go|race|tap to)\b/i : PLAY_AGAIN}).first();
 }
 
