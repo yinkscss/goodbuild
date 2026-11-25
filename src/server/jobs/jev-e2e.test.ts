@@ -9,7 +9,7 @@ import { signInUser } from "@/server/auth/service";
 import { createProjectFromPrompt } from "@/server/projects";
 import { scriptedModel } from "@/server/agent/fake-model";
 import { runTurn } from "@/server/agent/runner";
-import { classifyTurn, features, questions } from "@/server/agent/jev";
+import { classifyTurn, features } from "@/server/agent/jev";
 import { postLedgerEntry } from "@/server/credits/ledger";
 import { claimJob, jobContext, startTurn } from "./jobs";
 import { prepareJevRouting } from "./jev-routing";

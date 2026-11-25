@@ -2,13 +2,24 @@
 // Usage: node --import tsx --require ./scripts/worker-preload.cjs scripts/jev-replay.ts --csv .data/prod-prompts.csv [--limit n]
 // Output goes to .data/jev-replay/ (gitignored): results.json and index.html. Emails and 0x addresses are redacted before sending.
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
-import { classifyTurn, type IntentState, type Feature } from "../src/server/agent/jev";
+import { classifyTurn, type IntentState, type Feature, type Intent } from "../src/server/agent/jev";
 import { legacySignals } from "../src/server/agent/jev-legacy";
 
 const args = process.argv.slice(2);
 const opt = (n: string, d: string) => (args.includes(n) ? args[args.indexOf(n) + 1] : d);
 const out = ".data/jev-replay";
 mkdirSync(out, { recursive: true });
+
+type Result = {
+  n: number;
+  request: string;
+  error?: string;
+  signals?: Record<Feature, Intent>;
+  ms?: number;
+  tokens?: { input_tokens: number; output_tokens: number };
+  legacy?: Partial<Record<Feature, boolean>>;
+  displayKind?: string;
+};
 
 function parseCsv(text: string): Record<string, string>[] {
   const rows: string[][] = [];
@@ -32,7 +43,7 @@ async function main() {
   for (const r of rows) if (r.n === "1") goals.set(r.project_id, redact(r.content));
   const limit = Number(opt("--limit", String(rows.length)));
   const cacheFile = `${out}/results.json`;
-  const done: Record<string, any> = existsSync(cacheFile) ? JSON.parse(readFileSync(cacheFile, "utf8")) : {};
+  const done: Record<string, Result> = existsSync(cacheFile) ? JSON.parse(readFileSync(cacheFile, "utf8")) : {};
   const todo = rows.slice(0, limit).filter((r) => !done[r.id]);
   let next = 0;
   async function worker() {
@@ -49,12 +60,12 @@ async function main() {
     }
   }
   await Promise.all(Array.from({ length: 4 }, worker));
-  const ok = Object.values(done).filter((x: any) => !x.error) as any[];
+  const ok = Object.values(done).filter((x): x is Required<Result> => !x.error);
   const ms = ok.map((x) => x.ms).sort((a, b) => a - b);
   const tokens = ok.reduce((n, x) => n + x.tokens.input_tokens, 0);
-  const dis: any[] = [];
-  for (const x of ok) for (const [f, l] of Object.entries(x.legacy as Record<string, boolean>)) {
-    const j = x.signals[f as Feature];
+  const dis: { feature: string; legacy: boolean; jev: string; n: number; request: string }[] = [];
+  for (const x of ok) for (const [f, l] of Object.entries(x.legacy) as [Feature, boolean][]) {
+    const j = x.signals[f];
     if (l !== (j === "requested")) dis.push({ feature: f, legacy: l, jev: j, n: x.n, request: x.request });
   }
   const by: Record<string, number> = {};
