@@ -1,7 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { InviteFriendsCard } from "./invite-card";
 
 type Referral = { id: string; joinedAt: string; verifiedAt: string | null; voteAt: string | null; qualifiedAt: string | null; amountG: number | null; wallet?: string; root?: string; voteHash?: string };
 type Payout = { id: string; wallet: string; amountG: number; status: string; createdAt: string; paidAt: string | null; overdue?: boolean; reason: string | null; txHash: string | null };
@@ -57,7 +56,6 @@ export function AmbassadorDashboard({ admin = false }: { admin?: boolean }) {
   }
   return <div className="mt-6 space-y-6">
     {error && <p role="alert" className="text-danger">{error}</p>}
-    {!admin && <InviteFriendsCard />}
     {admin && <><form className="flex gap-3" onSubmit={e => { e.preventDefault(); setSelected(""); setPage(0); setFilter(wallet.trim()); }}><input aria-label="Ambassador wallet" className={`${input} flex-1`} placeholder="Search ambassador wallet" value={wallet} onChange={e => setWallet(e.target.value)} /><button className={button}>Search</button></form>
     {selected && <button className="text-violet underline" onClick={() => { setSelected(""); setPage(0); }}>Back to ambassadors</button>}
     {adminData?.ambassadors?.map(a => <button key={a.userId} onClick={() => { setSelected(a.userId); setPage(0); }} className="block w-full break-all rounded-block border border-grey-200 p-4 text-left">{a.wallet}<span className="block">{a.qualified} qualified · {money(a.earnedG)} earned</span></button>)}

@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeftRight, Check, ChevronDown, Copy, ExternalLink, KeyRound, Loader2, LogOut, Trophy, Wallet } from "lucide-react";
+import { ArrowLeftRight, Check, ChevronDown, Copy, ExternalLink, KeyRound, Loader2, LogOut, Trophy, UserPlus, Wallet } from "lucide-react";
 
 import { useSendGate } from "@/components/auth/send-gate";
 import { Button } from "@/components/ui/button";
@@ -199,6 +199,15 @@ function AccountMenu({
             <span>
               <span className="block">Credits and top-up</span>
               <span className="block text-xs text-grey-600">Pay with G$</span>
+            </span>
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link href="/home/referrals">
+            <UserPlus className="mt-0.5 size-4 text-grey-600" />
+            <span>
+              <span className="block">Referrals</span>
+              <span className="block text-xs text-grey-600">Invite friends, you both get credits</span>
             </span>
           </Link>
         </DropdownMenuItem>
