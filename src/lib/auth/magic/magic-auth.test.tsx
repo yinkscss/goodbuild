@@ -14,10 +14,30 @@ vi.mock("../session-client", async (importOriginal) => {
 });
 
 /** Magic, only for the email-wallet tests: logged in as `magicAccount`, or logged out when it is null. */
-const magicState: { account: string | null } = { account: null };
+const magicState: { account: string | null; otp: FakeOtp | null } = { account: null, otp: null };
+/** Stands in for Magic's PromiEvent from loginWithEmailOTP: the test fires its events by hand. */
+class FakeOtp {
+  listeners = new Map<string, Array<(...a: unknown[]) => void>>();
+  emitted: string[] = [];
+  promise = new Promise<string | null>(() => undefined);
+  on(event: string, cb: (...a: unknown[]) => void) {
+    this.listeners.set(event, [...(this.listeners.get(event) ?? []), cb]);
+    return this;
+  }
+  emit(event: string) {
+    this.emitted.push(event);
+  }
+  fire(event: string) {
+    this.listeners.get(event)?.forEach((cb) => cb());
+  }
+  then(a?: (v: string | null) => unknown, b?: (e: unknown) => unknown) {
+    return this.promise.then(a, b);
+  }
+}
 vi.mock("@magic-ext/evm", () => ({ EVMExtension: class {} }));
 vi.mock("magic-sdk", () => ({
   Magic: class {
+    auth = { loginWithEmailOTP: () => (magicState.otp = new FakeOtp()) };
     user = { isLoggedIn: async () => magicState.account !== null, logout: vi.fn(async () => true) };
     evm = { switchChain: vi.fn() };
     rpcProvider = {
@@ -399,5 +419,106 @@ describe("signing the GoodCash top-up permit on Base (D122)", () => {
     await act(async () => {
       await expect(auth.signTypedDataOn(base, permit)).rejects.toThrow(/signature/);
     });
+  });
+});
+
+describe("email code: the button never spins forever", () => {
+  async function send() {
+    await act(async () => {
+      await auth.sendEmailCode("a@example.com");
+    });
+    await waitFor(() => expect(magicState.otp).not.toBeNull());
+    // Not returned from this async function: the fake is thenable, so awaiting it would wait on Magic forever.
+    return { otp: magicState.otp as FakeOtp };
+  }
+  afterEach(() => {
+    magicState.otp = null;
+    vi.useRealTimers();
+  });
+
+  it("asks to approve the device when Magic wants that first, then waits for the code", async () => {
+    await mount();
+    const { otp } = await send();
+    act(() => otp.fire("device-needs-approval"));
+    await waitFor(() => expect(auth.phase).toBe("awaiting-device"));
+    act(() => otp.fire("device-approved"));
+    await waitFor(() => expect(auth.phase).toBe("sending-code"));
+    act(() => otp.fire("email-otp-sent"));
+    await waitFor(() => expect(auth.phase).toBe("awaiting-code"));
+  });
+
+  it("doesn't time out while the person approves the device, but does if Magic stalls after approval", async () => {
+    await mount();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const { otp } = await send();
+    act(() => otp.fire("device-needs-approval"));
+    await act(async () => {
+      vi.advanceTimersByTime(120_000);
+    });
+    expect(auth.phase).toBe("awaiting-device");
+    act(() => otp.fire("device-approved"));
+    await act(async () => {
+      vi.advanceTimersByTime(60_000);
+    });
+    expect(auth.error).toMatch(/taking longer than usual/);
+  });
+
+  it("cancels Magic's request when the person starts over", async () => {
+    await mount();
+    const { otp } = await send();
+    act(() => otp.fire("device-needs-approval"));
+    act(() => auth.reset());
+    expect(otp.emitted).toContain("cancel");
+    expect(auth.phase).toBe("idle");
+  });
+
+  it("says so when the approval link expired", async () => {
+    await mount();
+    const { otp } = await send();
+    act(() => otp.fire("device-verification-email-sent"));
+    act(() => otp.fire("device-verification-link-expired"));
+    await waitFor(() => expect(auth.phase).toBe("error"));
+    expect(auth.error).toMatch(/approval link expired/);
+    expect(otp.emitted).toContain("cancel");
+  });
+
+  it("explains the extra sign-in step instead of waiting on it", async () => {
+    await mount();
+    const { otp } = await send();
+    act(() => otp.fire("mfa-sent-handle"));
+    await waitFor(() => expect(auth.error).toMatch(/extra sign-in step/));
+  });
+
+  it("says it's slow after a minute but keeps the attempt alive, so a late code still works", async () => {
+    await mount();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const { otp } = await send();
+    await act(async () => {
+      vi.advanceTimersByTime(59_000);
+    });
+    expect(auth.phase).toBe("sending-code");
+    await act(async () => {
+      vi.advanceTimersByTime(1_000);
+    });
+    expect(auth.phase).toBe("error");
+    expect(auth.error).toMatch(/taking longer than usual/);
+    expect(otp.emitted).not.toContain("cancel");
+    act(() => otp.fire("email-otp-sent"));
+    await waitFor(() => expect(auth.phase).toBe("awaiting-code"));
+    expect(auth.error).toBeNull();
+  });
+
+  it("doesn't time out once the code was sent, and ignores an attempt that was reset", async () => {
+    await mount();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const { otp } = await send();
+    act(() => otp.fire("email-otp-sent"));
+    await act(async () => {
+      vi.advanceTimersByTime(61_000);
+    });
+    expect(auth.phase).toBe("awaiting-code");
+    act(() => auth.reset());
+    act(() => otp.fire("email-otp-sent"));
+    expect(auth.phase).toBe("idle");
   });
 });

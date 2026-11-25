@@ -2178,3 +2178,14 @@ The owner approved implementing all five parts of the first-build fix and openin
 - **Budget:** the default stays 15,000 credits, and `HACKATHON_BUDGET_CREDITS` still overrides it.
 - **Checked:** the migration (PGlite test: overlapping signups, a vote only on a campus signup, over-cap approvals, the guard, running twice), the 31 Dec close, week-4 Rising Star, and every redirect on the dev server. The public page was checked in a browser. **UNVERIFIED:** the migration against the live database, and the in-app tabs while signed in.
 - **Leaderboard lists every project (owner, 24 Nov):** all ranked projects are shown, not only the top 20, with a "Prize zone ends at #20" line. Entries without a live app are listed below as "Not live yet". They stay unranked and unpaid until they go live, as before.
+
+### D171. Email sign-in never spins forever: device approval, extra-step and timeout handling (24 Nov 2026)
+- **Decided by:** the owner asked for the fix after a user's "Continue with email" spun without end on iPhone Safari. Built by Claude.
+- **Cause:** `sendEmailCode` (`src/lib/auth/magic/magic-auth.tsx`) only moved on when Magic said `email-otp-sent`. Any other answer, or none, left the button spinning. Magic's device verification is the likely case: a known email on a new phone gets an "approve this device" link first. **UNVERIFIED** for this user: the Magic dashboard logs weren't checked, and a blocked Magic frame (content blocker, or goodbuildit.xyz missing from Magic's allowed origins) would look the same.
+- **Change:**
+  - A new auth phase, `awaiting-device`: the modal asks the person to tap the link in their email, pauses the other buttons, and offers Start over.
+  - The link expiring, Magic's extra sign-in step (MFA, which we can't show) and too many attempts each end with a plain message.
+  - After a minute waiting on Magic, a hint that it's slow (see the amendment below).
+  - Start over, a different email, or closing the modal cancels Magic's request.
+- **Checked:** unit tests for each event and the timeout; the modal's new state. **Not checked** on a real phone or against live Magic.
+- **Amended 25 Nov 2026 (owner):** the first version (#186) took sign-in down and was reverted (#188). Its 30-second deadline started before Magic had loaded and then cancelled the attempt, so on slow mobile data people saw "We couldn't reach the sign-in service" for sign-ins that would have worked, and a late code no longer worked. Now the clock starts only once Magic has loaded, runs for 60 seconds (owner's choice), and only shows a hint ("This is taking longer than usual…"). It never cancels: a late code still moves on to the code step. The other parts of #186 are unchanged.
