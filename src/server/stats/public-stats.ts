@@ -31,7 +31,7 @@ export interface PublicStats {
   };
   /** Newest first. Every mainnet contract, capped at `CONTRACT_LIST_LIMIT`. */
   contracts: Array<{ name: string; address: string; txHash: string; sourceChecked: boolean; deployedAt: string }>;
-  /** Newest first. Live apps only (no unpublished apps, no takedowns). */
+  /** Newest first. Every live app, no cap (no unpublished apps, no takedowns). */
   liveApps: Array<{ name: string; slug: string; publishedAt: string }>;
   /** The on-chain activity registry (D156), once deployed and switched on. Null until REGISTRY_ADDRESS is set. */
   registry: { chainId: number; address: string } | null;
@@ -39,7 +39,6 @@ export interface PublicStats {
 
 export const SIGNUP_WEEKS = 12;
 export const CONTRACT_LIST_LIMIT = 1000;
-export const LIVE_APP_LIST_LIMIT = 200;
 
 const DAY = 86_400_000;
 
@@ -120,8 +119,7 @@ export async function loadPublicStats(db: Db, now = new Date()): Promise<PublicS
       .from(publications)
       .innerJoin(projects, eq(publications.projectId, projects.id))
       .where(live)
-      .orderBy(desc(publications.publishedAt), desc(publications.id))
-      .limit(LIVE_APP_LIST_LIMIT),
+      .orderBy(desc(publications.publishedAt), desc(publications.id)),
   ]);
 
   const buckets = new Map<number, number>();

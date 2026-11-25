@@ -24,7 +24,6 @@ export const metadata: Metadata = {
 };
 
 const CONTRACTS_SHOWN = 25;
-const APPS_SHOWN = 12;
 const fmt = (v: number) => v.toLocaleString("en-US");
 const day = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 
@@ -206,7 +205,7 @@ async function Stats() {
           <p className="mt-6 text-sm text-grey-600">No apps published yet.</p>
         ) : (
           <ul className="mt-6 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {stats.liveApps.slice(0, APPS_SHOWN).map((a) => {
+            {stats.liveApps.map((a) => {
               const href = publishedAppUrl(a.slug, requestHost, domain);
               return (
                 <li key={a.slug}>
