@@ -23,8 +23,8 @@ describe("what Fix it for me sends (D164)", () => {
   });
 
   it("with no job to continue, sends a fix message that names the crash", () => {
-    expect(retryRequest(record({ jobId: undefined }), crash)).toEqual({ kind: "prompt", prompt: `${FIX_PROMPT}\n\n${crash}` });
-    expect(retryRequest(record({ jobId: undefined }), undefined)).toEqual({ kind: "prompt", prompt: FIX_PROMPT });
-    expect(retryRequest(record({ jobId: undefined, paused: "credits" }), crash)).toEqual({ kind: "prompt", prompt: CONTINUE_PROMPT });
+    expect(retryRequest(record({ jobId: undefined }), crash)).toEqual({ kind: "prompt", prompt: `${FIX_PROMPT}\n\n${crash}`, action: "repair" });
+    expect(retryRequest(record({ jobId: undefined }), undefined)).toEqual({ kind: "prompt", prompt: FIX_PROMPT, action: "repair" });
+    expect(retryRequest(record({ jobId: undefined, paused: "credits" }), crash)).toEqual({ kind: "prompt", prompt: CONTINUE_PROMPT, action: "resume" });
   });
 });

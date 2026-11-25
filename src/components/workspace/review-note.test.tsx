@@ -32,6 +32,6 @@ describe("ReviewNote (D87)", () => {
     render(<ReviewNote record={record({ ok: false, issues: ["phone: the headline is cut off"], fixed: false })} onFix={onFix} disabled={false} />);
     expect(screen.getByText(/one thing still looks off/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /Fix it for me/ }));
-    expect(onFix).toHaveBeenCalledWith("Fix these problems you saw when you looked at the page:\n- phone: the headline is cut off");
+    expect(onFix).toHaveBeenCalledWith("Fix these problems you saw when you looked at the page:\n- phone: the headline is cut off", "repair");
   });
 });
