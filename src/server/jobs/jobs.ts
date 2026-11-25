@@ -53,6 +53,8 @@ type QueueArgs = {
   /** With a retry (D164): what else is wrong, such as the preview's error, added to the saved draft's notes for the builder. */
   retryNote?: string;
   continueDelivery?: boolean;
+  buildFromIntake?: boolean;
+  jev?: { advance: boolean; decision?: import("../agent/jev").JevDecision };
   useCredits?: boolean;
   baseVersion?: number;
   deliveryIndex?: number;
@@ -88,7 +90,7 @@ async function queueTurn(tx: Db, args: QueueArgs, funding: FundingSource, holdMi
     messageId = m.id;
   }
   const [job] = await tx.insert(turnJobs).values({ projectId: args.projectId, userId: args.userId, mode: args.mode, prompt, userMessageId: messageId, funding, holdMicro, retryOfJobId: args.retryOfJobId, baseVersion: args.baseVersion ?? 0, deliveryIndex: args.deliveryIndex }).returning();
-  await tx.update(messages).set({ meta: sql`coalesce(${messages.meta}, '{}'::jsonb) || ${JSON.stringify({ mode: args.mode, jobId: job.id, ...(args.intake ? { intake: true } : {}) })}::jsonb` }).where(eq(messages.id, messageId));
+  await tx.update(messages).set({ meta: sql`coalesce(${messages.meta}, '{}'::jsonb) || ${JSON.stringify({ mode: args.mode, jobId: job.id, ...(args.buildFromIntake ? { buildFromIntake:true } : {}), ...(args.jev ? { jev: args.jev } : {}), ...(args.intake ? { intake: true } : {}) })}::jsonb` }).where(eq(messages.id, messageId));
   return job;
 }
 
@@ -138,17 +140,21 @@ export async function startTurn(db: Db, args: QueueArgs, env: Record<string, str
       if (source.baseVersion !== project.currentVersion) throw new Error("retry_stale");
       if ((await activeJobs(tx, project.id)).length) throw new Error("retry_busy");
       const [original] = await tx.select().from(messages).where(eq(messages.id, source.userMessageId));
-      args = { ...args, mode: source.mode as TurnMode, prompt: /^(Skip the questions, just build it|Start building)[.!]?$/i.test(source.prompt) ? (await tx.select().from(buildDeliveries).where(eq(buildDeliveries.projectId, project.id)))[0]?.plan.goal ?? source.prompt : source.prompt, userMessageId: undefined, intake: Boolean(original?.meta?.intake), assetIds: original?.meta?.assetIds as string[] | undefined, deliveryIndex: source.deliveryIndex ?? undefined };
+      args = { ...args, jev:original?.meta?.jev as QueueArgs["jev"], buildFromIntake:original?.meta?.buildFromIntake === true, mode: source.mode as TurnMode, prompt: (original?.meta?.buildFromIntake === true || (!original?.meta?.jev && /^(Skip the questions, just build it|Start building)[.!]?$/i.test(source.prompt))) ? (await tx.select().from(buildDeliveries).where(eq(buildDeliveries.projectId, project.id)))[0]?.plan.goal ?? source.prompt : source.prompt, userMessageId: undefined, intake: Boolean(original?.meta?.intake), assetIds: original?.meta?.assetIds as string[] | undefined, deliveryIndex: source.deliveryIndex ?? undefined };
+    }
+    if (!source && env.JEV_ROUTING === "1" && (args.mode === "build" || args.intake)) {
+      args.jev = { advance: args.continueDelivery === true };
+      if (args.continueDelivery && (await activeJobs(tx, project.id)).length) throw new Error("retry_busy");
     }
     args.baseVersion = project.currentVersion;
     let [delivery] = await tx.select().from(buildDeliveries).where(eq(buildDeliveries.projectId, project.id));
-    if (args.mode === "build" && !delivery && project.currentVersion === 0) {
+    if (!args.jev && args.mode === "build" && !delivery && project.currentVersion === 0) {
       const [first] = await tx.select().from(messages).where(and(eq(messages.projectId, project.id), eq(messages.role, "user"))).orderBy(asc(messages.createdAt)).limit(1);
       const plan = deliveryFor(first?.content || args.prompt || "Build the requested app");
       [delivery] = await tx.insert(buildDeliveries).values({ projectId: project.id, plan }).returning();
     }
     if (delivery && source && source.deliveryIndex === null) args.deliveryIndex = 0;
-    if (delivery && args.mode === "build" && !source) {
+    if (!args.jev && delivery && args.mode === "build" && !source) {
       // Answering a queued message names only its id: pick the milestone from that message's text, as the build reads it.
       const [queued] = args.prompt || !args.userMessageId ? [] : await tx.select({ content: messages.content }).from(messages).where(and(eq(messages.id, args.userMessageId), eq(messages.projectId, project.id))).limit(1);
       const prompt = (args.prompt ?? queued?.content ?? "").trim();

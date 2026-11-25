@@ -181,7 +181,7 @@ export function ChatPanel({
                   ? record.intake?.for === "plan"
                     ? // Plan mode's questions (D103): the answers start the plan, not the build.
                       { answer: (q, a) => ws.answerPlan(m.id, q, a), start: () => send(DRAFT_PLAN_TEXT, "plan"), skip: () => send(DRAFT_PLAN_TEXT, "plan") }
-                    : { answer: (q, a) => ws.answerPlan(m.id, q, a), start: () => send(START_BUILDING_TEXT, "build"), skip: ws.skipPlan }
+                    : { answer: (q, a) => ws.answerPlan(m.id, q, a), start: () => send(START_BUILDING_TEXT, "build", {buildFromIntake:true}), skip: ws.skipPlan }
                   : undefined
               }
               draft={

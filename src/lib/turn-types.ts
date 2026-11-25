@@ -33,6 +33,7 @@ export interface PlanOption {
 }
 
 export interface PlanQuestion {
+  topic?: string;
   id: string;
   kind: "choice" | "palette";
   question: string;

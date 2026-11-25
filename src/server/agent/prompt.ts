@@ -20,6 +20,7 @@ export const BUILD_TOOLS: ToolSpec[] = [
   }, ["summary", "steps"]),
   fn("suggest_next", "Offer the user one or two next steps as clickable buttons. Call it once, in the same response as your final reply, as your last action. Each suggestion is the request the user would send, short and specific to this app.", {
     suggestions: { type: "array", items: { type: "string" }, description: 'One or two, e.g. "Add a leaderboard of top tippers"' },
+    completion: { type: "string", enum: ["complete", "remaining"], description: "Whether the work in this pass is finished." },
     works: { type: "array", items: { type: "string" }, description: 'After building: 1-3 short lines, what the person can do in the app now, e.g. "Add, edit and remove goals"' },
     later: { type: "string", description: "After building: one short line on anything they asked for that doesn't work yet, and why" },
   }, ["suggestions"]),
@@ -42,10 +43,12 @@ export const BUILD_TOOLS: ToolSpec[] = [
   }, ["path"]),
   fn("create_file", "Create a new file or fully replace a small one. Prefer edit_file for changes to existing files.", {
     path: { type: "string" },
+    step: { type: "integer", description: "One-based number of the plan step this write implements." },
     content: { type: "string" },
   }, ["path", "content"]),
   fn("edit_file", "Change an existing file with search/replace blocks. Each search must match exactly one place; copy it from the file.", {
     path: { type: "string" },
+    step: { type: "integer", description: "One-based number of the plan step this edit implements." },
     edits: {
       type: "array",
       items: { type: "object", properties: { search: { type: "string" }, replace: { type: "string" } }, required: ["search", "replace"] },
@@ -270,6 +273,7 @@ export const CONTEXT_BUDGET_CHARS = 40_000;
 export function contextMessage(args: {
   files: Record<string, string>;
   request: string;
+  relevantFiles?: string[];
   budgetChars?: number;
   /** Files changed in the previous turn. */
   recent?: string[];
@@ -295,7 +299,7 @@ export function contextWithPicks(args: Parameters<typeof contextMessage>[0]): { 
   // The spec (D152) is shown once, as its own block, not again as a picked file.
   const { [SPEC_PATH]: _spec, ...pickable } = args.files;
   void _spec;
-  const picks = selectContext(pickable, args.request, { budgetChars: args.budgetChars ?? CONTEXT_BUDGET_CHARS, recent: args.recent, history: args.history });
+  const picks = selectContext(pickable, args.request, { relevantFiles: args.relevantFiles, budgetChars: args.budgetChars ?? CONTEXT_BUDGET_CHARS, recent: args.recent, history: args.history });
   const blocks = picks.map((p) => `<file path="${p.path}">\n${args.files[p.path]}\n</file>`);
   const shown = new Set(picks.map((p) => p.path));
   const hidden = Object.keys(args.files).filter((p) => !shown.has(p) && p !== SPEC_PATH).length;

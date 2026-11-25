@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "cases": [
+    {"id":"four-artists","request":"Let four friends draw together in a private room. Everyone guesses who drew each picture.","expected":{"multiplayer":"requested","payments":"unspecified"}},
+    {"id":"wallet-gallery","request":"A gallery about wallets. Visitors never connect one.","expected":{"wallet":"excluded","payments":"unspecified"}},
+    {"id":"shared-canvas","request":"Let four friends draw together in a private room, with no wallet.","expected":{"multiplayer":"requested","wallet":"excluded"}},
+    {"id":"article","request":"A news site covering multiplayer video games and the people who design them.","expected":{"game":"unspecified","multiplayer":"unspecified"}},
+    {"id":"advance","request":"Looks great, go ahead with the next item we planned.","goal":"A portfolio with a tip jar","firstBuild":false,"expected":{"advance":"requested","payments":"unspecified"}},
+    {"id":"quoted","request":"Change the button label to ‘next milestone’.","firstBuild":false,"expected":{"advance":"unspecified"}},
+    {"id":"visual-edit","request":"Make the main button green.","goal":"A tipping app that connects wallets","firstBuild":false,"expected":{"payments":"unspecified","wallet":"unspecified"}},
+    {"id":"new-tips","request":"Let visitors leave the artist a G$ tip.","goal":"An artist portfolio","firstBuild":false,"expected":{"payments":"requested","gd":"requested"}},
+    {"id":"custom","request":"Build a rehearsal cue board for a stage manager to tap through lighting cues.","expected":{"game":"unspecified","wallet":"unspecified","payments":"unspecified"}},
+    {"id":"login","request":"Participants sign in by connecting their crypto wallets.","expected":{"wallet":"requested"}},
+    {"id":"local","request":"An offline maze game for one person. No leaderboard and no online multiplayer.","expected":{"game":"requested","multiplayer":"excluded","leaderboard":"excluded"}}
+  ]
+}

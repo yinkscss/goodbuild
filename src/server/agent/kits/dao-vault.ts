@@ -234,6 +234,7 @@ Rules that apply to all of them:
 
 export const daoVault: Kit = {
   id: "dao-vault",
+  onChain: true,
   title: "DAOs and vaults",
   when: "a contract that holds a group's or many people's money: a DAO, club or community treasury, a vault, a staking or savings pool with deposits and withdrawals, a multisig, a fund with proposals and votes",
   keywords: /\b(dao|daos|treasury|vaults?|staking pool|stake pool|yield|multi-?sig|governance|erc-?4626|shared wallet|community fund|investment club)\b/i,

@@ -1,3 +1,4 @@
+import { wants, type JevDecision } from "./jev";
 import { GAME_TEMPLATES, gameTemplateById, gameTemplateCatalog } from "./game-templates";
 import { game2d } from "./kits/game-2d";
 import { answerText } from "@/lib/plan";
@@ -67,6 +68,7 @@ type GamePart = (typeof GAME_PARTS)[number]["id"];
 
 /** Which of the three a card asks about, by its own words (not its options). */
 function gamePartOf(q: PlanQuestion): GamePart | undefined {
+  if (q.topic) return GAME_PARTS.find(p=>p.id===q.topic)?.id;
   const text = `${q.question} ${q.label}`;
   // Power-ups first: "special items that block enemies" is about power-ups.
   for (const id of ["powerups", "npcs", "obstacles"] as const) if (GAME_PARTS.find((p) => p.id === id)!.test.test(text)) return id;
@@ -88,6 +90,7 @@ export const INTAKE_TOOLS: ToolSpec[] = [
             items: {
               type: "object",
               properties: {
+                topic: { type: "string", enum: ["obstacles","powerups","npcs","palette","minipay","scores","general"] },
                 question: { type: "string" },
                 label: { type: "string", description: "One to three words naming the question, for a summary list." },
                 multiple: { type: "boolean", description: "True when several options can apply together." },
@@ -104,7 +107,7 @@ export const INTAKE_TOOLS: ToolSpec[] = [
                   },
                 },
               },
-              required: ["question", "label", "options"],
+              required: ["question", "label", "options", "topic"],
             },
           },
           recommended_palette: { type: "string", description: `Which colours suit this app: ${PALETTES.map((p) => p.id).join(", ")}. Or "none" if they already named their colours.` },
@@ -186,8 +189,8 @@ export const INTAKE_TOOLS_GAME: ToolSpec[] = INTAKE_TOOLS.map((tool) => {
 });
 
 /** The planner's tools for this request. */
-export function intakeTools(request: string): ToolSpec[] {
-  return isGameRequest(request) ? INTAKE_TOOLS_GAME : INTAKE_TOOLS;
+export function intakeTools(request: string, decision?: JevDecision): ToolSpec[] {
+  return wants(decision, "game", () => isGameRequest(request)) ? INTAKE_TOOLS_GAME : INTAKE_TOOLS;
 }
 
 export const INTAKE_PROMPT = `You are GoodBuild's planner. GoodBuild turns a description into a working app on Celo, a game or a plain website. Someone just described what they want. Before anything is built, ask a few quick questions so the first build is right. Most users are students and newcomers to crypto in Nigeria and across Africa, and many use G$ (GoodDollar).
@@ -223,9 +226,9 @@ export const GAME_RULES = `Game rules: up to 5 questions. Unless they already sa
 Example for "a jumping game with a monkey" (multiple on the last three): "How do you play?": Tap to jump (recommended) / Tap and hold for a bigger jump. "What gets in the monkey's way?": Gaps between trees (recommended) / Falling coconuts / Snakes on branches. "Which power-ups?": Banana magnet (recommended) / Double jump / Shield. "Who else is in the jungle?": Birds that swoop at you (recommended) / A rival monkey racing you / Nobody, just you.`;
 
 /** The whole context of the planning call: the request, a note that files came with it, and for a game its rules. */
-export function intakeContext(request: string, assets: { kind: string; name: string }[]): string {
+export function intakeContext(request: string, assets: { kind: string; name: string }[], decision?: JevDecision): string {
   const uploads = assets.length ? `\n\nThey also uploaded: ${assets.map((a) => `${a.name} (${a.kind})`).join(", ")}.` : "";
-  const game = isGameRequest(request) ? `\n\n${GAME_RULES}` : "";
+  const game = wants(decision, "game", () => isGameRequest(request)) ? `\n\n${GAME_RULES}` : "";
   return `Their message:\n${request}${uploads}${game}`;
 }
 
@@ -264,18 +267,20 @@ function parseOptions(raw: unknown): PlanOption[] {
   return options.map((o, i) => (i === Math.max(0, marked) ? { ...o, recommended: true } : o));
 }
 
-function parseQuestions(raw: unknown, max = MAX_MODEL_QUESTIONS, game = false): PlanQuestion[] {
+function parseQuestions(raw: unknown, max = MAX_MODEL_QUESTIONS, game = false, typed = false): PlanQuestion[] {
   if (!Array.isArray(raw)) return [];
   const questions: PlanQuestion[] = [];
   for (const q of raw) {
-    const entry = (q ?? {}) as { question?: unknown; label?: unknown; multiple?: unknown; options?: unknown };
+    const entry = (q ?? {}) as { topic?: unknown; question?: unknown; label?: unknown; multiple?: unknown; options?: unknown };
     const question = clean(entry.question, 160);
     const options = parseOptions(entry.options);
     // The palette card already asks about colour, and the MiniPay card about MiniPay.
-    if (!question || options.length < 2 || /\b(colou?rs?|palette)\b/i.test(question) || SAYS_MINIPAY.test(question)) continue;
+    if (!question || options.length < 2) continue;
+    const topic = String(entry.topic ?? "general");
+    if (typed ? ["palette","minipay"].includes(topic) : /\b(colou?rs?|palette)\b/i.test(question) || SAYS_MINIPAY.test(question)) continue;
     // A game's scores are the leaderboard card's, which the server asks.
-    if (game && ASKS_SCORES.test(question)) continue;
-    questions.push({ id: `q${questions.length + 1}`, kind: "choice", question, label: clean(entry.label, 32) || question.slice(0, 32), multiple: entry.multiple === true, options });
+    if (game && (typed ? topic === "scores" : ASKS_SCORES.test(question))) continue;
+    questions.push({ id: `q${questions.length + 1}`, ...(typed ? { topic } : {}), kind: "choice", question, label: clean(entry.label, 32) || question.slice(0, 32), multiple: entry.multiple === true, options });
     if (questions.length === max) break;
   }
   return questions;
@@ -376,7 +381,7 @@ export function leaderboardQuestion(): PlanQuestion {
   };
 }
 
-function parseGameBrief(raw: unknown, request = ""): GameBrief | undefined {
+function parseGameBrief(raw: unknown, request = "", decision?: JevDecision): GameBrief | undefined {
   if (!raw || typeof raw !== "object") return undefined;
   const b = raw as Record<string, unknown>;
   const brief: GameBrief = {
@@ -390,7 +395,7 @@ function parseGameBrief(raw: unknown, request = ""): GameBrief | undefined {
   // Only a template GoodBuild has: an id the model made up is dropped, and the build starts from scratch.
   // A multiplayer or social game never starts from a one-player template (D139): they share too little.
   const picked = gameTemplateById(typeof b.template === "string" ? b.template : undefined);
-  const social = isMultiplayerGame([request, brief.name, brief.pitch, brief.loop, brief.lose].join("\n"));
+  const social = wants(decision, "multiplayer", () => isMultiplayerGame([request, brief.name, brief.pitch, brief.loop, brief.lose].join("\n")));
   const template = picked && (!social || picked.multiplayer) ? picked : undefined;
   if (template) {
     brief.template = template.id;
@@ -398,7 +403,7 @@ function parseGameBrief(raw: unknown, request = ""): GameBrief | undefined {
   }
   // The kind of game (D115): the template's, else the model's, else by the request's words.
   const said = b.style === "action" || b.style === "puzzle" || b.style === "turns" ? b.style : undefined;
-  brief.style = template?.style ?? said ?? styleFromWords(request);
+  brief.style = template?.style ?? said ?? (decision ? "action" : styleFromWords(request));
   return brief.name && brief.pitch ? brief : undefined;
 }
 
@@ -442,27 +447,27 @@ export function isGameRequest(request: string): boolean {
 }
 
 /** The tool call as a question set, or null when it gives nothing usable (the caller then falls back). */
-export function parseIntake(rawArguments: string, request: string): PlanIntake | null {
+export function parseIntake(rawArguments: string, request: string, decision?: JevDecision): PlanIntake | null {
   let args: { summary?: unknown; questions?: unknown; recommended_palette?: unknown; game_brief?: unknown };
   try {
     args = JSON.parse(rawArguments || "{}") as typeof args;
   } catch {
     return null;
   }
-  const game = isGameRequest(request);
+  const game = wants(decision, "game", () => isGameRequest(request));
   // With the MiniPay card added, an app gets one card fewer from the model, so it's never more than five.
   // A game's cards are counted on their own (D93): five from the model, then leaderboard, MiniPay, colours.
-  const miniPay = asksMiniPay(request);
-  let questions = parseQuestions(args.questions, game ? MAX_GAME_MODEL_QUESTIONS : miniPay ? MAX_MODEL_QUESTIONS - 1 : MAX_MODEL_QUESTIONS, game);
+  const miniPay = decision ? game && decision.signals.miniPay === "unspecified" && decision.signals.wallet !== "excluded" : asksMiniPay(request);
+  let questions = parseQuestions(args.questions, game ? MAX_GAME_MODEL_QUESTIONS : miniPay ? MAX_MODEL_QUESTIONS - 1 : MAX_MODEL_QUESTIONS, game, Boolean(decision));
   if (!questions.length) return null;
-  const brief = game ? parseGameBrief(args.game_brief, request) : undefined;
-  if (game) questions = withGameParts(questions, brief?.style ?? styleFromWords(request));
-  const saidBoard = game && asksLeaderboard(request);
+  const brief = game ? parseGameBrief(args.game_brief, request, decision) : undefined;
+  if (game) questions = withGameParts(questions, brief?.style ?? (decision ? "action" : styleFromWords(request)));
+  const saidBoard = game && wants(decision, "leaderboard", () => asksLeaderboard(request));
   const palette = clean(args.recommended_palette, 20).toLowerCase();
-  const all = [...questions, ...(game && !saidBoard ? [leaderboardQuestion()] : []), ...(miniPay ? [miniPayQuestion()] : [])];
+  const all = [...questions, ...(game && !saidBoard && decision?.signals.leaderboard !== "excluded" ? [leaderboardQuestion()] : []), ...(miniPay ? [miniPayQuestion()] : [])];
   return {
     summary: clean(args.summary, 240) || clean(request, 240),
-    questions: palette === "none" ? all : [...all, paletteQuestion(palette, looksLikeWebsite(request))],
+    questions: palette === "none" ? all : [...all, paletteQuestion(palette, wants(decision, "website", () => looksLikeWebsite(request)))],
     answers: {},
     ...(brief ? { game: brief } : {}),
     ...(saidBoard ? { leaderboard: true } : {}),
@@ -482,16 +487,16 @@ export function looksLikeWebsite(request: string): boolean {
  * For a model reply with no usable tool call: fixed questions, so the person still gets a plan
  * and we don't pay for a second try. Worded to fit anything.
  */
-export function fallbackIntake(request: string): PlanIntake {
-  const website = looksLikeWebsite(request);
+export function fallbackIntake(request: string, decision?: JevDecision): PlanIntake {
+  const website = wants(decision, "website", () => looksLikeWebsite(request));
   const choice = fixedChoice;
-  const game = isGameRequest(request);
-  const saidBoard = game && asksLeaderboard(request);
+  const game = wants(decision, "game", () => isGameRequest(request));
+  const saidBoard = game && wants(decision, "leaderboard", () => asksLeaderboard(request));
   const questions = game
     ? [
         choice("q1", "How to play", "How should people play?", false, ["One tap or click", "Move left and right", "Answer questions"]),
-        ...GAME_PARTS.map((p) => partCards(styleFromWords(request))[p.id]()),
-        ...(saidBoard ? [] : [leaderboardQuestion()]),
+        ...GAME_PARTS.map((p) => partCards(decision ? "action" : styleFromWords(request))[p.id]()),
+        ...(saidBoard || decision?.signals.leaderboard === "excluded" ? [] : [leaderboardQuestion()]),
       ]
     : website
     ? [
@@ -502,7 +507,7 @@ export function fallbackIntake(request: string): PlanIntake {
         choice("q1", "Who it's for", "Who will use this?", false, ["A small group I know", "My school or community", "Anyone who finds it"]),
         choice("q2", "Who's in charge", "Who should be able to change things or take money out?", false, ["Only me", "A few people I choose", "Everyone decides together"]),
       ];
-  const miniPay = asksMiniPay(request) ? [miniPayQuestion()] : [];
+  const miniPay = (decision ? game && decision.signals.miniPay === "unspecified" && decision.signals.wallet !== "excluded" : asksMiniPay(request)) ? [miniPayQuestion()] : [];
   return { summary: clean(request, 240), questions: [...questions, ...miniPay, paletteQuestion(PALETTES[0].id, website)], answers: {}, ...(saidBoard ? { leaderboard: true } : {}) };
 }
 

@@ -31,7 +31,7 @@ export interface WorkspaceMessage {
 }
 
 export interface WorkspaceState {
-  project: { id: string; name: string; status: string; chainId: number; currentVersion: number; building: boolean; upgradeable: boolean; templateId?: string | null };
+  project: { id: string; name: string; status: string; chainId: number; currentVersion: number; building: boolean; upgradeable: boolean; templateId?: string | null; displayKind?: DeliveryPlan["displayKind"] };
   files: Record<string, string>;
   messages: WorkspaceMessage[];
   versions: Array<{ number: number; summary: string; createdAt: string; revertedFrom: number | null }>;
@@ -78,8 +78,10 @@ export async function workspaceState(db: Db, projectId: string, ownerId: string)
     uploaded.map((a) => ({ id: a.id, createdAt: a.createdAt.toISOString() })),
   );
   const jobRows = await db.select({ id: turnJobs.id, assistantId: turnJobs.assistantMessageId }).from(turnJobs).where(eq(turnJobs.projectId, projectId));
+  const delivery = (await db.select().from(buildDeliveries).where(eq(buildDeliveries.projectId, projectId)))[0]?.plan;
   return {
     project: {
+      displayKind: delivery?.displayKind,
       id: project.id,
       name: project.name,
       status: project.status,
@@ -90,7 +92,7 @@ export async function workspaceState(db: Db, projectId: string, ownerId: string)
       templateId: project.templateId,
     },
     files,
-    delivery: (await db.select().from(buildDeliveries).where(eq(buildDeliveries.projectId, projectId)))[0]?.plan,
+    delivery,
     messages: owned.messages.map((m) => ({
       id: m.id,
       role: m.role as WorkspaceMessage["role"],

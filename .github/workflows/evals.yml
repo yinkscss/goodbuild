@@ -32,6 +32,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     env:
+      JEV_ROUTING: "1"
+      TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
+      JEV_MODEL: ${{ vars.JEV_MODEL || 'jev-latest' }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
     steps:
@@ -64,6 +67,10 @@ jobs:
       - name: Install the headless browser
         if: steps.keys.outputs.ready == 'true'
         run: node node_modules/playwright-core/cli.js install --with-deps chromium-headless-shell
+
+      - name: Record Jev classifications and replay labeled cases
+        if: steps.keys.outputs.ready == 'true'
+        run: node --import tsx --require ./scripts/worker-preload.cjs scripts/jev-eval.ts --record --out-dir jev-eval
 
       - name: Build
         if: steps.keys.outputs.ready == 'true'
@@ -103,12 +110,17 @@ jobs:
           if [ "$UPDATE" = "true" ]; then args+=(--update-baseline); fi
           node scripts/eval-suite.mjs "${args[@]}"
 
+      - name: Check classification outcomes
+        if: steps.keys.outputs.ready == 'true'
+        run: node --import tsx --require ./scripts/worker-preload.cjs scripts/jev-eval.ts --out-dir jev-eval --require-pass
+
       - name: Keep the results
         if: always() && steps.keys.outputs.ready == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: eval-results
           path: |
+            jev-eval/
             eval-results.json
             docs/evals/suite/baseline.json
             server.log

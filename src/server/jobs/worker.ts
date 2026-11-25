@@ -1,5 +1,6 @@
 import "server-only";
 
+import { prepareJevRouting } from "./jev-routing";
 import { randomUUID } from "node:crypto";
 import { hostname } from "node:os";
 
@@ -215,6 +216,8 @@ export class TurnWorker {
       const ctx = await jobContext(db, job, this.id, controller.signal);
       // A stop requested before the first renewal.
       if (job.stopRequested) controller.abort();
+      controller.signal.throwIfAborted();
+      await prepareJevRouting(db, job, ctx);
       const record = await runTurn(
         { db, model: this.opts.model(), ...this.opts.deps, job: ctx },
         { projectId: job.projectId, userId: job.userId, mode: job.mode as TurnMode, userMessageId: job.userMessageId },

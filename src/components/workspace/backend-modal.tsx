@@ -83,8 +83,8 @@ const GENERAL: BackendIdea[] = [
 const DECIDE: BackendIdea = idea("Let the builder decide", "It adds saved data where it helps this app", "decide what this app should remember between visits, add it where it helps most, and tell me what you added.");
 
 /** Two ideas for this app, two general ones, and "let the builder decide". No typing needed. */
-export function backendIdeas(project: { name: string; templateId?: string | null }): BackendIdea[] {
-  const kind = inferKind({ templateId: project.templateId, text: project.name });
+export function backendIdeas(project: { name: string; templateId?: string | null; displayKind?: ContractKind }): BackendIdea[] {
+  const kind = inferKind({ templateId: project.templateId, text: project.name, displayKind:project.displayKind });
   return [...[...(IDEAS[kind] ?? []).slice(0, 2), ...GENERAL].slice(0, 5), DECIDE];
 }
 
@@ -113,7 +113,7 @@ export function BackendModal({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   projectId: string;
-  project: { name: string; templateId?: string | null };
+  project: { name: string; templateId?: string | null; displayKind?: ContractKind };
   files: Record<string, string>;
   published: boolean;
   busy: boolean;

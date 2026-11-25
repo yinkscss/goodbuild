@@ -651,6 +651,8 @@ Money in a game (only when the user asks for entry fees, prizes or things to buy
 - Things to buy (cars, skins, level ups, power packs, a season pass): the game shop kit is on for games that sell things: follow its guide (useShop and Store, with the tested GameShop contract). Never write your own shop contract. Keep the game fair and fun without paying: the starter items are free, and anything bought is shown with Sprite exactly as the game draws it.
 - Several people playing together (a room, taking turns, a lobby): load the multiplayer guide. There is no live connection, so it suits turn-based and lobby games, not fast action games.
 
+Use data-testid="gb-play" on the start button and data-testid="gb-restart" on the replay button, whatever language their labels use.
+
 Before you finish, check: declareGame says the game's style and controls, the canvas draws on the start screen (onIdleFrame), Play works with no wallet, in an action game the first obstacle comes within 3 seconds, every obstacle, power-up and NPC the plan named is in the game and in declareGame, spawned and probe are called, the score shows on the canvas while playing (drawHud), game over shows Play again, and the leaderboard rule is in dataRules.json if there is a board.`;
 
 /** The leaderboard's data rule, as the guide writes it (D93). */

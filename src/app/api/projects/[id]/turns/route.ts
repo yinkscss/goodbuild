@@ -17,6 +17,7 @@ const body = z
     prompt: z.string().trim().min(1).max(PROMPT_MAX_LENGTH).optional(),
     userMessageId: z.string().uuid().optional(),
     /** "Skip, just build it" while the questions are still being written. */
+    buildFromIntake: z.boolean().optional(),
     skipPlan: z.boolean().optional(),
     continueDelivery: z.boolean().optional(),
     /** Files attached in the composer since the last message: they show in this message's bubble. */
@@ -52,7 +53,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/projects/[i
     // First send plans first (D32), whichever screen it came from: the server decides, not the client.
     const intake = await shouldPlanFirst(db, { projectId: id, userId: session.user.id, prompt, skipPlan });
     // The check, the hold and the queueing are one step, under a lock on this user's balance (D49).
-    const started = await startTurn(db, { projectId: id, userId: session.user.id, mode: intake ? "plan" : mode, prompt, userMessageId, intake, assetIds, continueDelivery: parsed.data.continueDelivery }, process.env, { readIdentity: readGoodIdentityOnCelo });
+    const started = await startTurn(db, { projectId: id, userId: session.user.id, mode: intake ? "plan" : mode, prompt, userMessageId, intake, assetIds, buildFromIntake:parsed.data.buildFromIntake, continueDelivery: parsed.data.continueDelivery }, process.env, { readIdentity: readGoodIdentityOnCelo });
     if ("refused" in started) return NextResponse.json({ error: started.refused.reason, message: started.refused.message }, { status: 402 });
     const { job } = started;
     kickWorker();
