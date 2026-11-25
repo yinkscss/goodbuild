@@ -99,7 +99,7 @@ import { GameOver } from "../game/GameOver";
 import { GameSettings } from "../game/GameSettings";
 import { Leaderboard, PostScore } from "../game/Leaderboard";
 import { TopThree } from "../game/TopThree";
-import { prefersReducedMotion } from "../game/extras";
+import { firstTime, prefersReducedMotion } from "../game/extras";
 import { buzz } from "../game/haptics";
 import { drawBanner, drawHud } from "../game/hud";
 import { Particles, Popups, Shake } from "../game/juice";
@@ -158,6 +158,7 @@ export default function Game() {
   const [screen, setScreen] = useState<Screen>("start");
   const [best, setBest] = useState(() => bestScore(BEST_KEY));
   const [result, setResult] = useState({ score: 0, height: 0 });
+  const [tip] = useState(() => firstTime("crane-stack-controls"));
   const board = useLeaderboard();
   const game = useRef(fresh());
 

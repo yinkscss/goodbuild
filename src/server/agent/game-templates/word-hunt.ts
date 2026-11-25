@@ -195,7 +195,7 @@ export default function Game() {
               onPlay={start}
               howTo={["Words read across or down. Tap their letters.", "The list shows how long each word is. Finish a word for a bonus.", "A wrong letter costs a life. Three lives."]}
               powerUps={[
-                  { name: "Hint", text: "lights one letter of a word you haven't found" },
+                { name: "Hint", text: "lights one letter of a word you haven't found" },
               ]}
               wallet
             />

@@ -331,7 +331,7 @@ export default function Game() {
               <GameMenu
                 card={false}
                 title={GAME_NAME}
-                tagline={{ROUND_SIZE + " questions, the same for everyone."}}
+                tagline={ROUND_SIZE + " questions, the same for everyone."}
                 best={best}
                 onPlay={start}
                 playLabel="Play the computer"

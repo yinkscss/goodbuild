@@ -229,7 +229,7 @@ export default function Game() {
               onPlay={start}
               howTo={["Tap two or more touching tiles of one colour to clear them.", "Bigger groups score far more. Tiles above fall into the gaps.", "Stones break when you clear tiles next to them. You have " + MOVES + " moves."]}
               powerUps={[
-                  { name: "Bomb", text: "clear a big group at once to earn one; tap it to clear the tiles round it" },
+                { name: "Bomb", text: "clear a big group at once to earn one; tap it to clear the tiles round it" },
               ]}
               wallet
             />

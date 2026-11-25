@@ -132,7 +132,7 @@ export default function Game() {
               onPlay={start}
               howTo={["Tap Higher or Lower for the next card. Ace is low, king is high.", "Four right in a row doubles the points and earns a skip.", "A wrong guess costs a life."]}
               powerUps={[
-                  { name: "Skip", text: "move past a card you can't call. You start with one." },
+                { name: "Skip", text: "move past a card you can't call. You start with one." },
               ]}
               wallet
             />

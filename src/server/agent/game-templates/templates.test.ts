@@ -89,7 +89,7 @@ describe("game templates (D114)", { timeout: 180_000 }, () => {
       const powerups = /declareGame\(\{[^}]*powerups: \[([^\]]*)\]/.exec(game)?.[1]?.trim();
       if (powerups) expect(game).toMatch(/\bpowerUps=\{\[/);
       if (t.leaderboard) {
-        const menu = /<GameMenu\b([\s\S]*?)\n\s*\/>/.exec(game)?.[1] ?? "";
+        const menu = /<GameMenu\b([\s\S]*?)\n\s*\/?>\n/.exec(game)?.[1] ?? "";
         expect(menu).toMatch(/^\s*wallet\s*$/m);
         expect(game).toMatch(/<GameOver\b[\s\S]*?<PostScore\b[\s\S]*?<\/GameOver>/);
       }

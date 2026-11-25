@@ -207,7 +207,7 @@ export default function Game() {
               playLabel="Start a shift"
               howTo={["Tap Serve as fast as you can during a shift.", "Spend your takings on upgrades and helpers: they stay for every shift after.", "Helpers serve by themselves, so every shift earns more."]}
               powerUps={[
-                  { name: "Rush customer", text: "doubles your takings for a few seconds" },
+                { name: "Rush customer", text: "doubles your takings for a few seconds" },
               ]}
               wallet
             >
