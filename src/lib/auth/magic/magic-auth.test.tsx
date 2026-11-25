@@ -458,9 +458,9 @@ describe("email code: the button never spins forever", () => {
     expect(auth.phase).toBe("awaiting-device");
     act(() => otp.fire("device-approved"));
     await act(async () => {
-      vi.advanceTimersByTime(30_000);
+      vi.advanceTimersByTime(60_000);
     });
-    expect(auth.error).toMatch(/couldn't reach the sign-in service/);
+    expect(auth.error).toMatch(/taking longer than usual/);
   });
 
   it("cancels Magic's request when the person starts over", async () => {
@@ -489,16 +489,23 @@ describe("email code: the button never spins forever", () => {
     await waitFor(() => expect(auth.error).toMatch(/extra sign-in step/));
   });
 
-  it("gives up with a plain message when Magic never answers", async () => {
+  it("says it's slow after a minute but keeps the attempt alive, so a late code still works", async () => {
     await mount();
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const { otp } = await send();
     await act(async () => {
-      vi.advanceTimersByTime(30_000);
+      vi.advanceTimersByTime(59_000);
+    });
+    expect(auth.phase).toBe("sending-code");
+    await act(async () => {
+      vi.advanceTimersByTime(1_000);
     });
     expect(auth.phase).toBe("error");
-    expect(auth.error).toMatch(/couldn't reach the sign-in service/);
-    expect(otp.emitted).toContain("cancel");
+    expect(auth.error).toMatch(/taking longer than usual/);
+    expect(otp.emitted).not.toContain("cancel");
+    act(() => otp.fire("email-otp-sent"));
+    await waitFor(() => expect(auth.phase).toBe("awaiting-code"));
+    expect(auth.error).toBeNull();
   });
 
   it("doesn't time out once the code was sent, and ignores an attempt that was reset", async () => {
@@ -507,7 +514,7 @@ describe("email code: the button never spins forever", () => {
     const { otp } = await send();
     act(() => otp.fire("email-otp-sent"));
     await act(async () => {
-      vi.advanceTimersByTime(31_000);
+      vi.advanceTimersByTime(61_000);
     });
     expect(auth.phase).toBe("awaiting-code");
     act(() => auth.reset());
