@@ -105,11 +105,12 @@ export function makeFloor(size: number): THREE.Mesh {
 
 const GAME = `import { useRef, useState } from "react";
 import * as THREE from "three";
+import { GameMenu } from "../game/GameMenu";
 import { GameOver } from "../game/GameOver";
 import { GameSettings } from "../game/GameSettings";
 import { Leaderboard, PostScore } from "../game/Leaderboard";
 import { TopThree } from "../game/TopThree";
-import { dailySeed, firstTime, seededRandom } from "../game/extras";
+import { dailySeed, seededRandom } from "../game/extras";
 import { buzz } from "../game/haptics";
 import { useLeaderboard } from "../game/leaderboard";
 import { declareGame, probe, spawned } from "../game/probe";
@@ -173,7 +174,6 @@ export default function Game() {
   const [screen, setScreen] = useState<Screen>("start");
   const [best, setBest] = useState(() => bestScore(BEST_KEY));
   const [result, setResult] = useState({ score: 0, mazes: 0, gems: 0 });
-  const [tip] = useState(() => firstTime("maze-escape-controls"));
   const board = useLeaderboard();
   const game = useRef(fresh());
   const view = useRef<{ camera?: THREE.PerspectiveCamera }>({});
@@ -489,15 +489,19 @@ export default function Game() {
         <Hud3D read={() => ({ score: game.current.score, best, lives: game.current.lives, label: "Torch " + Math.max(0, Math.ceil(game.current.torch)) + "s" + (game.current.hasKey ? "  ·  Key ✓" : "") })} />
         <TopThree board={board} className="absolute right-2 top-2" />
         {screen === "start" && (
-          <div className="absolute inset-x-4 bottom-6 space-y-3 rounded-2xl bg-card/95 p-4 text-center shadow-lg">
-            <h2 className="text-lg font-semibold">{GAME_NAME}</h2>
-            <p className="text-sm text-muted-foreground">Swipe or tap a side to step. Find the key, then the door, before your torch burns out.</p>
-            {tip && <p className="text-sm">Gems add time to the torch. Mind the guards and the spikes.</p>}
-            {best > 0 && <p className="text-sm">Your best: {best}</p>}
-            <button type="button" onClick={start} className="w-full rounded-xl bg-primary px-6 py-3 text-lg font-semibold text-primary-foreground">
-              Play
-            </button>
-          </div>
+          <GameMenu
+            className="absolute inset-x-4 bottom-6"
+            title={GAME_NAME}
+            tagline="Find the key, then the door, before the torch burns out."
+            best={best}
+            onPlay={start}
+            howTo={["Swipe, tap a side or use the arrow keys to step.", "Find the key, then the door. Each door opens on a new maze.", "Guards and rising spikes cost a life. The torch burns down all the time."]}
+            powerUps={[
+              { name: "Gem", text: "adds time to your torch" },
+              { name: "Key", text: "opens this maze's door" },
+            ]}
+            wallet
+          />
         )}
         {screen === "over" && (
           <GameOver

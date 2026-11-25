@@ -6,7 +6,7 @@ import { isTestFile } from "@/lib/deploy/test-file";
 import { templateBriefFor } from "@/config/page-template-data";
 import { designTemplateFiles } from "./design-templates";
 import { templateImageFiles } from "./template-images";
-import { TEMPLATE_MINIPAY_NOTE, gameTemplateById, withGameTemplate } from "./game-templates";
+import { TEMPLATE_MENU_NOTE, TEMPLATE_MINIPAY_NOTE, gameTemplateById, withGameTemplate } from "./game-templates";
 import type { Db } from "@/server/db/client";
 import { buildDeliveries, buildDrafts, messages, projects } from "@/server/db/schema";
 import { liveValueIssues } from "./live-check";
@@ -1612,7 +1612,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       assets: assetManifest(assets),
       memory: memoryBlock(memory),
       deployments: [upgradeable ? upgradeableRules(await liveStorage(db, project)) : "", deploymentsBlock(await loadDeployedAddresses(db, input.projectId), { upgradeable })].filter(Boolean).join("\n\n"),
-      plan: [scopedDelivery && job.deliveryIndex !== undefined ? deliveryContext(scopedDelivery, job.deliveryIndex) : "", job.draft?.diagnostics ? `Previous attempt diagnostics: ${job.draft.diagnostics}` : "", brief.text, firstBuild ? templateBriefFor(project.templateId) : "", gameTemplate ? `${gameTemplate.brief}\n${TEMPLATE_MINIPAY_NOTE}` : "", kitsBlock].filter(Boolean).join("\n\n"),
+      plan: [scopedDelivery && job.deliveryIndex !== undefined ? deliveryContext(scopedDelivery, job.deliveryIndex) : "", job.draft?.diagnostics ? `Previous attempt diagnostics: ${job.draft.diagnostics}` : "", brief.text, firstBuild ? templateBriefFor(project.templateId) : "", gameTemplate ? `${gameTemplate.brief}\n${TEMPLATE_MENU_NOTE}\n${TEMPLATE_MINIPAY_NOTE}` : "", kitsBlock].filter(Boolean).join("\n\n"),
       targetChain: project.chainId === 42220 ? "Celo Mainnet (42220)" : project.chainId === 11142220 ? "Celo Sepolia (11142220)" : `Unsupported chain ${project.chainId}`,
     });
     log(`context: ${ctx.picks.length} of ${Object.keys(files).length} files in full (${ctx.picks.map((p) => p.path.split("/").pop()).join(", ")})`);

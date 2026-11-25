@@ -138,12 +138,13 @@ export function drawSky(ctx: CanvasRenderingContext2D, width: number, height: nu
 
 const GAME = `import { useRef, useState } from "react";
 import { GameCanvas, type Frame } from "../game/GameCanvas";
+import { GameMenu } from "../game/GameMenu";
 import { GameOver } from "../game/GameOver";
 import { GameSettings } from "../game/GameSettings";
 import { Leaderboard, PostScore } from "../game/Leaderboard";
 import { Sprite } from "../game/Sprite";
 import { TopThree } from "../game/TopThree";
-import { Combo, firstTime, prefersReducedMotion } from "../game/extras";
+import { Combo, prefersReducedMotion } from "../game/extras";
 import { buzz } from "../game/haptics";
 import { drawBanner, drawHud } from "../game/hud";
 import { Particles, Popups, Shake, hitCircle } from "../game/juice";
@@ -189,7 +190,6 @@ export default function Game() {
   const [screen, setScreen] = useState<Screen>("start");
   const [best, setBest] = useState(() => bestScore(BEST_KEY));
   const [result, setResult] = useState({ score: 0, caught: 0 });
-  const [tip] = useState(() => firstTime("catch-dodge-controls"));
   const board = useLeaderboard();
   const game = useRef(fresh());
 
@@ -360,19 +360,20 @@ export default function Game() {
         />
         <TopThree board={board} className="absolute right-2 top-14" />
         {screen === "start" && (
-          <div className="absolute inset-x-4 bottom-24 space-y-3 rounded-2xl bg-card/95 p-4 text-center shadow-lg">
-            <div className="flex items-center justify-center gap-3">
-              <Sprite draw={(ctx, w, h) => drawBasket(ctx, 0, 0, w, h)} width={72} height={40} label="Your basket" />
-              <div className="text-left">
-                <h2 className="text-lg font-semibold">{GAME_NAME}</h2>
-                <p className="text-sm text-muted-foreground">Drag to catch the fruit. Dodge rocks and eggs.</p>
-              </div>
-            </div>
-            {best > 0 && <p className="text-sm">Your best: {best}</p>}
-            <button type="button" onClick={start} className="w-full rounded-xl bg-primary px-6 py-3 text-lg font-semibold text-primary-foreground">
-              Play
-            </button>
-          </div>
+          <GameMenu
+            className="absolute inset-x-4 bottom-24"
+            title={GAME_NAME}
+            tagline="Catch the fruit. Dodge rocks and eggs."
+            art={<Sprite draw={(ctx, w, h) => drawBasket(ctx, 0, 0, w, h)} width={72} height={40} label="Your basket" />}
+            best={best}
+            onPlay={start}
+            howTo={["Drag, tap a side or use the arrow keys to move the basket.", "Catch fruit for points; catches in a row build a combo.", "Rocks and the bird's eggs cost a life. Three lives."]}
+            powerUps={[
+              { name: "Magnet", text: "pulls falling fruit into your basket" },
+              { name: "Slow time", text: "everything falls slower for a few seconds" },
+            ]}
+            wallet
+          />
         )}
         {screen === "paused" && (
           <button type="button" onClick={() => setScreen("playing")} className="absolute inset-x-6 bottom-24 rounded-xl bg-primary py-3 text-lg font-semibold text-primary-foreground">

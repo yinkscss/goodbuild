@@ -6,7 +6,7 @@ import type { Browser, BrowserContext, Page, Route } from "playwright-core";
 import { buildPublishedApp, moduleStarts, PublishBuildError, type PublishedFile } from "@/server/publish/build";
 
 import type { CheckIssue } from "./checks";
-import { CHECK_WALLET, checkControls, GAME_CHECK_SPEED, gameCanvas, gameCheckScript, insideMiniPay, judgeRounds, pickBrowserWallet, playRounds, probeReport, standInWalletScript, walletAndBoard } from "./game-check";
+import { CHECK_WALLET, PLAY_AGAIN, PLAY_BUTTON, checkControls, GAME_CHECK_SPEED, gameCanvas, gameCheckScript, insideMiniPay, judgeRounds, pickBrowserWallet, playRounds, probeReport, standInWalletScript, walletAndBoard } from "./game-check";
 import { ALL_FLOWS_MS, parseFlows, runFlows, type FlowResult } from "./acceptance";
 import { KITS, kitIdsOf } from "./kits/registry";
 
@@ -58,6 +58,8 @@ export interface RunCheckOptions {
   initScript?: string;
   /** Tests: stand in for a cheap phone: a touch screen, and the CPU slowed this many times. */
   phone?: { cpuSlowdown: number };
+  /** Tests: called with the page on the start screen, just before Play is pressed. */
+  beforePlay?: (page: Page) => Promise<void>;
   /** Tests: called with the page once a game has been played and judged, before the wallet steps. */
   afterPlay?: (page: Page) => Promise<void>;
 }
@@ -436,7 +438,7 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
     if (options.screenshots && played) gameShots.push({ width: PHONE.width, png: await page.screenshot({ type: "png" }), shows });
   };
   if (!blank && !seen.length && options.game) {
-    const start = page.getByRole("button", { name: /\b(play|start|begin|go|race|tap to)\b/i }).first();
+    const start = page.getByRole("button", { name: PLAY_BUTTON }).first();
     const hasStart = await start.isVisible().catch(() => false);
     if (played) {
       // Two frames of the idle loop, so a start screen that draws is seen drawing.
@@ -447,6 +449,7 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
       noPlay = !hasStart;
       await phoneShot("start");
     }
+    if (options.beforePlay && played) await options.beforePlay(page);
     if (hasStart) {
       await start.click({ timeout: 1_500 }).catch(() => undefined);
       pressedPlay = true;
@@ -472,7 +475,7 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
     const showing = (await canvas.isVisible().catch(() => false)) || (played && (await running()));
     if (showing) {
       if (options.screenshots && played && !(await running())) {
-        await page.getByRole("button", { name: /\b(play|again|retry|restart|start|race)\b/i }).first().click({ timeout: 1_000 }).catch(() => undefined);
+        await page.getByRole("button", { name: PLAY_AGAIN }).first().click({ timeout: 1_000 }).catch(() => undefined);
         await settle(page, 300);
       }
       if (!options.screenshots || !played || (await running())) await phoneShot("playing");

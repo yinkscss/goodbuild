@@ -131,11 +131,12 @@ export function drawPickup(ctx: CanvasRenderingContext2D, x: number, y: number, 
 
 const GAME = `import { useRef, useState } from "react";
 import { GameCanvas, type Frame } from "../game/GameCanvas";
+import { GameMenu } from "../game/GameMenu";
 import { GameOver } from "../game/GameOver";
 import { GameSettings } from "../game/GameSettings";
 import { Leaderboard, PostScore } from "../game/Leaderboard";
 import { TopThree } from "../game/TopThree";
-import { firstTime, prefersReducedMotion } from "../game/extras";
+import { prefersReducedMotion } from "../game/extras";
 import { buzz } from "../game/haptics";
 import { drawBanner, drawHud } from "../game/hud";
 import { Particles, Popups, Shake, hitRect } from "../game/juice";
@@ -179,7 +180,6 @@ export default function Game() {
   const [screen, setScreen] = useState<Screen>("start");
   const [best, setBest] = useState(() => bestScore(BEST_KEY));
   const [result, setResult] = useState({ score: 0, coins: 0 });
-  const [tip] = useState(() => firstTime("platform-hop-controls"));
   const board = useLeaderboard();
   const game = useRef(fresh());
 
@@ -398,14 +398,19 @@ export default function Game() {
         />
         <TopThree board={board} className="absolute right-2 top-14" />
         {screen === "start" && (
-          <div className="absolute inset-x-4 bottom-24 space-y-3 rounded-2xl bg-card/95 p-4 text-center shadow-lg">
-            <h2 className="text-lg font-semibold">{GAME_NAME}</h2>
-            <p className="text-sm text-muted-foreground">Tap to jump across the gaps. Hop over spikes, land on beetles, grab the coins.</p>
-            {best > 0 && <p className="text-sm">Your best: {best}</p>}
-            <button type="button" onClick={start} className="w-full rounded-xl bg-primary px-6 py-3 text-lg font-semibold text-primary-foreground">
-              Play
-            </button>
-          </div>
+          <GameMenu
+            className="absolute inset-x-4 bottom-24"
+            title={GAME_NAME}
+            tagline="Jump the gaps. Hop the spikes. Grab the coins."
+            best={best}
+            onPlay={start}
+            howTo={["Tap or press Space to jump.", "Jump across gaps and over spikes. Land on a beetle from above to squash it.", "Falling, spikes or walking into a beetle cost a life. Three lives."]}
+            powerUps={[
+              { name: "Shield", text: "takes one hit for you" },
+              { name: "Double points", text: "everything scores twice for a while" },
+            ]}
+            wallet
+          />
         )}
         {screen === "paused" && (
           <button type="button" onClick={() => setScreen("playing")} className="absolute inset-x-6 bottom-24 rounded-xl bg-primary py-3 text-lg font-semibold text-primary-foreground">

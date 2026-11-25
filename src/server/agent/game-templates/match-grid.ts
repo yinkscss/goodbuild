@@ -41,11 +41,12 @@ export function pointsFor(n: number): number {
 `;
 
 const GAME = `import { useEffect, useRef, useState } from "react";
+import { GameMenu } from "../game/GameMenu";
 import { GameOver } from "../game/GameOver";
 import { GameSettings } from "../game/GameSettings";
 import { Leaderboard, PostScore } from "../game/Leaderboard";
 import { TopThree } from "../game/TopThree";
-import { dailySeed, firstTime, seededRandom } from "../game/extras";
+import { dailySeed, seededRandom } from "../game/extras";
 import { buzz } from "../game/haptics";
 import { useLeaderboard } from "../game/leaderboard";
 import { declareGame, moved, probe, round, spawned } from "../game/probe";
@@ -104,7 +105,6 @@ export default function Game() {
   const [movesLeft, setMovesLeft] = useState(MOVES);
   const [cleared, setCleared] = useState(0);
   const [best, setBest] = useState(() => bestScore(BEST_KEY));
-  const [tip] = useState(() => firstTime("match-grid-tip"));
   const board = useLeaderboard();
   const rand = useRef(seededRandom(dailySeed()));
   const scoreRef = useRef(0);
@@ -219,14 +219,20 @@ export default function Game() {
       <div className="relative min-h-[460px] overflow-hidden rounded-2xl bg-card p-4 shadow">
         <TopThree board={board} className="absolute right-3 top-3" />
         {screen === "start" && (
-          <div className="flex min-h-[420px] flex-col items-center justify-center gap-4 text-center">
-            <h2 className="text-2xl font-semibold">{GAME_NAME}</h2>
-            <p className="text-muted-foreground">Tap two or more touching tiles of one colour to clear them. Bigger groups score far more. {MOVES} moves on today's board.</p>
-            {tip && <p className="text-sm">Clear {BOMB_GROUP} at once to earn a bomb. Stones break when you clear tiles next to them.</p>}
-            {best > 0 && <p className="text-sm">Your best: {best}</p>}
-            <button type="button" onClick={start} className="w-full rounded-xl bg-primary px-6 py-3 text-lg font-semibold text-primary-foreground">
-              Play
-            </button>
+          <div className="flex min-h-[420px] items-center">
+            <GameMenu
+              card={false}
+              className="w-full"
+              title={GAME_NAME}
+              tagline={"Clear groups of tiles. " + MOVES + " moves on today's board."}
+              best={best}
+              onPlay={start}
+              howTo={["Tap two or more touching tiles of one colour to clear them.", "Bigger groups score far more. Tiles above fall into the gaps.", "Stones break when you clear tiles next to them. You have " + MOVES + " moves."]}
+              powerUps={[
+                  { name: "Bomb", text: "clear a big group at once to earn one; tap it to clear the tiles round it" },
+              ]}
+              wallet
+            />
           </div>
         )}
         {screen === "playing" && (

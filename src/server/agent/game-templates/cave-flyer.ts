@@ -140,12 +140,13 @@ export function drawCave(ctx: CanvasRenderingContext2D, width: number, height: n
 
 const GAME = `import { useRef, useState } from "react";
 import { GameCanvas, type Frame } from "../game/GameCanvas";
+import { GameMenu } from "../game/GameMenu";
 import { GameOver } from "../game/GameOver";
 import { GameSettings } from "../game/GameSettings";
 import { Leaderboard, PostScore } from "../game/Leaderboard";
 import { Sprite } from "../game/Sprite";
 import { TopThree } from "../game/TopThree";
-import { Combo, firstTime, prefersReducedMotion } from "../game/extras";
+import { Combo, prefersReducedMotion } from "../game/extras";
 import { buzz } from "../game/haptics";
 import { drawBanner, drawHud } from "../game/hud";
 import { Particles, Popups, Shake, hitCircle, hitCircleRect } from "../game/juice";
@@ -187,7 +188,6 @@ export default function Game() {
   const [screen, setScreen] = useState<Screen>("start");
   const [best, setBest] = useState(() => bestScore(BEST_KEY));
   const [result, setResult] = useState({ score: 0, distance: 0, gems: 0 });
-  const [tip] = useState(() => firstTime("cave-flyer-controls"));
   const board = useLeaderboard();
   const game = useRef(fresh());
 
@@ -368,19 +368,20 @@ export default function Game() {
         />
         <TopThree board={board} className="absolute right-2 top-14" />
         {screen === "start" && (
-          <div className="absolute inset-x-4 bottom-24 space-y-3 rounded-2xl bg-card/95 p-4 text-center shadow-lg">
-            <div className="flex items-center justify-center gap-3">
-              <Sprite draw={(ctx, w, h) => drawCraft(ctx, w / 2, h / 2, w * 0.8)} width={64} height={40} label="Your craft" />
-              <div className="text-left">
-                <h2 className="text-lg font-semibold">{GAME_NAME}</h2>
-                <p className="text-sm text-muted-foreground">Hold to climb, let go to sink. Miss the rocks and bats, grab the gems.</p>
-              </div>
-            </div>
-            {best > 0 && <p className="text-sm">Your best: {best}</p>}
-            <button type="button" onClick={start} className="w-full rounded-xl bg-primary px-6 py-3 text-lg font-semibold text-primary-foreground">
-              Play
-            </button>
-          </div>
+          <GameMenu
+            className="absolute inset-x-4 bottom-24"
+            title={GAME_NAME}
+            tagline="Fly through the cave. Miss the rocks and bats."
+            art={<Sprite draw={(ctx, w, h) => drawCraft(ctx, w / 2, h / 2, w * 0.8)} width={64} height={40} label="Your craft" />}
+            best={best}
+            onPlay={start}
+            howTo={["Hold anywhere (or Space) to climb; let go to sink.", "Fly between the rock columns and away from the bats.", "Gems score points. A crash ends the run; the cave walls only push you back."]}
+            powerUps={[
+              { name: "Gem", text: "extra points" },
+              { name: "Shield", text: "takes one hit for you" },
+            ]}
+            wallet
+          />
         )}
         {screen === "paused" && (
           <button type="button" onClick={() => setScreen("playing")} className="absolute inset-x-6 bottom-24 rounded-xl bg-primary py-3 text-lg font-semibold text-primary-foreground">
