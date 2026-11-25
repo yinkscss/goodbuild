@@ -2185,9 +2185,10 @@ The owner approved implementing all five parts of the first-build fix and openin
 - **Change:**
   - A new auth phase, `awaiting-device`: the modal asks the person to tap the link in their email, pauses the other buttons, and offers Start over.
   - The link expiring, Magic's extra sign-in step (MFA, which we can't show) and too many attempts each end with a plain message.
-  - A 30-second deadline while waiting on Magic (not while the person is in their inbox), started again after the device is approved.
+  - After a minute waiting on Magic, a hint that it's slow (see the amendment below).
   - Start over, a different email, or closing the modal cancels Magic's request.
 - **Checked:** unit tests for each event and the timeout; the modal's new state. **Not checked** on a real phone or against live Magic.
+- **Amended 25 Nov 2026 (owner):** the first version (#186) took sign-in down and was reverted (#188). Its 30-second deadline started before Magic had loaded and then cancelled the attempt, so on slow mobile data people saw "We couldn't reach the sign-in service" for sign-ins that would have worked, and a late code no longer worked. Now the clock starts only once Magic has loaded, runs for 60 seconds (owner's choice), and only shows a hint ("This is taking longer than usual…"). It never cancels: a late code still moves on to the code step. The other parts of #186 are unchanged.
 
 ### D172. Jev (TypeSafe System One) decides what a request asks for, instead of keyword regexes (25 Nov 2026)
 - **Decided by:** the owner asked for regex routing in the build harness to be replaced with Jev classification so the product can grow past fixed keyword lists. Built by Claude (continuing a Codex draft). Plan: `docs/HARNESS_JEV_MIGRATION.md`; regex inventory: `docs/HARNESS_REGEX_INVENTORY.csv`.

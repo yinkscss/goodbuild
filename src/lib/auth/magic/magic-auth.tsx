@@ -46,8 +46,8 @@ interface Connected {
 }
 
 const LAST_WALLET_KEY = "gb:wallet";
-/** How long to wait for Magic to say it sent the code (or asked to approve the device) before giving up. */
-const OTP_SEND_TIMEOUT_MS = 30_000;
+/** How long to wait, once Magic has loaded, before telling the person it is slow. It never cancels the attempt. */
+const OTP_SEND_TIMEOUT_MS = 60_000;
 
 /** What the page has heard from wallets (EIP-6963). Finding a wallet in it lives in ../injected.ts. */
 const announced = new Map<string, Announced>();
@@ -301,9 +301,9 @@ function MagicBridge({ publishableKey, children }: { publishableKey: string; chi
         setPhase("sending-code");
         const attempt = ++otpAttemptRef.current;
         const current = () => otpAttemptRef.current === attempt;
-        // Magic answers with an event or not at all (its sign-in frame blocked or never loaded). Without a deadline
-        // the button would spin forever, so give up after a while and say so. The deadline runs while we wait on
-        // Magic, not while the person is in their inbox approving this device.
+        // Magic answers with an event or not at all (its sign-in frame blocked or never loaded). So the button doesn't
+        // spin forever, say so after a minute, but keep listening: a slow phone may still get there, and a late code
+        // must still work (D171). The clock starts once Magic has loaded, and stops while the person approves the device.
         let timer: ReturnType<typeof setTimeout> | undefined;
         const heard = () => clearTimeout(timer);
         /** Ends this attempt with a message, unless it was already replaced or cancelled. */
@@ -320,30 +320,34 @@ function MagicBridge({ publishableKey, children }: { publishableKey: string; chi
         };
         const arm = () => {
           heard();
-          timer = setTimeout(
-            () => stop(new SignInError("otp_timeout", "We couldn't reach the sign-in service. Check your connection, turn off any content blockers, and try again.")),
-            OTP_SEND_TIMEOUT_MS,
-          );
+          timer = setTimeout(() => {
+            if (!current()) return;
+            // A hint, not a cancel: the attempt stays live, and a late answer from Magic still moves on.
+            setPhase("error");
+            setError("This is taking longer than usual. Keep this open: we'll move on as soon as the code is sent. Or check your connection and try again.");
+          }, OTP_SEND_TIMEOUT_MS);
         };
-        arm();
         try {
           const magic = await getMagic();
-          if (!current()) return heard();
+          if (!current()) return;
           const handle = magic.auth.loginWithEmailOTP({ email, showUI: false });
           otpRef.current = handle;
+          arm();
           handle.on("email-otp-sent", () => {
             heard();
-            if (current()) setPhase("awaiting-code");
+            if (!current()) return;
+            setError(null);
+            setPhase("awaiting-code");
           });
           // A known email on a new browser or phone: Magic emails a link to approve this device first, then sends the code.
-          handle.on("device-needs-approval", () => {
+          const needsApproval = () => {
             heard();
-            if (current()) setPhase("awaiting-device");
-          });
-          handle.on("device-verification-email-sent", () => {
-            heard();
-            if (current()) setPhase("awaiting-device");
-          });
+            if (!current()) return;
+            setError(null);
+            setPhase("awaiting-device");
+          };
+          handle.on("device-needs-approval", needsApproval);
+          handle.on("device-verification-email-sent", needsApproval);
           handle.on("device-approved", () => {
             if (!current()) return;
             setPhase("sending-code");
