@@ -412,7 +412,7 @@ describe("cost of a plan, measured with the token and pricing code", () => {
     const usage = { inputTokens: estimateTokens(inputChars), outputTokens: estimateTokens(outputChars) };
     const charged = chargedMicro(costMicro("deepseek-flash", usage));
     console.log(`plan typical: ${usage.inputTokens} in, ${usage.outputTokens} out, $${(charged / 1e6).toFixed(5)} charged (prompt ${INTAKE_PROMPT.length} chars)`);
-    expect(usage.inputTokens).toBeLessThan(1_800); // raised for the money / regular app / website rule and the typed question topic (D172); the charge bound below is unchanged
+    expect(usage.inputTokens).toBeLessThan(1_800); // raised for the money / regular app / website rule and the typed question topic (D174); the charge bound below is unchanged
     expect(charged).toBeLessThan(1_500);
   });
 });

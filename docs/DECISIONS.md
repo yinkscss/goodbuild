@@ -2190,7 +2190,14 @@ The owner approved implementing all five parts of the first-build fix and openin
 - **Checked:** unit tests for each event and the timeout; the modal's new state. **Not checked** on a real phone or against live Magic.
 - **Amended 25 Nov 2026 (owner):** the first version (#186) took sign-in down and was reverted (#188). Its 30-second deadline started before Magic had loaded and then cancelled the attempt, so on slow mobile data people saw "We couldn't reach the sign-in service" for sign-ins that would have worked, and a late code no longer worked. Now the clock starts only once Magic has loaded, runs for 60 seconds (owner's choice), and only shows a hint ("This is taking longer than usual…"). It never cancels: a late code still moves on to the code step. The other parts of #186 are unchanged.
 
-### D172. Jev (TypeSafe System One) decides what a request asks for, instead of keyword regexes (25 Nov 2026)
+### D172. One Referrals page, in the sidebar and the wallet menu (25 Nov 2026; amends D155)
+- **Decided by:** the owner asked for a more professional, less scattered referral system. Built by Claude.
+- **Why:** referral tools sat in three places with no menu entry (the sidebar is hidden on phones, where the wallet menu is the only menu).
+- **Change:** a Referrals item in the sidebar and in the wallet menu, and a rebuilt `/home/referrals` (link, stats, friends with the step each has left, how it works, then ambassador earnings). Home keeps a one-line prompt. `/api/referral` now also returns the 50 newest friends (wallet only).
+- **Not changed:** codes, the bonus, the cap, and the hackathon referral (D136), which stays separate. No leaderboard or ranks yet.
+- **Checked:** unit test for the status words; lint on touched files. **Not checked** in a browser or on a phone.
+
+### D174. Jev (TypeSafe System One) decides what a request asks for, instead of keyword regexes (25 Nov 2026)
 - **Decided by:** the owner asked for regex routing in the build harness to be replaced with Jev classification so the product can grow past fixed keyword lists. Built by Claude (continuing a Codex draft). Plan: `docs/HARNESS_JEV_MIGRATION.md`; regex inventory: `docs/HARNESS_REGEX_INVENTORY.csv`.
 - **Change:** each turn gets one saved decision (`src/server/agent/jev.ts`): for 17 capabilities, "requested", "excluded", "unspecified" or "unclear", from independent yes/no questions in one call to `POST /v1/systemone`. Intake, milestone choice, kits, display category and file picking read it. The worker classifies after funding is admitted (`src/server/jobs/jev-routing.ts`), saves the result on the user message so a resumed job reuses it, and charges the call once.
 - **Switch:** Jev decides whenever `TYPESAFE_API_KEY` is set on the server (owner chose to turn it on at merge, 25 Nov 2026). `JEV_ROUTING=0` forces the old rules, `shadow` logs Jev beside them, `1` forces Jev on. Without the key, or if Jev errors or times out, the old rules run for that turn and nothing is charged.

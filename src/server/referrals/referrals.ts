@@ -1,6 +1,6 @@
 import "server-only";
 import { randomInt } from "node:crypto";
-import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { MICRO_PER_CREDIT } from "@/lib/credits-math";
 import { MAX_PAID_REFERRALS, REFERRAL_ALPHABET, REFERRAL_BONUS_CREDITS, cleanReferralCode } from "@/lib/referral";
 import { postLedgerEntry } from "@/server/credits/ledger";
@@ -144,6 +144,17 @@ export interface InviteSummary {
   voted: number;
   /** Credits this has earned you. */
   earnedCredits: number;
+  /** The most recent friends, newest first. Wallet only, never an email. */
+  friends: InviteFriend[];
+}
+
+export interface InviteFriend {
+  wallet: string;
+  joinedAt: string;
+  verified: boolean;
+  voted: boolean;
+  /** True once the bonus was paid to the inviter. */
+  rewarded: boolean;
 }
 
 /** Null until the person is verified with GoodDollar: they get a code only then. */
@@ -158,5 +169,19 @@ export async function inviteSummary(db: Db, userId: string): Promise<InviteSumma
     })
     .from(referrals)
     .where(eq(referrals.referrerUserId, userId));
-  return { code, bonus: REFERRAL_BONUS_CREDITS, max: MAX_PAID_REFERRALS, invited: t.invited, voted: t.voted, earnedCredits: Math.round(Number(t.earned) / MICRO_PER_CREDIT) };
+  const rows = await db
+    .select({ wallet: users.wallet, joinedAt: referrals.createdAt, verifiedAt: referrals.verifiedAt, votedAt: referrals.votedAt, settledAt: referrals.settledAt, referrerMicro: referrals.referrerMicro })
+    .from(referrals)
+    .innerJoin(users, eq(users.id, referrals.refereeUserId))
+    .where(eq(referrals.referrerUserId, userId))
+    .orderBy(desc(referrals.createdAt))
+    .limit(50);
+  const friends: InviteFriend[] = rows.map((r) => ({
+    wallet: r.wallet,
+    joinedAt: r.joinedAt.toISOString(),
+    verified: r.verifiedAt !== null,
+    voted: r.votedAt !== null,
+    rewarded: r.settledAt !== null && r.referrerMicro > 0,
+  }));
+  return { code, bonus: REFERRAL_BONUS_CREDITS, max: MAX_PAID_REFERRALS, invited: t.invited, voted: t.voted, earnedCredits: Math.round(Number(t.earned) / MICRO_PER_CREDIT), friends };
 }
