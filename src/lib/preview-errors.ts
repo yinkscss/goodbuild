@@ -9,7 +9,7 @@ export interface PreviewError {
 /** Marks prompts GoodBuild sent by itself, so an auto-fix never triggers another one. */
 export const AUTO_FIX_LEAD = "Automatic check:";
 
-/** How the "Fix it for me" prompt for a preview crash starts (D173: the server recognises it from old clients). */
+/** How the "Fix it for me" prompt for a preview crash starts (D175: the server recognises it from old clients). */
 export const PREVIEW_ERROR_LEAD = "The preview shows this error";
 
 /** Bundler, CDN and network hiccups: not the app's fault, so never auto-fixed. */

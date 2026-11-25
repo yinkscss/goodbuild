@@ -5,7 +5,7 @@ import { CONTINUE_PROMPT, FIX_PROMPT, previewFixPrompt } from "./preview-errors"
 import { SKIP_PLAN_TEXT, START_BUILDING_TEXT } from "./plan";
 import { firstIntent } from "./first-intent";
 
-describe("actionFromText (old clients, D173)", () => {
+describe("actionFromText (old clients, D175)", () => {
   it("recognises the app's own button texts", () => {
     expect(actionFromText(START_BUILDING_TEXT)).toBe("start_building");
     expect(actionFromText(SKIP_PLAN_TEXT)).toBe("skip_questions");
@@ -31,7 +31,7 @@ describe("actionFromText (old clients, D173)", () => {
   });
 });
 
-describe("firstIntent (D173)", () => {
+describe("firstIntent (D175)", () => {
   it("offers ideas when the message asks what to build or names nothing", () => {
     for (const text of ["What could I build using G$?", "which app should we make with gooddollar", "give me some ideas", "ideas?", "i need to make a good dollar dapp", "Hello", "hey, I want an app on celo"]) expect(firstIntent(text), text).toBe("ideas");
   });

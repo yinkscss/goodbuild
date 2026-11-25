@@ -13,13 +13,14 @@ import { availableMicro } from "@/server/credits/available";
 import { getDb } from "@/server/db/client";
 import { loadProjects, loadSession } from "@/server/home-data";
 
-export type NavKey = "home" | "templates" | "hackathon" | "deployments" | "credits" | "settings";
+export type NavKey = "home" | "templates" | "hackathon" | "deployments" | "referrals" | "credits" | "settings";
 
 const NAV: { key: NavKey; label: string; href: string }[] = [
   { key: "home", label: "Home", href: "/home" },
   { key: "templates", label: "Templates", href: "/templates" },
   { key: "hackathon", label: "Hackathon", href: "/home/hackathon" },
   { key: "deployments", label: "Deployments", href: "/deployments" },
+  { key: "referrals", label: "Referrals", href: "/home/referrals" },
   { key: "credits", label: "Credits", href: "/credits" },
   { key: "settings", label: "Settings", href: "/settings" },
 ];

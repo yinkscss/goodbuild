@@ -56,7 +56,7 @@ Paths below are relative to `src/server/agent/` unless another root is shown.
 
 For “let four friends draw together in a private room, with no wallet,” the proposed decision records `multiplayer = requested` with a reference to the original message and `wallet = excluded` from the same message’s explicit “no wallet” instruction. It also carries the original drawing requirement, even if the kit catalog has no drawing kit. Intake can ask whether drawing is simultaneous or turn-based. Delivery can schedule shared play. The builder can implement a custom canvas. The verifier can try two independent sessions and check whether the second sees the first person’s mark. If the available room implementation requires wallet sign-in, flag that conflict before selecting it. This is the distinction that lets the catalog grow without turning every new idea into another keyword list.
 
-**Typed button actions (D173, done).** Canned sends carry an `action` id and reuse the saved decision instead of classifying button words. Repairs keep their milestone. The old text match remains only for clients that send no id.
+**Typed button actions (D175, done).** Canned sends carry an `action` id and reuse the saved decision instead of classifying button words. Repairs keep their milestone. The old text match remains only for clients that send no id.
 
 ## Implementation order
 

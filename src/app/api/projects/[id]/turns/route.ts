@@ -22,7 +22,7 @@ const body = z
     buildFromIntake: z.boolean().optional(),
     skipPlan: z.boolean().optional(),
     continueDelivery: z.boolean().optional(),
-    /** The canned button this send came from (D173). Old clients send none: their button texts are recognised. */
+    /** The canned button this send came from (D175). Old clients send none: their button texts are recognised. */
     action: z.enum(TURN_ACTIONS).optional(),
     /** Files attached in the composer since the last message: they show in this message's bubble. */
     assetIds: z.array(z.string().uuid()).max(50).optional(),
@@ -55,7 +55,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/projects/[i
       assetIds = [...new Set(parsed.data.assetIds)].filter((a) => owns.has(a));
     }
     const action = parsed.data.action ?? actionFromText(prompt);
-    // A first message that asks what to build, or names nothing to build, gets three ready ideas: no job, no credits (D173).
+    // A first message that asks what to build, or names nothing to build, gets three ready ideas: no job, no credits (D175).
     if (!action && mode === "build" && !skipPlan && !parsed.data.assetIds?.length) {
       const text = prompt ?? owned.messages.find((m) => m.id === userMessageId)?.content ?? "";
       const answered = await answerWithIdeas(db, { projectId: id, text, userMessageId });

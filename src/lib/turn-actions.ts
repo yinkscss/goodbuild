@@ -2,7 +2,7 @@ import { AUTO_FIX_LEAD, CONTINUE_PROMPT, FIX_PROMPT, PREVIEW_ERROR_LEAD } from "
 import { SKIP_PLAN_TEXT, START_BUILDING_TEXT } from "./plan";
 
 /**
- * What a canned button asks for (D173). The client sends the id with the button's text, so the server routes on
+ * What a canned button asks for (D175). The client sends the id with the button's text, so the server routes on
  * the id and never asks Jev to read button words ("Start building") or a pasted error as a fresh request.
  * - start_building / skip_questions: build the goal the person already described.
  * - repair: fix what a check reported (a crash, visual problems, a stopped deploy, errors left by the last build).

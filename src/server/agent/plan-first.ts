@@ -31,7 +31,7 @@ const MAX_PLAN_TRIES = 2;
  */
 export async function shouldPlanFirst(db: Db, input: { projectId: string; userId: string; prompt?: string; skipPlan?: boolean; action?: TurnAction }): Promise<boolean> {
   if (input.skipPlan) return false;
-  // A fix or resume (D173): from its button, or an old client's text of one (a crash, visual problems, a stopped deploy).
+  // A fix or resume (D175): from its button, or an old client's text of one (a crash, visual problems, a stopped deploy).
   if (keepsScope(input.action ?? actionFromText(input.prompt))) return false;
   const prompt = input.prompt?.trim() ?? "";
   if (prompt.startsWith(AUTO_FIX_LEAD) || prompt === FIX_PROMPT) return false;

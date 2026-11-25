@@ -78,7 +78,7 @@ describe("POST turns", () => {
   });
 });
 
-describe("POST turns: first-message ideas and button ids (D173)", () => {
+describe("POST turns: first-message ideas and button ids (D175)", () => {
   let userId: string;
   let projectId: string;
   beforeEach(async () => {

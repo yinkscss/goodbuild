@@ -49,7 +49,7 @@ for (const [id, meaning] of Object.entries(features)) {
 }
 export const questionVersion = createHash("sha256").update(JSON.stringify(questions)).digest("hex");
 /**
- * Shadow-only signals (D173): asked only under JEV_ROUTING=shadow, recorded on the message, never acted on.
+ * Shadow-only signals (D175): asked only under JEV_ROUTING=shadow, recorded on the message, never acted on.
  * One yes/no question each (no "_excluded" twin), so they add about half what a capability does. They measure the
  * gaps real prompts showed: things GoodBuild can't build yet, and first messages too vague to build.
  */
@@ -68,7 +68,7 @@ const shadowQuestions: Record<string, Question> = Object.fromEntries(
 );
 /** The question set a shadow call sends: the live one plus the shadow signals. Its own hash, so #190's stays as it was. */
 export const shadowQuestionVersion = createHash("sha256").update(JSON.stringify({ ...questions, ...shadowQuestions })).digest("hex");
-export const thresholds = { high: 0.4, low: 0.3 }; // provisional: tuned on 25 cases, checked on 70 held-out ones (D172)
+export const thresholds = { high: 0.4, low: 0.3 }; // provisional: tuned on 25 cases, checked on 70 held-out ones (D174)
 const probability = z.number().min(0).max(1);
 export const responseSchema = z.object({
   model: z.string().min(1),
@@ -120,7 +120,7 @@ export type JevDecision = {
   chargedMicro?: number;
   /** Shadow signals' probabilities, when the call asked them (JEV_ROUTING=shadow only). */
   shadow?: Partial<Record<ShadowSignal, number>>;
-  /** Set when a button turn reused an earlier message's decision (D173): the id of that message. */
+  /** Set when a button turn reused an earlier message's decision (D175): the id of that message. */
   reusedFrom?: string;
 };
 export async function classifyTurn(
@@ -154,7 +154,7 @@ export async function classifyTurn(
     fit >= thresholds.high && (kind.confidence ?? 0) >= thresholds.high ? (kind.choice as ContractKind) : "custom";
   const relevantFiles = (state.files ?? []).filter((_, index) => noul(response, "file_" + index) >= thresholds.high);
   const shadow = opts.shadow
-    ? // Read leniently: a missing shadow answer must never lose the rest of the shadow record (D173).
+    ? // Read leniently: a missing shadow answer must never lose the rest of the shadow record (D175).
       (Object.fromEntries(
         Object.keys(shadowSignals).flatMap((id) => {
           const answer = response.answers["shadow_" + id];

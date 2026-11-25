@@ -1,5 +1,5 @@
 // @vitest-environment node
-// D173: canned buttons route on their id without Jev; repairs keep their milestone; vague first messages get ideas;
+// D175: canned buttons route on their id without Jev; repairs keep their milestone; vague first messages get ideas;
 // shadow-only signals never change the live question set.
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -43,7 +43,7 @@ async function runPrepare(db: Db) {
 
 afterEach(() => vi.unstubAllGlobals());
 
-describe("button turns skip Jev (D173)", () => {
+describe("button turns skip Jev (D175)", () => {
   it("Start building reuses the plan turn's decision: no call, no charge, same milestones", async () => {
     const { db, user, project, first } = await setup();
     const fetch = vi.fn().mockImplementation(async (_url, init) => jevReply(["game", "knownKind", "multiplayer"], JSON.parse(init.body)));
@@ -110,7 +110,7 @@ describe("button turns skip Jev (D173)", () => {
   });
 });
 
-describe("shadow-only signals (D173)", () => {
+describe("shadow-only signals (D175)", () => {
   it("leave the live question set and its version exactly as #190 set them", async () => {
     expect(questionVersion).toBe("5a17e3a24a8dc6493d755b468eb7789eafd8b8ad8daf37afdae7120a40aa7d15");
     expect(shadowQuestionVersion).not.toBe(questionVersion);
@@ -142,7 +142,7 @@ describe("shadow-only signals (D173)", () => {
   });
 });
 
-describe("first-message ideas (D173)", () => {
+describe("first-message ideas (D175)", () => {
   it("answers a vague first message with three ideas, once, with no job", async () => {
     const { db, project, first } = await setup("what should i build with G$?");
     const answered = await answerWithIdeas(db, { projectId: project.id, text: first.content, userMessageId: first.id });

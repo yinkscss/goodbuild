@@ -39,7 +39,7 @@ async function buildState(db: Db, job: TurnJob, source: Source) {
 }
 
 /**
- * A button turn (D173) reuses the newest decision saved on this project before it: the one made for the person's
+ * A button turn (D175) reuses the newest decision saved on this project before it: the one made for the person's
  * own words. "Start building" after the questions reuses the first message's (its plan turn classified the goal).
  * Nothing is charged again, and the files Jev picked for that earlier request aren't carried over to this one.
  */
@@ -64,12 +64,12 @@ export async function shadowJev(db: Db, job: TurnJob, classify = classifyTurn, s
   try {
     const [source] = await db.select().from(messages).where(eq(messages.id, job.userMessageId));
     if (!source || source.role !== "user") return;
-    // Button turns (D173) carry no new request: nothing to compare, nothing to pay for.
+    // Button turns (D175) carry no new request: nothing to compare, nothing to pay for.
     if (source.meta?.turnAction) return;
     const { state } = await buildState(db, job, source);
     const decision = await classify(state, signal, undefined, { shadow: true });
     const diff = disagreements(source.content, decision.signals);
-    // The shadow signals (D173): probabilities and which pass the "requested" bar. Recorded only; nothing acts on them.
+    // The shadow signals (D175): probabilities and which pass the "requested" bar. Recorded only; nothing acts on them.
     const extra = decision.shadow ? { probabilities: decision.shadow, flagged: Object.entries(decision.shadow).filter(([, p]) => p >= thresholds.high).map(([id]) => id) } : undefined;
     const record = { model: decision.model, version: decision.version, ms: decision.ms, tokens: decision.response.usage, signals: decision.signals, disagreements: diff, ...(extra ? { extra } : {}) };
     console.log(JSON.stringify({ event: "jev_shadow", jobId: job.id, ...record }));
@@ -104,7 +104,7 @@ export async function prepareJevRouting(db: Db, job: TurnJob, ctx: TurnJobContex
         let plan = saved?.plan ?? deliveryFor(goal, decision);
         index = 0;
         if (plan.completed > 0) {
-          // A repair or resume keeps its milestone (D173): no new milestone, no advancing.
+          // A repair or resume keeps its milestone (D175): no new milestone, no advancing.
           const explicit = keep ? -1 : plan.milestones.findIndex((m) => m.title.toLowerCase() === source.content.trim().toLowerCase());
           const extension = keep ? { plan, picked: -1 } : extendDelivery(plan, source.content, decision);
           const picked = explicit >= 0 ? explicit : marker.advance ? -1 : extension.picked;

@@ -56,9 +56,9 @@ type QueueArgs = {
   retryNote?: string;
   continueDelivery?: boolean;
   buildFromIntake?: boolean;
-  /** The canned button this send came from (D173), or none for the person's own words. */
+  /** The canned button this send came from (D175), or none for the person's own words. */
   action?: TurnAction;
-  /** reuse: a button turn reuses the project's saved Jev decision instead of classifying the button's words (D173). */
+  /** reuse: a button turn reuses the project's saved Jev decision instead of classifying the button's words (D175). */
   jev?: { advance: boolean; completed?: number; decision?: import("../agent/jev").JevDecision; reuse?: TurnAction };
   useCredits?: boolean;
   baseVersion?: number;
@@ -170,7 +170,7 @@ export async function startTurn(db: Db, args: QueueArgs, env: Record<string, str
       // that milestone if the first message didn't, and builds it, instead of staying scoped forever.
       // Only once the first interface is delivered (until then every build stays the interface), and
       // not behind a running build: that one may still advance the plan, and a queued edit keeps queueing.
-      // A repair or resume keeps its milestone (D173): an error that mentions a contract doesn't start the on-chain one.
+      // A repair or resume keeps its milestone (D175): an error that mentions a contract doesn't start the on-chain one.
       const keep = keepsScope(args.action);
       if (keep) picked = -1;
       if (!keep && picked < 0 && !args.continueDelivery && delivery.plan.completed > 0 && !(await activeJobs(tx, project.id)).length) {

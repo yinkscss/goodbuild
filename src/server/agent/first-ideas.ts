@@ -21,7 +21,7 @@ export const GAME_IDEAS = [
 export const IDEAS_REPLY = "Here are three apps I can build for you right away. Pick one, or tell me your own idea in a sentence (what it does and who uses it).";
 
 /**
- * A project's first message that asks what to build or names nothing to build (D173) gets three ready ideas,
+ * A project's first message that asks what to build or names nothing to build (D175) gets three ready ideas,
  * with no job, no hold and no credits. Once per project: if they ask again, it plans or builds as usual.
  * Returns the saved user message id when it answered, or null when the send should go on as normal.
  */
