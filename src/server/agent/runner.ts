@@ -1508,7 +1508,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
     const chosenPalette = firstBuild ? paletteById(brief.paletteId) : undefined;
     if (chosenPalette && files["public/index.html"] !== undefined) files["public/index.html"] = applyPalette(files["public/index.html"], chosenPalette);
     // D176: an uploaded logo is the tab icon unless the app already sets one.
-    if (files["public/index.html"] !== undefined) files["public/index.html"] = withLogoIcon(files["public/index.html"], assets);
+    if (input.mode === "build" && files["public/index.html"] !== undefined) files["public/index.html"] = withLogoIcon(files["public/index.html"], assets);
 
     // Kits (D71): one the request clearly asks for is on before the builder starts, so its packages and
     // starter files are there even if the builder forgets to ask. In place before the workspace

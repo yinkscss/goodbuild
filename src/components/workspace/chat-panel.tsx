@@ -20,7 +20,7 @@ import { AssetBar, AttachMenu, imageFiles, KIND_LABEL } from "./asset-bar";
 import { hasMiniPayKit } from "@/lib/minipay-checklist";
 import { FirstWait } from "./first-wait";
 import { MiniPayGuide } from "./minipay-guide";
-import { LogoChip, PublishNextStep } from "./next-steps";
+import { LogoChip, nextSteps, PublishNextStep } from "./next-steps";
 import { OldFundsCard } from "./old-funds-card";
 import { TurnView } from "./turn-view";
 import type { PublishInfo } from "./use-publish";
@@ -113,12 +113,20 @@ export function ChatPanel({
     runRetry(retryRequest(record, crash, { afterTopUp: true }));
   };
   const continueCost = { needMicro: state.estimate.buildMicro, haveMicro: state.availableMicro };
-  // D176: the newest build works and nothing is waiting on the person (questions, a drafted plan, a crash).
-  const works =
-    !running && !live && state.project.currentVersion > 0 && (lastRecord?.status === "ready" || lastRecord?.status === "answered") && !lastRecord?.intake && !draftOpen && !ws.previewError;
   const miniPay = hasMiniPayKit(state.files);
-  // MiniPay apps get their own publish steps (MiniPayGuide); a contract with newer changes has its own card.
-  const showPublishStep = works && Boolean(publish?.hasApp && !publish.live) && !miniPay && state.outdatedContracts.length === 0 && Boolean(onPublish);
+  // D176: next steps once the newest build works and nothing waits on the person.
+  const next = nextSteps({
+    running,
+    live: Boolean(live),
+    currentVersion: state.project.currentVersion,
+    lastStatus: lastRecord?.status,
+    openQuestions: Boolean(lastRecord?.intake),
+    draftOpen,
+    crashed: Boolean(ws.previewError),
+    publish,
+    miniPay,
+    outdatedContracts: state.outdatedContracts.length,
+  });
   return (
     <section aria-label="Chat" className="flex min-h-0 flex-col rounded-card bg-surface shadow-card">
       <div ref={listRef} onScroll={onListScroll} className="min-h-0 flex-1 space-y-5 overflow-x-hidden overflow-y-auto overscroll-contain p-3 sm:p-5" aria-live="polite">
@@ -222,8 +230,8 @@ export function ChatPanel({
             {ws.error}
           </p>
         )}
-        {works && <LogoChip projectId={state.project.id} assets={state.assets} onUpload={ws.upload} uploading={ws.uploading} onUse={suggest} disabled={running} />}
-        {showPublishStep && publish && onPublish && <PublishNextStep info={publish} onPublish={onPublish} />}
+        {next.works && <LogoChip projectId={state.project.id} assets={state.assets} onUpload={ws.upload} uploading={ws.uploading} onUse={suggest} disabled={running} />}
+        {next.publish && publish && onPublish && <PublishNextStep info={publish} onPublish={onPublish} />}
         {!running && state.delivery && state.delivery.completed > 0 && state.delivery.completed < state.delivery.milestones.length && (
           <p className="px-4 text-xs text-grey-600">Next: {milestoneName(state.delivery.milestones[state.delivery.completed].id, state.delivery.milestones[state.delivery.completed].title)}. It&apos;s a separate build, about {formatCredits(state.estimate.buildMicro)}.</p>
         )}
