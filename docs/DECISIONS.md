@@ -2189,3 +2189,11 @@ The owner approved implementing all five parts of the first-build fix and openin
   - Start over, a different email, or closing the modal cancels Magic's request.
 - **Checked:** unit tests for each event and the timeout; the modal's new state. **Not checked** on a real phone or against live Magic.
 - **Amended 25 Nov 2026 (owner):** the first version (#186) took sign-in down and was reverted (#188). Its 30-second deadline started before Magic had loaded and then cancelled the attempt, so on slow mobile data people saw "We couldn't reach the sign-in service" for sign-ins that would have worked, and a late code no longer worked. Now the clock starts only once Magic has loaded, runs for 60 seconds (owner's choice), and only shows a hint ("This is taking longer than usual…"). It never cancels: a late code still moves on to the code step. The other parts of #186 are unchanged.
+
+### D172. One Referrals page, in the sidebar and the wallet menu (25 Nov 2026; amends D155)
+- **Decided by:** the owner asked for a more professional, less scattered referral system. Built by Claude.
+- **Why:** referral tools sat in three places with no menu entry (the sidebar is hidden on phones, where the wallet menu is the only menu).
+- **Change:** a Referrals item in the sidebar and in the wallet menu, and a rebuilt `/home/referrals` (link, stats, friends with the step each has left, how it works, then ambassador earnings). Home keeps a one-line prompt. `/api/referral` now also returns the 50 newest friends (wallet only).
+- **Not changed:** codes, the bonus, the cap, and the hackathon referral (D136), which stays separate. No leaderboard or ranks yet.
+- **Checked:** unit test for the status words; lint on touched files. **Not checked** in a browser or on a phone.
+
