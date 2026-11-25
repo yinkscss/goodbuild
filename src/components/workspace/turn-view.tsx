@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { CHECKING_STEP, plainStep, planStepText } from "@/lib/plain-steps";
 import { isAiAccountEmpty, plainError, plainMilestoneTitle } from "@/lib/plain-words";
 import { PlanCard, PlanDraftCard, type PlanActions, type PlanDraftActions } from "./plan-card";
+import { REVIEW_FIX_LEAD, VISUAL_FIX_LEAD, type TurnAction } from "@/lib/turn-actions";
 
 /** A step running this long gets a calm explanation (A2). */
 const SLOW_STEP_SECONDS = 20;
@@ -329,7 +330,7 @@ export function SuggestionChips({ items, onPick, disabled }: { items: string[]; 
 }
 
 /** Visual check result (P17): a quiet line when it looks right, a card with "Fix these" when not. */
-export function VisualCheckNote({ record, checking, failed, onFix, disabled }: { record: TurnRecord; checking?: boolean; failed?: string | null; onFix?: (prompt: string) => void; disabled: boolean }) {
+export function VisualCheckNote({ record, checking, failed, onFix, disabled }: { record: TurnRecord; checking?: boolean; failed?: string | null; onFix?: (prompt: string, action?: TurnAction) => void; disabled: boolean }) {
   const check = record.visualCheck;
   if (!check && checking) {
     return (
@@ -353,7 +354,7 @@ export function VisualCheckNote({ record, checking, failed, onFix, disabled }: {
       </p>
     );
   }
-  const prompt = `Fix these visual problems the preview check found on ${check.width <= 600 ? "a phone" : "a computer"} (${check.width}px wide):\n${check.issues.map((i) => `- ${i}`).join("\n")}`;
+  const prompt = `${VISUAL_FIX_LEAD} on ${check.width <= 600 ? "a phone" : "a computer"} (${check.width}px wide):\n${check.issues.map((i) => `- ${i}`).join("\n")}`;
   return (
     <div className="mt-4 rounded-block bg-canvas p-4" role="status">
       <div className="flex items-start gap-3">
@@ -369,7 +370,7 @@ export function VisualCheckNote({ record, checking, failed, onFix, disabled }: {
       </div>
       {onFix && (
         <div className="mt-3 flex justify-end">
-          <Button variant="chipSelected" size="sm" disabled={disabled} onClick={() => onFix(prompt)}>
+          <Button variant="chipSelected" size="sm" disabled={disabled} onClick={() => onFix(prompt, "repair")}>
             <Wrench />
             Fix it for me
           </Button>
@@ -383,7 +384,7 @@ export function VisualCheckNote({ record, checking, failed, onFix, disabled }: {
  * The builder's own look at the page (D87). A quiet line when it looked right or when it fixed what
  * it saw; a card with "Fix these" only when it saw something and left the page as it was.
  */
-export function ReviewNote({ record, onFix, disabled }: { record: TurnRecord; onFix?: (prompt: string) => void; disabled: boolean }) {
+export function ReviewNote({ record, onFix, disabled }: { record: TurnRecord; onFix?: (prompt: string, action?: TurnAction) => void; disabled: boolean }) {
   const review = record.review;
   if (!review) return null;
   if (review.ok) {
@@ -408,7 +409,7 @@ export function ReviewNote({ record, onFix, disabled }: { record: TurnRecord; on
       </details>
     );
   }
-  const prompt = `Fix these problems you saw when you looked at the page:\n${review.issues.map((i) => `- ${i}`).join("\n")}`;
+  const prompt = `${REVIEW_FIX_LEAD}:\n${review.issues.map((i) => `- ${i}`).join("\n")}`;
   return (
     <div className="mt-4 rounded-block bg-canvas p-4" role="status">
       <div className="flex items-start gap-3">
@@ -424,7 +425,7 @@ export function ReviewNote({ record, onFix, disabled }: { record: TurnRecord; on
       </div>
       {onFix && (
         <div className="mt-3 flex justify-end">
-          <Button variant="chipSelected" size="sm" disabled={disabled} onClick={() => onFix(prompt)}>
+          <Button variant="chipSelected" size="sm" disabled={disabled} onClick={() => onFix(prompt, "repair")}>
             <Wrench />
             Fix it for me
           </Button>
@@ -461,7 +462,7 @@ export function FinishedBuild({
   works: string[];
   later?: string;
   chainId: number;
-  onSuggest?: (prompt: string) => void;
+  onSuggest?: (prompt: string, action?: TurnAction) => void;
   disabled: boolean;
   onUndo?: () => void;
   checking?: boolean;
@@ -607,7 +608,7 @@ export function TurnView({
   /** What Continue on a build paused for credits would cost, and what the person has (D138). Latest turn only. */
   continueCost?: ContinueCost;
   /** Set on the latest turn only: shows its suggestion chips. */
-  onSuggest?: (prompt: string) => void;
+  onSuggest?: (prompt: string, action?: TurnAction) => void;
   /** The visual check of this turn's preview is running. */
   checking?: boolean;
   /** Why the visual check of this turn's preview has no result, when it has none. */

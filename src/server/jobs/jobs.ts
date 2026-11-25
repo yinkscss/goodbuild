@@ -14,6 +14,7 @@ import { reserveSponsorship, sponsorshipSettings } from "@/server/credits/build-
 import type { GoodIdentity } from "@/server/credits/free-grants";
 import type { Address } from "viem";
 import type { TurnEvent, TurnMode } from "@/lib/turn-types";
+import { keepsScope, type TurnAction } from "@/lib/turn-actions";
 
 /** Lease length and renewal (P18): renewed every 5 s, expires 30 s after the last renewal. */
 export const LEASE_MS = 30_000;
@@ -55,7 +56,10 @@ type QueueArgs = {
   retryNote?: string;
   continueDelivery?: boolean;
   buildFromIntake?: boolean;
-  jev?: { advance: boolean; completed?: number; decision?: import("../agent/jev").JevDecision };
+  /** The canned button this send came from (D173), or none for the person's own words. */
+  action?: TurnAction;
+  /** reuse: a button turn reuses the project's saved Jev decision instead of classifying the button's words (D173). */
+  jev?: { advance: boolean; completed?: number; decision?: import("../agent/jev").JevDecision; reuse?: TurnAction };
   useCredits?: boolean;
   baseVersion?: number;
   deliveryIndex?: number;
@@ -91,7 +95,7 @@ async function queueTurn(tx: Db, args: QueueArgs, funding: FundingSource, holdMi
     messageId = m.id;
   }
   const [job] = await tx.insert(turnJobs).values({ projectId: args.projectId, userId: args.userId, mode: args.mode, prompt, userMessageId: messageId, funding, holdMicro, retryOfJobId: args.retryOfJobId, baseVersion: args.baseVersion ?? 0, deliveryIndex: args.deliveryIndex }).returning();
-  await tx.update(messages).set({ meta: sql`coalesce(${messages.meta}, '{}'::jsonb) || ${JSON.stringify({ mode: args.mode, jobId: job.id, ...(args.buildFromIntake ? { buildFromIntake:true } : {}), ...(args.jev ? { jev: args.jev } : {}), ...(args.intake ? { intake: true } : {}) })}::jsonb` }).where(eq(messages.id, messageId));
+  await tx.update(messages).set({ meta: sql`coalesce(${messages.meta}, '{}'::jsonb) || ${JSON.stringify({ mode: args.mode, jobId: job.id, ...(args.buildFromIntake ? { buildFromIntake:true } : {}), ...(args.jev ? { jev: args.jev } : {}), ...(args.intake ? { intake: true } : {}), ...(args.action ? { turnAction: args.action } : {}) })}::jsonb` }).where(eq(messages.id, messageId));
   return job;
 }
 
@@ -141,10 +145,11 @@ export async function startTurn(db: Db, args: QueueArgs, env: Record<string, str
       if (source.baseVersion !== project.currentVersion) throw new Error("retry_stale");
       if ((await activeJobs(tx, project.id)).length) throw new Error("retry_busy");
       const [original] = await tx.select().from(messages).where(eq(messages.id, source.userMessageId));
-      args = { ...args, jev:original?.meta?.jev as QueueArgs["jev"], buildFromIntake:original?.meta?.buildFromIntake === true, mode: source.mode as TurnMode, prompt: (original?.meta?.buildFromIntake === true || (!original?.meta?.jev && /^(Skip the questions, just build it|Start building)[.!]?$/i.test(source.prompt))) ? (await tx.select().from(buildDeliveries).where(eq(buildDeliveries.projectId, project.id)))[0]?.plan.goal ?? source.prompt : source.prompt, userMessageId: undefined, intake: Boolean(original?.meta?.intake), assetIds: original?.meta?.assetIds as string[] | undefined, deliveryIndex: source.deliveryIndex ?? undefined };
+      const originalAction = original?.meta?.turnAction as TurnAction | undefined;
+      args = { ...args, action: originalAction, jev:original?.meta?.jev as QueueArgs["jev"], buildFromIntake:original?.meta?.buildFromIntake === true, mode: source.mode as TurnMode, prompt: (original?.meta?.buildFromIntake === true || originalAction === "start_building" || originalAction === "skip_questions" || (!original?.meta?.jev && /^(Skip the questions, just build it|Start building)[.!]?$/i.test(source.prompt))) ? (await tx.select().from(buildDeliveries).where(eq(buildDeliveries.projectId, project.id)))[0]?.plan.goal ?? source.prompt : source.prompt, userMessageId: undefined, intake: Boolean(original?.meta?.intake), assetIds: original?.meta?.assetIds as string[] | undefined, deliveryIndex: source.deliveryIndex ?? undefined };
     }
     if (!source && jevMode(env) === "on" && (args.mode === "build" || args.intake)) {
-      args.jev = { advance: args.continueDelivery === true };
+      args.jev = { advance: args.continueDelivery === true, ...(args.action ? { reuse: args.action } : {}) };
       if (args.continueDelivery && (await activeJobs(tx, project.id)).length) throw new Error("retry_busy");
     }
     args.baseVersion = project.currentVersion;
@@ -165,7 +170,10 @@ export async function startTurn(db: Db, args: QueueArgs, env: Record<string, str
       // that milestone if the first message didn't, and builds it, instead of staying scoped forever.
       // Only once the first interface is delivered (until then every build stays the interface), and
       // not behind a running build: that one may still advance the plan, and a queued edit keeps queueing.
-      if (picked < 0 && !args.continueDelivery && delivery.plan.completed > 0 && !(await activeJobs(tx, project.id)).length) {
+      // A repair or resume keeps its milestone (D173): an error that mentions a contract doesn't start the on-chain one.
+      const keep = keepsScope(args.action);
+      if (keep) picked = -1;
+      if (!keep && picked < 0 && !args.continueDelivery && delivery.plan.completed > 0 && !(await activeJobs(tx, project.id)).length) {
         const extended = extendDelivery(delivery.plan, prompt);
         if (extended.picked >= 0) {
           picked = extended.picked;
@@ -175,7 +183,7 @@ export async function startTurn(db: Db, args: QueueArgs, env: Record<string, str
           }
         }
       }
-      const advance = args.continueDelivery || isContinuation(prompt) || picked >= delivery.plan.completed;
+      const advance = !keep && (args.continueDelivery || isContinuation(prompt) || picked >= delivery.plan.completed);
       if (advance && (await activeJobs(tx, project.id)).length) throw new Error("retry_busy");
       if (advance && picked > delivery.plan.completed) {
         const plan = { ...delivery.plan, milestones: [...delivery.plan.milestones] };

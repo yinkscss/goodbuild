@@ -90,7 +90,7 @@ export function Workspace({ initial }: { initial: WorkspaceState }) {
           if (toWire.length) ws.send(wirePrompt(toWire), "build");
         });
       }}
-      onFix={(prompt) => ws.send(prompt, "build")}
+      onFix={(prompt) => ws.send(prompt, "build", { action: "repair" })}
       onPublish={() => setPublishOpen(true)}
       onSwitchChain={async (chainId) => {
         const res = await fetch(`/api/projects/${state.project.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chainId }) });
@@ -154,7 +154,7 @@ export function Workspace({ initial }: { initial: WorkspaceState }) {
             assetUrls={assetUrls}
             version={previewVersion}
             contracts={latestRecord?.contracts ?? []}
-            onFix={(prompt) => ws.send(prompt, "build")}
+            onFix={(prompt) => ws.send(prompt, "build", { action: "repair" })}
             onRuntimeError={(e) => ws.onPreviewError(e, live?.record.version ?? state.project.currentVersion)}
             checkVersion={live ? null : ws.checkVersion}
             onCaptured={(shot, v) => void ws.onPreviewCaptured(shot, v)}
@@ -173,10 +173,10 @@ export function Workspace({ initial }: { initial: WorkspaceState }) {
         files={files}
         published={Boolean(publish.info?.live)}
         busy={running}
-        onSend={(prompt) => ws.send(prompt, "build")}
+        onSend={(prompt) => ws.send(prompt, "build", { action: "add_saved_data" })}
       />
       <GithubModal projectId={state.project.id} github={github} open={githubOpen} onOpenChange={setGithubOpen} />
-      <PublishModal open={publishOpen} onOpenChange={setPublishOpen} publish={publish} projectBusy={running} files={files} onFix={(prompt) => ws.send(prompt, "build")} />
+      <PublishModal open={publishOpen} onOpenChange={setPublishOpen} publish={publish} projectBusy={running} files={files} onFix={(prompt) => ws.send(prompt, "build", { action: "repair" })} />
     </div>
     </DeployProvider>
   );

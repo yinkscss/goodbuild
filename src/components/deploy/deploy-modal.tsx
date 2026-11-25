@@ -15,6 +15,7 @@ import { CAN_BE_CHANGED_LABEL, isUpgradeableChain } from "@/lib/deploy/upgradeab
 import { shortAddress } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useDeploy, type DeployState, type StepView } from "./use-deploy";
+import { DEPLOY_STOPPED_LEAD } from "@/lib/turn-actions";
 
 type Deploy = ReturnType<typeof useDeploy>;
 
@@ -311,7 +312,7 @@ function ErrorCard({ deploy, onFix, chainId }: { deploy: Deploy; onFix: (prompt:
               <Button
                 variant="chipSelected"
                 size="chip"
-                onClick={() => onFix(`The deploy to Celo was stopped because the contract holds other people's money and its exploit tests haven't all run and passed:\n${error.logs.join("\n")}\nAdd or fix the exploit tests (contracts/test/<Name>.t.sol) and fix the contract if a test shows a real problem. Call add_kit("dao-vault") for how to write them.`)}
+                onClick={() => onFix(`${DEPLOY_STOPPED_LEAD} because the contract holds other people's money and its exploit tests haven't all run and passed:\n${error.logs.join("\n")}\nAdd or fix the exploit tests (contracts/test/<Name>.t.sol) and fix the contract if a test shows a real problem. Call add_kit("dao-vault") for how to write them.`)}
               >
                 Ask the builder to fix them
               </Button>

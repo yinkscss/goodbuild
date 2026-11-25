@@ -48,6 +48,26 @@ for (const [id, meaning] of Object.entries(features)) {
   };
 }
 export const questionVersion = createHash("sha256").update(JSON.stringify(questions)).digest("hex");
+/**
+ * Shadow-only signals (D173): asked only under JEV_ROUTING=shadow, recorded on the message, never acted on.
+ * One yes/no question each (no "_excluded" twin), so they add about half what a capability does. They measure the
+ * gaps real prompts showed: things GoodBuild can't build yet, and first messages too vague to build.
+ */
+export const shadowSignals = {
+  photoInput: "Does the user want the app's own users to take or upload a photo that the app then reads or acts on, such as reading a receipt?",
+  inAppAi: "Does the user want artificial intelligence inside the finished app, such as a chatbot, an AI assistant, AI-written content or an AI game master?",
+  reminders: "Does the user want the app to send reminders or notifications later, by push, text message, email or alarm?",
+  roles: "Does the user describe two or more kinds of users with different abilities, such as buyers and sellers, couriers and customers, or admins and members?",
+  liveMultiplayer: "Does the user want people to see each other's actions live, at the same moment, in real time?",
+  outOfScope: "Is the request for something other than a web app, website or browser game, such as a native phone app, a backend service on its own, a trading bot or changes to an existing codebase elsewhere?",
+  vague: "Is the latest request too vague to build: it asks what to build, asks for ideas, or names no specific app, purpose or feature?",
+} as const;
+export type ShadowSignal = keyof typeof shadowSignals;
+const shadowQuestions: Record<string, Question> = Object.fromEntries(
+  Object.entries(shadowSignals).map(([id, instructions]) => ["shadow_" + id, { type: "noul", instructions }]),
+);
+/** The question set a shadow call sends: the live one plus the shadow signals. Its own hash, so #190's stays as it was. */
+export const shadowQuestionVersion = createHash("sha256").update(JSON.stringify({ ...questions, ...shadowQuestions })).digest("hex");
 export const thresholds = { high: 0.4, low: 0.3 }; // provisional: tuned on 25 cases, checked on 70 held-out ones (D172)
 const probability = z.number().min(0).max(1);
 export const responseSchema = z.object({
@@ -98,16 +118,21 @@ export type JevDecision = {
   relevantFiles: string[];
   ms: number;
   chargedMicro?: number;
+  /** Shadow signals' probabilities, when the call asked them (JEV_ROUTING=shadow only). */
+  shadow?: Record<ShadowSignal, number>;
+  /** Set when a button turn reused an earlier message's decision (D173): the id of that message. */
+  reusedFrom?: string;
 };
 export async function classifyTurn(
   state: IntentState,
   signal?: AbortSignal,
   env: Record<string, string | undefined> = process.env,
+  opts: { shadow?: boolean } = {},
 ): Promise<JevDecision> {
   if (!env.TYPESAFE_API_KEY) throw new Error("Jev classification requires TYPESAFE_API_KEY");
   const start = Date.now();
   const timeout = AbortSignal.timeout(15000);
-  const batched = { ...questions };
+  const batched = { ...questions, ...(opts.shadow ? shadowQuestions : {}) };
   for (const [index, path] of (state.files ?? []).entries()) {
     batched["file_" + index] = {
       type: "noul",
@@ -128,10 +153,14 @@ export async function classifyTurn(
   const displayKind =
     fit >= thresholds.high && (kind.confidence ?? 0) >= thresholds.high ? (kind.choice as ContractKind) : "custom";
   const relevantFiles = (state.files ?? []).filter((_, index) => noul(response, "file_" + index) >= thresholds.high);
+  const shadow = opts.shadow
+    ? (Object.fromEntries(Object.keys(shadowSignals).map((id) => [id, noul(response, "shadow_" + id)])) as Record<ShadowSignal, number>)
+    : undefined;
   return {
+    ...(shadow ? { shadow } : {}),
     displayKind,
     relevantFiles,
-    version: questionVersion,
+    version: opts.shadow ? shadowQuestionVersion : questionVersion,
     revision: createHash("sha256").update(JSON.stringify(state)).digest("hex"),
     model: response.model,
     response,

@@ -9,6 +9,7 @@ import { DATA_RULES_PATH, describeRule, parseDataRules } from "@/lib/app-data";
 import { inferKind, type ContractKind } from "@/lib/contract-kind";
 import { cn } from "@/lib/utils";
 import { AppDataRow } from "./app-data-row";
+import { SAVED_DATA_LEAD } from "@/lib/turn-actions";
 
 /** The helpers every starter app has. Using them anywhere else means the app saves data (D31). */
 const HELPERS = new Set(["src/lib/db.ts", "src/lib/useDb.ts"]);
@@ -41,7 +42,7 @@ export interface BackendIdea {
 const idea = (label: string, detail: string, what: string): BackendIdea => ({
   label,
   detail,
-  prompt: `Add saved data to this app (GoodBuild's built-in backend, with wallet sign-in): ${what} Keep everything that already works, and keep money and ownership in the contract.`,
+  prompt: `${SAVED_DATA_LEAD}, with wallet sign-in): ${what} Keep everything that already works, and keep money and ownership in the contract.`,
 });
 
 /** Ideas that fit what each kind of app does. Only things the store supports: private per wallet, or public to read. */

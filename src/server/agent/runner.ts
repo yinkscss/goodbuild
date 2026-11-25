@@ -1620,7 +1620,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
 
     const upgradeable = await isUpgradeableProject(db, input.projectId);
     const ctx = contextWithPicks({
-      relevantFiles: intent?.relevantFiles,
+      relevantFiles: intent?.reusedFrom ? undefined : intent?.relevantFiles,
       files,
       request,
       // Evals only: shrink the budget to exercise search on a mid-size project (HARNESS.md).

@@ -9,6 +9,7 @@ import { SKIP_PLAN_TEXT } from "@/lib/plan";
 import type { PlanAnswer, TurnMode, TurnRecord } from "@/lib/turn-types";
 import type { AssetInfo, AssetKind } from "@/server/agent/assets";
 import type { WorkspaceState } from "@/server/workspace-state";
+import type { TurnAction } from "@/lib/turn-actions";
 
 export interface UseWorkspace {
   state: WorkspaceState;
@@ -17,7 +18,7 @@ export interface UseWorkspace {
   running: boolean;
   /** Queue a prompt on the server; it runs after any turn ahead of it (AI_AGENT.md §4). */
   /** `skipPlan` builds even on a project's first message, for a plan the person already approved. */
-  send: (prompt: string, mode: TurnMode, opts?: { buildFromIntake?: boolean; skipPlan?: boolean }) => void;
+  send: (prompt: string, mode: TurnMode, opts?: { buildFromIntake?: boolean; skipPlan?: boolean; action?: TurnAction }) => void;
   /** Stop the running turn and cancel queued follow-ups. */
   stop: () => Promise<void>;
   /**
@@ -147,7 +148,7 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
    * queue behind a running turn on the server, so they survive a reload or a closed tab.
    */
   const enqueue = React.useCallback(
-    async (body: { mode: TurnMode; prompt?: string; userMessageId?: string; buildFromIntake?: boolean; skipPlan?: boolean; assetIds?: string[] }) => {
+    async (body: { mode: TurnMode; prompt?: string; userMessageId?: string; buildFromIntake?: boolean; skipPlan?: boolean; assetIds?: string[]; action?: TurnAction }) => {
       setError(null);
       setCheckFailed(null);
       // A new message answers whatever the preview showed; a crash after it is shown again.
@@ -223,12 +224,12 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
     pendingAssets.current = state.assets.filter((a) => a.pending).map((a) => a.id);
   }, [state.assets]);
   const send = React.useCallback(
-    (prompt: string, mode: TurnMode, opts?: { buildFromIntake?: boolean; skipPlan?: boolean }) => {
+    (prompt: string, mode: TurnMode, opts?: { buildFromIntake?: boolean; skipPlan?: boolean; action?: TurnAction }) => {
       const trimmed = prompt.trim();
       if (!trimmed) return;
       const assetIds = pendingAssets.current;
       pendingAssets.current = [];
-      sending.current = sending.current.then(() => enqueue({ mode, prompt: trimmed, assetIds, ...(opts?.buildFromIntake ? {buildFromIntake:true}:{}), ...(opts?.skipPlan ? { skipPlan: true } : {}) }));
+      sending.current = sending.current.then(() => enqueue({ mode, prompt: trimmed, assetIds, ...(opts?.buildFromIntake ? {buildFromIntake:true}:{}), ...(opts?.skipPlan ? { skipPlan: true } : {}), ...(opts?.action ? { action: opts.action } : {}) }));
     },
     [enqueue],
   );
@@ -339,7 +340,7 @@ export function useWorkspace(initial: WorkspaceState): UseWorkspace {
       // While the questions are still being written: stop that turn first. Nothing is lost.
       const job = state.jobs[0];
       if (job) await fetch(`/api/projects/${projectId}/turns/${job.id}/stop`, { method: "POST" }).catch(() => null);
-      await enqueue({ mode: "build", prompt: SKIP_PLAN_TEXT, skipPlan: true, buildFromIntake:true });
+      await enqueue({ mode: "build", prompt: SKIP_PLAN_TEXT, skipPlan: true, buildFromIntake:true, action: "skip_questions" });
     });
   }, [enqueue, projectId, state.jobs]);
 

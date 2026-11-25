@@ -9,6 +9,7 @@ import { getPageTemplate } from "@/config/page-template-data";
 import { cleanAnswer } from "@/lib/plan";
 import { AUTO_FIX_LEAD, FIX_PROMPT } from "@/lib/preview-errors";
 import type { PlanAnswer, TurnRecord } from "@/lib/turn-types";
+import { actionFromText, keepsScope, type TurnAction } from "@/lib/turn-actions";
 
 import { latestIntake } from "./plan-intake";
 
@@ -28,8 +29,10 @@ const MAX_PLAN_TRIES = 2;
  * so a provider that keeps failing, or a model that keeps answering in words, would otherwise stop
  * someone ever reaching a build. The second try is the last: the next send builds.
  */
-export async function shouldPlanFirst(db: Db, input: { projectId: string; userId: string; prompt?: string; skipPlan?: boolean }): Promise<boolean> {
+export async function shouldPlanFirst(db: Db, input: { projectId: string; userId: string; prompt?: string; skipPlan?: boolean; action?: TurnAction }): Promise<boolean> {
   if (input.skipPlan) return false;
+  // A fix or resume (D173): from its button, or an old client's text of one (a crash, visual problems, a stopped deploy).
+  if (keepsScope(input.action ?? actionFromText(input.prompt))) return false;
   const prompt = input.prompt?.trim() ?? "";
   if (prompt.startsWith(AUTO_FIX_LEAD) || prompt === FIX_PROMPT) return false;
 

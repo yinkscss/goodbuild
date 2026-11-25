@@ -27,9 +27,10 @@ import type { UseWorkspace } from "./use-workspace";
 import { FreeCreditsCard } from "@/components/credits/free-credits-card";
 import { VerifyCard } from "./verify-card";
 import { TemplateBanner } from "@/components/landing/template-slides";
+import type { TurnAction } from "@/lib/turn-actions";
 
 /** What "Fix it for me" (or Continue after a top-up) sends for the newest turn (D164). */
-export type RetryRequest = { kind: "job"; jobId: string; useCredits: boolean; note?: string } | { kind: "prompt"; prompt: string };
+export type RetryRequest = { kind: "job"; jobId: string; useCredits: boolean; note?: string } | { kind: "prompt"; prompt: string; action: TurnAction };
 
 /**
  * One button, one request: continue the failed build from its saved files, carrying the preview's crash, or, with
@@ -39,7 +40,7 @@ export type RetryRequest = { kind: "job"; jobId: string; useCredits: boolean; no
 export function retryRequest(record: TurnRecord | null | undefined, crash: string | undefined, opts: { afterTopUp?: boolean } = {}): RetryRequest {
   const paused = record?.paused === "credits";
   if (record?.jobId) return { kind: "job", jobId: record.jobId, useCredits: paused || Boolean(opts.afterTopUp), ...(paused || !crash ? {} : { note: crash }) };
-  return { kind: "prompt", prompt: paused ? CONTINUE_PROMPT : [FIX_PROMPT, crash].filter(Boolean).join("\n\n") };
+  return { kind: "prompt", prompt: paused ? CONTINUE_PROMPT : [FIX_PROMPT, crash].filter(Boolean).join("\n\n"), action: paused ? "resume" : "repair" };
 }
 
 /** Left pane of the workspace (mockup c): the conversation and the composer. */
@@ -80,7 +81,7 @@ export function ChatPanel({
   const liveMessageId = live?.messageId;
   // Chips only on the newest assistant turn, and not while another turn runs or waits.
   const lastAssistantId = [...state.messages].reverse().find((m) => m.role === "assistant")?.id;
-  const suggest = (prompt: string) => send(prompt, "build");
+  const suggest = (prompt: string, action?: TurnAction) => send(prompt, "build", action ? { action } : undefined);
   const canSuggest = !running;
   // The running turn is writing the plan's questions: "Skip" is offered there too.
   const planning = (state.messages.find((m) => m.id === state.jobs[0]?.userMessageId)?.meta as { intake?: boolean } | null)?.intake === true;
@@ -99,7 +100,7 @@ export function ChatPanel({
   // The prompt the newest turn answered, for "Try again" on a failed or interrupted build.
   // D164: one button. It continues from the saved files and carries the preview's crash, if there is one.
   const crash = ws.previewError ? previewFixPrompt(ws.previewError, false) : undefined;
-  const runRetry = (r: RetryRequest) => (r.kind === "job" ? ws.retry(r.jobId, r.useCredits, r.note) : send(r.prompt, "build"));
+  const runRetry = (r: RetryRequest) => (r.kind === "job" ? ws.retry(r.jobId, r.useCredits, r.note) : send(r.prompt, "build", { action: r.action }));
   const retryRecord = (record?: TurnRecord | null) => runRetry(retryRequest(record, crash));
   // "Undo this change" (D164): the newest finished build, when an earlier version exists to go back to.
   const previousVersion = state.versions.map((v) => v.number).filter((n) => n < state.project.currentVersion).sort((a, b) => b - a)[0];
@@ -181,7 +182,7 @@ export function ChatPanel({
                   ? record.intake?.for === "plan"
                     ? // Plan mode's questions (D103): the answers start the plan, not the build.
                       { answer: (q, a) => ws.answerPlan(m.id, q, a), start: () => send(DRAFT_PLAN_TEXT, "plan"), skip: () => send(DRAFT_PLAN_TEXT, "plan") }
-                    : { answer: (q, a) => ws.answerPlan(m.id, q, a), start: () => send(START_BUILDING_TEXT, "build", {buildFromIntake:true}), skip: ws.skipPlan }
+                    : { answer: (q, a) => ws.answerPlan(m.id, q, a), start: () => send(START_BUILDING_TEXT, "build", { buildFromIntake: true, action: "start_building" }), skip: ws.skipPlan }
                   : undefined
               }
               draft={
