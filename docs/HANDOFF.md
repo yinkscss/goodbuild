@@ -3,7 +3,7 @@
 Written 4 Nov 2026 at the end of the first build session (claude.ai), for whoever continues in Claude Code. Read CLAUDE.md and docs/BUILD_PROMPT_STAGE1.md first; this file only covers where things stand.
 
 ## Jev classification replaces keyword routing (25 Nov 2026, D172, branch `claude/regex-jev-classification-d8ee9d`)
-- Off by default (`JEV_ROUTING=0`). `shadow` logs Jev next to the old rules without changing anything; `1` lets Jev decide. Needs `TYPESAFE_API_KEY`.
+- On whenever `TYPESAFE_API_KEY` is set (`JEV_ROUTING=0` forces the old rules). `shadow` logs Jev next to the old rules without changing anything; `1` lets Jev decide. Needs `TYPESAFE_API_KEY`.
 - Eval: `NODE_USE_ENV_PROXY=1 node --import tsx --require ./scripts/worker-preload.cjs scripts/jev-eval.ts --record [--corpus docs/evals/jev/heldout.json] --out-dir .data/jev-eval`, then open `index.html`. Replay without `--record` needs no key. Changing a question re-keys the recordings, so record again.
 - **Next:** run shadow on a real cohort, read the `jev_shadow` log lines, add real prompts to the held-out file, then switch to `1` and delete the old keyword lists (CI check `scripts/check-routing-regex.mjs` lists what is left).
 - Type-check, browser and kit tests fail in some sandboxes the same way on the base commit.

@@ -142,3 +142,15 @@ export async function classifyTurn(
 export function wants(decision: JevDecision | undefined, feature: Feature, legacy: () => boolean) {
   return decision ? decision.signals[feature] === "requested" : legacy();
 }
+
+/**
+ * Which routing is on. Unset means Jev decides when a TypeSafe key is configured, and the built-in rules
+ * otherwise. "0" forces the built-in rules, "shadow" runs Jev beside them, "1" forces Jev on.
+ */
+export function jevMode(env: Record<string, string | undefined> = process.env): "on" | "shadow" | "off" {
+  const v = env.JEV_ROUTING;
+  if (v === "0") return "off";
+  if (v === "shadow") return "shadow";
+  if (v === "1") return "on";
+  return env.TYPESAFE_API_KEY ? "on" : "off";
+}
