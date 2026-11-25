@@ -46,6 +46,8 @@ interface Connected {
 }
 
 const LAST_WALLET_KEY = "gb:wallet";
+/** How long to wait for Magic to say it sent the code (or asked to approve the device) before giving up. */
+const OTP_SEND_TIMEOUT_MS = 30_000;
 
 /** What the page has heard from wallets (EIP-6963). Finding a wallet in it lives in ../injected.ts. */
 const announced = new Map<string, Announced>();
@@ -99,6 +101,8 @@ function MagicBridge({ publishableKey, children }: { publishableKey: string; chi
 
   const magicRef = React.useRef<Promise<MagicInstance> | null>(null);
   const otpRef = React.useRef<Handle<string | null> | null>(null);
+  /** Bumped by each email attempt and by reset, so events from an abandoned attempt are ignored. */
+  const otpAttemptRef = React.useRef(0);
   const verifyRef = React.useRef<{ resolve: () => void; reject: (e: unknown) => void } | null>(null);
   const wcRef = React.useRef<{ disconnect(): Promise<void> } | null>(null);
   /** The WalletConnect client made to find the session's wallet, kept so it is made once per page. */
@@ -295,23 +299,78 @@ function MagicBridge({ publishableKey, children }: { publishableKey: string; chi
       async sendEmailCode(email: string) {
         setError(null);
         setPhase("sending-code");
+        const attempt = ++otpAttemptRef.current;
+        const current = () => otpAttemptRef.current === attempt;
+        // Magic answers with an event or not at all (its sign-in frame blocked or never loaded). Without a deadline
+        // the button would spin forever, so give up after a while and say so. The deadline runs while we wait on
+        // Magic, not while the person is in their inbox approving this device.
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const heard = () => clearTimeout(timer);
+        /** Ends this attempt with a message, unless it was already replaced or cancelled. */
+        const stop = (e: SignInError) => {
+          heard();
+          if (!current()) return;
+          otpAttemptRef.current++;
+          otpRef.current?.emit("cancel");
+          otpRef.current = null;
+          // Someone typing the code is waiting on this; let them go.
+          verifyRef.current?.reject(e);
+          verifyRef.current = null;
+          fail(e);
+        };
+        const arm = () => {
+          heard();
+          timer = setTimeout(
+            () => stop(new SignInError("otp_timeout", "We couldn't reach the sign-in service. Check your connection, turn off any content blockers, and try again.")),
+            OTP_SEND_TIMEOUT_MS,
+          );
+        };
+        arm();
         try {
           const magic = await getMagic();
+          if (!current()) return heard();
           const handle = magic.auth.loginWithEmailOTP({ email, showUI: false });
           otpRef.current = handle;
-          handle.on("email-otp-sent", () => setPhase("awaiting-code"));
+          handle.on("email-otp-sent", () => {
+            heard();
+            if (current()) setPhase("awaiting-code");
+          });
+          // A known email on a new browser or phone: Magic emails a link to approve this device first, then sends the code.
+          handle.on("device-needs-approval", () => {
+            heard();
+            if (current()) setPhase("awaiting-device");
+          });
+          handle.on("device-verification-email-sent", () => {
+            heard();
+            if (current()) setPhase("awaiting-device");
+          });
+          handle.on("device-approved", () => {
+            if (!current()) return;
+            setPhase("sending-code");
+            arm();
+          });
+          handle.on("device-verification-link-expired", () =>
+            stop(new SignInError("device_link_expired", "The approval link expired. Try again and we'll send a new one.")),
+          );
           handle.on("invalid-email-otp", () => verifyRef.current?.reject(new SignInError("otp_invalid", "That code didn't work. Check it and try again.")));
           handle.on("expired-email-otp", () => verifyRef.current?.reject(new SignInError("otp_expired", "That code expired. Go back and request a new one.")));
-          handle.on("login-throttled", () => fail(new SignInError("otp_throttled", "Too many attempts. Wait a minute and try again.")));
+          handle.on("login-throttled", () => stop(new SignInError("otp_throttled", "Too many attempts. Wait a minute and try again.")));
+          handle.on("max-attempts-reached", () => stop(new SignInError("otp_throttled", "Too many attempts. Wait a few minutes and try again.")));
+          handle.on("mfa-sent-handle", () =>
+            stop(new SignInError("otp_mfa", "This email has an extra sign-in step we can't show here yet. Sign in with a wallet instead, or ask us on the Support page.")),
+          );
           handle.then(
             () => verifyRef.current?.resolve(),
             (e: unknown) => {
+              heard();
+              if (!current()) return;
               verifyRef.current?.reject(e);
               if (!verifyRef.current) fail(new SignInError("otp_send_failed", "We couldn't send the code. Check the address and try again."));
             },
           );
         } catch {
-          fail(new SignInError("otp_send_failed", "We couldn't send the code. Check the address and try again."));
+          heard();
+          if (current()) fail(new SignInError("otp_send_failed", "We couldn't send the code. Check the address and try again."));
         }
       },
 
@@ -391,6 +450,8 @@ function MagicBridge({ publishableKey, children }: { publishableKey: string; chi
       reset() {
         setError(null);
         setPhase("idle");
+        otpAttemptRef.current++;
+        otpRef.current?.emit("cancel"); // or Magic keeps waiting on the old email, and the next one queues behind it
         otpRef.current = null;
         verifyRef.current = null;
       },

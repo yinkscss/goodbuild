@@ -35,6 +35,8 @@ export interface WalletState {
 export type AuthPhase =
   | "idle"
   | "sending-code"
+  /** Magic emailed a link to approve this browser or phone before it sends the code (device verification). */
+  | "awaiting-device"
   | "awaiting-code"
   | "verifying-code"
   | "connecting"
