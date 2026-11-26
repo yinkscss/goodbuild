@@ -43,7 +43,7 @@ function fakeApi(make: (wallet: string, amountG: number) => CreatedCashOut = (w,
     verify: vi.fn(async () => ({ accountName: "ADA OBI" })),
     quote: vi.fn(),
     networkFee: vi.fn(),
-    create: vi.fn(async (b: { wallet: string; amountG: string }, _key: string) => make(b.wallet, Number(b.amountG))),
+    create: vi.fn(async (b: { wallet: string; amountG: string }, ...rest: string[]) => make(b.wallet, Number(b.amountG) + rest.length * 0)),
     reportTx: vi.fn(),
     get: vi.fn(),
   };
