@@ -318,25 +318,20 @@ export function GameOver({
 }) {
   const [shared, setShared] = useState<string | null>(null);
   const newBest = score > 0 && score >= best;
+  // Play again and the post-score form come straight after the score, so on a phone both show without
+  // scrolling (the run check looks); the run's other numbers go last.
   return (
-    <div role="dialog" aria-label="Game over" className="absolute inset-x-3 bottom-3 max-h-[85%] overflow-y-auto rounded-2xl bg-card/95 p-4 text-foreground shadow-xl backdrop-blur">
-      <div className="flex items-baseline justify-between gap-3">
-        <p className="text-sm text-muted-foreground">Game over</p>
-        {newBest && <p className="text-sm font-semibold text-accent">New best!</p>}
-      </div>
-      <p className="text-4xl font-bold tabular-nums">{Math.floor(score).toLocaleString()}</p>
-      <dl className="mt-2 grid grid-cols-3 gap-2 text-center text-xs">
-        <div className="rounded-lg bg-muted p-2">
-          <dt className="text-muted-foreground">Best</dt>
-          <dd className="text-sm font-semibold tabular-nums">{Math.floor(Math.max(best, score)).toLocaleString()}</dd>
+    <div role="dialog" aria-label="Game over" className="absolute inset-x-3 bottom-3 max-h-[calc(100%-1.5rem)] overflow-y-auto rounded-2xl bg-card/95 p-4 text-foreground shadow-xl backdrop-blur">
+      <div className="flex items-end justify-between gap-3">
+        <div>
+          <p className={"text-sm " + (newBest ? "font-semibold text-accent" : "text-muted-foreground")}>{newBest ? "New best!" : "Game over"}</p>
+          <p className="text-4xl font-bold leading-none tabular-nums">{Math.floor(score).toLocaleString()}</p>
         </div>
-        {stats.slice(0, 5).map((s) => (
-          <div key={s.label} className="rounded-lg bg-muted p-2">
-            <dt className="text-muted-foreground">{s.label}</dt>
-            <dd className="text-sm font-semibold tabular-nums">{s.value}</dd>
-          </div>
-        ))}
-      </dl>
+        <p className="text-right text-xs text-muted-foreground">
+          Best
+          <span className="block text-lg font-semibold text-foreground tabular-nums">{Math.floor(Math.max(best, score)).toLocaleString()}</span>
+        </p>
+      </div>
       <div className="mt-3 flex gap-2">
         <Button className="min-h-12 flex-1 text-base" onClick={onAgain} autoFocus>
           {againLabel}
@@ -349,7 +344,139 @@ export function GameOver({
         )}
       </div>
       {children && <div className="mt-3">{children}</div>}
+      {stats.length > 0 && (
+        <dl className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
+          {stats.slice(0, 6).map((s) => (
+            <div key={s.label} className="rounded-lg bg-muted p-2">
+              <dt className="text-muted-foreground">{s.label}</dt>
+              <dd className="text-sm font-semibold tabular-nums">{s.value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
     </div>
+  );
+}
+`;
+
+export const GAME_MENU_TSX = `import { useState, type ReactNode } from "react";
+import { BookOpen, ShoppingBag, Zap } from "lucide-react";
+
+import { ConnectButton } from "../components/ConnectButton";
+import { Button } from "../components/ui/button";
+import { isMiniPay } from "../lib/goodbuild/wallet";
+
+/** One line in the menu's How to play or Power-ups list. */
+export interface MenuItem {
+  name: string;
+  text: string;
+  /** A small picture of it: <Sprite draw={...} width={28} height={28} />. */
+  icon?: ReactNode;
+}
+
+/**
+ * The start screen as a small menu: the game's name, the best score, a big Play button first, then tiles
+ * for How to play, Power-ups (when the game has them), Shop (when it has one) and Connect wallet (when it
+ * has a leaderboard or a shop). Put it over the game (className="absolute inset-x-4 bottom-4") or in its
+ * place for a game of buttons. children go under Play: a second way to play, like a room with friends.
+ */
+export function GameMenu({
+  title,
+  tagline,
+  art,
+  best = 0,
+  onPlay,
+  playLabel = "Play",
+  howTo,
+  powerUps = [],
+  onShop,
+  wallet = false,
+  card = true,
+  className = "",
+  children,
+}: {
+  title: ReactNode;
+  /** One line on what the game is. */
+  tagline?: ReactNode;
+  /** A picture of the player or the game, drawn with Sprite. */
+  art?: ReactNode;
+  best?: number;
+  onPlay: () => void;
+  playLabel?: string;
+  /** Two to four short steps: how to move, how to score, how a round ends. */
+  howTo: string[];
+  powerUps?: MenuItem[];
+  onShop?: () => void;
+  /** Show Connect wallet (outside MiniPay, which connects by itself): for a leaderboard or a shop. */
+  wallet?: boolean;
+  /** Its own card, for over the game (the default). false: plain, for a screen that is already a card. */
+  card?: boolean;
+  className?: string;
+  children?: ReactNode;
+}) {
+  const [open, setOpen] = useState<"how" | "powerups" | null>(null);
+  const toggle = (which: "how" | "powerups") => setOpen((now) => (now === which ? null : which));
+  const tile = "flex min-h-12 items-center justify-center gap-2 rounded-xl bg-muted px-3 text-sm font-medium text-foreground";
+  return (
+    <section data-game-menu aria-label="Menu" className={"space-y-3 text-foreground " + (card ? "rounded-2xl bg-card/95 p-4 shadow-lg backdrop-blur " : "") + className}>
+      <div className="flex items-center gap-3">
+        {art}
+        <div className="min-w-0">
+          <h2 className="text-lg font-semibold">{title}</h2>
+          {tagline && <p className="text-sm text-muted-foreground">{tagline}</p>}
+        </div>
+      </div>
+      {best > 0 && <p className="text-sm">Your best: {Math.floor(best).toLocaleString()}</p>}
+      <Button data-game-play className="min-h-12 w-full text-lg font-semibold" onClick={onPlay}>
+        {playLabel}
+      </Button>
+      {children}
+      <div className="grid grid-cols-2 gap-2">
+        <button type="button" className={tile} aria-expanded={open === "how"} onClick={() => toggle("how")}>
+          <BookOpen className="size-4" aria-hidden />
+          How to play
+        </button>
+        {powerUps.length > 0 && (
+          <button type="button" className={tile} aria-expanded={open === "powerups"} onClick={() => toggle("powerups")}>
+            <Zap className="size-4" aria-hidden />
+            Power-ups
+          </button>
+        )}
+        {onShop && (
+          <button type="button" className={tile} onClick={onShop}>
+            <ShoppingBag className="size-4" aria-hidden />
+            Shop
+          </button>
+        )}
+        {wallet && !isMiniPay() && (
+          <div className="col-span-2 flex justify-center [&_button]:min-h-11">
+            <ConnectButton />
+          </div>
+        )}
+      </div>
+      {open && (
+        <div role="region" aria-label={open === "how" ? "How to play" : "Power-ups"} className="max-h-44 overflow-y-auto rounded-xl bg-muted p-3 text-left text-sm">
+          {open === "how" ? (
+            <ol className="list-decimal space-y-1 pl-5">
+              {howTo.map((step) => (
+                <li key={step}>{step}</li>
+              ))}
+            </ol>
+          ) : (
+            <ul className="space-y-2">
+              {powerUps.map((p) => (
+                <li key={p.name} className="flex items-center gap-2">
+                  {p.icon}
+                  <span>
+                    <span className="font-semibold">{p.name}</span>: {p.text}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </section>
   );
 }
 `;

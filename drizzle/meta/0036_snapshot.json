@@ -1,5 +1,5 @@
 {
-  "id": "9b5fbc0a-6ff3-4c6c-8e9f-12ca751756dd",
+  "id": "7d1f9a64-f141-424c-9b8b-5f8c7cd68b5e",
   "prevId": "1a01b591-6336-4d40-8e8d-ed15fa9a9480",
   "version": "7",
   "dialect": "postgresql",
@@ -5285,198 +5285,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.ambassador_cashouts": {
-      "name": "ambassador_cashouts",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "payout_id": {
-          "name": "payout_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "wallet": {
-          "name": "wallet",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "goodcash_id": {
-          "name": "goodcash_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "mode": {
-          "name": "mode",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "amount_g": {
-          "name": "amount_g",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "naira": {
-          "name": "naira",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "naira_per_dollar": {
-          "name": "naira_per_dollar",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'awaiting_signature'"
-        },
-        "bank_name": {
-          "name": "bank_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "account_name": {
-          "name": "account_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "account_last4": {
-          "name": "account_last4",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "tx_hash": {
-          "name": "tx_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "paid_at": {
-          "name": "paid_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "ambassador_cashout_one_active": {
-          "name": "ambassador_cashout_one_active",
-          "columns": [
-            {
-              "expression": "payout_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"ambassador_cashouts\".\"status\" in ('awaiting_signature', 'sent', 'processing', 'paid')",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "ambassador_cashouts_user": {
-          "name": "ambassador_cashouts_user",
-          "columns": [
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "ambassador_cashouts_payout_id_ambassador_payouts_id_fk": {
-          "name": "ambassador_cashouts_payout_id_ambassador_payouts_id_fk",
-          "tableFrom": "ambassador_cashouts",
-          "tableTo": "ambassador_payouts",
-          "columnsFrom": [
-            "payout_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "ambassador_cashouts_user_id_users_id_fk": {
-          "name": "ambassador_cashouts_user_id_users_id_fk",
-          "tableFrom": "ambassador_cashouts",
-          "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "ambassador_cashouts_goodcash_id_unique": {
-          "name": "ambassador_cashouts_goodcash_id_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "goodcash_id"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "ambassador_cashout_status": {
-          "name": "ambassador_cashout_status",
-          "value": "\"ambassador_cashouts\".\"status\" in ('awaiting_signature', 'sent', 'processing', 'paid', 'failed', 'refunded', 'expired')"
-        }
-      },
-      "isRLSEnabled": false
-    },
     "public.ambassador_earnings": {
       "name": "ambassador_earnings",
       "schema": "",
@@ -5729,6 +5537,85 @@
         "ambassador_positive_payout": {
           "name": "ambassador_positive_payout",
           "value": "\"ambassador_payouts\".\"amount_g\" >= 25000"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.provider_status": {
+      "name": "provider_status",
+      "schema": "",
+      "columns": {
+        "provider": {
+          "name": "provider",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "paused_at": {
+          "name": "paused_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "resumed_at": {
+          "name": "resumed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_probe_at": {
+          "name": "last_probe_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_balance_check_at": {
+          "name": "last_balance_check_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_balance": {
+          "name": "last_balance",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "balance_currency": {
+          "name": "balance_currency",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "low_alert_sent_at": {
+          "name": "low_alert_sent_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "provider_status_known": {
+          "name": "provider_status_known",
+          "value": "\"provider_status\".\"provider\" in ('deepseek', 'anthropic')"
         }
       },
       "isRLSEnabled": false

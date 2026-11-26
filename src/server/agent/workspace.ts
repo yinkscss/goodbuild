@@ -20,6 +20,7 @@ export interface ToolOutcome {
   plan?: { summary: string; steps: string[] };
   /** Next-step suggestions from suggest_next. */
   suggestions?: string[];
+  completion?: "complete" | "remaining";
   /** From suggest_next (D164): what the person can do in the app now, and what doesn't work yet. */
   works?: string[];
   later?: string;
@@ -49,7 +50,10 @@ export class Workspace {
   /** Harness v2 (D152): the vetted v2 packages may be added. */
   private readonly v2: boolean;
 
-  constructor(files: Record<string, string>, { v2 = false }: { v2?: boolean } = {}) {
+  private readonly typedSpec: boolean;
+
+  constructor(files: Record<string, string>, { v2 = false, typedSpec = false }: { v2?: boolean; typedSpec?: boolean } = {}) {
+    this.typedSpec = typedSpec;
     this.files = { ...files };
     this.before = { ...files };
     this.v2 = v2;
@@ -99,7 +103,7 @@ export class Workspace {
       case "write_spec": {
         // The spec call (D152): the one tool that writes the platform-owned spec file.
         if (mode === "plan") return { ok: false, result: "Error: plan mode can't write the spec." };
-        const parsed = parseSpec(args);
+        const parsed = parseSpec(args, this.typedSpec);
         if (!parsed.ok) return { ok: false, result: `Error: ${parsed.error} Call write_spec again.` };
         const prev = this.files[SPEC_PATH];
         const content = JSON.stringify(parsed.spec, null, 2) + "\n";
@@ -122,7 +126,7 @@ export class Workspace {
         const line = (x: unknown, max: number) => String(x ?? "").replace(/\s+/g, " ").trim().replace(/^(?:[-*•]\s+|\d+[.)]\s+)/, "").trim().slice(0, max);
         const works = (Array.isArray(args.works) ? args.works : []).map((x) => line(x, 120)).filter(Boolean).slice(0, 3);
         const later = line(args.later, 160);
-        return { ok: true, result: "Suggestions shown. You're done; don't call more tools.", suggestions: items, ...(works.length ? { works } : {}), ...(later ? { later } : {}) };
+        return { ok: true, result: "Suggestions shown. You're done; don't call more tools.", suggestions: items, ...(args.completion === "complete" || args.completion === "remaining" ? {completion:args.completion} : {}), ...(works.length ? { works } : {}), ...(later ? { later } : {}) };
       }
       case "read_guide": {
         const g = loadGuides(args.name);

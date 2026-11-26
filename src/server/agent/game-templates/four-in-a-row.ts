@@ -198,6 +198,7 @@ export function OnlineFour({ live }: { live: LiveRoom<Drop> }) {
 `;
 
 const GAME = `import { useRef, useState } from "react";
+import { GameMenu } from "../game/GameMenu";
 import { GameOver } from "../game/GameOver";
 import { GameSettings } from "../game/GameSettings";
 import { buzz } from "../game/haptics";
@@ -287,15 +288,16 @@ export default function Game() {
       <div className="relative min-h-[460px] overflow-hidden rounded-2xl bg-card p-4 shadow">
         {screen === "start" && (
           <div className="space-y-5">
-            <div className="space-y-2 text-center">
-              <h2 className="text-2xl font-semibold">{GAME_NAME}</h2>
-              <p className="text-muted-foreground">Drop discs in turn. Four in a line, across, down or slanted, wins.</p>
-              {best > 0 && <p className="text-sm">Your best: {best}</p>}
-            </div>
             {!inRoom && (
-              <button type="button" onClick={start} className="w-full rounded-xl bg-primary px-6 py-3 text-lg font-semibold text-primary-foreground">
-                Play the computer
-              </button>
+              <GameMenu
+                card={false}
+                title={GAME_NAME}
+                tagline="Drop discs in turn. Four in a line wins."
+                best={best}
+                onPlay={start}
+                playLabel="Play the computer"
+                howTo={["Tap a column to drop your disc to the lowest free space.", "You and the other player take turns.", "Four of your discs in a line, across, down or slanted, wins. A full board is a draw.", "Play the computer alone, or make a room below and send a friend the code."]}
+              />
             )}
             <div className="space-y-3 border-t pt-4">
               <h3 className="font-semibold">With a friend</h3>

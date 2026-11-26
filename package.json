@@ -19,6 +19,8 @@
     "db:migrate": "drizzle-kit migrate",
     "smoke:auth": "node scripts/smoke-auth.mjs",
     "deploy:test-gd": "node scripts/deploy-test-gd.mjs",
+    "funnel": "tsx --require ./scripts/worker-preload.cjs --env-file-if-exists=.env.local scripts/funnel-report.ts",
+    "provider:resume": "tsx --require ./scripts/worker-preload.cjs --env-file-if-exists=.env.local scripts/provider-resume.ts",
     "worker": "tsx --require ./scripts/worker-preload.cjs --env-file-if-exists=.env.local scripts/worker.ts"
   },
   "dependencies": {

@@ -10,6 +10,8 @@ import { startTurn } from "@/server/jobs/jobs";
 import { dbAssetStore } from "@/server/agent/asset-store";
 import { shouldPlanFirst } from "@/server/agent/plan-first";
 import { getOwnedProject } from "@/server/projects";
+import { answerWithIdeas } from "@/server/agent/first-ideas";
+import { TURN_ACTIONS, actionFromText } from "@/lib/turn-actions";
 
 const body = z
   .object({
@@ -17,8 +19,11 @@ const body = z
     prompt: z.string().trim().min(1).max(PROMPT_MAX_LENGTH).optional(),
     userMessageId: z.string().uuid().optional(),
     /** "Skip, just build it" while the questions are still being written. */
+    buildFromIntake: z.boolean().optional(),
     skipPlan: z.boolean().optional(),
     continueDelivery: z.boolean().optional(),
+    /** The canned button this send came from (D175). Old clients send none: their button texts are recognised. */
+    action: z.enum(TURN_ACTIONS).optional(),
     /** Files attached in the composer since the last message: they show in this message's bubble. */
     assetIds: z.array(z.string().uuid()).max(50).optional(),
   })
@@ -49,10 +54,17 @@ export async function POST(request: Request, ctx: RouteContext<"/api/projects/[i
       const owns = new Set((await dbAssetStore(db).list(id)).map((a) => a.id));
       assetIds = [...new Set(parsed.data.assetIds)].filter((a) => owns.has(a));
     }
+    const action = parsed.data.action ?? actionFromText(prompt);
+    // A first message that asks what to build, or names nothing to build, gets three ready ideas: no job, no credits (D175).
+    if (!action && mode === "build" && !skipPlan && !parsed.data.assetIds?.length) {
+      const text = prompt ?? owned.messages.find((m) => m.id === userMessageId)?.content ?? "";
+      const answered = await answerWithIdeas(db, { projectId: id, text, userMessageId });
+      if (answered) return NextResponse.json({ messageId: answered, status: "answered" }, { status: 200 });
+    }
     // First send plans first (D32), whichever screen it came from: the server decides, not the client.
-    const intake = await shouldPlanFirst(db, { projectId: id, userId: session.user.id, prompt, skipPlan });
+    const intake = await shouldPlanFirst(db, { projectId: id, userId: session.user.id, prompt, skipPlan, action });
     // The check, the hold and the queueing are one step, under a lock on this user's balance (D49).
-    const started = await startTurn(db, { projectId: id, userId: session.user.id, mode: intake ? "plan" : mode, prompt, userMessageId, intake, assetIds, continueDelivery: parsed.data.continueDelivery }, process.env, { readIdentity: readGoodIdentityOnCelo });
+    const started = await startTurn(db, { projectId: id, userId: session.user.id, mode: intake ? "plan" : mode, prompt, userMessageId, intake, assetIds, buildFromIntake:parsed.data.buildFromIntake, continueDelivery: parsed.data.continueDelivery, action }, process.env, { readIdentity: readGoodIdentityOnCelo });
     if ("refused" in started) return NextResponse.json({ error: started.refused.reason, message: started.refused.message }, { status: 402 });
     const { job } = started;
     kickWorker();

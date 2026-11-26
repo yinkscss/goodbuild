@@ -99,11 +99,12 @@ export function makeGrass(): THREE.Mesh {
 
 const GAME = `import { useRef, useState } from "react";
 import * as THREE from "three";
+import { GameMenu } from "../game/GameMenu";
 import { GameOver } from "../game/GameOver";
 import { GameSettings } from "../game/GameSettings";
 import { Leaderboard, PostScore } from "../game/Leaderboard";
 import { TopThree } from "../game/TopThree";
-import { firstTime } from "../game/extras";
+
 import { buzz } from "../game/haptics";
 import { useLeaderboard } from "../game/leaderboard";
 import { Effects } from "../game/powerups";
@@ -141,7 +142,6 @@ export default function Game() {
   const [screen, setScreen] = useState<Screen>("start");
   const [best, setBest] = useState(() => bestScore(BEST_KEY));
   const [result, setResult] = useState({ score: 0, coins: 0, passed: 0 });
-  const [tip] = useState(() => firstTime("kart-track-controls"));
   const board = useLeaderboard();
   const game = useRef(fresh());
   const view = useRef<{ camera?: THREE.PerspectiveCamera }>({});
@@ -349,15 +349,19 @@ export default function Game() {
         />
         <TopThree board={board} className="absolute right-2 top-2" />
         {screen === "start" && (
-          <div className="absolute inset-x-4 bottom-6 space-y-3 rounded-2xl bg-card/95 p-4 text-center shadow-lg">
-            <h2 className="text-lg font-semibold">{GAME_NAME}</h2>
-            <p className="text-sm text-muted-foreground">Hold your thumb where the kart should go and follow the bends. Off the road you slow down; the tyre walls cost a life.</p>
-            {tip && <p className="text-sm">Overtake the orange kart for a bonus. Blue pads are a boost.</p>}
-            {best > 0 && <p className="text-sm">Your best: {best}</p>}
-            <button type="button" onClick={start} className="w-full rounded-xl bg-primary px-6 py-3 text-lg font-semibold text-primary-foreground">
-              Play
-            </button>
-          </div>
+          <GameMenu
+            className="absolute inset-x-4 bottom-6"
+            title={GAME_NAME}
+            tagline="Follow the bends, overtake the rival."
+            best={best}
+            onPlay={start}
+            howTo={["Hold your thumb where the kart should go, or use the arrow keys.", "Stay on the road: off it you slow down; the tyre walls cost a life.", "Overtake the orange kart for a bonus. Cones and barrels cost a life too: three hits and the race is over."]}
+            powerUps={[
+              { name: "Coin", text: "extra points" },
+              { name: "Boost pad", text: "a burst of speed for a few seconds" },
+            ]}
+            wallet
+          />
         )}
         {screen === "over" && (
           <GameOver

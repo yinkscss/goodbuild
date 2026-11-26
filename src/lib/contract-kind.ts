@@ -46,9 +46,10 @@ const RULES: Array<[ContractKind, RegExp]> = [
   ["site", /\b(landing ?page|website|web ?site|portfolio|home ?page|blog)\b/i],
 ];
 
-export function inferKind(input: { templateId?: string | null; text?: string | null }): ContractKind {
+export function inferKind(input: { templateId?: string | null; text?: string | null; displayKind?: ContractKind }): ContractKind {
   const fromTemplate = input.templateId ? TEMPLATE_KIND[input.templateId] : undefined;
   if (fromTemplate) return fromTemplate;
+  if (input.displayKind) return input.displayKind;
   const text = input.text ?? "";
   for (const [kind, re] of RULES) if (re.test(text)) return kind;
   return "custom";

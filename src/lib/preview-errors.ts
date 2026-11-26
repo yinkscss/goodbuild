@@ -9,6 +9,9 @@ export interface PreviewError {
 /** Marks prompts GoodBuild sent by itself, so an auto-fix never triggers another one. */
 export const AUTO_FIX_LEAD = "Automatic check:";
 
+/** How the "Fix it for me" prompt for a preview crash starts (D175: the server recognises it from old clients). */
+export const PREVIEW_ERROR_LEAD = "The preview shows this error";
+
 /** Bundler, CDN and network hiccups: not the app's fault, so never auto-fixed. */
 export function isInfraError(e: Pick<PreviewError, "title" | "message">): boolean {
   return /timed? ?out|TIME_OUT|Failed to fetch|NetworkError|Could not fetch|ERR_CONNECTION|ECONN|Couldn't connect|dependency.*(fetch|download)|npm registry/i.test(`${e.title} ${e.message}`);
@@ -17,7 +20,7 @@ export function isInfraError(e: Pick<PreviewError, "title" | "message">): boolea
 /** The prompt that asks the agent to fix a preview error (by the user's button, or automatically). */
 export function previewFixPrompt(e: PreviewError, automatic: boolean): string {
   const where = e.path ? ` in ${e.path.replace(/^\//, "")}${e.line ? `:${e.line}` : ""}` : "";
-  const lead = automatic ? `${AUTO_FIX_LEAD} the preview showed this error${where} right after the last build. Fix it:` : `The preview shows this error${where}. Fix it:`;
+  const lead = automatic ? `${AUTO_FIX_LEAD} the preview showed this error${where} right after the last build. Fix it:` : `${PREVIEW_ERROR_LEAD}${where}. Fix it:`;
   return `${lead}\n${e.title}\n${e.message}`.slice(0, 3000);
 }
 

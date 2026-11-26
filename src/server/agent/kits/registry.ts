@@ -29,6 +29,8 @@ export interface Kit {
   when: string;
   /** Words in a request that mean this kit, so it is on before the builder starts even if it forgets to ask. */
   keywords: RegExp;
+  /** Requires an active or completed payments milestone. */
+  onChain?: boolean;
   /** Packages the kit brings, pinned. They must also be in publish-runtime/package.json (a test checks). */
   packages: Record<string, string>;
   /** Starter files, added once and never overwritten. Paths like "src/game/useGame.ts". */

@@ -630,6 +630,7 @@ export const SHOP_WORDS = /\b(in[- ]app (?:store|shop|purchases?)|store|shop|sea
 
 export const gameShop: Kit = {
   id: "game-shop",
+  onChain: true,
   title: "Game shop (G$)",
   when: "a game that sells things for G$: cars, skins, level ups, power packs or a season pass",
   // Never by its words alone: a bookshop isn't a game. The runner turns it on for a game whose request says it sells things.

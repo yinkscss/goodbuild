@@ -274,7 +274,7 @@ export interface DeliveryMilestone {
   title: string;
   acceptance: string[];
 }
-export interface DeliveryPlan { goal: string; milestones: DeliveryMilestone[]; completed: number; verified?: string[]; }
+export interface DeliveryPlan { displayKind?: import("@/lib/contract-kind").ContractKind; ticTacToe?: boolean; goal: string; milestones: DeliveryMilestone[]; completed: number; verified?: string[]; }
 
 export const buildDeliveries = pgTable("build_deliveries", {
   projectId: uuid("project_id").primaryKey().references(() => projects.id, { onDelete: "cascade" }),

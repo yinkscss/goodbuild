@@ -173,6 +173,13 @@ describe("aiSdkClient", () => {
     expect(err).toBeInstanceOf(ProviderFundsError);
     expect(err.message).toMatch(/out of funds \(DeepSeek, 402\): Insufficient Balance/);
   });
+
+  it("names an empty Anthropic account too, from its billing error body (D177)", async () => {
+    const strong = mockModel({ error: new APICallError({ message: "Bad Request", url: "https://api.anthropic.com", requestBodyValues: {}, statusCode: 400, isRetryable: false, responseBody: '{"type":"error","error":{"type":"invalid_request_error","message":"Your credit balance is too low to access the Anthropic API."}}' }) });
+    const err = await collect(aiSdkClient({ strong, cheap: strong }), request({ tier: "strong" })).catch((e) => e);
+    expect(err).toBeInstanceOf(ProviderFundsError);
+    expect(err.message).toMatch(/out of funds \(Anthropic/);
+  });
 });
 
 describe("toSdkMessages", () => {

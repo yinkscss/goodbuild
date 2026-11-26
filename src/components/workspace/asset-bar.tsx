@@ -8,7 +8,7 @@ import type { AssetInfo, AssetKind } from "@/server/agent/assets";
 
 export const KIND_LABEL: Record<AssetKind, string> = { logo: "Logo", image: "Image", reference: "Design reference", audio: "Sound", font: "Font", model: "3D model" };
 export const KIND_HELP: Record<AssetKind, string> = {
-  logo: "Shown in the header and as the favicon; colours come from it",
+  logo: "Shown in the header and as the tab icon; colours come from it",
   image: "A photo or illustration to use on the site",
   reference: "A screenshot or mockup to match (not shown in the app)",
   audio: "A sound the app can play",

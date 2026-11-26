@@ -1,5 +1,6 @@
 import "server-only";
 
+import { isContinuation, jevMode } from "../agent/jev";
 import { and, asc, eq, gt, inArray, sql } from "drizzle-orm";
 
 import type { Db } from "@/server/db/client";
@@ -13,6 +14,9 @@ import { reserveSponsorship, sponsorshipSettings } from "@/server/credits/build-
 import type { GoodIdentity } from "@/server/credits/free-grants";
 import type { Address } from "viem";
 import type { TurnEvent, TurnMode } from "@/lib/turn-types";
+import { keepsScope, type TurnAction } from "@/lib/turn-actions";
+import { isProviderFundsMessage } from "@/server/agent/model";
+import { JOB_WAITS, holdingWithin } from "@/server/agent/provider-status";
 
 /** Lease length and renewal (P18): renewed every 5 s, expires 30 s after the last renewal. */
 export const LEASE_MS = 30_000;
@@ -53,11 +57,22 @@ type QueueArgs = {
   /** With a retry (D164): what else is wrong, such as the preview's error, added to the saved draft's notes for the builder. */
   retryNote?: string;
   continueDelivery?: boolean;
+  buildFromIntake?: boolean;
+  /** The canned button this send came from (D175), or none for the person's own words. */
+  action?: TurnAction;
+  /** reuse: a button turn reuses the project's saved Jev decision instead of classifying the button's words (D175). */
+  jev?: { advance: boolean; completed?: number; decision?: import("../agent/jev").JevDecision; reuse?: TurnAction };
   useCredits?: boolean;
   baseVersion?: number;
   deliveryIndex?: number;
   /** Files sent with this message (shown in its bubble). Checked against the project by the caller. */
   assetIds?: string[];
+  /**
+   * D177: the automatic re-run of a build that failed because GoodBuild's AI account was empty. It waits while builds
+   * are paused and keeps the failed build's funding as it was: its unspent free allowance moves to it, or a credit
+   * build sets credit aside again. Only for a failure that spent nothing, and never for a re-run that failed again.
+   */
+  held?: boolean;
 };
 
 /**
@@ -88,7 +103,7 @@ async function queueTurn(tx: Db, args: QueueArgs, funding: FundingSource, holdMi
     messageId = m.id;
   }
   const [job] = await tx.insert(turnJobs).values({ projectId: args.projectId, userId: args.userId, mode: args.mode, prompt, userMessageId: messageId, funding, holdMicro, retryOfJobId: args.retryOfJobId, baseVersion: args.baseVersion ?? 0, deliveryIndex: args.deliveryIndex }).returning();
-  await tx.update(messages).set({ meta: sql`coalesce(${messages.meta}, '{}'::jsonb) || ${JSON.stringify({ mode: args.mode, jobId: job.id, ...(args.intake ? { intake: true } : {}) })}::jsonb` }).where(eq(messages.id, messageId));
+  await tx.update(messages).set({ meta: sql`coalesce(${messages.meta}, '{}'::jsonb) || ${JSON.stringify({ mode: args.mode, jobId: job.id, ...(args.buildFromIntake ? { buildFromIntake:true } : {}), ...(args.jev ? { jev: args.jev } : {}), ...(args.intake ? { intake: true } : {}), ...(args.action ? { turnAction: args.action } : {}) })}::jsonb` }).where(eq(messages.id, messageId));
   return job;
 }
 
@@ -102,7 +117,7 @@ export type StartResult = { job: TurnJob } | { refused: CapRefusal };
 export async function startTurn(db: Db, args: QueueArgs, env: Record<string, string | undefined> = process.env, deps?: { readIdentity: (wallet: Address) => Promise<GoodIdentity> }): Promise<StartResult> {
   if (args.retryOfJobId) {
     const [existing] = await db.select().from(turnJobs).where(and(eq(turnJobs.retryOfJobId, args.retryOfJobId), eq(turnJobs.userId, args.userId), eq(turnJobs.projectId, args.projectId)));
-    if (existing) return { job: existing };
+    if (existing && existing.status !== "cancelled") return { job: existing };
   }
   // Live chain verification is outside the DB transaction. A stale client/root cache cannot claim a grant.
   let root: string | null = null;
@@ -130,25 +145,34 @@ export async function startTurn(db: Db, args: QueueArgs, env: Record<string, str
       [source] = await tx.select().from(turnJobs).where(and(eq(turnJobs.id, args.retryOfJobId), eq(turnJobs.projectId, args.projectId), eq(turnJobs.userId, args.userId)));
       if (!source) throw new Error("retry_not_found");
       const [existing] = await tx.select().from(turnJobs).where(eq(turnJobs.retryOfJobId, source.id));
-      if (existing) return { job: existing };
+      // A retry that was cancelled before it started (a held re-run the person stopped, D177) never ran: retry again.
+      if (existing?.status === "cancelled") await tx.update(turnJobs).set({ retryOfJobId: null }).where(eq(turnJobs.id, existing.id));
+      else if (existing) return { job: existing };
       const [reply] = source.assistantMessageId ? await tx.select().from(messages).where(eq(messages.id, source.assistantMessageId)) : [];
       const needsFix = (reply?.meta as { status?: string } | null)?.status === "needs_fix";
       creditPaused = reply?.meta?.paused === "credits";
       if (!["error", "stopped"].includes(source.status) && !needsFix) throw new Error("retry_not_failed");
+      if (args.held && (source.status !== "error" || !isProviderFundsMessage(source.error ?? ""))) throw new Error("retry_not_held");
       if (source.baseVersion !== project.currentVersion) throw new Error("retry_stale");
       if ((await activeJobs(tx, project.id)).length) throw new Error("retry_busy");
       const [original] = await tx.select().from(messages).where(eq(messages.id, source.userMessageId));
-      args = { ...args, mode: source.mode as TurnMode, prompt: /^(Skip the questions, just build it|Start building)[.!]?$/i.test(source.prompt) ? (await tx.select().from(buildDeliveries).where(eq(buildDeliveries.projectId, project.id)))[0]?.plan.goal ?? source.prompt : source.prompt, userMessageId: undefined, intake: Boolean(original?.meta?.intake), assetIds: original?.meta?.assetIds as string[] | undefined, deliveryIndex: source.deliveryIndex ?? undefined };
+      const originalAction = original?.meta?.turnAction as TurnAction | undefined;
+      args = { ...args, action: originalAction, jev:original?.meta?.jev as QueueArgs["jev"], buildFromIntake:original?.meta?.buildFromIntake === true, mode: source.mode as TurnMode, prompt: (original?.meta?.buildFromIntake === true || originalAction === "start_building" || originalAction === "skip_questions" || (!original?.meta?.jev && /^(Skip the questions, just build it|Start building)[.!]?$/i.test(source.prompt))) ? (await tx.select().from(buildDeliveries).where(eq(buildDeliveries.projectId, project.id)))[0]?.plan.goal ?? source.prompt : source.prompt, userMessageId: undefined, intake: Boolean(original?.meta?.intake), assetIds: original?.meta?.assetIds as string[] | undefined, deliveryIndex: source.deliveryIndex ?? undefined };
+    }
+    if (!source && jevMode(env) === "on" && (args.mode === "build" || args.intake)) {
+      args.jev = { advance: args.continueDelivery === true, ...(args.action ? { reuse: args.action } : {}) };
+      if (args.continueDelivery && (await activeJobs(tx, project.id)).length) throw new Error("retry_busy");
     }
     args.baseVersion = project.currentVersion;
     let [delivery] = await tx.select().from(buildDeliveries).where(eq(buildDeliveries.projectId, project.id));
-    if (args.mode === "build" && !delivery && project.currentVersion === 0) {
+    if (args.jev && delivery) args.jev = { ...args.jev, completed: delivery.plan.completed };
+    if (!args.jev && args.mode === "build" && !delivery && project.currentVersion === 0) {
       const [first] = await tx.select().from(messages).where(and(eq(messages.projectId, project.id), eq(messages.role, "user"))).orderBy(asc(messages.createdAt)).limit(1);
       const plan = deliveryFor(first?.content || args.prompt || "Build the requested app");
       [delivery] = await tx.insert(buildDeliveries).values({ projectId: project.id, plan }).returning();
     }
     if (delivery && source && source.deliveryIndex === null) args.deliveryIndex = 0;
-    if (delivery && args.mode === "build" && !source) {
+    if (!args.jev && delivery && args.mode === "build" && !source) {
       // Answering a queued message names only its id: pick the milestone from that message's text, as the build reads it.
       const [queued] = args.prompt || !args.userMessageId ? [] : await tx.select({ content: messages.content }).from(messages).where(and(eq(messages.id, args.userMessageId), eq(messages.projectId, project.id))).limit(1);
       const prompt = (args.prompt ?? queued?.content ?? "").trim();
@@ -157,7 +181,10 @@ export async function startTurn(db: Db, args: QueueArgs, env: Record<string, str
       // that milestone if the first message didn't, and builds it, instead of staying scoped forever.
       // Only once the first interface is delivered (until then every build stays the interface), and
       // not behind a running build: that one may still advance the plan, and a queued edit keeps queueing.
-      if (picked < 0 && !args.continueDelivery && delivery.plan.completed > 0 && !(await activeJobs(tx, project.id)).length) {
+      // A repair or resume keeps its milestone (D175): an error that mentions a contract doesn't start the on-chain one.
+      const keep = keepsScope(args.action);
+      if (keep) picked = -1;
+      if (!keep && picked < 0 && !args.continueDelivery && delivery.plan.completed > 0 && !(await activeJobs(tx, project.id)).length) {
         const extended = extendDelivery(delivery.plan, prompt);
         if (extended.picked >= 0) {
           picked = extended.picked;
@@ -167,7 +194,7 @@ export async function startTurn(db: Db, args: QueueArgs, env: Record<string, str
           }
         }
       }
-      const advance = args.continueDelivery || /^(continue|continue building|build next|next milestone)[.!]?$/i.test(prompt) || picked >= delivery.plan.completed;
+      const advance = !keep && (args.continueDelivery || isContinuation(prompt) || picked >= delivery.plan.completed);
       if (advance && (await activeJobs(tx, project.id)).length) throw new Error("retry_busy");
       if (advance && picked > delivery.plan.completed) {
         const plan = { ...delivery.plan, milestones: [...delivery.plan.milestones] };
@@ -185,6 +212,18 @@ export async function startTurn(db: Db, args: QueueArgs, env: Record<string, str
     }
 
     const settings = sponsorshipSettings(env);
+    if (args.held && source) {
+      // Keep the failed build's funding (D177). Its free allowance paid for nothing, so it moves across whole.
+      const [allowance] = source.funding === "platform" ? await tx.select().from(buildSponsorships).where(and(eq(buildSponsorships.jobId, source.id), eq(buildSponsorships.spentMicro, 0))).for("update") : [];
+      if (source.funding === "platform" && !allowance) throw new Error("retry_not_held");
+      const decision = allowance ? { allowed: true as const, funding: "platform" as const, holdMicro: 0 } : await decideStart(tx, { userId: args.userId, projectId: args.projectId, mode: args.mode }, env);
+      if (!decision.allowed) return { refused: decision };
+      const job = await queueTurn(tx, args, decision.funding, decision.holdMicro);
+      if (allowance) await tx.update(buildSponsorships).set({ jobId: job.id }).where(eq(buildSponsorships.jobId, source.id));
+      const [draft] = await tx.select().from(buildDrafts).where(eq(buildDrafts.jobId, source.id));
+      if (draft) await tx.insert(buildDrafts).values({ ...draft, jobId: job.id, updatedAt: new Date() });
+      return { job };
+    }
     const key = root && source && !source.retryOfJobId && source.mode === "build" && source.status !== "stopped" && !creditPaused && !args.useCredits && source.startedAt ? `repair:${root}:${new Date().toISOString().slice(0, 7)}` : !source && !args.useCredits && root && project.currentVersion === 0 && args.mode === "build" ? `first:${root}` : null;
     const limit = source ? settings.repair : settings.first;
     const sponsored = key && await reserveSponsorship(tx, key, limit, env);
@@ -223,7 +262,8 @@ export async function enqueueTurn(db: Db, args: QueueArgs, env: Record<string, s
  * running job whose lease expired (its worker died: resume it). FOR UPDATE SKIP LOCKED lets
  * several workers claim at once; the partial unique index turns a same-project race into a
  * unique violation, which counts as "nothing claimed". Sets projects.turnStartedAt from the
- * lease, so the revert route and the UI see the project as busy.
+ * lease, so the revert route and the UI see the project as busy. While GoodBuild's AI account is
+ * empty (D177) queued jobs wait (per provider, JOB_WAITS): a crashed build already under way still resumes.
  */
 export async function claimJob(db: Db, owner: string): Promise<TurnJob | null> {
   try {
@@ -231,7 +271,7 @@ export async function claimJob(db: Db, owner: string): Promise<TurnJob | null> {
       const picked = rowsOf<{ id: string }>(
         await tx.execute(sql`
           SELECT j.id FROM turn_jobs j
-          WHERE (j.status = 'queued' OR (j.status = 'running' AND j.lease_expires_at < now()))
+          WHERE ((j.status = 'queued' AND NOT ${JOB_WAITS}) OR (j.status = 'running' AND j.lease_expires_at < now()))
             AND NOT EXISTS (
               SELECT 1 FROM turn_jobs r WHERE r.project_id = j.project_id AND r.id <> j.id
                 AND (r.status = 'running' OR (r.status = 'queued' AND r.created_at < j.created_at AND j.status = 'queued'))
@@ -356,9 +396,11 @@ export async function stopProject(db: Db, projectId: string): Promise<{ stopping
       .update(turnJobs)
       .set({ status: "cancelled", finishedAt: new Date() })
       .where(and(eq(turnJobs.projectId, projectId), eq(turnJobs.status, "queued")))
-      .returning({ userMessageId: turnJobs.userMessageId });
+      .returning({ id: turnJobs.id, userMessageId: turnJobs.userMessageId });
     if (cancelled.length) {
       await tx.update(messages).set({ status: "cancelled" }).where(inArray(messages.id, cancelled.map((c) => c.userMessageId)));
+      // They never ran: a free allowance set aside for one goes back, so the person keeps it (D177).
+      await tx.delete(buildSponsorships).where(and(inArray(buildSponsorships.jobId, cancelled.map((c) => c.id)), eq(buildSponsorships.spentMicro, 0)));
     }
     return { stopping: running.length > 0, cancelled: cancelled.length };
   });
@@ -405,7 +447,7 @@ export async function sweep(db: Db): Promise<void> {
  */
 export async function checkHolds(db: Db): Promise<{ failed: string[]; repaired: ReservationMismatch[] }> {
   const stuck = sql`j.hold_micro > 0 AND (
-    (j.status = 'queued' AND j.created_at < now() - ${`${HOLD_STUCK_QUEUED_MS} milliseconds`}::interval)
+    (j.status = 'queued' AND j.created_at < now() - ${`${HOLD_STUCK_QUEUED_MS} milliseconds`}::interval AND NOT ${holdingWithin(HOLD_STUCK_QUEUED_MS)})
     OR (j.status = 'running' AND (
       j.lease_expires_at < now() - ${`${HOLD_STUCK_LEASE_MS} milliseconds`}::interval
       OR j.started_at < now() - ${`${HOLD_MAX_RUN_MS} milliseconds`}::interval

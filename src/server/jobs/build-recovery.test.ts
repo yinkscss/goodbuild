@@ -18,7 +18,10 @@ import { getBalanceMicro, postLedgerEntry } from "@/server/credits/ledger";
 import { recordUsage } from "@/server/agent/store";
 import { sponsorshipCanCall } from "@/server/credits/build-sponsorship";
 import { claimJob, jobContext, startTurn } from "./jobs";
-import { continueOnCredits } from "./worker";
+import { continueOnCredits, holdAfterProviderFunds } from "./worker";
+import { checkHolds, enqueueTurn, stopProject } from "./jobs";
+import { anyProviderPaused, pauseProvider, projectWaiting, resumeProvider } from "@/server/agent/provider-status";
+import { providerStatus } from "@/server/db/provider-schema";
 
 const GOAL = "Make a Tic-tac-toe game, people connect their wallet, stake G$ and play amongst themselves. Make it fun and interactive";
 const APP = TIC_TAC_TOE;
@@ -187,16 +190,91 @@ describe("first delivery and recovery", () => {
     expect(await continueOnCredits(db, started.job, { status: "error", error: "boom" }, tiny)).toBe(false);
   });
 
-  it("gives the free allowance back when our AI account was empty (23 Nov 2026)", async () => {
+  it("gives the free allowance back when our AI account was empty and the build can't be held (23 Nov 2026)", async () => {
     const source = await start();
     expect(source.funding).toBe("platform");
     const empty: ModelClient = { async *stream() { throw new ProviderFundsError("The AI provider account is out of funds (DeepSeek, 402): Insufficient Balance"); } };
     const record = await run(empty);
     expect(record.status).toBe("error");
+    // Something else is already waiting on the project, so the failed build isn't held: its allowance goes back.
+    await db.insert(turnJobs).values({ projectId, userId, mode: "build", prompt: "x", userMessageId: crypto.randomUUID(), funding: "free" });
+    expect(await holdAfterProviderFunds(db, source, record, ENV)).toBe(false);
     expect(await db.select().from(buildSponsorships)).toHaveLength(0);
+    await db.delete(turnJobs).where(eq(turnJobs.prompt, "x"));
+    await resumeProvider(db, "deepseek", "test");
     // The retry is sponsored again instead of charging credits.
     const retry = await startTurn(db, { projectId, userId, mode: "build", retryOfJobId: source.id }, ENV, identity);
     expect("job" in retry && retry.job.funding).toBe("platform");
+  });
+
+  it("D177: pauses builds on an empty AI account, holds the failed build once on its own allowance, and starts it when the account works", async () => {
+    const source = await start();
+    const empty: ModelClient = { async *stream() { throw new ProviderFundsError("The AI provider account is out of funds (DeepSeek, 402): Insufficient Balance"); } };
+    const record = await run(empty);
+    expect(record.status).toBe("error");
+    expect(await anyProviderPaused(db)).toBe(true);
+    const [allowance] = await db.select().from(buildSponsorships);
+
+    expect(await holdAfterProviderFunds(db, source, record, ENV)).toBe(true);
+    const [held] = await db.select().from(turnJobs).where(eq(turnJobs.retryOfJobId, source.id));
+    expect(held.status).toBe("queued");
+    expect(held.funding).toBe("platform");
+    // The same free allowance moved across: nothing new used, nothing charged.
+    expect(await db.select().from(buildSponsorships)).toEqual([{ ...allowance, jobId: held.id }]);
+    expect(await getBalanceMicro(db, userId)).toBe(0);
+    // Tapping again can't add more: one retry per failure.
+    const again = await startTurn(db, { projectId, userId, mode: "build", retryOfJobId: source.id }, ENV, identity);
+    expect("job" in again && again.job.id).toBe(held.id);
+    await holdAfterProviderFunds(db, source, record, ENV);
+    expect(await db.select().from(turnJobs).where(eq(turnJobs.retryOfJobId, source.id))).toHaveLength(1);
+
+    // While paused nothing starts, and the stuck-hold check leaves it alone even after hours.
+    expect(await claimJob(db, "test")).toBeNull();
+    await db.update(turnJobs).set({ createdAt: new Date(Date.now() - 7 * 3600_000) }).where(eq(turnJobs.id, held.id));
+    expect((await checkHolds(db)).failed).toEqual([]);
+
+    // The account works again: it starts, in order, and runs once.
+    expect(await resumeProvider(db, "deepseek", "test")).toBe(true);
+    expect((await db.select().from(providerStatus))[0].resumedAt).not.toBeNull();
+    const rerun = await run(empty);
+    expect(rerun.status).toBe("error");
+    const ran = (await db.select().from(turnJobs).where(eq(turnJobs.id, held.id)))[0];
+    // It failed again (the account emptied again): it isn't held a second time, and its unspent allowance goes back.
+    expect(await holdAfterProviderFunds(db, ran, rerun, ENV)).toBe(false);
+    expect(await db.select().from(turnJobs).where(eq(turnJobs.retryOfJobId, held.id))).toHaveLength(0);
+    expect(await db.select().from(buildSponsorships)).toHaveLength(0);
+  });
+
+  it("D177: stopping a held request gives its free allowance back, and the build can be retried again", async () => {
+    const source = await start();
+    const empty: ModelClient = { async *stream() { throw new ProviderFundsError("The AI provider account is out of funds (DeepSeek, 402): Insufficient Balance"); } };
+    const record = await run(empty);
+    expect(await holdAfterProviderFunds(db, source, record, ENV)).toBe(true);
+    const [held] = await db.select().from(turnJobs).where(eq(turnJobs.retryOfJobId, source.id));
+    await stopProject(db, projectId);
+    expect(await db.select().from(buildSponsorships)).toHaveLength(0);
+    await resumeProvider(db, "deepseek", "test");
+    const again = await startTurn(db, { projectId, userId, mode: "build", retryOfJobId: source.id }, ENV, identity);
+    if (!("job" in again)) throw new Error(again.refused.message);
+    expect(again.job.id).not.toBe(held.id);
+    expect(again.job.funding).toBe("platform");
+  });
+
+  it("D177: an empty Anthropic account holds only the re-run of a build that failed on Anthropic", async () => {
+    const source = await start();
+    await db.update(turnJobs).set({ status: "error", error: "The AI provider account is out of funds (Anthropic, 402): billing_error" }).where(eq(turnJobs.id, source.id));
+    await pauseProvider(db, "anthropic", "billing_error", {});
+    const rerun = await startTurn(db, { projectId, userId, mode: "build", retryOfJobId: source.id, held: true }, ENV);
+    if (!("job" in rerun)) throw new Error("not held");
+    expect(await claimJob(db, "test")).toBeNull();
+    // Another project's ordinary build starts on DeepSeek as usual.
+    const other = (await createProjectFromPrompt(db, userId, { prompt: "A club page", network: "celo-sepolia" })).id;
+    const plain = await enqueueTurn(db, { userId, projectId: other, mode: "build", prompt: "A club page" }, ENV);
+    expect((await claimJob(db, "test"))?.id).toBe(plain.id);
+    expect(await projectWaiting(db, projectId)).toBe(true);
+    expect(await projectWaiting(db, other)).toBe(false);
+    await resumeProvider(db, "anthropic", "test", {});
+    expect((await claimJob(db, "test"))?.id).toBe(rerun.job.id);
   });
 
   it("keeps failed planning retries on their normal funding path", async () => {

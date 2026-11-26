@@ -23,6 +23,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Show the runner's size
         run: |
@@ -45,6 +47,12 @@ jobs:
       # The browser comes from Playwright's own CDN. The runner's Ubuntu mirrors sometimes fail to
       # resolve for an hour, so apt (the system libraries) is only used if the browser can't start
       # without it, and then it retries.
+      - name: Check natural-language routing changes
+        if: github.event_name == 'pull_request'
+        env:
+          ROUTING_BASE: ${{ github.event.pull_request.base.sha }}
+        run: node scripts/check-routing-regex.mjs "$ROUTING_BASE"
+
       - name: Install the headless browser
         run: |
           pw="node node_modules/playwright-core/cli.js"

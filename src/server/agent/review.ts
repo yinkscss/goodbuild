@@ -64,7 +64,7 @@ These screenshots were taken with no network, no wallet and no blockchain, so do
 - a part of the request that belongs on another page or screen than the one shown.
 Don't report taste (you would have picked another colour or font) and don't ask for new features.
 
-Reply with JSON only, no code fence: {"ok": true} when nothing needs fixing, or {"ok": false, "issues": ["which screen (phone, computer or both), where on the page, what is wrong, and what to change", ...]} with at most ${MAX_REVIEW_ISSUES} issues, the worst first. Each issue must start with "phone:", "computer:" or "both:".`;
+Reply with JSON only, no code fence: {"ok": true} when nothing needs fixing, or {"ok": false, "issues": [{"viewport":"phone","detail":"where, what is wrong, and what to change"}]} with at most ${MAX_REVIEW_ISSUES} issues. Use phone, computer or both for viewport.`;
 }
 
 const NAMES_SCREEN = /\b(phone|computer|both|mobile|desktop|start screen|game|play)\b/i;
@@ -79,10 +79,15 @@ export function parseReview(text: string): { ok: boolean; issues: string[] } | n
     if (typeof j.ok !== "boolean") return null;
     const issues = Array.isArray(j.issues)
       ? j.issues
-          .map((s) => String(s ?? "").replace(/\s*—\s*/g, ", ").replace(/\s+/g, " ").trim().slice(0, 320))
+           .map((issue) => {
+            if (typeof issue === "string") return NAMES_SCREEN.test(issue) ? issue : "";
+            if (!issue || typeof issue !== "object") return "";
+            const {viewport,detail} = issue as Record<string,unknown>;
+            return ["phone","computer","both"].includes(String(viewport)) && typeof detail === "string" && detail.trim() ? `${viewport}: ${detail}` : "";
+          })
+          .map((s) => s.replace(/\s*—\s*/g, ", ").replace(/\s+/g, " ").trim().slice(0, 320))
           .filter(Boolean)
           // An issue that doesn't say which screen it is on is a guess (D162): it is dropped.
-          .filter((i) => NAMES_SCREEN.test(i))
           .slice(0, MAX_REVIEW_ISSUES)
       : [];
     // "Not ok" with nothing named can't be acted on, and "ok" with a list is a list.

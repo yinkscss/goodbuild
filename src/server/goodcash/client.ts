@@ -110,7 +110,7 @@ export async function getTopUp(id: string, config = goodCashConfig(), fetcher: F
 /** A top-up may only be shown to the wallet it pays. Anything else looks like it does not exist. */
 export const topUpBelongsTo = (topUp: Pick<TopUp, "wallet">, wallet: string) => topUp.wallet.toLowerCase() === wallet.toLowerCase();
 
-// ── Cash out: G$ to a Nigerian bank (D173). Secret key only, server only. ─────────────────────────────────────────
+// ── Cash out: G$ to a Nigerian bank (D179). Secret key only, server only. ─────────────────────────────────────────
 
 /** Cash-outs need a secret key (gc_sk_live_ or gc_sk_test_). A publishable key can't create one, so the feature hides itself. */
 export function cashOutMode(config = goodCashConfig()): "live" | "test" | null {

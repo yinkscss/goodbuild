@@ -20,16 +20,18 @@ import { AssetBar, AttachMenu, imageFiles, KIND_LABEL } from "./asset-bar";
 import { hasMiniPayKit } from "@/lib/minipay-checklist";
 import { FirstWait } from "./first-wait";
 import { MiniPayGuide } from "./minipay-guide";
+import { LogoChip, nextSteps, PublishNextStep } from "./next-steps";
 import { OldFundsCard } from "./old-funds-card";
-import { TurnView } from "./turn-view";
+import { HeldNotice, TurnView } from "./turn-view";
 import type { PublishInfo } from "./use-publish";
 import type { UseWorkspace } from "./use-workspace";
 import { FreeCreditsCard } from "@/components/credits/free-credits-card";
 import { VerifyCard } from "./verify-card";
 import { TemplateBanner } from "@/components/landing/template-slides";
+import type { TurnAction } from "@/lib/turn-actions";
 
 /** What "Fix it for me" (or Continue after a top-up) sends for the newest turn (D164). */
-export type RetryRequest = { kind: "job"; jobId: string; useCredits: boolean; note?: string } | { kind: "prompt"; prompt: string };
+export type RetryRequest = { kind: "job"; jobId: string; useCredits: boolean; note?: string } | { kind: "prompt"; prompt: string; action: TurnAction };
 
 /**
  * One button, one request: continue the failed build from its saved files, carrying the preview's crash, or, with
@@ -39,7 +41,7 @@ export type RetryRequest = { kind: "job"; jobId: string; useCredits: boolean; no
 export function retryRequest(record: TurnRecord | null | undefined, crash: string | undefined, opts: { afterTopUp?: boolean } = {}): RetryRequest {
   const paused = record?.paused === "credits";
   if (record?.jobId) return { kind: "job", jobId: record.jobId, useCredits: paused || Boolean(opts.afterTopUp), ...(paused || !crash ? {} : { note: crash }) };
-  return { kind: "prompt", prompt: paused ? CONTINUE_PROMPT : [FIX_PROMPT, crash].filter(Boolean).join("\n\n") };
+  return { kind: "prompt", prompt: paused ? CONTINUE_PROMPT : [FIX_PROMPT, crash].filter(Boolean).join("\n\n"), action: paused ? "resume" : "repair" };
 }
 
 /** Left pane of the workspace (mockup c): the conversation and the composer. */
@@ -80,7 +82,7 @@ export function ChatPanel({
   const liveMessageId = live?.messageId;
   // Chips only on the newest assistant turn, and not while another turn runs or waits.
   const lastAssistantId = [...state.messages].reverse().find((m) => m.role === "assistant")?.id;
-  const suggest = (prompt: string) => send(prompt, "build");
+  const suggest = (prompt: string, action?: TurnAction) => send(prompt, "build", action ? { action } : undefined);
   const canSuggest = !running;
   // The running turn is writing the plan's questions: "Skip" is offered there too.
   const planning = (state.messages.find((m) => m.id === state.jobs[0]?.userMessageId)?.meta as { intake?: boolean } | null)?.intake === true;
@@ -99,7 +101,7 @@ export function ChatPanel({
   // The prompt the newest turn answered, for "Try again" on a failed or interrupted build.
   // D164: one button. It continues from the saved files and carries the preview's crash, if there is one.
   const crash = ws.previewError ? previewFixPrompt(ws.previewError, false) : undefined;
-  const runRetry = (r: RetryRequest) => (r.kind === "job" ? ws.retry(r.jobId, r.useCredits, r.note) : send(r.prompt, "build"));
+  const runRetry = (r: RetryRequest) => (r.kind === "job" ? ws.retry(r.jobId, r.useCredits, r.note) : send(r.prompt, "build", { action: r.action }));
   const retryRecord = (record?: TurnRecord | null) => runRetry(retryRequest(record, crash));
   // "Undo this change" (D164): the newest finished build, when an earlier version exists to go back to.
   const previousVersion = state.versions.map((v) => v.number).filter((n) => n < state.project.currentVersion).sort((a, b) => b - a)[0];
@@ -111,7 +113,25 @@ export function ChatPanel({
     // After a top-up the retry runs on credits and still carries the preview's crash (D164).
     runRetry(retryRequest(record, crash, { afterTopUp: true }));
   };
+  // D177: GoodBuild's AI account is empty and a request is waiting for it, so it starts on its own.
+  const holding = Boolean(state.aiPaused) && state.jobs.some((j) => j.status === "queued");
+  // The head request hasn't started: show that it's waiting, not a "Thinking" clock running for hours.
+  const heldHead = Boolean(live && holding && state.jobs[0]?.status === "queued" && live.record.jobId === state.jobs[0].id && !live.text && !live.record.steps.length);
   const continueCost = { needMicro: state.estimate.buildMicro, haveMicro: state.availableMicro };
+  const miniPay = hasMiniPayKit(state.files);
+  // D176: next steps once the newest build works and nothing waits on the person.
+  const next = nextSteps({
+    running,
+    live: Boolean(live),
+    currentVersion: state.project.currentVersion,
+    lastStatus: lastRecord?.status,
+    openQuestions: Boolean(lastRecord?.intake),
+    draftOpen,
+    crashed: Boolean(ws.previewError),
+    publish,
+    miniPay,
+    outdatedContracts: state.outdatedContracts.length,
+  });
   return (
     <section aria-label="Chat" className="flex min-h-0 flex-col rounded-card bg-surface shadow-card">
       <div ref={listRef} onScroll={onListScroll} className="min-h-0 flex-1 space-y-5 overflow-x-hidden overflow-y-auto overscroll-contain p-3 sm:p-5" aria-live="polite">
@@ -173,6 +193,7 @@ export function ChatPanel({
                   : undefined
               }
               fixDisabled={running}
+              held={holding && m.id === lastAssistantId}
               onSuggest={!live && canSuggest && m.id === lastAssistantId ? suggest : undefined}
               checking={m.id === lastAssistantId && ws.checking}
               checkFailed={m.id === lastAssistantId ? ws.checkFailed : null}
@@ -181,7 +202,7 @@ export function ChatPanel({
                   ? record.intake?.for === "plan"
                     ? // Plan mode's questions (D103): the answers start the plan, not the build.
                       { answer: (q, a) => ws.answerPlan(m.id, q, a), start: () => send(DRAFT_PLAN_TEXT, "plan"), skip: () => send(DRAFT_PLAN_TEXT, "plan") }
-                    : { answer: (q, a) => ws.answerPlan(m.id, q, a), start: () => send(START_BUILDING_TEXT, "build"), skip: ws.skipPlan }
+                    : { answer: (q, a) => ws.answerPlan(m.id, q, a), start: () => send(START_BUILDING_TEXT, "build", { buildFromIntake: true, action: "start_building" }), skip: ws.skipPlan }
                   : undefined
               }
               draft={
@@ -192,7 +213,8 @@ export function ChatPanel({
             />
           );
         })}
-        {live && (
+        {live && heldHead && <HeldNotice />}
+        {live && !heldHead && (
           <TurnView
             text={live.text}
             record={live.record}
@@ -215,6 +237,8 @@ export function ChatPanel({
             {ws.error}
           </p>
         )}
+        {next.works && <LogoChip projectId={state.project.id} assets={state.assets} onUpload={ws.upload} uploading={ws.uploading} onUse={suggest} disabled={running} />}
+        {next.publish && publish && onPublish && <PublishNextStep info={publish} onPublish={onPublish} />}
         {!running && state.delivery && state.delivery.completed > 0 && state.delivery.completed < state.delivery.milestones.length && (
           <p className="px-4 text-xs text-grey-600">Next: {milestoneName(state.delivery.milestones[state.delivery.completed].id, state.delivery.milestones[state.delivery.completed].title)}. It&apos;s a separate build, about {formatCredits(state.estimate.buildMicro)}.</p>
         )}
@@ -232,7 +256,7 @@ export function ChatPanel({
         <OldFundsCard projectId={state.project.id} chainId={state.project.chainId} refreshKey={state.project.currentVersion} busy={running} onAsk={suggest} />
         {state.freePolicy === "verified" ? !running && <FreeCreditsCard compact onChange={ws.refresh} /> : state.offerVerification && !running && <VerifyCard onVerified={ws.refresh} />}
         {/* A MiniPay app (D88): deploy, publish, then the steps to open it in MiniPay. */}
-        {hasMiniPayKit(state.files) && state.project.currentVersion > 0 && !running && onPublish && (
+        {miniPay && state.project.currentVersion > 0 && !running && onPublish && (
           <MiniPayGuide
             projectId={state.project.id}
             chainId={state.project.chainId}

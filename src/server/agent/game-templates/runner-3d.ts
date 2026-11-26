@@ -79,11 +79,11 @@ export function makeTrack(laneXs: readonly number[]): THREE.Group {
 
 const GAME = `import { useRef, useState } from "react";
 import * as THREE from "three";
+import { GameMenu } from "../game/GameMenu";
 import { GameOver } from "../game/GameOver";
 import { GameSettings } from "../game/GameSettings";
 import { Leaderboard, PostScore } from "../game/Leaderboard";
 import { TopThree } from "../game/TopThree";
-import { firstTime } from "../game/extras";
 import { buzz } from "../game/haptics";
 import { useLeaderboard } from "../game/leaderboard";
 import { Effects } from "../game/powerups";
@@ -116,7 +116,6 @@ export default function Game() {
   const [screen, setScreen] = useState<Screen>("start");
   const [best, setBest] = useState(() => bestScore(BEST_KEY));
   const [result, setResult] = useState({ score: 0, coins: 0 });
-  const [tip] = useState(() => firstTime("runner-3d-controls"));
   const board = useLeaderboard();
   const game = useRef(fresh());
   const view = useRef<{ camera?: THREE.PerspectiveCamera }>({});
@@ -294,15 +293,19 @@ export default function Game() {
         />
         <TopThree board={board} className="absolute right-2 top-2" />
         {screen === "start" && (
-          <div className="absolute inset-x-4 bottom-6 space-y-3 rounded-2xl bg-card/95 p-4 text-center shadow-lg">
-            <h2 className="text-lg font-semibold">{GAME_NAME}</h2>
-            <p className="text-sm text-muted-foreground">Tap left or right to change lane, the round button to jump. Grab coins, dodge crates and the drone.</p>
-            {tip && <p className="text-sm">Red barriers are low: jump them.</p>}
-            {best > 0 && <p className="text-sm">Your best: {best}</p>}
-            <button type="button" onClick={start} className="w-full rounded-xl bg-primary px-6 py-3 text-lg font-semibold text-primary-foreground">
-              Play
-            </button>
-          </div>
+          <GameMenu
+            className="absolute inset-x-4 bottom-6"
+            title={GAME_NAME}
+            tagline="Run, grab coins, dodge crates and the drone."
+            best={best}
+            onPlay={start}
+            howTo={["Tap left or right, or use the arrow keys, to change lane.", "Tap the round button or press Space to jump. Red barriers are low: jump them.", "Hit a crate, a barrier or the drone and the run is over."]}
+            powerUps={[
+              { name: "Coin", text: "25 points each" },
+              { name: "Shield", text: "takes one hit for you, for six seconds" },
+            ]}
+            wallet
+          />
         )}
         {screen === "over" && (
           <GameOver score={result.score} best={best} stats={[{ label: "Coins", value: result.coins }]} onAgain={start} shareText={"I scored " + result.score + " in " + GAME_NAME}>

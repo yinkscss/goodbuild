@@ -42,7 +42,7 @@ export const ambassadorAudit = pgTable("ambassador_audit", {
 });
 
 /**
- * A paid ambassador payout turned into Naira through GoodCash (D173). The person's own wallet signs the G$ transfer;
+ * A paid ambassador payout turned into Naira through GoodCash (D179). The person's own wallet signs the G$ transfer;
  * GoodCash pays the bank. We keep the bank's name, the account name and the last four digits only, never the full
  * account number. One live or paid cash out per payout; a failed, refunded or expired one can be tried again.
  */

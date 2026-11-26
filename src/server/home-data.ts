@@ -1,3 +1,5 @@
+import { inArray } from "drizzle-orm";
+import { buildDeliveries } from "./db/schema";
 import { cache } from "react";
 import { redirect } from "next/navigation";
 
@@ -18,7 +20,10 @@ export const loadSession = cache(async () => {
 export const loadProjects = cache(async (): Promise<{ projects: ProjectSummary[] } | { error: string }> => {
   const session = await loadSession();
   try {
-    const rows = await listProjects(await getDb(), session.user.id, 500);
+    const db = await getDb();
+    const rows = await listProjects(db, session.user.id, 500);
+    const plans = rows.length ? await db.select().from(buildDeliveries).where(inArray(buildDeliveries.projectId,rows.map(p=>p.id))) : [];
+    const kinds = new Map(plans.map(p=>[p.projectId,p.plan.displayKind]));
     return {
       projects: rows.map((p) => ({
         id: p.id,
@@ -26,7 +31,7 @@ export const loadProjects = cache(async (): Promise<{ projects: ProjectSummary[]
         status: p.status,
         chainId: p.chainId,
         updatedAt: p.updatedAt,
-        kind: inferKind({ templateId: p.templateId, text: p.name }),
+        kind: inferKind({ templateId: p.templateId, text: p.name, displayKind:kinds.get(p.id) }),
       })),
     };
   } catch (error) {

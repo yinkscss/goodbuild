@@ -254,6 +254,7 @@ const GUIDE = `The MiniPay leaderboard contract. This game has a leaderboard and
 
 export const gameBoard: Kit = {
   id: "game-board",
+  onChain: true,
   title: "MiniPay leaderboard contract",
   when: "a game with a leaderboard that must work inside MiniPay (GoodBuild turns it on from the plan)",
   // Never by its words alone ("without an onchain leaderboard" names it too): the runner turns it on from the plan.

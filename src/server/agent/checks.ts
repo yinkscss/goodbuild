@@ -677,11 +677,17 @@ export function lucideIssues(files: Record<string, string>): CheckIssue[] {
   const issues: CheckIssue[] = [];
   for (const [file, content] of Object.entries(files)) {
     if (!/\.(tsx?|jsx?)$/.test(file)) continue;
-    for (const m of content.matchAll(/import\s*\{([^}]*)\}\s*from\s*["']lucide-react["']/g)) {
-      for (const raw of m[1].split(",")) {
-        const name = raw.trim().split(/\s+as\s+/)[0].replace(/^type\s+/, "").trim();
-        if (!name || LUCIDE_NAMES.has(name)) continue;
-        const line = content.slice(0, m.index).split("\n").length;
+    if (!content.includes("lucide-react")) continue;
+    const source = ts.createSourceFile(file, content, ts.ScriptTarget.Latest, true);
+    for (const statement of source.statements) {
+      if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier) || statement.moduleSpecifier.text !== "lucide-react") continue;
+      const clause = statement.importClause;
+      const bindings = clause?.namedBindings;
+      if (clause?.isTypeOnly || !bindings || !ts.isNamedImports(bindings)) continue;
+      for (const entry of bindings.elements) {
+        const name = (entry.propertyName ?? entry.name).text;
+        if (entry.isTypeOnly || LUCIDE_NAMES.has(name)) continue;
+        const line = source.getLineAndCharacterOfPosition(entry.getStart(source)).line + 1;
         issues.push({
           file,
           line,

@@ -24,7 +24,7 @@ async function api<T>(url: string, body?: unknown): Promise<T> {
 const field = "w-full rounded-block border border-grey-200 bg-surface px-3 py-2 text-sm";
 const primary = "rounded-full bg-violet px-5 py-2 text-sm font-medium text-white disabled:opacity-50";
 
-/** Plain-words line under a payout once it has a cash out (D173). */
+/** Plain-words line under a payout once it has a cash out (D179). */
 export function CashOutLine({ c }: { c: CashOutSummary }) {
   return (
     <p className="mt-2 text-sm">

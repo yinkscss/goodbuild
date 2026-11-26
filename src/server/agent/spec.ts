@@ -49,7 +49,7 @@ export const WRITE_SPEC_TOOL: ToolSpec = {
               events: strings,
               invariants: { type: "array", items: str, description: 'Rules that must always hold, each one a contract test: "the pot never pays out more than was deposited"' },
             },
-            required: ["name", "purpose", "functions"],
+            required: ["name", "purpose", "functions", "template"],
           },
         },
         data: { type: "array", items: { type: "object", properties: { collection: str, rules: str }, required: ["collection", "rules"] } },
@@ -69,7 +69,7 @@ const text = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slic
 const list = (v: unknown, max: number, each: number) => (Array.isArray(v) ? v.map((x) => text(x, each)).filter(Boolean).slice(0, max) : []);
 const objects = (v: unknown, max: number) => (Array.isArray(v) ? v.filter((x): x is Record<string, unknown> => Boolean(x) && typeof x === "object" && !Array.isArray(x)).slice(0, max) : []);
 
-export function parseSpec(raw: Record<string, unknown>): { ok: true; spec: AppSpec } | { ok: false; error: string } {
+export function parseSpec(raw: Record<string, unknown>, requireTemplate = false): { ok: true; spec: AppSpec } | { ok: false; error: string } {
   const summary = text(raw.summary, 600);
   if (!summary) return { ok: false, error: "write_spec needs a summary." };
   const contracts = objects(raw.contracts, 6).map((c) => ({
@@ -81,6 +81,7 @@ export function parseSpec(raw: Record<string, unknown>): { ok: true; spec: AppSp
     invariants: list(c.invariants, 12, 300),
     ...(typeof c.template === "string" && (c.template === "none" || (TEMPLATE_IDS as string[]).includes(c.template)) ? { template: c.template as TemplateId | "none" } : {}),
   }));
+  if (requireTemplate && contracts.some(c => !c.template)) return {ok:false,error:"Choose a listed template or none for each contract."};
   const bad = contracts.find((c) => !/^[A-Z][A-Za-z0-9]*$/.test(c.name));
   if (bad) return { ok: false, error: `Contract names are PascalCase and become the file name: "${bad.name}" isn't.` };
   // D165: the app's contract inherits the template, so it can't share its name ("contract GoodSavings is GoodSavings").

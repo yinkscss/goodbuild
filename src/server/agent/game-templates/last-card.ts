@@ -239,6 +239,7 @@ export function OnlineCards({ live }: { live: LiveRoom<Play> }) {
 
 const GAME = `import { useEffect, useRef, useState } from "react";
 import { fullDeck, rankOf, shuffle, type Card, type Suit, SUITS, suitOf } from "../cards/cards";
+import { GameMenu } from "../game/GameMenu";
 import { GameOver } from "../game/GameOver";
 import { GameSettings } from "../game/GameSettings";
 import { buzz } from "../game/haptics";
@@ -356,15 +357,16 @@ export default function Game() {
       <div className="relative min-h-[460px] overflow-hidden rounded-2xl bg-card p-4 shadow">
         {screen === "start" && (
           <div className="space-y-5">
-            <div className="space-y-2 text-center">
-              <h2 className="text-2xl font-semibold">{GAME_NAME}</h2>
-              <p className="text-muted-foreground">Match the top card's suit or number. An 8 goes on anything and you pick the next suit. Can't go? Draw one. First with no cards wins.</p>
-              {best > 0 && <p className="text-sm">Your best: {best}</p>}
-            </div>
             {!inRoom && (
-              <button type="button" onClick={begin} className="w-full rounded-xl bg-primary px-6 py-3 text-lg font-semibold text-primary-foreground">
-                Play the computer
-              </button>
+              <GameMenu
+                card={false}
+                title={GAME_NAME}
+                tagline={"First to play all their cards wins."}
+                best={best}
+                onPlay={begin}
+                playLabel="Play the computer"
+                howTo={["Play a card that matches the top card's suit or number.", "An 8 goes on anything, and you pick the next suit.", "Can't go? Draw one.", "First with no cards wins. Play the computer alone, or make a room below for friends."]}
+              />
             )}
             <div className="space-y-3 border-t pt-4">
               <h3 className="font-semibold">With friends (2 to 6)</h3>

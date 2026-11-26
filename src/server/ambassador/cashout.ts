@@ -8,7 +8,7 @@ import { checkCashOutTx, isFinalStatus } from "@/lib/goodcash/cashout";
 import { AmbassadorError } from "@/server/ambassador/service";
 
 /**
- * Ambassador cash-out to a Nigerian bank (D173). Flow: the admin has sent the G$ to the person's wallet (payout status
+ * Ambassador cash-out to a Nigerian bank (D179). Flow: the admin has sent the G$ to the person's wallet (payout status
  * `paid`), then the person gives a bank and account number, sees the live Naira amount, and signs ONE transfer in their
  * own wallet. GoodCash pays the bank. We never hold keys, and keep only the bank name, account name and last 4 digits.
  */

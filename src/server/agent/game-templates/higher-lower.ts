@@ -14,6 +14,7 @@ export const BEST_KEY = "high-card-run";
 const GAME = `import { useRef, useState } from "react";
 import { CardFace } from "../cards/CardFace";
 import { fullDeck, shuffle, valueOf, type Card } from "../cards/cards";
+import { GameMenu } from "../game/GameMenu";
 import { GameOver } from "../game/GameOver";
 import { GameSettings } from "../game/GameSettings";
 import { Leaderboard, PostScore } from "../game/Leaderboard";
@@ -121,13 +122,20 @@ export default function Game() {
       <div className="relative min-h-[460px] overflow-hidden rounded-2xl bg-card p-4 shadow">
         <TopThree board={board} className="absolute right-3 top-3" />
         {screen === "start" && (
-          <div className="flex min-h-[420px] flex-col items-center justify-center gap-4 text-center">
-            <h2 className="text-2xl font-semibold">{GAME_NAME}</h2>
-            <p className="text-muted-foreground">Will the next card be higher or lower? Ace is low, king is high. Four right in a row doubles the points.</p>
-            {best > 0 && <p className="text-sm">Your best: {best}</p>}
-            <button type="button" onClick={start} className="w-full rounded-xl bg-primary px-6 py-3 text-lg font-semibold text-primary-foreground">
-              Play
-            </button>
+          <div className="flex min-h-[420px] items-center">
+            <GameMenu
+              card={false}
+              className="w-full"
+              title={GAME_NAME}
+              tagline="Will the next card be higher or lower?"
+              best={best}
+              onPlay={start}
+              howTo={["Tap Higher or Lower for the next card. Ace is low, king is high.", "Four right in a row doubles the points and earns a skip.", "A wrong guess costs a life."]}
+              powerUps={[
+                { name: "Skip", text: "move past a card you can't call. You start with one." },
+              ]}
+              wallet
+            />
           </div>
         )}
         {screen !== "start" && (

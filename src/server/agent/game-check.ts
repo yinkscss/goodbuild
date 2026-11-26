@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { Page } from "playwright-core";
+import type { Locator, Page } from "playwright-core";
 
 /**
  * Playing a 2D game in the run check (D94). The game kit's probe (src/game/probe.ts) records what
@@ -218,7 +218,7 @@ async function pressAMove(page: Page): Promise<void> {
     .catch(() => [] as { i: number; name: string; ok: boolean }[]);
   // Inside the game's own area every button is the game's (an answer may well be "Home" or "Sound"); only
   // without one are the page's own controls (menu, wallet, mute) left alone.
-  const moves = names.filter((n) => n.ok && (inArea || !NOT_A_MOVE.test(n.name)) && !PLAY_AGAIN.test(n.name));
+  const moves = names.filter((n) => n.ok && (inArea || !NOT_A_MOVE.test(n.name)) && !AGAIN_WORDS.test(n.name));
   if (!moves.length) return;
   const pick = moves[Math.floor(Math.random() * moves.length)];
   await scope.getByRole("button").nth(pick.i).click({ timeout: 800 }).catch(() => undefined);
@@ -229,7 +229,43 @@ const roundOver = (r: ProbeReport | null) => {
   return Boolean(last && last.end !== undefined);
 };
 
-const PLAY_AGAIN = /\b(play|again|retry|restart|start|race|replay|try again|go)\b/i;
+const AGAIN_WORDS = /\b(play|again|retry|restart|start|race|replay|try again|go)\b/i;
+/** Play again after a game over; never the menu's How to play (D178). */
+export const PLAY_AGAIN = /^(?!.*\bhow to\b).*\b(play|again|retry|restart|start|race|replay|try again|go)\b/i;
+/** The start screen's Play; never the menu's How to play (D178). */
+export const PLAY_BUTTON = /^(?!.*\bhow to\b).*\b(play|start|begin|go|race|tap to)\b/i;
+
+/** New games identify actions independent of the language visible to their players. */
+export async function gameButton(page:Page, action:"play"|"restart") {
+  const marked=page.getByTestId(action === "play" ? "gb-play" : "gb-restart");
+  // A responsive page can keep a hidden desktop control before the visible one.
+  for (let i=0, n=await marked.count(); i<n; i++) if (await marked.nth(i).isVisible()) return marked.nth(i);
+  return page.getByRole("button",{name:action==="play" ? PLAY_BUTTON : PLAY_AGAIN}).first();
+}
+
+/**
+ * Whether a button can be tapped where it is now, with no scrolling: its centre is inside the window and
+ * it isn't cut off by the edge of a panel it scrolls inside (D178).
+ */
+async function tappableNow(button: Locator): Promise<boolean> {
+  return button
+    .evaluate((el) => {
+      const box = el.getBoundingClientRect();
+      const x = box.left + box.width / 2;
+      const y = box.top + box.height / 2;
+      if (box.height === 0 || y < 0 || y > window.innerHeight || x < 0 || x > window.innerWidth) return false;
+      // Cut off by a panel it scrolls inside? (Read from the layout, not elementFromPoint: a disabled
+      // Post score lets taps through, so it would never be "on top".)
+      for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+        const style = getComputedStyle(p);
+        if (!/(auto|scroll|hidden|clip)/.test(style.overflowX + " " + style.overflowY)) continue;
+        const clip = p.getBoundingClientRect();
+        if (y < clip.top || y > clip.bottom || x < clip.left || x > clip.right) return false;
+      }
+      return true;
+    })
+    .catch(() => true);
+}
 
 /**
  * Play for about PLAY_MS. After each game over, press Play again and check a new round starts.
@@ -242,17 +278,18 @@ export async function playRounds(page: Page, ms = PLAY_MS): Promise<string[]> {
     const report = await probeReport(page);
     if (roundOver(report)) {
       await page.waitForTimeout(350);
-      const again = page.getByRole("button", { name: PLAY_AGAIN }).first();
+      const again = await gameButton(page,"restart");
       if (!(await again.isVisible().catch(() => false))) {
         return ["After a game over there's no Play again button. Show the score, the best, and a big Play again <button> that starts a new round."];
       }
       // The player's thumb is on the game: Play again must be there, not below it (the owner's Neon Drift feedback, D95).
-      const inView = await again.evaluate((el) => {
-        const box = el.getBoundingClientRect();
-        return box.top >= 0 && box.bottom <= window.innerHeight;
-      }).catch(() => true);
-      if (!inView) {
+      if (!(await tappableNow(again))) {
         return ["After a game over, Play again is below the screen: the player has to scroll to find it. Show the game-over panel on the game itself (GameOver from src/game/GameOver.tsx inside the relative box around GameCanvas)."];
+      }
+      // Posting the score belongs beside Play again: players asked for both on the game screen (D178).
+      const post = page.getByRole("button", { name: /post (your |my )?score/i }).first();
+      if ((await post.isVisible().catch(() => false)) && !(await tappableNow(post))) {
+        return ["After a game over, Post score is out of sight: the player has to scroll to find it. Keep PostScore inside GameOver, and keep the panel short (a few stats, after the buttons) so Play again and Post score both show on a phone."];
       }
       const before = report!.rounds.length;
       await again.click({ timeout: 1_000 }).catch(() => undefined);
@@ -318,7 +355,7 @@ async function liveAt(page: Page): Promise<{ x: number; y: number; round: number
 /** After a game over, press Play again and wait for the new round. Exported for the slow-phone test. */
 export async function playAgain(page: Page): Promise<boolean> {
   const before = (await probeReport(page))?.rounds.length ?? 0;
-  const again = page.getByRole("button", { name: PLAY_AGAIN }).first();
+  const again = await gameButton(page,"restart");
   await again.waitFor({ state: "visible", timeout: 1_500 }).catch(() => undefined);
   await again.click({ timeout: 1_000 }).catch(() => undefined);
   return page
@@ -585,7 +622,7 @@ export async function playUntilOver(page: Page, ms: number): Promise<boolean> {
 
 /** Press the start screen's Play button. False when there isn't one. */
 export async function pressPlay(page: Page): Promise<boolean> {
-  const start = page.getByRole("button", { name: /\b(play|start|begin|go|race|tap to)\b/i }).first();
+  const start = await gameButton(page,"play");
   if (!(await start.isVisible().catch(() => false))) return false;
   await start.click({ timeout: 1_500 }).catch(() => undefined);
   return true;
@@ -624,7 +661,7 @@ export async function walletAndBoard(page: Page, options: { board: boolean }): P
   const until = Date.now() + (calm ? 16_000 : 12_000);
   for (let attempt = 0; attempt < 6 && score <= 0 && Date.now() < until; attempt++) {
     if (attempt > 0) {
-      const again = page.getByRole("button", { name: PLAY_AGAIN }).first();
+      const again = await gameButton(page,"restart");
       if (!(await again.isVisible().catch(() => false))) break;
       await again.click({ timeout: 1_000 }).catch(() => undefined);
       await page.waitForTimeout(200);
@@ -674,4 +711,23 @@ export async function insideMiniPay(page: Page): Promise<{ issues: string[]; not
   if (signed.length) issues.push(`Inside MiniPay the app asked for a signature (${signed[0]}) without the player doing anything that needs one. MiniPay doesn't allow sign-in signatures.`);
   const connected = calls.includes("eth_requestAccounts") || calls.includes("eth_accounts");
   return { issues, note: connected ? "MiniPay connected by itself" : "MiniPay wasn't asked for an account" };
+}
+
+/**
+ * The start screen is a small menu (D178): a Play button, and How to play that opens and shows its steps.
+ * Returns what's missing. Used by the template tests on every template; not yet held against people's games.
+ */
+export async function menuIssues(page: Page): Promise<string[]> {
+  const issues: string[] = [];
+  const menu = page.locator("[data-game-menu]").first();
+  if (!(await menu.isVisible().catch(() => false))) return ["The start screen isn't a menu: show GameMenu from src/game/GameMenu.tsx with Play and How to play."];
+  if (!(await menu.getByRole("button", { name: PLAY_BUTTON }).first().isVisible().catch(() => false))) issues.push("The menu has no Play button.");
+  const how = menu.getByRole("button", { name: /how to play/i }).first();
+  if (!(await how.isVisible().catch(() => false))) return [...issues, "The menu has no How to play."];
+  await how.click({ timeout: 1_000 }).catch(() => undefined);
+  const steps = menu.getByRole("region", { name: /how to play/i });
+  const text = (await steps.innerText({ timeout: 1_000 }).catch(() => "")).trim();
+  if (text.length < 10) issues.push("How to play opened nothing: give GameMenu two to four howTo steps.");
+  await how.click({ timeout: 1_000 }).catch(() => undefined);
+  return issues;
 }

@@ -44,7 +44,7 @@ export async function qualifyAmbassador(db: Db, userId: string, identity: string
   });
 }
 
-/** Tell the owner on Telegram that someone asked to be paid (D173). Fire and forget: never changes the request's outcome. */
+/** Tell the owner on Telegram that someone asked to be paid (D179). Fire and forget: never changes the request's outcome. */
 export function alertPayoutRequested(amountG: number, wallet: string, env: Record<string, string | undefined> = process.env, fetcher: typeof fetch = fetch) {
   const domain = env.APP_DOMAIN ? `https://${env.APP_DOMAIN}` : "";
   const text = `GoodBuild: an ambassador asked to be paid ${amountG.toLocaleString("en-US")} G$.\nWallet: ${wallet}\nSend the G$ to that wallet, then confirm it here: ${domain}/home/referrals/admin`;
@@ -177,7 +177,7 @@ export async function payoutAudit(db: Db, userId: string) {
   return db.select({ action: audit.action, detail: audit.detail, at: audit.createdAt, actorId: audit.actorId, payoutId: audit.payoutId }).from(audit).innerJoin(payouts, eq(payouts.id, audit.payoutId)).where(eq(payouts.userId, userId)).orderBy(desc(audit.createdAt)).limit(100);
 }
 
-/** The page of payouts, each with its latest cash out (D173). */
+/** The page of payouts, each with its latest cash out (D179). */
 async function payoutsWithCashOuts(db: Db, userId: string, page: number) {
   const list = await db.select().from(payouts).where(eq(payouts.userId, userId)).orderBy(desc(payouts.createdAt)).limit(25).offset(page * 25);
   if (!list.length) return [];

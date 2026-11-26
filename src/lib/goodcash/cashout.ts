@@ -2,7 +2,7 @@ import { decodeAbiParameters, decodeFunctionData, encodeAbiParameters, encodeFun
 import { GOODDOLLAR_MAINNET } from "@/config/gooddollar";
 
 /**
- * Cash out G$ to a Nigerian bank through GoodCash (D173). The person's own wallet signs ONE transaction,
+ * Cash out G$ to a Nigerian bank through GoodCash (D179). The person's own wallet signs ONE transaction,
  * `G$.transferAndCall(router, amount, data)`; GoodCash's router pays the bank partner and sends any surplus back.
  * Addresses and the call shape are from GoodCash's OpenAPI (api docs at pay.goodcash.xyz/docs, read 26 Nov 2026) and
  * the GoodDrops reference code. GoodCash's server decides the order, so `checkCashOutTx` checks it before any wallet is

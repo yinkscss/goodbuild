@@ -128,6 +128,7 @@ export function stuck(t: Table): boolean {
 const GAME = `import { useRef, useState } from "react";
 import { CardFace } from "../cards/CardFace";
 import { SUIT_SIGN, SUITS, fullDeck, shuffle } from "../cards/cards";
+import { GameMenu } from "../game/GameMenu";
 import { GameOver } from "../game/GameOver";
 import { GameSettings } from "../game/GameSettings";
 import { buzz } from "../game/haptics";
@@ -204,13 +205,16 @@ export default function Game() {
     <div className="mx-auto w-full max-w-md space-y-4">
       <div className="relative min-h-[520px] overflow-hidden rounded-2xl bg-card p-3 shadow">
         {screen === "start" && (
-          <div className="flex min-h-[460px] flex-col items-center justify-center gap-4 text-center">
-            <h2 className="text-2xl font-semibold">{GAME_NAME}</h2>
-            <p className="text-muted-foreground">Build each suit up from the ace. Tap a card to move it; tap the deck to turn three. {PASSES} times through the deck.</p>
-            {best > 0 && <p className="text-sm">Your best: {best}</p>}
-            <button type="button" onClick={start} className="w-full rounded-xl bg-primary px-6 py-3 text-lg font-semibold text-primary-foreground">
-              Play
-            </button>
+          <div className="flex min-h-[460px] items-center">
+            <GameMenu
+              card={false}
+              className="w-full"
+              title={GAME_NAME}
+              tagline="Build each suit up from the ace."
+              best={best}
+              onPlay={start}
+              howTo={["Tap a card to move it where it can go: home to its suit first.", "Build the columns down in alternating colours. Only a king goes in an empty column.", "Tap the deck to turn three cards. " + PASSES + " times through the deck."]}
+            />
           </div>
         )}
         {screen !== "start" && (

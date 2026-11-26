@@ -99,6 +99,7 @@ export function drawPickup(ctx: CanvasRenderingContext2D, x: number, y: number, 
 
 const GAME = `import { useRef, useState } from "react";
 import { GameCanvas, type Frame } from "../game/GameCanvas";
+import { GameMenu } from "../game/GameMenu";
 import { GameOver } from "../game/GameOver";
 import { GameSettings } from "../game/GameSettings";
 import { Leaderboard, PostScore } from "../game/Leaderboard";
@@ -350,19 +351,20 @@ export default function Game() {
         />
         <TopThree board={board} className="absolute right-2 top-14" />
         {screen === "start" && (
-          <div className="absolute inset-x-4 bottom-24 space-y-3 rounded-2xl bg-card/95 p-4 text-center shadow-lg">
-            <div className="flex items-center justify-center gap-3">
-              <Sprite draw={(ctx, w, h) => drawCar(ctx, 0, 0, w, h, COLOURS.player)} width={40} height={68} label="Your car" />
-              <div className="text-left">
-                <h2 className="text-lg font-semibold">{GAME_NAME}</h2>
-                <p className="text-sm text-muted-foreground">Tap left or right to change lane. Pass close for combo points.</p>
-              </div>
-            </div>
-            {best > 0 && <p className="text-sm">Your best: {best}</p>}
-            <button type="button" onClick={start} className="w-full rounded-xl bg-primary px-6 py-3 text-lg font-semibold text-primary-foreground">
-              Play
-            </button>
-          </div>
+          <GameMenu
+            className="absolute inset-x-4 bottom-24"
+            title={GAME_NAME}
+            tagline="Weave through traffic. Pass close for combo points."
+            art={<Sprite draw={(ctx, w, h) => drawCar(ctx, 0, 0, w, h, COLOURS.player)} width={40} height={68} label="Your car" />}
+            best={best}
+            onPlay={start}
+            howTo={["Tap the left or right side, or use the arrow keys, to change lane.", "Pass close to other cars for near-miss combo points.", "Dodge oil and oncoming cars: one crash ends the run."]}
+            powerUps={[
+              { name: "Nitro", text: "a burst of speed and double points, and nothing stops you", icon: <Sprite draw={(ctx, w, h) => (ctx.scale(w / 48, h / 48), drawPickup(ctx, 24, 24, "nitro", 0))} width={28} height={28} /> },
+              { name: "Shield", text: "takes one crash for you", icon: <Sprite draw={(ctx, w, h) => (ctx.scale(w / 48, h / 48), drawPickup(ctx, 24, 24, "shield", 0))} width={28} height={28} /> },
+            ]}
+            wallet
+          />
         )}
         {screen === "paused" && (
           <button type="button" onClick={() => setScreen("playing")} className="absolute inset-x-6 bottom-24 rounded-xl bg-primary py-3 text-lg font-semibold text-primary-foreground">
