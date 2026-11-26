@@ -437,6 +437,7 @@ export function OnlineStation({ live }: { live: LiveRoom<Move> }) {
 `;
 
 const GAME = `import { useEffect, useRef, useState } from "react";
+import { GameMenu } from "../game/GameMenu";
 import { GameOver } from "../game/GameOver";
 import { GameSettings } from "../game/GameSettings";
 import { buzz } from "../game/haptics";
@@ -572,15 +573,16 @@ export default function Game() {
       <div className="relative min-h-[460px] overflow-hidden rounded-2xl bg-card p-4 shadow">
         {screen === "start" && (
           <div className="space-y-5">
-            <div className="space-y-2 text-center">
-              <h2 className="text-2xl font-semibold">{GAME_NAME}</h2>
-              <p className="text-muted-foreground">Keep the station running. One of you is a saboteur. Do your tasks, fix the oxygen, and vote out whoever you suspect.</p>
-              {best > 0 && <p className="text-sm">Your best: {best}</p>}
-            </div>
             {!inRoom && (
-              <button type="button" onClick={begin} className="w-full rounded-xl bg-primary px-6 py-3 text-lg font-semibold text-primary-foreground">
-                Play the computer
-              </button>
+              <GameMenu
+                card={false}
+                title={GAME_NAME}
+                tagline={"One of you is a saboteur. Find them."}
+                best={best}
+                onPlay={begin}
+                playLabel="Play the computer"
+                howTo={["Crew: do your tasks, and fix the oxygen fast when it fails.", "The saboteur knocks people out and sabotages. A knock-out calls a meeting where everyone votes.", "The crew win when every task is done or the saboteur is voted out. The saboteur wins if the oxygen runs out or they outnumber the crew.", "Play the computer alone, or make a room below for friends."]}
+              />
             )}
             <div className="space-y-3 border-t pt-4">
               <h3 className="font-semibold">With friends (4 to 10)</h3>

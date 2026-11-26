@@ -116,6 +116,10 @@ export default function App() {
 `;
 }
 
+/** Said to the builder with every template (D178): players asked for the menu and for solo play. */
+export const TEMPLATE_MENU_NOTE =
+  "The start screen is GameMenu from src/game/GameMenu.tsx: keep it, and rewrite its tagline, howTo steps and powerUps for the plan's game (every power-up the game has, by the name players see). Keep Play first, and wallet on when there is a leaderboard. A game for two or more keeps Play the computer, so one person can play alone. Keep PostScore inside GameOver, so Play again and Post score show on a phone without scrolling.";
+
 /** Said to the builder with every template. */
 export const TEMPLATE_MINIPAY_NOTE =
   "If the MiniPay kit is on, the info pages, the footer and (with the leaderboard contract) posting from MiniPay are already wired in src/App.tsx and src/play/Game.tsx: fill in MINI_APP in src/minipay/app.ts with the game's name, a one-line tagline and three how-to steps.";

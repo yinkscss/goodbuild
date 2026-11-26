@@ -1,7 +1,7 @@
 import type { CheckIssue } from "../checks";
 
 import { CHAIN_TX, HAPTICS, HUD, NPC, POWERUPS, PROBE, WORLD } from "./game-blocks";
-import { EXTRAS, GAME_OVER_TSX, SETTINGS_TSX, TOP_THREE_TSX } from "./game-extras";
+import { EXTRAS, GAME_MENU_TSX, GAME_OVER_TSX, SETTINGS_TSX, TOP_THREE_TSX } from "./game-extras";
 import { LEADERBOARD_TS, LEADERBOARD_TSX, SPRITE } from "./game-files";
 import { daoVault } from "./dao-vault";
 import { dashboard } from "./dashboard";
@@ -586,8 +586,9 @@ Free play first. Anyone can open the game and play straight away: no wallet, no 
 The screen
 - GameCanvas (src/game/GameCanvas.tsx) is the screen. Give it onFrame({ ctx, width, height, dt, time, input }) and do everything there: update the game, then draw it. It scales a fixed game size (360 x 640 by default: a phone held upright; pass width and height for another shape) to fit any screen, so always draw in game coordinates, never in pixels of the window.
 - Three screens: start, playing, game over. Pass paused={screen !== "playing"} AND onIdleFrame. While paused, onFrame isn't called; onIdleFrame is, so the start and game-over screens show the game world (the road and the parked car, the level behind the menu) instead of an empty box. onIdleFrame only draws: it may drift the background slowly with dt, but it never moves the game on, checks hits, scores or plays sounds. Write one drawWorld(ctx, g) used by both, so they can't drift apart.
-- The start screen: the game's name, one line on how to play, the best score, and a big Play button (a <button> with the word Play or Start). Over the canvas or under it, but the canvas is always drawn.
-- The game-over screen is ON the game, never below it: wrap GameCanvas in <div className="relative"> and show <GameOver score best stats={[{ label: "Distance", value: ... }, { label: "Coins", value: ... }]} onAgain={start} shareText="..." > <PostScore ... /> </GameOver> from src/game/GameOver.tsx inside it. Play again and posting a score are then where the thumb already is, with nothing to scroll. Show the numbers the run counted (distance, coins, near misses).
+- The start screen is a small menu: <GameMenu title tagline art best onPlay howTo={[...]} powerUps={[...]} wallet /> from src/game/GameMenu.tsx, over the canvas (className="absolute inset-x-4 bottom-4"), the canvas always drawn behind it. Play comes first and is big; then tiles: How to play (two to four short steps, always), Power-ups (each power-up the game has, its name and what it does, with a Sprite icon), Shop (onShop, when the game has a shop or garage) and Connect wallet (wallet, when there is a leaderboard or a shop; it hides itself in MiniPay). Players asked for exactly this menu. Never drop How to play.
+- A game for two or more people always offers "Play the computer" too, so one person can play alone: a simple computer opponent (win if it can, block a win, else a sensible move with a little luck) or computer players. Pass that as the menu's Play (playLabel="Play the computer"), and put the room with friends under the menu, outside it, so the room stays mounted.
+- The game-over screen is ON the game, never below it: wrap GameCanvas in <div className="relative"> and show <GameOver score best stats={[{ label: "Distance", value: ... }, { label: "Coins", value: ... }]} onAgain={start} shareText="..." > <PostScore ... /> </GameOver> from src/game/GameOver.tsx inside it. Play again and posting a score are then where the thumb already is, with nothing to scroll: on a phone both must show without scrolling (the run check looks), so keep stats to a few and never put PostScore below the canvas. Show the numbers the run counted (distance, coins, near misses).
 - A pause screen: pass onHidden={() => setScreen("paused")} to GameCanvas, so a phone call or a tab switch pauses the run and it waits for a Resume button.
 - Keep the game's state in a useRef object (player, enemies, score), NOT in useState: state that changes 60 times a second must not re-render React. Use useState only for which screen is showing and for a number the page shows outside the canvas, updated when it changes, not every frame.
 - Multiply every speed by dt (seconds), so the game runs the same on a slow phone: x += speed * dt. Never count frames.
@@ -653,7 +654,7 @@ Money in a game (only when the user asks for entry fees, prizes or things to buy
 
 Use data-testid="gb-play" on the start button and data-testid="gb-restart" on the replay button, whatever language their labels use.
 
-Before you finish, check: declareGame says the game's style and controls, the canvas draws on the start screen (onIdleFrame), Play works with no wallet, in an action game the first obstacle comes within 3 seconds, every obstacle, power-up and NPC the plan named is in the game and in declareGame, spawned and probe are called, the score shows on the canvas while playing (drawHud), game over shows Play again, and the leaderboard rule is in dataRules.json if there is a board.`;
+Before you finish, check: declareGame says the game's style and controls, the canvas draws on the start screen (onIdleFrame), Play works with no wallet, in an action game the first obstacle comes within 3 seconds, every obstacle, power-up and NPC the plan named is in the game and in declareGame, spawned and probe are called, the score shows on the canvas while playing (drawHud), the start screen is GameMenu with How to play, game over shows Play again and Post score without scrolling, and the leaderboard rule is in dataRules.json if there is a board.`;
 
 /** The leaderboard's data rule, as the guide writes it (D93). */
 export const SCORES_RULE_JSON = '"scores": {"create": "signed-in", "read": ["anyone"], "fields": {"name": "string", "score": "number", "extra": "string"}}';
@@ -837,6 +838,7 @@ export const game2d: Kit = {
     "src/game/chainTx.ts": CHAIN_TX,
     "src/game/extras.ts": EXTRAS,
     "src/game/GameOver.tsx": GAME_OVER_TSX,
+    "src/game/GameMenu.tsx": GAME_MENU_TSX,
     "src/game/TopThree.tsx": TOP_THREE_TSX,
     "src/game/GameSettings.tsx": SETTINGS_TSX,
   },
@@ -854,6 +856,8 @@ export const game2d: Kit = {
     // Before live data (D159): the board didn't refetch on new scores and blanked while it loaded; game transactions didn't announce themselves.
     "src/game/leaderboard.ts": ["32b0df9d7458a8dcf3648902502a68046da00f6436ec0be51edb3e6a66621252"],
     "src/game/chainTx.ts": ["7b39f2c6749163172b91dca5313a21a6b4dd9a2cd4e15e80c6842fe6f21d7492"],
+    // Its stats came before Play again and the post-score form, which then needed a scroll on a phone (D178).
+    "src/game/GameOver.tsx": ["edc891640931e4cb405e7b050343824995afc15910cf1b4746a84fa2ad1bb58c"],
   },
   guide: GUIDE,
   replaces: ["phaser", "kaplay", "kaboom", "pixi.js", "matter-js", "howler"],

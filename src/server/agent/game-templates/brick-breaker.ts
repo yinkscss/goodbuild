@@ -108,6 +108,7 @@ export function drawBack(ctx: CanvasRenderingContext2D, width: number, height: n
 
 const GAME = `import { useRef, useState } from "react";
 import { GameCanvas, type Frame } from "../game/GameCanvas";
+import { GameMenu } from "../game/GameMenu";
 import { GameOver } from "../game/GameOver";
 import { GameSettings } from "../game/GameSettings";
 import { Leaderboard, PostScore } from "../game/Leaderboard";
@@ -445,19 +446,20 @@ export default function Game() {
         />
         <TopThree board={board} className="absolute right-2 top-14" />
         {screen === "start" && (
-          <div className="absolute inset-x-4 bottom-24 space-y-3 rounded-2xl bg-card/95 p-4 text-center shadow-lg">
-            <div className="flex items-center justify-center gap-3">
-              <Sprite draw={(ctx, w, h) => drawBrick(ctx, 0, 0, w, h, COLOURS.rows[0])} width={64} height={28} label="A brick" />
-              <div className="text-left">
-                <h2 className="text-lg font-semibold">{GAME_NAME}</h2>
-                <p className="text-sm text-muted-foreground">Drag the paddle to keep the ball up. Break every brick, dodge the bombs.</p>
-              </div>
-            </div>
-            {best > 0 && <p className="text-sm">Your best: {best}</p>}
-            <button type="button" onClick={start} className="w-full rounded-xl bg-primary px-6 py-3 text-lg font-semibold text-primary-foreground">
-              Play
-            </button>
-          </div>
+          <GameMenu
+            className="absolute inset-x-4 bottom-24"
+            title={GAME_NAME}
+            tagline="Break every brick. Dodge the bombs."
+            art={<Sprite draw={(ctx, w, h) => drawBrick(ctx, 0, 0, w, h, COLOURS.rows[0])} width={64} height={28} label="A brick" />}
+            best={best}
+            onPlay={start}
+            howTo={["Drag, tap a side or use the arrow keys to move the paddle.", "Keep the ball up and break the bricks; tough ones take two hits.", "Dodge the drifter's bombs. Losing the ball costs a life; a cleared wall brings a new one."]}
+            powerUps={[
+              { name: "Wide paddle", text: "a longer paddle for a while" },
+              { name: "Extra balls", text: "more balls in play at once" },
+            ]}
+            wallet
+          />
         )}
         {screen === "paused" && (
           <button type="button" onClick={() => setScreen("playing")} className="absolute inset-x-6 bottom-24 rounded-xl bg-primary py-3 text-lg font-semibold text-primary-foreground">

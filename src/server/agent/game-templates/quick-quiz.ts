@@ -37,11 +37,12 @@ export const QUESTIONS: Question[] = [
 `;
 
 const GAME = `import { useEffect, useRef, useState } from "react";
+import { GameMenu } from "../game/GameMenu";
 import { GameOver } from "../game/GameOver";
 import { GameSettings } from "../game/GameSettings";
 import { Leaderboard, PostScore } from "../game/Leaderboard";
 import { TopThree } from "../game/TopThree";
-import { dailySeed, firstTime, seededRandom } from "../game/extras";
+import { dailySeed, seededRandom } from "../game/extras";
 import { buzz } from "../game/haptics";
 import { useLeaderboard } from "../game/leaderboard";
 import { declareGame, moved, probe, round, spawned } from "../game/probe";
@@ -76,7 +77,6 @@ export default function Game() {
   const [hidden, setHidden] = useState<number[]>([]);
   const [picked, setPicked] = useState<number | null>(null);
   const [best, setBest] = useState(() => bestScore(BEST_KEY));
-  const [tip] = useState(() => firstTime("quick-quiz-tip"));
   const board = useLeaderboard();
   const scoreRef = useRef(0);
   // The clock for each question lives in a ref and draws its bar straight to the page: no re-render every frame.
@@ -187,14 +187,18 @@ export default function Game() {
       <div className="relative min-h-[460px] overflow-hidden rounded-2xl bg-card p-4 shadow">
         <TopThree board={board} className="absolute right-3 top-3" />
         {screen === "start" && (
-          <div className="flex min-h-[420px] flex-col items-center justify-center gap-4 text-center">
-            <h2 className="text-2xl font-semibold">{QUIZ_NAME}</h2>
-            <p className="text-muted-foreground">Today's {set.length} questions. Answer fast for more points, three right in a row doubles them.</p>
-            {tip && <p className="text-sm">Stuck? A hint takes away two wrong answers.</p>}
-            {best > 0 && <p className="text-sm">Your best: {best}</p>}
-            <button type="button" onClick={start} className="w-full rounded-xl bg-primary px-6 py-3 text-lg font-semibold text-primary-foreground">
-              Play
-            </button>
+          <div className="flex min-h-[420px] items-center">
+            <GameMenu
+              card={false}
+              className="w-full"
+              title={QUIZ_NAME}
+              tagline={"Today's " + set.length + " questions. Answer fast for more points."}
+              best={best}
+              onPlay={start}
+              howTo={["Tap the answer you think is right before the bar runs out.", "Faster answers score more; three right in a row doubles your points.", "A wrong answer or running out of time costs a life. Three lives, then it's over."]}
+              powerUps={[{ name: "Hint", text: "takes away two wrong answers. You start with one and earn more with a streak." }]}
+              wallet
+            />
           </div>
         )}
         {screen === "playing" && !finished && (
