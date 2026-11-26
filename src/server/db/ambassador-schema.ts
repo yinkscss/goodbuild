@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, integer, uniqueIndex, check } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, timestamp, integer, uniqueIndex, check, index } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { users } from "./schema";
 import { referrals } from "./referral-schema";
@@ -40,3 +40,32 @@ export const ambassadorAudit = pgTable("ambassador_audit", {
   detail: text("detail").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/**
+ * A paid ambassador payout turned into Naira through GoodCash (D179). The person's own wallet signs the G$ transfer;
+ * GoodCash pays the bank. We keep the bank's name, the account name and the last four digits only, never the full
+ * account number. One live or paid cash out per payout; a failed, refunded or expired one can be tried again.
+ */
+export const ambassadorCashouts = pgTable("ambassador_cashouts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  payoutId: uuid("payout_id").notNull().references(() => ambassadorPayouts.id),
+  userId: uuid("user_id").notNull().references(() => users.id),
+  wallet: text("wallet").notNull(),
+  goodcashId: text("goodcash_id").notNull().unique(),
+  mode: text("mode").notNull(),
+  amountG: integer("amount_g").notNull(),
+  naira: integer("naira").notNull().default(0),
+  nairaPerDollar: text("naira_per_dollar"),
+  status: text("status").notNull().default("awaiting_signature"),
+  bankName: text("bank_name").notNull(),
+  accountName: text("account_name").notNull(),
+  accountLast4: text("account_last4").notNull(),
+  txHash: text("tx_hash"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  paidAt: timestamp("paid_at", { withTimezone: true }),
+}, t => [
+  uniqueIndex("ambassador_cashout_one_active").on(t.payoutId).where(sql`${t.status} in ('awaiting_signature', 'sent', 'processing', 'paid')`),
+  index("ambassador_cashouts_user").on(t.userId),
+  check("ambassador_cashout_status", sql`${t.status} in ('awaiting_signature', 'sent', 'processing', 'paid', 'failed', 'refunded', 'expired')`),
+]);
