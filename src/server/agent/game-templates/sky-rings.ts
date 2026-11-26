@@ -96,11 +96,12 @@ export function makeSea(): THREE.Mesh {
 
 const GAME = `import { useRef, useState } from "react";
 import * as THREE from "three";
+import { GameMenu } from "../game/GameMenu";
 import { GameOver } from "../game/GameOver";
 import { GameSettings } from "../game/GameSettings";
 import { Leaderboard, PostScore } from "../game/Leaderboard";
 import { TopThree } from "../game/TopThree";
-import { Combo, firstTime } from "../game/extras";
+import { Combo } from "../game/extras";
 import { buzz } from "../game/haptics";
 import { useLeaderboard } from "../game/leaderboard";
 import { Effects } from "../game/powerups";
@@ -138,7 +139,6 @@ export default function Game() {
   const [screen, setScreen] = useState<Screen>("start");
   const [best, setBest] = useState(() => bestScore(BEST_KEY));
   const [result, setResult] = useState({ score: 0, rings: 0 });
-  const [tip] = useState(() => firstTime("sky-rings-controls"));
   const board = useLeaderboard();
   const game = useRef(fresh());
   const view = useRef<{ camera?: THREE.PerspectiveCamera }>({});
@@ -352,15 +352,19 @@ export default function Game() {
         />
         <TopThree board={board} className="absolute right-2 top-2" />
         {screen === "start" && (
-          <div className="absolute inset-x-4 bottom-6 space-y-3 rounded-2xl bg-card/95 p-4 text-center shadow-lg">
-            <h2 className="text-lg font-semibold">{GAME_NAME}</h2>
-            <p className="text-sm text-muted-foreground">Hold your finger where the plane should fly. Go through the rings, miss the rocks and the hawk.</p>
-            {tip && <p className="text-sm">Each ring tops up your fuel. Rings in a row build a combo; the blue gem doubles your points.</p>}
-            {best > 0 && <p className="text-sm">Your best: {best}</p>}
-            <button type="button" onClick={start} className="w-full rounded-xl bg-primary px-6 py-3 text-lg font-semibold text-primary-foreground">
-              Play
-            </button>
-          </div>
+          <GameMenu
+            className="absolute inset-x-4 bottom-6"
+            title={GAME_NAME}
+            tagline="Fly through the rings. Miss the rocks and the hawk."
+            best={best}
+            onPlay={start}
+            howTo={["Hold your finger where the plane should fly, or use the arrow keys.", "Each ring tops up your fuel; rings in a row build a combo.", "Rocks and the hawk cost a life. Three lives, and an empty tank ends the flight."]}
+            powerUps={[
+              { name: "Ring", text: "points and fuel" },
+              { name: "Boost", text: "doubles your points for a few seconds" },
+            ]}
+            wallet
+          />
         )}
         {screen === "over" && (
           <GameOver score={result.score} best={best} stats={[{ label: "Rings", value: result.rings }]} onAgain={start} shareText={"I scored " + result.score + " in " + GAME_NAME}>

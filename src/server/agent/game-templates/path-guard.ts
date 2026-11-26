@@ -105,6 +105,7 @@ export function drawFrost(ctx: CanvasRenderingContext2D, x: number, y: number, t
 
 const GAME = `import { useRef, useState } from "react";
 import { GameCanvas, type Frame } from "../game/GameCanvas";
+import { GameMenu } from "../game/GameMenu";
 import { GameOver } from "../game/GameOver";
 import { GameSettings } from "../game/GameSettings";
 import { Leaderboard, PostScore } from "../game/Leaderboard";
@@ -374,14 +375,18 @@ export default function Game() {
         />
         <TopThree board={board} className="absolute right-2 top-14" />
         {screen === "start" && (
-          <div className="absolute inset-x-4 bottom-24 space-y-3 rounded-2xl bg-card/95 p-4 text-center shadow-lg">
-            <h2 className="text-lg font-semibold">{GAME_NAME}</h2>
-            <p className="text-sm text-muted-foreground">Tap the grass to build towers ({TOWER_COST} coins). They shoot whatever walks the path. Every one that gets through costs a life.</p>
-            {best > 0 && <p className="text-sm">Your best: {best}</p>}
-            <button type="button" onClick={start} className="w-full rounded-xl bg-primary px-6 py-3 text-lg font-semibold text-primary-foreground">
-              Play
-            </button>
-          </div>
+          <GameMenu
+            className="absolute inset-x-4 bottom-24"
+            title={GAME_NAME}
+            tagline="Build towers. Stop them on the path."
+            best={best}
+            onPlay={start}
+            howTo={["Tap the grass to build a tower (" + TOWER_COST + " coins). It shoots by itself.", "Every crawler or runner you stop pays coins for more towers.", "Each one that gets through costs a life. The waves grow quickly."]}
+            powerUps={[
+              { name: "Frost crystal", text: "tap it to slow every walker for a while" },
+            ]}
+            wallet
+          />
         )}
         {screen === "paused" && (
           <button type="button" onClick={() => setScreen("playing")} className="absolute inset-x-6 bottom-24 rounded-xl bg-primary py-3 text-lg font-semibold text-primary-foreground">

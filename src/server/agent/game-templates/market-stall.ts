@@ -66,11 +66,12 @@ export function saveStall(owned: Owned, till: number) {
 `;
 
 const GAME = `import { useEffect, useRef, useState } from "react";
+import { GameMenu } from "../game/GameMenu";
 import { GameOver } from "../game/GameOver";
 import { GameSettings } from "../game/GameSettings";
 import { Leaderboard, PostScore } from "../game/Leaderboard";
 import { TopThree } from "../game/TopThree";
-import { firstTime } from "../game/extras";
+
 import { buzz } from "../game/haptics";
 import { useLeaderboard } from "../game/leaderboard";
 import { declareGame, moved, probe, round, spawned } from "../game/probe";
@@ -93,7 +94,6 @@ export default function Game() {
   const [earned, setEarned] = useState(0);
   const [rush, setRush] = useState(false);
   const [best, setBest] = useState(() => bestScore(BEST_KEY));
-  const [tip] = useState(() => firstTime("market-stall-tip"));
   const board = useLeaderboard();
   const earnedRef = useRef(0);
   const tillRef = useRef(till);
@@ -196,17 +196,25 @@ export default function Game() {
       <div className="relative min-h-[460px] overflow-hidden rounded-2xl bg-card p-4 shadow">
         <TopThree board={board} className="absolute right-3 top-3" />
         {screen === "start" && (
-          <div className="flex min-h-[420px] flex-col items-center justify-center gap-4 text-center">
-            <h2 className="text-2xl font-semibold">{GAME_NAME}</h2>
-            <p className="text-muted-foreground">Serve as many customers as you can in a {SHIFT}-second shift. Spend your takings on upgrades: they stay for every shift after.</p>
-            {tip && <p className="text-sm">Helpers serve by themselves. Watch for the rush: takings double.</p>}
-            <p className="text-sm tabular-nums">
-              In the till: {till} · Per tap: {perTap(owned)} · Per second: {perSecond(owned)}
-            </p>
-            {best > 0 && <p className="text-sm">Best shift: {best}</p>}
-            <button type="button" onClick={start} className="w-full rounded-xl bg-primary px-6 py-3 text-lg font-semibold text-primary-foreground">
-              Start a shift
-            </button>
+          <div className="flex min-h-[420px] items-center">
+            <GameMenu
+              card={false}
+              className="w-full"
+              title={GAME_NAME}
+              tagline={"Serve customers in a " + SHIFT + "-second shift."}
+              best={best}
+              onPlay={start}
+              playLabel="Start a shift"
+              howTo={["Tap Serve as fast as you can during a shift.", "Spend your takings on upgrades and helpers: they stay for every shift after.", "Helpers serve by themselves, so every shift earns more."]}
+              powerUps={[
+                { name: "Rush customer", text: "doubles your takings for a few seconds" },
+              ]}
+              wallet
+            >
+              <p className="text-sm tabular-nums">
+                In the till: {till} · Per tap: {perTap(owned)} · Per second: {perSecond(owned)}
+              </p>
+            </GameMenu>
           </div>
         )}
         {screen === "playing" && (

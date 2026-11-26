@@ -5,7 +5,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { checkApp, checkContracts } from "../checks";
 import { kitById, kitIdsOf, withKit } from "../kits/index";
 import { closeRunCheckBrowser, runCheck } from "../run-check";
-import { CHECK_SEED, gameCheckScript } from "../game-check";
+import { CHECK_SEED, gameCheckScript, menuIssues } from "../game-check";
 import { EXTRAS } from "../kits/game-extras";
 import { PLATFORM_DIR, contractModule, contractsIndex, starterFiles } from "../template";
 import { typeCheck } from "../type-check";
@@ -76,10 +76,32 @@ describe("game templates (D114)", { timeout: 180_000 }, () => {
       expect(types.issues).toEqual([]);
     });
 
+    it(`${t.name}: starts on a menu (Play, How to play, its power-ups, Connect wallet with a board) and ends with Play again on the game (D178)`, () => {
+      const files = built(t.id);
+      const game = Object.entries(files)
+        .filter(([f]) => f.startsWith("src/play/"))
+        .map(([, c]) => c)
+        .join("\n");
+      expect(game).toMatch(/<GameMenu\b/);
+      expect(game).toMatch(/\bhowTo=\{\[/);
+      expect(game).toMatch(/<GameOver\b/);
+      expect(files["src/game/GameMenu.tsx"]).toBeTruthy();
+      const powerups = /declareGame\(\{[^}]*powerups: \[([^\]]*)\]/.exec(game)?.[1]?.trim();
+      if (powerups) expect(game).toMatch(/\bpowerUps=\{\[/);
+      if (t.leaderboard) {
+        const menu = /<GameMenu\b([\s\S]*?)\n\s*\/?>\n/.exec(game)?.[1] ?? "";
+        expect(menu).toMatch(/^\s*wallet\s*$/m);
+        expect(game).toMatch(/<GameOver\b[\s\S]*?<PostScore\b[\s\S]*?<\/GameOver>/);
+      }
+    });
+
     it.skipIf(!hasBrowser || (t.dims === "3d" && !hasWebGL))(`${t.name}: is played by the run check with no issues, leaderboard posting included`, async () => {
-      const r = await runCheck(built(t.id));
+      let menu: string[] = ["the start screen was never reached"];
+      const r = await runCheck(built(t.id), { beforePlay: async (page) => void (menu = await menuIssues(page)) });
       expect(r.ran, r.note).toBe(true);
       expect(r.issues).toEqual([]);
+      // The menu (D178): Play, and How to play that opens its steps.
+      expect(menu).toEqual([]);
       expect(r.note).toMatch(/played \d+ rounds?/);
       // A room game has no leaderboard: its rounds are against the computer or friends.
       if (t.leaderboard) expect(r.note).toMatch(/a score was posted and shown on the board/);
@@ -102,6 +124,37 @@ describe("game templates (D114)", { timeout: 180_000 }, () => {
     const r = await runCheck(built("catch-dodge"), { initScript: "delete CanvasRenderingContext2D.prototype.roundRect;" });
     expect(r.issues).toEqual([]);
     expect(r.note).toMatch(/played \d+ rounds?/);
+  });
+
+  // D178: players asked for a menu, and for Play again and Post score on the game screen.
+  it("every game for two or more can also be played alone, against the computer", () => {
+    const rooms = GAME_TEMPLATES.filter((t) => t.multiplayer);
+    expect(rooms.length).toBeGreaterThan(0);
+    for (const t of rooms) {
+      const src = Object.values(t.files).join("\n");
+      expect(src, t.id).toMatch(/declareGame\(\{[^}]*npcs: \[[^\]]*"computer"/);
+      expect(src, t.id).toMatch(/playLabel="Play the computer"/);
+    }
+  });
+
+  it.skipIf(!hasBrowser)("Lane racer: a copy whose start screen is a bare Play button, not a menu, is caught", async () => {
+    let menu: string[] = [];
+    const bare = built(
+      "lane-racer",
+      edit("src/play/Game.tsx", /<GameMenu[\s\S]*?\/>\n/, '<button type="button" onClick={start} className="absolute inset-x-6 bottom-24 rounded-xl bg-primary py-3 text-primary-foreground">Play</button>\n'),
+    );
+    await runCheck(bare, { beforePlay: async (page) => void (menu = await menuIssues(page)) });
+    expect(menu.join(" ")).toMatch(/isn't a menu/);
+  });
+
+  it.skipIf(!hasBrowser)("Lane racer: a copy with Post score under the page instead of on the game is caught", async () => {
+    const below = built("lane-racer", (f) =>
+      edit("src/play/Game.tsx", '<Leaderboard board={board}', '{screen === "over" && <PostScore board={board} score={result.score} />}\n      <Leaderboard board={board}')(
+        edit("src/play/Game.tsx", "            <PostScore board={board} score={result.score} />\n", "")(f),
+      ),
+    );
+    const r = await runCheck(below);
+    expect(r.issues.map((i) => i.message).join(" ")).toMatch(/Post score is out of sight/);
   });
 
   it.skipIf(!hasBrowser)("Lane racer: a copy whose steering does nothing is caught", async () => {

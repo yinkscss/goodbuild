@@ -58,6 +58,8 @@ export interface RunCheckOptions {
   initScript?: string;
   /** Tests: stand in for a cheap phone: a touch screen, and the CPU slowed this many times. */
   phone?: { cpuSlowdown: number };
+  /** Tests: called with the page on the start screen, just before Play is pressed. */
+  beforePlay?: (page: Page) => Promise<void>;
   /** Tests: called with the page once a game has been played and judged, before the wallet steps. */
   afterPlay?: (page: Page) => Promise<void>;
 }
@@ -447,6 +449,7 @@ async function check(context: BrowserContext, files: PublishedFile[], options: R
       noPlay = !hasStart;
       await phoneShot("start");
     }
+    if (options.beforePlay && played) await options.beforePlay(page);
     if (hasStart) {
       await start.click({ timeout: 1_500 }).catch(() => undefined);
       pressedPlay = true;
