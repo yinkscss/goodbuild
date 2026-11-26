@@ -12,6 +12,9 @@ import { flowstateVoters } from "@/server/db/hackathon-schema";
 import type { Db } from "@/server/db/client";
 import { publicClientFor } from "@/server/deploy/service";
 import { adminWallets } from "@/server/settings/mainnet-access";
+import { sendTelegram } from "@/server/support/ticket";
+import { ambassadorCashouts as cashouts } from "@/server/db/ambassador-schema";
+import { cashOutMode } from "@/server/goodcash/client";
 
 export class AmbassadorError extends Error {}
 const launch = () => {
@@ -41,7 +44,20 @@ export async function qualifyAmbassador(db: Db, userId: string, identity: string
   });
 }
 
+/** Tell the owner on Telegram that someone asked to be paid (D173). Fire and forget: never changes the request's outcome. */
+export function alertPayoutRequested(amountG: number, wallet: string, env: Record<string, string | undefined> = process.env, fetcher: typeof fetch = fetch) {
+  const domain = env.APP_DOMAIN ? `https://${env.APP_DOMAIN}` : "";
+  const text = `GoodBuild: an ambassador asked to be paid ${amountG.toLocaleString("en-US")} G$.\nWallet: ${wallet}\nSend the G$ to that wallet, then confirm it here: ${domain}/home/referrals/admin`;
+  return sendTelegram(text, env, fetcher).catch(() => false);
+}
+
 export async function requestPayout(db: Db, userId: string) {
+  const request = await createPayoutRequest(db, userId);
+  void alertPayoutRequested(request.amountG, request.wallet);
+  return request;
+}
+
+async function createPayoutRequest(db: Db, userId: string) {
   return db.transaction(async raw => {
     const tx = raw as unknown as Db;
     await lock(tx);
@@ -146,7 +162,8 @@ export async function ambassadorDashboard(db: Db, userId: string, page = 0, admi
     paidG: amounts.filter(x => x.status === "paid").reduce((n,x) => n+x.amountG,0),
     referrals: rows.slice(0,25).map(x => admin ? x : { id: x.id, joinedAt: x.joinedAt, verifiedAt: x.verifiedAt, voteAt: x.voteAt, amountG: x.amountG, qualifiedAt: x.qualifiedAt }),
     hasMore: rows.length > 25,
-    payouts: await db.select().from(payouts).where(eq(payouts.userId, userId)).orderBy(desc(payouts.createdAt)).limit(25).offset(page * 25),
+    cashOutEnabled: cashOutMode() !== null,
+    payouts: await payoutsWithCashOuts(db, userId, page),
   };
 }
 export async function adminAmbassadors(db: Db, wallet?: string, page = 0) {
@@ -158,4 +175,15 @@ export async function payoutQueue(db: Db, page = 0) {
 }
 export async function payoutAudit(db: Db, userId: string) {
   return db.select({ action: audit.action, detail: audit.detail, at: audit.createdAt, actorId: audit.actorId, payoutId: audit.payoutId }).from(audit).innerJoin(payouts, eq(payouts.id, audit.payoutId)).where(eq(payouts.userId, userId)).orderBy(desc(audit.createdAt)).limit(100);
+}
+
+/** The page of payouts, each with its latest cash out (D173). */
+async function payoutsWithCashOuts(db: Db, userId: string, page: number) {
+  const list = await db.select().from(payouts).where(eq(payouts.userId, userId)).orderBy(desc(payouts.createdAt)).limit(25).offset(page * 25);
+  if (!list.length) return [];
+  const rows = await db.select().from(cashouts).where(eq(cashouts.userId, userId)).orderBy(desc(cashouts.createdAt));
+  return list.map(p => {
+    const c = rows.find(r => r.payoutId === p.id);
+    return { ...p, cashOut: c ? { id: c.id, status: c.status, amountG: c.amountG, naira: c.naira, bankName: c.bankName, accountName: c.accountName, accountLast4: c.accountLast4, txHash: c.txHash, paidAt: c.paidAt } : null };
+  });
 }

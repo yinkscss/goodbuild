@@ -253,6 +253,13 @@
       "when": 1795137116931,
       "tag": "0035_merge_hackathons",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1795697135424,
+      "tag": "0036_ambassador_cashouts",
+      "breakpoints": true
     }
   ]
 }

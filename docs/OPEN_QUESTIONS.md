@@ -212,3 +212,12 @@ Built for games that move the player all the time (gravity: a dead Cave flyer is
 
 ## Q47. What a non-technical person sees during a build (raised 21 Nov 2026, after D162)
 Claude audited the build screen and found 14 places where developer words, raw errors or two competing buttons reach the person, and compared GPT Engineer's and Codex's tools. The owner approved the plan and the mock and asked for one problem card with one button: [BUILD_CLARITY_PLAN.md](BUILD_CLARITY_PLAN.md). Built as D164. The owner chose that a second repair runs on credits from the same button, with the cost shown only beside the prompt box (B2).
+
+## Q48. Ambassador cash-out to Naira: what still needs the owner (raised 26 Nov 2026 by D173)
+1. **Which GoodCash key is in production?** Cash out needs the secret key (`gc_sk_live_...`). If production only holds the publishable key (`gc_pk_`), the Cash out button stays hidden. Not visible from the code; please check.
+2. **Is the webhook registered?** Optional. Without `GOODCASH_WEBHOOK_SECRET` the page asks GoodCash for the status itself. To register: `PUT /v1/webhooks` with `https://<domain>/api/goodcash/webhook`, keep the `whsec_` secret it returns once.
+3. **Network fee (a little CELO).** The person's wallet pays the fee in CELO, not G$. The button warns when GoodCash says the wallet is short and links to Telegram. The gas grant (D41/D124) covers votes and deploys only; adding "cash out" as a third reason needs a change to the `gas_grants` rules and a budget. Not built. Many email wallets will hold no CELO, so this is the likeliest place for people to get stuck.
+4. **Poster wording and the real rate.** See D173. Someone with live access should read one live quote for 25,000 G$ and decide whether "about ₦2,500" holds, or set G$ per friend to match.
+5. **Admin screen.** Admins see each payout's cash-out line in the ambassador detail, but there is no cash-out list or totals page yet.
+6. **Telegram alert.** Uses the support bot and chat (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_SUPPORT_CHAT_ID`). The owner asked for a Telegram bot; if admins should get it in a separate admin chat, that needs its own chat id.
+
