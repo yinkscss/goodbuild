@@ -112,7 +112,7 @@ export async function workspaceState(db: Db, projectId: string, ownerId: string)
     remembered: ((project.memory as { decisions?: string[] } | null)?.decisions ?? []).slice(0, 15),
     availableMicro: await availableMicro(db, ownerId, (await getCredits(ownerId, db)).balanceMicro),
     estimate: {
-      buildMicro: estimateTurnMicro({ mode: "build", contextChars, firstBuild }, firstBuild ? MODEL_IDS[TIER_FOR.build] : undefined),
+      buildMicro: estimateTurnMicro({ mode: "build", contextChars, firstBuild }, MODEL_IDS[TIER_FOR.build]),
       planMicro: estimateTurnMicro({ mode: "plan", contextChars, firstBuild }),
     },
     assets: (await dbAssetStore(db).list(projectId)).map((a) => {
