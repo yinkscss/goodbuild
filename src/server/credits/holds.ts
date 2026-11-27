@@ -180,6 +180,25 @@ export async function ensureHold(tx: Db, jobId: string, worstMicro: number): Pro
 }
 
 /**
+ * Keep going while any credit is left (owner, 27 Nov 2026: "it should keep going regardless, when there's
+ * no credits, save"). Like ensureHold, but when the rest of the balance can't cover the call's whole worst
+ * case, it reserves what it can and lets the call run: the real charge is almost always far below the worst
+ * case, and the charge is posted with allowNegative (so the balance may end a little below zero, which
+ * plan section 5 item 6 already writes off). False only when the job has nothing held and nothing free to
+ * reserve: the person is out of credit, and the build pauses and saves its draft.
+ */
+export async function ensureHoldKeepGoing(tx: Db, jobId: string, worstMicro: number): Promise<boolean> {
+  const [job] = await tx.select({ userId: turnJobs.userId, holdMicro: turnJobs.holdMicro, funding: turnJobs.funding, status: turnJobs.status }).from(turnJobs).where(eq(turnJobs.id, jobId)).for("update");
+  if (!job || job.funding !== "paid") return true;
+  if (job.holdMicro >= worstMicro) return true;
+  if (job.status !== "queued" && job.status !== "running") return false;
+  const balance = await lockBalance(tx, job.userId);
+  const extend = Math.min(worstMicro - job.holdMicro, Math.max(0, balance.availableMicro));
+  if (extend > 0) await tx.update(turnJobs).set({ holdMicro: job.holdMicro + extend }).where(eq(turnJobs.id, jobId));
+  return job.holdMicro + extend > 0;
+}
+
+/**
  * What a paid job could spend on its next call: its hold plus the rest of the user's balance that
  * no other build has set aside. Null for a job that isn't paid (nothing to fit). 0 for a job that has
  * ended. Locks the job's row, then the balances row (the usual order). Moves no money.
