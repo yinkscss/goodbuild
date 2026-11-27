@@ -511,7 +511,7 @@ describe.each(testBackends())("holds and charging on $name", (backend) => {
   });
 
   describe("a build stopped at its hold doesn't overspend", () => {
-    /** D177: the most a build can end below zero: one fitted fast-model call (16,000 output tokens is about 2.4 cents with markup). */
+    /** D180: the most a build can end below zero in these tests: one fitted fast-model call as scripted. On a real large project one call can cost several credits. */
     const OVERSHOOT_MICRO = 50_000;
     /** Calls that each really use their whole output limit, reported as the tier's own model. */
     const costly = (n: number): ScriptedReply[] =>
@@ -520,7 +520,7 @@ describe.each(testBackends())("holds and charging on $name", (backend) => {
         usage: { input: 2_000, output: 16_000 },
       }));
 
-    it("stops before the call it can't cover, however much the calls cost, with the balance below zero by at most one small call, and keeps what it wrote (D138, D177)", async () => {
+    it("stops before the call it can't cover, however much the calls cost, with the balance below zero by at most one small call, and keeps what it wrote (D138, D180)", async () => {
       const a = await payer(PAID_MIN_START_MICRO);
       const job = queued(await start(a.userId, a.projectId));
       const model = scriptedModel(costly(25));
@@ -533,7 +533,7 @@ describe.each(testBackends())("holds and charging on $name", (backend) => {
       expect(record.draftSaved).toBe(true);
       expect(model.requests.length).toBeLessThan(25);
       expect(m.charged).toBeGreaterThan(0);
-      // D177: it keeps going while any credit is left, so it can end a little below zero, by at most one fitted call.
+      // D180: it keeps going while any credit is left, so it can end a little below zero, by at most one fitted call.
       expect(m.balance).toBeGreaterThanOrEqual(-OVERSHOOT_MICRO);
       expect(m.charged).toBeLessThanOrEqual(PAID_MIN_START_MICRO + OVERSHOOT_MICRO);
       expect(m.reserved).toBe(0);
