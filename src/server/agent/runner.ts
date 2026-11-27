@@ -38,7 +38,7 @@ import { checkpoint, claimTurn, loadFiles, recordUsage, releaseTurn } from "./st
 import { decideFunding } from "@/server/credits/cap";
 import { alertProviderFunds } from "./provider-alert";
 import { pauseProvider, providerOf } from "./provider-status";
-import { CREDITS_PAUSED_MESSAGE, OutOfCreditsError, ensureHold, fitCall, headroomMicro, worstCaseCallMicro } from "@/server/credits/holds";
+import { CREDITS_PAUSED_MESSAGE, OutOfCreditsError, ensureHoldKeepGoing, fitCall, headroomMicro, worstCaseCallMicro, MIN_FITTED_OUTPUT_TOKENS } from "@/server/credits/holds";
 import { fillMiniApp, type MiniAppInfo } from "./kits/mini-app";
 import { formatCredits } from "@/lib/credits-math";
 import { postLedgerEntry } from "@/server/credits/ledger";
@@ -376,9 +376,11 @@ export async function runTurn(deps: TurnDeps, input: TurnInput, emit: (e: TurnEv
       if (funding !== "paid" || !jobId) return asked;
       const room = await job.commit((tx) => headroomMicro(tx, jobId));
       if (room === null) return asked;
-      const fit = fitCall(asked, room, (t) => MODEL_IDS[t]);
+      // Keep going while any credit is left: if not even the smallest call fits its worst case, run it small
+      // on the fast model anyway (the real charge is far below the worst case). Pause only at zero.
+      const fit = fitCall(asked, room, (t) => MODEL_IDS[t]) ?? (room > 0 ? { tier: "cheap" as const, maxTokens: Math.min(MIN_FITTED_OUTPUT_TOKENS, asked.maxTokens) } : null);
       if (!fit) {
-        log(`! credits are low: ${formatCredits(room)} left, not enough for the next step`);
+        log(`! credits are used up: ${formatCredits(room)} left`);
         throw new OutOfCreditsError();
       }
       if (fit.tier !== asked.tier) log(`! credits are low (${formatCredits(room)} left): this step uses the fast model instead`);
@@ -1781,7 +1783,7 @@ function checkedAgainstHold(model: ModelClient, job: TurnJobContext): ModelClien
       const worst = worstCaseCallMicro(MODEL_IDS[request.tier], request);
       if (job.funding === "platform") {
         if (!(await job.commit((tx) => sponsorshipCanCall(tx, jobId, worst)))) throw new SponsorshipExhaustedError();
-      } else if (!(await job.commit((tx) => ensureHold(tx, jobId, worst)))) throw new OutOfCreditsError();
+      } else if (!(await job.commit((tx) => ensureHoldKeepGoing(tx, jobId, worst)))) throw new OutOfCreditsError();
       yield* model.stream({ ...request, ...(job.funding === "platform" ? { noRetries: true } : {}) });
     },
   };

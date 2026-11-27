@@ -27,6 +27,7 @@ import {
   PAID_MIN_DIRECT_MICRO,
   PAID_MIN_START_MICRO,
   ensureHold,
+  ensureHoldKeepGoing,
   findReservationMismatches,
   fitCall,
   repairReservations,
@@ -510,6 +511,8 @@ describe.each(testBackends())("holds and charging on $name", (backend) => {
   });
 
   describe("a build stopped at its hold doesn't overspend", () => {
+    /** D177: the most a build can end below zero: one fitted fast-model call (16,000 output tokens is about 2.4 cents with markup). */
+    const OVERSHOOT_MICRO = 50_000;
     /** Calls that each really use their whole output limit, reported as the tier's own model. */
     const costly = (n: number): ScriptedReply[] =>
       Array.from({ length: n }, (_, i) => ({
@@ -517,7 +520,7 @@ describe.each(testBackends())("holds and charging on $name", (backend) => {
         usage: { input: 2_000, output: 16_000 },
       }));
 
-    it("stops before the call it can't cover, however much the calls cost, with the balance never below zero, and keeps what it wrote (D138)", async () => {
+    it("stops before the call it can't cover, however much the calls cost, with the balance below zero by at most one small call, and keeps what it wrote (D138, D177)", async () => {
       const a = await payer(PAID_MIN_START_MICRO);
       const job = queued(await start(a.userId, a.projectId));
       const model = scriptedModel(costly(25));
@@ -530,12 +533,13 @@ describe.each(testBackends())("holds and charging on $name", (backend) => {
       expect(record.draftSaved).toBe(true);
       expect(model.requests.length).toBeLessThan(25);
       expect(m.charged).toBeGreaterThan(0);
-      expect(m.balance).toBeGreaterThanOrEqual(0);
-      expect(m.charged).toBeLessThanOrEqual(PAID_MIN_START_MICRO);
+      // D177: it keeps going while any credit is left, so it can end a little below zero, by at most one fitted call.
+      expect(m.balance).toBeGreaterThanOrEqual(-OVERSHOOT_MICRO);
+      expect(m.charged).toBeLessThanOrEqual(PAID_MIN_START_MICRO + OVERSHOOT_MICRO);
       expect(m.reserved).toBe(0);
       const row = await jobRow(job.id);
       expect([row.status, row.error, row.holdMicro]).toEqual(["error", CREDITS_PAUSED_MESSAGE, 0]);
-      expect(row.releasedMicro).toBe(PAID_MIN_START_MICRO - m.charged);
+      expect(row.releasedMicro).toBe(Math.max(0, PAID_MIN_START_MICRO - m.charged));
       // Credit pauses preserve recovery work without replacing the last working checkpoint.
       expect(await loadFiles(db, a.projectId)).toEqual({});
       const [draft] = await db.select().from(buildDrafts).where(eq(buildDrafts.jobId, job.id));
@@ -554,7 +558,7 @@ describe.each(testBackends())("holds and charging on $name", (backend) => {
       // Every call that ran was asked for at most what fit, and some were shrunk on the way down.
       expect(model.requests.every((r) => r.maxTokens >= MIN_FITTED_OUTPUT_TOKENS && r.maxTokens <= 16_000)).toBe(true);
       expect(model.requests.some((r) => r.maxTokens < 16_000)).toBe(true);
-      expect((await money(a.userId)).balance).toBeGreaterThanOrEqual(0);
+      expect((await money(a.userId)).balance).toBeGreaterThanOrEqual(-OVERSHOOT_MICRO);
       await expectBooksBalance(a.userId);
     });
 
@@ -631,10 +635,9 @@ describe.each(testBackends())("holds and charging on $name", (backend) => {
       const record = await runJob(job.id, scriptedModel(costly(25)).client);
       expect(record.error).toBe(CREDITS_PAUSED_MESSAGE);
       const m = await money(a.userId);
-      expect(m.charged).toBeLessThanOrEqual(400_000);
+      expect(m.charged).toBeLessThanOrEqual(400_000 + OVERSHOOT_MICRO);
       expect((await jobRow(other.id)).holdMicro).toBe(1_000_000);
       expect(m.reserved).toBe(1_000_000);
-      expect(m.available).toBeGreaterThanOrEqual(0);
       await expectBooksBalance(a.userId);
     });
 
@@ -706,6 +709,20 @@ describe.each(testBackends())("holds and charging on $name", (backend) => {
       expect(await db.transaction((tx) => ensureHold(tx as unknown as Db, job.id, 5_000_000))).toBe(true);
       expect(await money(a.userId)).toMatchObject({ reserved: 5_000_000, available: 0 });
       await expectBooksBalance(a.userId);
+    });
+
+    it("ensureHoldKeepGoing reserves what's left instead of refusing, and says no only at zero", async () => {
+      const a = await payer(5_000_000);
+      const job = queued(await start(a.userId, a.projectId));
+      // Worst case above the whole balance: ensureHold refuses, keep-going takes the rest and goes on.
+      expect(await db.transaction((tx) => ensureHold(tx as unknown as Db, job.id, 9_000_000))).toBe(false);
+      expect(await db.transaction((tx) => ensureHoldKeepGoing(tx as unknown as Db, job.id, 9_000_000))).toBe(true);
+      expect((await jobRow(job.id)).holdMicro).toBe(5_000_000);
+      expect(await money(a.userId)).toMatchObject({ reserved: 5_000_000, available: 0 });
+      // Spend it all through the ledger: no hold, nothing free, so it pauses.
+      await db.transaction((tx) => postLedgerEntry(tx as unknown as Db, { userId: a.userId, kind: "usage", amountMicro: -5_000_000, idempotencyKey: "keep-going-test", refType: "usage_event", refId: "keep-going-test", allowNegative: true }));
+      await db.update(turnJobs).set({ holdMicro: 0 }).where(eq(turnJobs.id, job.id));
+      expect(await db.transaction((tx) => ensureHoldKeepGoing(tx as unknown as Db, job.id, 100_000))).toBe(false);
     });
 
     it("ensureHold says no for a job that ended while it waited, instead of the database refusing it", async () => {
