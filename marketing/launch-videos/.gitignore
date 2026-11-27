@@ -1,0 +1,7 @@
+.work/
+**/frames/
+*.sub.png
+vo/.lines/
+vo/mix.wav
+**/vo/.lines/
+**/vo/mix.wav
